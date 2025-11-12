@@ -1,0 +1,56 @@
+# Node & TypeScript
+node_modules/
+dist/
+build/
+.env
+.env.*
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Jest & Coverage
+coverage/
+.jest-cache/
+.jest/
+*.test.ts
+*.spec.ts
+*.spec.js
+*.test.js
+
+# Prisma
+prisma/dev.db
+prisma/*.db-journal
+prisma/migrations/
+prisma/generated/
+
+# Next.js / Web build (if monorepo)
+.next/
+out/
+
+# Temporary & local data
+tmp/
+temp/
+.cache/
+*.swp
+
+# Logs and debug output
+debug/
+logs/
+*.pid
+*.seed
+
+# macOS and Linux system files
+*.DS_Store
+*.AppleDouble
+*.LSOverride
