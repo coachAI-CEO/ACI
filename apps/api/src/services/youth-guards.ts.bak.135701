@@ -1,0 +1,80 @@
+export function applyYouthGuards(drill: any, input: any) {
+  const isU9U12 = /^U(9|10|11|12)\b/i.test(input.ageGroup || "");
+  if (!isU9U12) return;
+
+  const ensureArr = (v: any) => Array.isArray(v) ? v : [];
+  const ensureObj = (v: any) => (v && typeof v === 'object') ? v : {};
+
+  const desiredAttack = 4, desiredDefend = 3;
+  const hasGK = (input.goalsAvailable ?? 0) >= 1;
+
+  // Rotation / parallel grid hint if many players available
+  if (!drill.organization) drill.organization = "";
+  const totalMax = (input.numbersMax ?? 0);
+  const allowActive = desiredAttack + desiredDefend + (hasGK ? 1 : 0);
+  if (totalMax > allowActive && !/rotate|rotation|parallel grid/i.test(drill.organization)) {
+    drill.organization = `Rotation: 60–90s reps; resting players wait behind starting cones; swap every rep. If >${allowActive} outfielders, run two parallel 4v3+GK grids. `
+      + (drill.organization ? drill.organization : "");
+  }
+
+  // Work:rest for youth
+  drill.progression = ensureArr(drill.progression);
+  const wrText = `${drill.organization}\n${drill.progression.join('\n')}`;
+  const hasWorkRest = /work[:\s-]*rest|work\/rest|x\s*\d+'\s*/i.test(wrText);
+  if (!hasWorkRest) {
+    drill.progression.unshift(`Structure: 4 x 5' with 90s active recovery (water + coaching cues) for U12.`);
+  }
+
+  // Diagram completeness
+  drill.diagram = ensureObj(drill.diagram);
+  drill.diagram.pitch = drill.diagram.pitch || input.spaceConstraint || "HALF";
+  drill.diagram.miniGoals = (typeof drill.diagram.miniGoals === 'number') ? drill.diagram.miniGoals : (input.goalsAvailable === 2 ? 2 : 0);
+
+  // Force team sizes for visual
+  drill.diagram.teams = [
+    { label: "Attack", count: desiredAttack, color: "blue" },
+    { label: "Defend", count: desiredDefend, color: "red" },
+    ...(hasGK ? [{ label: "GK", count: 1, color: "green" }] : [])
+  ];
+
+  (drill.diagram as any).startingShapeAttack = (drill.diagram as any).startingShapeAttack || "2-1-1";
+  (drill.diagram as any).startingShapeDefend = (drill.diagram as any).startingShapeDefend || "2-1-0";
+
+  // Minimum viable starting positions (normalized 0–100)
+  const needCount = desiredAttack + desiredDefend + (hasGK ? 1 : 0);
+  const sp = ensureArr((drill.diagram as any).startingPositions);
+  if (sp.length < needCount) {
+    const pos: any[] = [];
+    pos.push({ id: "A1", label: "CB-L",   team: "Attack", x: 35, y: 70 });
+    pos.push({ id: "A2", label: "CB-R",   team: "Attack", x: 65, y: 70 });
+    pos.push({ id: "A3", label: "CAM",    team: "Attack", x: 50, y: 55 });
+    pos.push({ id: "A4", label: "Winger", team: "Attack", x: 80, y: 45 });
+
+    pos.push({ id: "D1", label: "CB-L", team: "Defend", x: 45, y: 40 });
+    pos.push({ id: "D2", label: "CB-R", team: "Defend", x: 55, y: 40 });
+    pos.push({ id: "D3", label: "DM",   team: "Defend", x: 50, y: 55 });
+    if (hasGK) pos.push({ id: "G1", label: "GK", team: "GK", x: 50, y: 20 });
+    (drill.diagram as any).startingPositions = pos;
+  } else {
+    (drill.diagram as any).startingPositions = sp;
+  }
+
+  // Arrows: require pass + run + dribble
+  const arrows = ensureArr(drill.diagram.arrows);
+  const ensureArrow = (a: any) =>
+    !arrows.some((b:any) => b.type===a.type && b.from===a.from && b.to===a.to) && arrows.push(a);
+  ensureArrow({ type: "pass",    from: "CB-L",   to: "CAM",        style: "solid" });
+  ensureArrow({ type: "dribble", from: "Winger", to: "Endline",    style: "dotted" });
+  ensureArrow({ type: "run",     from: "CAM",    to: "CutbackSpot",style: "dashed" });
+  drill.diagram.arrows = arrows;
+
+  // Coach position / restart
+  (drill.diagram as any).coach = (drill.diagram as any).coach || { x: 10, y: 80, restart: "Coach plays into CAM to start each rep" };
+
+  // Ensure GK coaching point (you already try earlier; this is a safeguard)
+  drill.coachingPoints = ensureArr(drill.coachingPoints);
+  if ((input.goalsAvailable ?? 0) >= 1 &&
+      !drill.coachingPoints.some((p: string) => /^GK\b|^Goalkeeper\b/i.test(p))) {
+    drill.coachingPoints.push("GK: starting position & communication on cutbacks (near-post, ball across goal).");
+  }
+}

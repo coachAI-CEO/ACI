@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GameModelId {
+  COACHAI
+  POSSESSION
+  PRESSING
+  TRANSITION
+}
+
+enum Phase {
+  ATTACKING
+  DEFENDING
+  TRANSITION_TO_ATTACK
+  TRANSITION_TO_DEFEND
+}
+
+enum Zone {
+  DEFENSIVE_THIRD
+  MIDDLE_THIRD
+  ATTACKING_THIRD
+}
+
+enum SpaceConstraint {
+  FULL
+  HALF
+  THIRD
+  QUARTER
+}
+
+enum ArtifactType {
+  DRILL
+  SESSION
+  MICROCYCLE
+  MESOCYCLE
+}
+
+model Drill {
+  id          String      @id @default(uuid())
+  title       String
+  gameModelId GameModelId
+  phase       Phase
+  zone        Zone
+  ageGroup    String
+  durationMin Int?
+  qaScore     Float?
+  approved    Boolean     @default(false)
+
+  numbersMin      Int
+  numbersMax      Int
+  gkOptional      Boolean         @default(true)
+  spaceConstraint SpaceConstraint
+  goalsSupported  Int[]
+
+  json           Json
+  visualThumbSvg String?
+  visualHash     String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qaReports QAReport[]
+}
+
+model QAReport {
+  id         String   @id @default(uuid())
+  artifactId String
+  artifact   Drill    @relation(fields: [artifactId], references: [id])
+  pass       Boolean
+  scores     Json
+  summary    String?
+  createdAt  DateTime @default(now())
+}
+
+model ArtifactEmbedding {
+  id           String                @id @default(uuid())
+  artifactType ArtifactType
+  artifactId   String
+  dims         Int
+  embedding    Unsupported("vector")
+  createdAt    DateTime              @default(now())
+
+  @@index([artifactType, artifactId])
+}

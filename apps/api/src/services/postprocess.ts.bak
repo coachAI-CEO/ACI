@@ -1,0 +1,170 @@
+import type { Drill } from "@prisma/client";
+
+type AnyJson = Record<string, any>;
+
+function uniqCaseInsensitive(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of items) {
+    const s = (raw || "").toString().trim();
+    if (!s) continue;
+    const key = s.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+function canonicalizeEquipment(items: string[]): string[] {
+  // Normalize common variants to a canonical label
+  const map: Record<string, string> = {
+    "cones": "Cones",
+    "cones/markers": "Cones",
+    "cones or markers": "Cones",
+    "pinnies": "Bibs (2 colors)",
+    "pinnies (2 colors)": "Bibs (2 colors)",
+    "bibs": "Bibs (2 colors)",
+    "bibs (two colors)": "Bibs (2 colors)",
+    "bibs (2 distinct colors)": "Bibs (2 colors)",
+    "bibs (two distinct colors)": "Bibs (2 colors)",
+    "soccer balls": "Soccer balls",
+    "footballs": "Soccer balls",
+    "balls": "Soccer balls",
+    "2 regular goals": "2 Full-size goals",
+    "2 full-sized goals": "2 Full-size goals",
+    "2 full-size goals": "2 Full-size goals",
+    "1 full-sized goal": "1 Full-size goal",
+    "1 full-size goal": "1 Full-size goal",
+    "full-size goal": "1 Full-size goal",
+    "full sized goal": "1 Full-size goal",
+    "mini-goals": "2 Mini-goals", // if unspecified, we’ll normalize later based on mode
+    "2 mini-goals": "2 Mini-goals",
+    "two mini-goals": "2 Mini-goals"
+  };
+
+  const out = items.map((x) => {
+    const key = (x || "").toString().trim().toLowerCase();
+    return map[key] ?? x;
+  });
+
+  return uniqCaseInsensitive(out);
+}
+
+function filterForMiniMode(equip: string[]): string[] {
+  // Keep minis; remove anything that implies a large/full-size goal
+  const out: string[] = [];
+  for (const e of equip) {
+    const s = e.toLowerCase();
+    if (s.includes("full-size") || s.includes("full sized") || s.includes("regular goal")) {
+      continue;
+    }
+    // Normalize fuzzy mini wording to canonical
+    if (s.includes("mini-goal")) {
+      out.push("2 Mini-goals");
+      continue;
+    }
+    out.push(e);
+  }
+  // Ensure exactly one canonical mini line
+  const keep = out.filter((x) => !x.toLowerCase().includes("mini-goal"));
+  keep.push("2 Mini-goals");
+  return uniqCaseInsensitive(keep);
+}
+
+function filterForLargeMode(equip: string[]): string[] {
+  // Keep one large goal; remove any minis
+  const out: string[] = [];
+  let hasLarge = false;
+  for (const e of equip) {
+    const s = e.toLowerCase();
+    if (s.includes("mini-goal")) continue;
+    if (s.includes("full-size") || s.includes("full sized") || s === "full-size goal" || s === "1 full-size goal" || s === "1 full-sized goal" || s.includes("regular goal")) {
+      hasLarge = true;
+      continue; // we’ll add exactly one canonical line below
+    }
+    out.push(e);
+  }
+  if (!hasLarge) {
+    // Add exactly one canonical line
+    out.push("1 Full-size goal");
+  } else {
+    out.push("1 Full-size goal");
+  }
+  return uniqCaseInsensitive(out);
+}
+
+function ensureGKTeam(teams: AnyJson[]): AnyJson[] {
+  const hasGK = teams.some((t) => (t.label || "").toLowerCase() === "gk");
+  if (!hasGK) {
+    teams.push({ color: "green", count: 1, label: "GK" });
+  }
+  return teams;
+}
+
+function removeGKTeam(teams: AnyJson[]): AnyJson[] {
+  return teams.filter((t) => (t.label || "").toLowerCase() !== "gk");
+}
+
+export function postProcessDrill(drill: Partial<Drill> | AnyJson, reqBody: AnyJson) {
+  const json = (drill as AnyJson).json || {};
+  const diagram = json.diagram || {};
+  let equip: string[] = Array.isArray(json.equipment) ? json.equipment.slice() : [];
+
+  const goalsAvailable = json.goalsAvailable ?? reqBody.goalsAvailable;
+  const teams: AnyJson[] = Array.isArray(diagram.teams) ? diagram.teams.slice() : [];
+
+  // Canonicalize equipment labels first (before filtering)
+  equip = canonicalizeEquipment(equip);
+
+  if (goalsAvailable === 2) {
+    // MINI mode
+    json.goalMode = "MINI2";
+    diagram.miniGoals = 2;
+    diagram.teams = removeGKTeam(teams);
+    equip = filterForMiniMode(equip);
+  } else if (goalsAvailable === 1) {
+    // LARGE mode
+    json.goalMode = "LARGE";
+    diagram.miniGoals = 0;
+    diagram.teams = ensureGKTeam(teams);
+    equip = filterForLargeMode(equip);
+  } else {
+    // 0 goals or unspecified – leave as-is but still dedupe/clean labels
+    json.goalMode = json.goalMode ?? null;
+  }
+
+  // Final de-duplication and assignment
+  json.equipment = uniqCaseInsensitive(equip);
+  json.diagram = diagram;
+
+  // Write back
+  (drill as AnyJson).json = json;
+
+  // Optional debug log
+  try {
+    const teamLabels = (diagram.teams || []).map((t: AnyJson) => t.label).join(",");
+    // eslint-disable-next-line no-console
+    console.log("[POSTPROC]", {
+      goalsAvailable,
+      goalMode: json.goalMode,
+      miniGoals: diagram.miniGoals ?? null,
+      teams: teamLabels,
+      equipment: json.equipment,
+    });
+  } catch {}
+}
+
+/** Strict canonicalizer v2: lowercases, trims, maps, then de-dupes */
+function canonicalizeEquipmentV2(list: string[]) {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const raw of list) {
+    if (!raw) continue;
+    const k = String(raw).toLowerCase().trim();
+    const mapped = (EQUIP_CANON as any)[k] || raw;
+    out.push(mapped);
+  }
+  return Array.from(new Set(out));
+}
