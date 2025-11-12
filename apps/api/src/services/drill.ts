@@ -1,4 +1,12 @@
+export const deriveGoalsSupported = (json:any)=>{
+  const m = (json?.goalMode || "").toUpperCase();
+  if (m === "LARGE") return [1];
+  if (m === "MINI2") return [2];
+  return [];
+};
+
 import { applyYouthGuards } from "./youth-guards";
+import { postProcessDrill } from "./postprocess";
 import { normalizeGoals } from "./goal-normalizer";
 import { generateText } from "../gemini";
 import { prisma } from "../prisma";

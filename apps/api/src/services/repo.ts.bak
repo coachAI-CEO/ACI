@@ -1,0 +1,21 @@
+import { PrismaClient } from "@prisma/client";
+
+let prisma: PrismaClient | null = null;
+export const getPrisma = () => (prisma ??= new PrismaClient());
+
+export async function saveGeneratedDrill(payload: any) {
+  const db = getPrisma();
+  const json = payload?.drill?.json ?? {};
+  // persist only the fields we care about now; extend later
+  const goalsSupported: number[] = Array.isArray(json.goalsSupported) ? json.goalsSupported : [];
+  const title: string = json?.title || payload?.drill?.title || "Untitled drill";
+  // upsert by a transient hash later; for now create
+  const row = await db.drill.create({
+    data: {
+      title,
+      goalsSupported
+    },
+    select: { id: true, title: true, goalsSupported: true }
+  });
+  return row;
+}

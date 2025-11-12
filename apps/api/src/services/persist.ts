@@ -1,0 +1,43 @@
+import prisma from "../db";
+
+/**
+ * Save the generated drill (and optional QA) when SAVE_DRILLS=1.
+ * json: the full result.drill (or just its .json)
+ * meta: the POST body used to generate the drill
+ */
+export async function saveDrillIfEnabled(json: any, meta: any) {
+  if (process.env.SAVE_DRILLS !== "1") return null;
+
+  const drillJson = json?.json ?? json ?? {};
+  const m = meta ?? {};
+
+  // Required Drill fields (fallbacks come from meta first, then drillJson, then defaults)
+  const data: any = {
+    title: drillJson?.title ?? m?.titleHint ?? "Untitled Drill",
+    gameModelId: m.gameModelId,                 // e.g. "POSSESSION"
+    phase: m.phase,                             // e.g. "ATTACKING"
+    zone: m.zone,                               // e.g. "ATTACKING_THIRD"
+    ageGroup: m.ageGroup,                       // e.g. "U12"
+    coachLevel: m.coachLevel ?? null,
+    playerLevel: m.playerLevel ?? null,
+    durationMin: Number(m.durationMin ?? drillJson.durationMin ?? 0) || 0,
+    numbersMin: Number(m.numbersMin ?? drillJson.numbersMin ?? 0) || 0,
+    numbersMax: Number(m.numbersMax ?? drillJson.numbersMax ?? 0) || 0,
+    spaceConstraint: m.spaceConstraint ?? drillJson.spaceConstraint ?? "HALF",
+    goalsSupported: Array.isArray(drillJson.goalsSupported) ? drillJson.goalsSupported : [],
+    json: drillJson,
+  };
+
+  const drill = await prisma.drill.create({ data });
+
+  // Optional QA persist if present
+  try {
+    const qa = (json?.qa ?? null);
+    if (qa) {
+    }
+  } catch {
+    // non-fatal
+  }
+
+  return { id: drill.id, saved: true };
+}

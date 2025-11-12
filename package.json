@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "typecheck": "pnpm exec tsc --noEmit",
+    "test:e2e:fast": "cross-env NODE_ENV=test FAST_E2E=1 jest -i"
   },
   "keywords": [],
   "author": "",
