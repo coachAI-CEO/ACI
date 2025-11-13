@@ -1,21 +1,50 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../db";
 
-let prisma: PrismaClient | null = null;
-export const getPrisma = () => (prisma ??= new PrismaClient());
+/**
+ * Persist a generated drill JSON blob into the DB (Drill table).
+ * Returns { saved: boolean, id?: string }.
+ *
+ * NOTE: Callers should pass a fully post-processed json:
+ * - json.goalMode set
+ * - json.goalsSupported set (array of ints)
+ * - canonicalized equipment already set
+ */
+export async function saveGeneratedDrill(json: any) {
+  // Minimal, type-safe Drill creation
+  const data = {
+    title: String(json?.title ?? "Untitled"),
+    gameModelId: String(json?.gameModelId ?? "COACHAI"),
+    phase: String(json?.phase ?? "ATTACKING"),
+    zone: String(json?.zone ?? "ATTACKING_THIRD"),
+    ageGroup: String(json?.ageGroup ?? "U12"),
+    coachLevel: String(json?.coachLevel ?? "advanced"),
+    playerLevel: String(json?.playerLevel ?? "developing"),
+    durationMin: Number(json?.durationMin ?? 20),
+    numbersMin: Number(json?.numbersMin ?? 10),
+    numbersMax: Number(json?.numbersMax ?? 12),
+    gkOptional: Boolean(json?.gkOptional ?? true),
+    spaceConstraint: String(json?.spaceConstraint ?? "HALF"),
+    goalsSupported: Array.isArray(json?.goalsSupported)
+      ? (json.goalsSupported as number[])
+      : (typeof json?.goalsAvailable === "number" ? [Number(json.goalsAvailable)] : []),
+    json: json ?? {},
+  } as const;
 
-export async function saveGeneratedDrill(payload: any) {
-  const db = getPrisma();
-  const json = payload?.drill?.json ?? {};
-  // persist only the fields we care about now; extend later
-  const goalsSupported: number[] = Array.isArray(json.goalsSupported) ? json.goalsSupported : [];
-  const title: string = json?.title || payload?.drill?.title || "Untitled drill";
-  // upsert by a transient hash later; for now create
-  const row = await db.drill.create({
-    data: {
-      title,
-      goalsSupported
-    },
-    select: { id: true, title: true, goalsSupported: true }
-  });
-  return row;
+  const rec = await prisma.drill.create({ data });
+
+  // Optional QA persistence (only if the generator attached qa)
+  const qa = json?.qa ?? null;
+  if (qa) {
+    await prisma.qAReport.create({
+      data: {
+        pass: Boolean(qa?.pass ?? true),
+        scores: (qa?.scores ?? {} as any),
+        artifact: { connect: { id: rec.id } },
+      }
+    });
+  }
+
+  return { saved: true, id: rec.id };
 }
+
+

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db";
 
 /**
@@ -10,38 +11,51 @@ import { prisma } from "../db";
  * - canonicalized equipment already set
  */
 export async function saveGeneratedDrill(json: any) {
-  // Feature flag
-  if (process.env.PERSIST_DRILLS !== "1") return { saved: false } as const;
+  // Coerce enums as strings, then cast to the field types Prisma expects
+  const gm = String(json?.gameModelId ?? "COACHAI");
+  const ph = String(json?.phase ?? "ATTACKING");
+  const zn = String(json?.zone ?? "ATTACKING_THIRD");
+  const sc = String(json?.spaceConstraint ?? "HALF");
 
-  // Build a minimal, valid Drill record for Prisma types
-  const data: any = {
-    title: json?.title || "Untitled",
-    gameModelId: json?.gameModelId || "POSSESSION",
-    phase: json?.phase || "ATTACKING",
-    zone: json?.zone || "ATTACKING_THIRD",
-    ageGroup: json?.ageGroup || "U12",
-    coachLevel: json?.coachLevel || "advanced",
-    playerLevel: json?.playerLevel || "developing",
-    durationMin: json?.durationMin ?? 0,
-    numbersMin: json?.numbersMin ?? 0,
-    numbersMax: json?.numbersMax ?? 0,
-    spaceConstraint: json?.spaceConstraint || "HALF",
-    goalsSupported: Array.isArray(json?.goalsSupported) ? json.goalsSupported : [],
-    json: json || {},
+  const data: Prisma.DrillCreateInput = {
+    title: String(json?.title ?? "Untitled"),
+
+    // Cast via DrillCreateInput field types instead of importing enum names
+    gameModelId: gm as Prisma.DrillCreateInput["gameModelId"],
+    phase: ph as Prisma.DrillCreateInput["phase"],
+    zone: zn as Prisma.DrillCreateInput["zone"],
+
+    ageGroup: String(json?.ageGroup ?? "U12"),
+    durationMin: Math.trunc(Number(json?.durationMin ?? 20)),
+    numbersMin: Math.trunc(Number(json?.numbersMin ?? 10)),
+    numbersMax: Math.trunc(Number(json?.numbersMax ?? 12)),
+    gkOptional: Boolean(json?.gkOptional ?? false),
+
+    spaceConstraint: sc as Prisma.DrillCreateInput["spaceConstraint"],
+
+    goalsSupported: Array.isArray(json?.goalsSupported)
+      ? (json.goalsSupported as number[])
+      : typeof json?.goalsAvailable === "number"
+        ? [Number(json.goalsAvailable)]
+        : [],
+
+    json: json ?? {},
   };
 
   const rec = await prisma.drill.create({ data });
-return { saved: true, id: rec.id };// Optional: create QA row if present
-  if (json?.qa) {
-    try {
-      await prisma.qAReport.create({ data: {
+
+  // Optional QA persistence (only if the generator attached qa)
+  const qa = json?.qa ?? null;
+  if (qa) {
+    await prisma.qAReport.create({
+      data: {
+        pass: Boolean(qa?.pass ?? true),
+        // DB column is JSON; accept any shaped scores object
+        scores: (qa?.scores ?? {}) as Prisma.InputJsonValue,
         artifact: { connect: { id: rec.id } },
-pass: Boolean(json.qa?.pass),
-        scores: (json.qa?.scores as any) ?? {},
-      }});
-    } catch {}
+      },
+    });
   }
 
-  return { saved: true, id: rec.id } as const;
+  return { saved: true, id: rec.id };
 }
-

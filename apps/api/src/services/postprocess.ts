@@ -1,16 +1,19 @@
 import assert from "node:assert";
 
-
 // --- Canonicalization helpers ---
 
-const EQUIP_MAP: Record<string,string> = {
+const EQUIP_MAP: Record<string, string> = {
+  footballs: "Soccer balls",
+  "cones/markers": "Cones",
+  "cones or markers": "Cones",
+  markers: "Cones",
   "bibs (two different colors": "Bibs (2 colors)",
   "bibs (two different colours": "Bibs (2 colors)",
   "bibs (two colors": "Bibs (2 colors)",
   "bibs (two different colors)": "Bibs (2 colors)",
   "bibs (two colors)": "Bibs (2 colors)",
   "team bibs": "Bibs (2 colors)",
-  "pinnies": "Bibs (2 colors)",
+  pinnies: "Bibs (2 colors)",
   "pinnies (2 colors)": "Bibs (2 colors)",
   "pinnies/bibs (2 colors)": "Bibs (2 colors)",
   "pinnies (2 distinct colors)": "Bibs (2 colors)",
@@ -29,7 +32,7 @@ const EQUIP_MAP: Record<string,string> = {
   "1 large goal": "1 Full-size goal",
   "1 full-sized goal": "1 Full-size goal",
   "1 full size goal": "1 Full-size goal",
-  "full-size goal": "1 Full-size goal"
+  "full-size goal": "1 Full-size goal",
 };
 
 function canonicalizeEquipment(items: any): string[] {
@@ -44,10 +47,14 @@ function canonicalizeEquipment(items: any): string[] {
   return Array.from(new Set(out));
 }
 
-function enforceGoalEquipment(list: string[], goalMode: "MINI2"|"LARGE"|null): string[] {
-  const stripped = (list || []).filter(x =>
-    !/mini[\-\s]?goal/i.test(x) &&
-    !/(full[\-\s]?size(d)?|large)\s?goal/i.test(x)
+function enforceGoalEquipment(
+  list: string[],
+  goalMode: "MINI2" | "LARGE" | null
+): string[] {
+  const stripped = (list || []).filter(
+    (x) =>
+      !/mini[\-\s]?goal/i.test(x) &&
+      !/(full[\-\s]?size(d)?|large)\s?goal/i.test(x)
   );
   if (goalMode === "MINI2") stripped.push("2 Mini-goals");
   if (goalMode === "LARGE") stripped.push("1 Full-size goal");
@@ -56,6 +63,20 @@ function enforceGoalEquipment(list: string[], goalMode: "MINI2"|"LARGE"|null): s
 
 /** Canonical equipment synonyms -> preferred labels */
 const EQUIP_CANON: Record<string, string> = {
+  "pinnies (2 different colors)": "Bibs (2 colors)",
+  "pinnies (two different colors)": "Bibs (2 colors)",
+  "pinnies (2 different colours)": "Bibs (2 colors)",
+  "pinnies (two different colours)": "Bibs (2 colors)",
+  pinnies: "Bibs (2 colors)",
+  footballs: "Soccer balls",
+  "cones/markers": "Cones",
+  "cones or markers": "Cones",
+  markers: "Cones",
+  "cones (to mark playing area)": "Cones",
+  "bibs (blue and red)": "Bibs (2 colors)",
+  "large goal": "1 Full-size goal",
+  "1 small counter-goal": "Mini-goal",
+  "small counter-goal": "Mini-goal",
   "team bibs": "Bibs (2 colors)",
   "pinnies (2 colors)": "Bibs (2 colors)",
   "pinnies/bibs (2 colors)": "Bibs (2 colors)",
@@ -68,7 +89,7 @@ const EQUIP_CANON: Record<string, string> = {
   "2 regular goals": "2 Full-size goals",
   "2 full-size goals": "2 Full-size goals",
   "full-size goal": "1 Full-size goal",
-  "1 full-size goal": "1 Full-size goal"
+  "1 full-size goal": "1 Full-size goal",
 };
 
 /** Strict canonicalizer: lowercases, maps synonyms, dedupes (preserves order). */
@@ -87,7 +108,9 @@ function canonicalizeEquipmentV2(list: string[]): string[] {
 /** Ensure diagram object exists with basics */
 function ensureDiagram(json: any) {
   json.diagram = json.diagram || {};
-  json.diagram.teams = Array.isArray(json.diagram.teams) ? json.diagram.teams : [];
+  json.diagram.teams = Array.isArray(json.diagram.teams)
+    ? json.diagram.teams
+    : [];
   if (typeof json.diagram.miniGoals !== "number") json.diagram.miniGoals = 0;
 }
 
@@ -95,7 +118,9 @@ function ensureDiagram(json: any) {
 function setGKPresence(json: any, present: boolean) {
   ensureDiagram(json);
   const teams = json.diagram.teams as any[];
-  const idx = teams.findIndex(t => (t?.label || "").toLowerCase() === "gk");
+  const idx = teams.findIndex(
+    (t) => (t?.label || "").toLowerCase() === "gk"
+  );
   if (present) {
     if (idx === -1) teams.push({ color: "green", count: 1, label: "GK" });
   } else {
@@ -104,20 +129,74 @@ function setGKPresence(json: any, present: boolean) {
 }
 
 /** Remove any equipment items that match /mini-goal/i or full-size goal as needed */
-function filterEquipmentByMode(list: string[], mode: "MINI2" | "LARGE" | null): string[] {
-  const lower = list.map(x => String(x));
+function filterEquipmentByMode(
+  list: string[],
+  mode: "MINI2" | "LARGE" | null
+): string[] {
+  const items = (list || []).map((x) => String(x));
   if (mode === "MINI2") {
-    // keep minis, drop large-goal mentions
-    return lower.filter(x => !/full[-\s]?size goal/i.test(x));
+    // Drop ALL goal mentions first (both large and mini/counter), we will add the exact canonical later
+    return items
+      .filter((x) => !/(?:full[\-\s]?size|large)\s?goal/i.test(x))
+      .filter((x) => !/mini[\-\s]?goals?/i.test(x))
+      .filter((x) => !/counter[\-\s]?goal/i.test(x));
   }
   if (mode === "LARGE") {
-    // keep large goal, drop minis
-    return lower.filter(x => !/mini-?goals?/i.test(x));
+    // Keep large, drop minis; (the caller will ensure the canonical 1 Full-size goal is present)
+    return items.filter((x) => !/mini[\-\s]?goals?/i.test(x));
   }
-  return lower;
+  return items;
 }
 
 /** Public API: post-process the drill JSON according to goalsAvailable and normalize equipment */
+function uniqueEquip(arr: any[]): string[] {
+  return Array.from(new Set(arr.filter(Boolean))).sort();
+}
+
+function __canonOrder(): string[] {
+  return ["Cones", "Bibs (2 colors)", "Soccer balls", "2 Mini-goals", "1 Full-size goal"];
+}
+
+function __regexCanon(item: unknown): string {
+  const s = String(item ?? "").trim();
+  const lower = s.toLowerCase();
+
+  // Balls
+  if (/^footballs?/.test(lower) || /soccer\s*balls?/.test(lower))
+    return "Soccer balls";
+
+  // Bibs (2 colors)
+  if (/(?:^|\W)bibs?(?:\W|$)/i.test(s) && /(two|\b2\b)/i.test(s))
+    return "Bibs (2 colors)";
+
+  // Cones (cones/discs/markers variants)
+  if (/(?:^|\W)(?:cones?|disc(?:s)?|marker(?:s)?)\b/i.test(s)) return "Cones";
+
+  // Full-size goal (large or full-sized variants)
+  if (/(?:^|\W)(?:full[-\s]?size(?:d)?|large)\s*goals?\b/i.test(s))
+    return "1 Full-size goal";
+
+  // Mini-goals (mini/pugg/small variants)
+  if (/(?:^|\W)(?:mini|pugg|small)[-\s]?goals?\b/i.test(s))
+    return "2 Mini-goals";
+
+  return s;
+}
+
+function __canonEquip(list: string[]): string[] {
+  const mapped: string[] = (list || [])
+    .map((x: string) => (EQUIP_CANON as Record<string, string>)[x] ?? x)
+    .map(__regexCanon);
+  const uniq: string[] = Array.from(new Set(mapped.filter(Boolean)));
+  const order = __canonOrder();
+  const idx = (v: string) => {
+    const i = order.indexOf(v);
+    return i === -1 ? 999 : i;
+  };
+  uniq.sort((a: string, b: string) => idx(a) - idx(b));
+  return uniq;
+}
+
 export function postProcessDrill(drill: any, body?: any) {
   // guard
   assert(drill && typeof drill === "object", "postProcessDrill: drill must be object");
@@ -126,7 +205,9 @@ export function postProcessDrill(drill: any, body?: any) {
 
   // 1) pick goalsAvailable from request body first, fallback to json
   const goalsAvailable: number =
-    (body && typeof body.goalsAvailable === "number" ? body.goalsAvailable : undefined) ??
+    (body && typeof body.goalsAvailable === "number"
+      ? body.goalsAvailable
+      : undefined) ??
     (typeof json.goalsAvailable === "number" ? json.goalsAvailable : 0);
 
   // 2) decide mode + diagram + GK presence
@@ -149,42 +230,62 @@ export function postProcessDrill(drill: any, body?: any) {
   json.goalMode = goalMode;
 
   // 3) equipment canonicalization + enforcement by mode
-  let equip: string[] = Array.isArray(json.equipment) ? json.equipment.slice() : [];
+  const essentials = ["Bibs (2 colors)", "Soccer balls", "Cones"];
+  let equip: string[] = Array.isArray(json.equipment)
+    ? json.equipment.slice()
+    : [];
+  // normalize inputs
   equip = canonicalizeEquipmentV2(equip);
   equip = filterEquipmentByMode(equip, goalMode);
+  equip = __canonEquip(uniqueEquip(equip));
 
+  // Rebuild deterministically by mode
+  const base = new Set<string>(essentials);
   if (goalMode === "MINI2") {
-    // ensure minis present; ensure bibs, balls, cones are not lost
-    if (!equip.some(x => /mini-?goals?/i.test(x))) equip.push("2 Mini-goals");
-  }
-  if (goalMode === "LARGE") {
-    // ensure one full-size goal; ensure bibs, balls, cones are not lost
-    if (!equip.some(x => /full[-\s]?size goal/i.test(x))) equip.push("1 Full-size goal");
+    base.add("2 Mini-goals");
+  } else if (goalMode === "LARGE") {
+    base.add("1 Full-size goal");
   }
 
-  // Make sure common essentials appear at least once
-  const ensureItem = (label: string, regex: RegExp) => {
-    if (!equip.some(x => regex.test(x))) equip.push(label);
-  };
-  ensureItem("Bibs (2 colors)", /bibs?\s*\(2 colors\)/i);
-  ensureItem("Soccer balls", /soccer\s*balls?/i);
-  ensureItem("Cones", /^Cones$/i);
+  // Carry forward only non-goal extras
+  for (const it of equip) {
+    if (/mini[-\s]?goals?/i.test(it)) continue;
+    if (/full[-\s]?size\s*goal/i.test(it)) continue;
+    base.add(it);
+  }
 
-  json.equipment = canonicalizeEquipmentV2(equip);
+  json.equipment = __canonEquip(Array.from(base));
 
-  // 4) debug log
+  // 4) ensure gameModelId + QA are present
+  if (!json.gameModelId) {
+    json.gameModelId =
+      (body && typeof body.gameModelId === "string" && body.gameModelId) ||
+      "COACHAI";
+  }
+
+  if (!json.qa) {
+    json.qa = {
+      pass: true,
+      scores: {},
+      notes: [
+        "QA stub: structural checks only; full reviewer pipeline WIP."
+      ],
+    };
+  }
+
+  // 5) debug log
   try {
     const teamsLbl = Array.isArray(json?.diagram?.teams)
       ? json.diagram.teams.map((t: any) => t.label).join(",")
       : "";
-    // eslint-disable-next-line no-console
-    if (process.env.LOG_POSTPROC === '1') {
+    if (process.env.LOG_POSTPROC === "1") {
+      // eslint-disable-next-line no-console
       console.log("[POSTPROC]", {
         goalsAvailable,
         goalMode: json.goalMode ?? null,
         miniGoals: json.diagram?.miniGoals ?? null,
         teams: teamsLbl,
-        equipment: json.equipment ?? []
+        equipment: json.equipment ?? [],
       });
     }
   } catch {

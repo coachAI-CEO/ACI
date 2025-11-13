@@ -31,7 +31,35 @@ export async function generateAndReviewDrill(input: Parameters<typeof buildDrill
   const genText = await generateText(prompt);
   const drill = parseJsonSafe(genText);
   if (!drill) throw new Error("LLM returned non-JSON drill");
+
+  // Clamp core metadata to user inputs (UI dropdowns / controls)
+  drill.gameModelId = input.gameModelId;
+  drill.phase = input.phase;
+  drill.zone = input.zone;
+  drill.spaceConstraint = input.spaceConstraint;
+  drill.ageGroup = input.ageGroup;
+
+  // Clamp numbers/goals from the request, not the model
+  drill.numbers = drill.numbers || {};
+  drill.numbers.min = input.numbersMin;
+  drill.numbers.max = input.numbersMax;
+  drill.goalsAvailable = input.goalsAvailable;
+  drill.gkOptional = !!input.gkOptional;
+
   applyYouthGuards(drill, input);
+
+  // Final clamp: enforce UI-selected metadata over any internal guards
+  drill.gameModelId = input.gameModelId;
+  drill.phase = input.phase;
+  drill.zone = input.zone;
+  drill.spaceConstraint = input.spaceConstraint;
+  drill.ageGroup = input.ageGroup;
+
+  drill.numbers = drill.numbers || {};
+  drill.numbers.min = input.numbersMin;
+  drill.numbers.max = input.numbersMax;
+  drill.goalsAvailable = input.goalsAvailable;
+  drill.gkOptional = !!input.gkOptional;
   if (!Array.isArray(drill.coachingPoints)) drill.coachingPoints = [];
   if ((input.goalsAvailable >= 1) && !drill.coachingPoints.some((p: string) => /^GK\b|^Goalkeeper\b/i.test(p))) {
     drill.coachingPoints.push("GK: starting position and communication on cutbacks (angle/near-post, claim vs. set).");
