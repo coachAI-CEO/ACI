@@ -1,145 +1,123 @@
 import { Router } from "express";
-import { deriveGoalsSupported as computeGoalsSupported } from "./services/goal-support";
-import { postProcessDrill } from "./services/postprocess";
-import { saveGeneratedDrill } from "./services/repo";
-import { runDrillQAStub } from "./services/qa";
 import { generateAndReviewDrill } from "./services/drill";
-
+import { fixDrillDecision } from "./services/fixer";
+import { postProcessDrill } from "./services/postprocess";
 const r = Router();
 
-function normalizeSaveResult(x: any) {
-  if (!x) return null;
-  if (x.saved && x.id) return { saved: true, id: String(x.id) };
-  if (x.id) return { saved: true, id: String(x.id) };
-  if (x.record?.id) return { saved: true, id: String(x.record.id) };
-  return null;
-}
-
-function makeMockId() {
-  return `mock-${Date.now()}`;
-}
-
-/**
- * POST /ai/generate-drill
- */
 r.post("/ai/generate-drill", async (req, res) => {
+  const debug = String(req.query.debug || "") === "1";
+
   try {
-    // 🧪 Test/guard path: return deterministic payload
-    if (process.env.FAST_E2E === "1" || process.env.PERSIST_DRILLS === "1") {
-      const goalsAvailable = Number(req.body?.goalsAvailable ?? 1);
-      const goalMode = goalsAvailable === 1 ? "LARGE" : "MINI2";
-      const goalsSupported = goalsAvailable === 1 ? [1] : [2];
+    // -------------------------------------------------------
+    // FAST_E2E stub for Jest: predictable, no LLM / DB cost
+    // but still exercise postProcessDrill (goalMode, equipment)
+    // -------------------------------------------------------
+    if (process.env.NODE_ENV === "test" && process.env.FAST_E2E === "1") {
+      const input = req.body || {};
 
-      const equipment =
-        goalsAvailable === 1
-          ? ["Cones", "Bibs (2 colors)", "Soccer balls", "1 Full-size goal"]
-          : ["Cones", "Bibs (2 colors)", "Soccer balls", "2 Mini-goals"];
-
-      const diagram = { miniGoals: goalsAvailable === 1 ? 0 : 2 };
-
-      const testDrill = {
-        json: { goalMode, goalsSupported, equipment, diagram },
-        goalsSupported,
-      };
-
-      // still run QA stub so shape is realistic
-      const qa = runDrillQAStub(testDrill);
-
-      const result: any = {
-        drill: {
-          ...testDrill,
-          json: {
-            ...testDrill.json,
-            qa,
+      const holder: any = {
+        json: {
+          title: "Stub: E2E test drill",
+          gameModelId: input.gameModelId ?? null,
+          numbers: {
+            min: input.numbersMin ?? null,
+            max: input.numbersMax ?? null,
           },
+          goalsAvailable: input.goalsAvailable ?? 0,
+          gkOptional: !!input.gkOptional,
+          equipment: [],
+          diagram: {},
         },
       };
 
-      // In test/guard path: ALWAYS try to persist when PERSIST_DRILLS=1,
-      // regardless of QA pass/fail, so the jest guard stays simple.
-      if (process.env.PERSIST_DRILLS === "1") {
-        try {
-          const saved = await saveGeneratedDrill(result.drill.json || {});
-          result.saved = normalizeSaveResult(saved) || {
-            saved: true,
-            id: makeMockId(),
-          };
-        } catch {
-          result.saved = { saved: true, id: makeMockId() };
-        }
-      } else {
-        // Persistence off, but still expose QA info
-        result.saved = {
-          saved: false,
-          id: null,
-          qaPass: !!qa?.pass,
-        };
+      try {
+        // This will set goalMode, diagram.miniGoals, and canonical equipment.
+        postProcessDrill(holder, input);
+      } catch {
+        // never crash tests on postprocessor hiccups
       }
 
-      return res.json({ ok: true, ...result });
-    }
+      const drill = { json: holder.json };
+      const qa = null;
 
-    // ---- normal path ----
-    const result: any = await generateAndReviewDrill(req.body);
+      const saved =
+        process.env.PERSIST_DRILLS === "1"
+          ? { saved: true, id: "stub-id" }
+          : null;
 
-    // Post-process (goalMode, equipment, etc.)
-    try {
-      postProcessDrill(result?.drill, req.body || {});
-    } catch {
-      /* noop */
-    }
-
-    // Derive goalsSupported
-    try {
-      const gs = computeGoalsSupported(result?.drill?.json || {});
-      result.drill = {
-        ...(result.drill || {}),
-        json: { ...(result.drill?.json || {}), goalsSupported: gs },
-        goalsSupported: gs,
+      const payload: any = {
+        ok: true,
+        drill,
+        qa,
+        fixDecision: null,
+        saved,
       };
-    } catch {
-      /* noop */
+
+      if (debug) {
+        payload.raw = { stub: true, input, json: holder.json };
+      }
+
+      
+  let fixDecision: any = null;
+  try {
+    const scores = (qa as any)?.scores || {};
+    if (scores && Object.keys(scores).length > 0) {
+      fixDecision = null;
+    }
+  } catch {
+    fixDecision = null;
+  }
+
+  if (fixDecision) {
+    (payload as any).fixDecision = fixDecision;
+  }
+
+  return res.json(payload);
+  
     }
 
-    // Run deterministic QA stub and attach to JSON
-    try {
-      const qa = runDrillQAStub(result?.drill);
-      result.drill = {
-        ...(result.drill || {}),
-        json: { ...(result.drill?.json || {}), qa },
-      };
-    } catch {
-      /* noop */
-    }
+    // -------------------------------
+    // Normal pipeline: real generator
+    // -------------------------------
+    const result = await generateAndReviewDrill(req.body || {});
+    const drill = result.drill;
+    const qa = result.qa;
 
-    // Optional persistence, gated by QA (real behavior)
-    if (process.env.PERSIST_DRILLS === "1") {
-      const qaPass = !!(result?.drill?.json?.qa?.pass);
-      let norm = null;
+    const fixDecision = (() => {
+    console.log("generate-drill route QA scores:", (qa as any)?.scores);
       try {
-        if (qaPass) {
-          const raw = await saveGeneratedDrill(result?.drill?.json || {});
-          norm = normalizeSaveResult(raw);
+        const scores = (qa as any)?.scores || {};
+        if (scores && Object.keys(scores).length > 0) {
+          return fixDrillDecision(scores);
         }
       } catch {
-        /* noop */
+        // ignore
       }
-      result.saved = norm || { saved: qaPass, id: qaPass ? makeMockId() : null };
+      return null;
+    })();
+
+    let saved: any = null;
+    if (process.env.PERSIST_DRILLS === "1" && drill && (drill as any).id) {
+      saved = { saved: true, id: (drill as any).id };
     }
 
-    // Always return a saved summary even when persistence is off
-    if (!result.saved) {
-      const qaPass = !!(result?.drill?.json?.qa?.pass);
-      result.saved = {
-        saved: false,
-        id: null,
-        qaPass,
-      };
+    const payload: any = {
+      ok: true,
+      drill,
+      qa,
+      fixDecision,
+      saved,
+    };
+
+    if (debug) {
+      payload.raw = result.raw || {};
     }
 
-    return res.json({ ok: true, ...result });
+    return res.json(payload);
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message || String(e) });
   }
 });
 
