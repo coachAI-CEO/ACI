@@ -4,7 +4,10 @@ import cors from "cors";
 import routes from "./routes";
 import modelsRoute from "./models-route";
 import dbRoutes from "./db-routes";
+
 import drillRoutes from "./routes-drill";
+import vettedDrillRoutes from "./routes-drill-vetted";
+import coachRoutes from "./routes-coach";
 import fixerRoutes from "./routes-fixer";
 
 const app = express();
@@ -17,6 +20,7 @@ app.use(routes);
 app.use(modelsRoute);
 app.use(dbRoutes);
 app.use(drillRoutes);
-app.use(fixerRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
+app.use(fixerRoutes);
+app.use(coachRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
 
 export default app;
