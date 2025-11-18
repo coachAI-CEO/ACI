@@ -2,6 +2,7 @@ import { Router } from "express";
 import { generateAndReviewDrill } from "./services/drill";
 import { fixDrillDecision, fixDrill } from "./services/fixer";
 import { runDrillQA } from "./services/qa";
+import { postProcessGoalMode } from "./services/goals";
 
 const r = Router();
 
@@ -77,7 +78,7 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
 
             // Re-run QA on the patched drill so we have before/after
             const qaTarget = (finalDrill as any).json ?? finalDrill;
-            qaAfter = await runDrillQA(qaTarget, input);
+            qaAfter = await runDrillQA(qaTarget);
           } catch (e: any) {
             fixerMeta = {
               ...(fixerMeta || {}),
@@ -104,12 +105,26 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
           payload.attempts = attemptsSummary;
         }
 
+        // 🔍 Logging for successful response
+        logVettedRequest(input, {
+          ok: true,
+          attempts: attemptsSummary,
+          fixer: payload.fixer || null,
+          qaAfter: payload.qaAfter || null,
+        });
+
         return res.json(payload);
       }
 
       // Otherwise (NEEDS_REGEN), loop and try another attempt
     } catch (e: any) {
       // If something blows up hard (e.g., Gemini 503), abort and surface error
+      logVettedRequest(input, {
+        ok: false,
+        attempts: attemptsSummary,
+        error: e?.message || String(e),
+      });
+
       return res.status(500).json({
         ok: false,
         error: e?.message || String(e),
@@ -126,7 +141,72 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
   if (debug) {
     payload.attempts = attemptsSummary;
   }
+
+  // 🔍 Logging for non-acceptable completion
+  logVettedRequest(input, {
+    ok: false,
+    attempts: attemptsSummary,
+  });
+
   return res.status(422).json(payload);
 });
+
+/**
+ * Dev logging helper for /coach/generate-drill-vetted.
+ */
+function logVettedRequest(input: any, summary: any) {
+  const ts = new Date().toISOString();
+  console.log("\n=================== ACI /coach/generate-drill-vetted ===================");
+  console.log("Timestamp:", ts);
+  console.log(
+    "Config:",
+    JSON.stringify(
+      {
+        gameModelId: input.gameModelId,
+        ageGroup: input.ageGroup,
+        phase: input.phase,
+        zone: input.zone,
+        numbersMin: input.numbersMin,
+        numbersMax: input.numbersMax,
+        spaceConstraint: input.spaceConstraint,
+        durationMin: input.durationMin,
+      },
+      null,
+      2,
+    ),
+  );
+
+  console.log("\nAttempts Summary:");
+  (summary.attempts || []).forEach((a: any, idx: number) => {
+    console.log(`  Attempt ${idx + 1}:`, {
+      title: a.title,
+      decision: a.decision?.code,
+      scores: a.scores,
+    });
+  });
+
+  if (summary.fixer) {
+    console.log("\nFixer:", {
+      decision: summary.fixer.decision,
+      raw: summary.fixer.raw,
+    });
+  }
+
+  if (summary.qaAfter) {
+    console.log("\nQA-After:", {
+      pass: summary.qaAfter.pass,
+      scores: summary.qaAfter.scores,
+    });
+  }
+
+  if (summary.error) {
+    console.log("\nError:", summary.error);
+  }
+
+  console.log("\nFinal Status:", summary.ok ? "SUCCESS" : "FAILURE");
+  console.log(
+    "=========================================================================\n",
+  );
+}
 
 export default r;

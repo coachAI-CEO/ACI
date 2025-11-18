@@ -155,3 +155,10 @@ export function runDrillQAStub(drill: any): DrillQA {
 
   return { pass, scores, notes };
 }
+
+/**
+ * Temporary alias:
+ * runDrillQA currently uses the stub implementation (runDrillQAStub).
+ * This allows callers to depend on runDrillQA while we wire the full LLM reviewer.
+ */
+export const runDrillQA = runDrillQAStub;

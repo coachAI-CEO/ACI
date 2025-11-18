@@ -6,7 +6,6 @@ import modelsRoute from "./models-route";
 import dbRoutes from "./db-routes";
 
 import drillRoutes from "./routes-drill";
-import vettedDrillRoutes from "./routes-drill-vetted";
 import coachRoutes from "./routes-coach";
 import fixerRoutes from "./routes-fixer";
 
