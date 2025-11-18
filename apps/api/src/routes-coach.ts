@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { generateAndReviewDrill } from "./services/drill";
 import { fixDrillDecision, fixDrill } from "./services/fixer";
+import { runDrillQA } from "./services/qa";
 
 const r = Router();
 
@@ -11,8 +12,8 @@ const r = Router();
  * - Loops up to COACH_MAX_DRILL_ATTEMPTS times.
  * - Uses QA scores → fixDrillDecision (OK / PATCHABLE / NEEDS_REGEN).
  * - Only returns a drill when decision is OK or PATCHABLE.
- * - For PATCHABLE, optionally runs the LLM fixer internally (fixDrill),
- *   so the coach receives an improved drill, not the raw one.
+ * - For PATCHABLE, runs the LLM fixer internally (fixDrill),
+ *   then re-runs QA so we have before/after scores.
  */
 r.post("/coach/generate-drill-vetted", async (req, res) => {
   const debug = String(req.query.debug || "") === "1";
@@ -50,8 +51,9 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
       if (decision.code === "OK" || decision.code === "PATCHABLE") {
         let finalDrill: any = drill;
         let fixerMeta: any = null;
+        let qaAfter: any = null;
 
-        // For PATCHABLE → attempt LLM-based localized fixes
+        // For PATCHABLE → attempt LLM-based localized fixes + QA after
         if (decision.code === "PATCHABLE") {
           try {
             // Use the inner JSON if present (DB drill), otherwise the drill itself
@@ -72,8 +74,13 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
                 finalDrill = improved;
               }
             }
+
+            // Re-run QA on the patched drill so we have before/after
+            const qaTarget = (finalDrill as any).json ?? finalDrill;
+            qaAfter = await runDrillQA(qaTarget, input);
           } catch (e: any) {
             fixerMeta = {
+              ...(fixerMeta || {}),
               error: e?.message || String(e),
             };
           }
@@ -82,7 +89,10 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
         const payload: any = {
           ok: true,
           drill: finalDrill,
+          // keep original `qa` field as "before" for compatibility
           qa,
+          qaBefore: qa,
+          ...(qaAfter ? { qaAfter } : {}),
           fixDecision: decision,
         };
 

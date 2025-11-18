@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { generateAndReviewDrill } from "./services/drill";
-import { fixDrill } from "./services/fixer";
+import { fixDrillDecision } from "./services/fixer";
 
 const r = Router();
 
@@ -11,15 +11,13 @@ const r = Router();
  *
  * Behavior:
  * - Calls generateAndReviewDrill() up to maxAttempts times.
- * - Passes each (drill, qa) through fixDrill(), which:
- *     - Computes decision via fixDrillDecision(qa.scores).
- *     - For NEEDS_REGEN / OK / NO_QA_OR_PASS → never calls LLM.
- *     - For PATCHABLE:
- *         - If USE_LLM_FIXER !== "1": returns original drill (stub).
- *         - If USE_LLM_FIXER === "1": calls Gemini to apply localized fixes.
- * - If final decision.code === "NEEDS_REGEN" → try again (if attempts left).
- * - If decision.code === "PATCHABLE" or "OK" (or NO_QA_OR_PASS) → accept and return drill to user.
+ * - Uses fixDrillDecision(qa.scores) to classify quality.
+ * - If decision.code === "NEEDS_REGEN" → try again.
+ * - If decision.code === "PATCHABLE" or "OK" → accept and return drill to user.
  * - If still no acceptable drill after maxAttempts → return 500 with friendly error.
+ *
+ * NOTE: We are NOT calling the LLM fixer here yet. That will be a later step
+ *       when we want PATCHABLE drills to be auto-refined before returning.
  */
 r.post("/coach/generate-drill-vetted", async (req, res) => {
   const input = req.body || {};
@@ -27,27 +25,19 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
 
   let lastDecision: any = null;
   let lastQa: any = null;
-  let lastRaw: any = null;
 
   try {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // 1) Generate + QA in one go
       const result = await generateAndReviewDrill(input);
-      let drill = result.drill;
-      let qa = result.qa;
+      const drill = result.drill;
+      const qa = result.qa;
 
-      // 2) Run through fixer pipeline (may or may not call LLM)
-      const fixerResult = await fixDrill(drill, qa);
-      drill = fixerResult.drill;
-      qa = fixerResult.qa;
-      const decision = fixerResult.decision;
-      const raw = fixerResult.raw;
-
-      lastDecision = decision;
       lastQa = qa;
-      lastRaw = raw;
 
-      // 3) Hard fail → try again (if we have attempts left)
+      const decision = fixDrillDecision(qa?.scores || null);
+      lastDecision = decision;
+
+      // Hard fail → try again (if we have attempts left)
       if (decision.code === "NEEDS_REGEN") {
         if (attempt < maxAttempts) {
           continue;
@@ -56,13 +46,12 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
         break;
       }
 
-      // 4) PATCHABLE / OK / NO_QA_OR_PASS / UNKNOWN → accept this drill for now
+      // PATCHABLE or OK → accept this drill as good enough for now
       return res.json({
         ok: true,
         drill,
         qa,
         fixDecision: decision,
-        fixerRaw: raw,
         attempts: attempt,
       });
     }
@@ -74,7 +63,6 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
         "Could not generate a high-quality drill after several attempts. Please try again.",
       lastDecision,
       lastQa,
-      lastRaw,
     });
   } catch (e: any) {
     return res
