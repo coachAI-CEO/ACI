@@ -2,6 +2,7 @@ import { Router } from "express";
 import { generateAndReviewDrill } from "./services/drill";
 import { fixDrillDecision, fixDrill } from "./services/fixer";
 import { runDrillQA } from "./services/qa";
+import { normalizeDiagramLegacyToV1 } from "./services/diagram";
 import { postProcessGoalMode } from "./services/goals";
 
 const r = Router();
@@ -52,7 +53,6 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
       if (decision.code === "OK" || decision.code === "PATCHABLE") {
         let finalDrill: any = drill;
         let fixerMeta: any = null;
-        let qaAfter: any = null;
 
         // For PATCHABLE → attempt LLM-based localized fixes + QA after
         if (decision.code === "PATCHABLE") {
@@ -78,7 +78,6 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
 
             // Re-run QA on the patched drill so we have before/after
             const qaTarget = (finalDrill as any).json ?? finalDrill;
-            qaAfter = await runDrillQA(qaTarget);
           } catch (e: any) {
             fixerMeta = {
               ...(fixerMeta || {}),
@@ -87,15 +86,26 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
           }
         }
 
+        // Attach normalized diagram V1 if legacy diagram exists on inner JSON
+        try {
+          const inner = (finalDrill as any).json ?? finalDrill;
+          if (inner && typeof inner === "object" && inner.diagram) {
+            const norm = normalizeDiagramLegacyToV1(inner.diagram);
+            if (norm) {
+              (inner as any).diagramV1 = norm;
+            }
+          }
+        } catch (e) {
+          // swallow diagram normalization errors
+        }
+
         const payload: any = {
           ok: true,
           drill: finalDrill,
-          // keep original `qa` field as "before" for compatibility
           qa,
-          qaBefore: qa,
-          ...(qaAfter ? { qaAfter } : {}),
           fixDecision: decision,
         };
+
 
         if (fixerMeta) {
           payload.fixer = fixerMeta;
@@ -110,7 +120,6 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
           ok: true,
           attempts: attemptsSummary,
           fixer: payload.fixer || null,
-          qaAfter: payload.qaAfter || null,
         });
 
         return res.json(payload);

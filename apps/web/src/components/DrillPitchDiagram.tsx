@@ -1,0 +1,318 @@
+"use client";
+
+import * as React from "react";
+
+type DrillPitchDiagramProps = {
+  diagram: any;
+};
+
+const WIDTH = 800;
+const HEIGHT = 520;
+
+// Normalize 0–100 coordinates → svg space
+function nx(x: number) {
+  return (Math.max(0, Math.min(100, x)) / 100) * WIDTH;
+}
+function ny(y: number) {
+  return (Math.max(0, Math.min(100, y)) / 100) * HEIGHT;
+}
+
+function teamColors(team: string | undefined) {
+  switch (team) {
+    case "ATT":
+      return { fill: "#38bdf8", stroke: "#0f172a" }; // blue
+    case "DEF":
+      return { fill: "#fb7185", stroke: "#0f172a" }; // red
+    default:
+      return { fill: "#e5e7eb", stroke: "#020617" }; // neutral / GK
+  }
+}
+
+function arrowColor(type: string | undefined) {
+  switch (type) {
+    case "pass":
+      return "#e5e7eb";
+    case "run":
+      return "#22c55e";
+    case "press":
+    case "cover":
+      return "#f97316";
+    default:
+      return "#e5e7eb";
+  }
+}
+
+function arrowDash(style: string | undefined, type: string | undefined) {
+  if (style === "dotted") return "2,6";
+  if (style === "dashed") return "6,6";
+  if (type === "run") return "4,8";
+  return undefined;
+}
+
+export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
+  const players: any[] = Array.isArray(diagram?.players) ? diagram.players : [];
+  const arrows: any[] = Array.isArray(diagram?.arrows) ? diagram.arrows : [];
+  const goals: any[] = Array.isArray(diagram?.goals) ? diagram.goals : [];
+  const coach = diagram?.coach || null;
+
+  return (
+    <svg
+      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+      className="h-full w-full"
+      role="img"
+      aria-label="Tactical drill diagram"
+    >
+      {/* Pitch background */}
+      <rect
+        x={0}
+        y={0}
+        width={WIDTH}
+        height={HEIGHT}
+        rx={24}
+        ry={24}
+        fill="#022c22"
+      />
+
+      {/* Shaded lanes (wide / half-spaces / central) */}
+      {Array.from({ length: 5 }).map((_, i) => {
+        const laneWidth = WIDTH / 5;
+        const x = i * laneWidth;
+        const colors = ["#022c22", "#064e3b", "#0f766e", "#064e3b", "#022c22"];
+        return (
+          <rect
+            key={i}
+            x={x}
+            y={0}
+            width={laneWidth}
+            height={HEIGHT}
+            fill={colors[i]}
+            opacity={0.75}
+          />
+        );
+      })}
+
+      {/* Outer lines */}
+      <rect
+        x={40}
+        y={40}
+        width={WIDTH - 80}
+        height={HEIGHT - 80}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={2}
+      />
+
+      {/* Halfway line */}
+      <line
+        x1={40}
+        y1={HEIGHT / 2}
+        x2={WIDTH - 40}
+        y2={HEIGHT / 2}
+        stroke="#e5e7eb"
+        strokeWidth={1.5}
+      />
+
+      {/* Vertical dashed lane guides */}
+      {Array.from({ length: 4 }).map((_, i) => {
+        const x = 40 + ((WIDTH - 80) / 5) * (i + 1);
+        return (
+          <line
+            key={i}
+            x1={x}
+            y1={40}
+            x2={x}
+            y2={HEIGHT - 40}
+            stroke="#e5e7eb"
+            strokeWidth={1}
+            strokeDasharray="4,10"
+            opacity={0.4}
+          />
+        );
+      })}
+
+      {/* Top penalty box + goal area */}
+      <rect
+        x={WIDTH / 2 - 120}
+        y={40}
+        width={240}
+        height={140}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={2}
+      />
+      <rect
+        x={WIDTH / 2 - 60}
+        y={40}
+        width={120}
+        height={60}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={2}
+      />
+      <rect
+        x={WIDTH / 2 - 40}
+        y={30}
+        width={80}
+        height={10}
+        fill="none"
+        stroke="#e5e7eb"
+        strokeWidth={2}
+      />
+
+      {/* Goals from diagram.goals */}
+      {goals.map((g) => {
+        const gx = nx(g.x);
+        const gy = ny(g.y);
+        const w = ((g.width ?? 10) / 100) * WIDTH || 60;
+
+        const isBig = g.type === "BIG";
+        const height = isBig ? 12 : 8;
+        const color = isBig ? "#e5e7eb" : "#22c55e";
+
+        return (
+          <rect
+            key={g.id}
+            x={gx - w / 2}
+            y={gy - height / 2}
+            width={w}
+            height={height}
+            rx={4}
+            ry={4}
+            fill="none"
+            stroke={color}
+            strokeWidth={isBig ? 3 : 2}
+          />
+        );
+      })}
+
+      {/* Arrows */}
+      {arrows.map((a, idx) => {
+        const fromPlayer = players.find((p) => p.id === a.from?.playerId);
+        const toPlayer = players.find((p) => p.id === a.to?.playerId);
+
+        if (!fromPlayer || !toPlayer) return null;
+
+        const x1 = nx(fromPlayer.x);
+        const y1 = ny(fromPlayer.y);
+        const x2 = nx(toPlayer.x);
+        const y2 = ny(toPlayer.y);
+
+        const color = arrowColor(a.type);
+        const dash = arrowDash(a.style, a.type);
+
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const arrowHead = 10;
+
+        const endX = x2 - ux * 18;
+        const endY = y2 - uy * 18;
+
+        const leftX = endX - uy * arrowHead - ux * arrowHead;
+        const leftY = endY + ux * arrowHead - uy * arrowHead;
+
+        const rightX = endX + uy * arrowHead - ux * arrowHead;
+        const rightY = endY - ux * arrowHead - uy * arrowHead;
+
+        return (
+          <g key={idx}>
+            <line
+              x1={x1}
+              y1={y1}
+              x2={endX}
+              y2={endY}
+              stroke={color}
+              strokeWidth={3}
+              strokeDasharray={dash}
+              strokeLinecap="round"
+            />
+            <polygon
+              points={`${endX},${endY} ${leftX},${leftY} ${rightX},${rightY}`}
+              fill={color}
+            />
+          </g>
+        );
+      })}
+
+      {/* Players */}
+      {players.map((p, idx) => {
+        const { fill, stroke } = teamColors(p.team);
+        const x = nx(p.x);
+        const y = ny(p.y);
+
+        return (
+          <g key={p.id ?? idx}>
+            <circle
+              cx={x}
+              cy={y}
+              r={20}
+              fill="#020617"
+              stroke="#020617"
+              strokeWidth={6}
+            />
+            <circle
+              cx={x}
+              cy={y}
+              r={18}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={2}
+            />
+            <text
+              x={x}
+              y={y + 4}
+              textAnchor="middle"
+              fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+              fontSize={13}
+              fontWeight={700}
+              fill="#0f172a"
+            >
+              {p.number ?? ""}
+            </text>
+            {p.role && (
+              <text
+                x={x}
+                y={y + 30}
+                textAnchor="middle"
+                fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+                fontSize={10}
+                fill="#e5e7eb"
+              >
+                {p.role}
+              </text>
+            )}
+          </g>
+        );
+      })}
+
+      {/* Coach marker */}
+      {coach && (
+        <g>
+          <rect
+            x={nx(coach.x) - 10}
+            y={ny(coach.y) - 10}
+            width={20}
+            height={20}
+            rx={4}
+            ry={4}
+            fill="#f97316"
+            stroke="#020617"
+            strokeWidth={2}
+          />
+          <text
+            x={nx(coach.x)}
+            y={ny(coach.y) + 28}
+            textAnchor="middle"
+            fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
+            fontSize={10}
+            fill="#e5e7eb"
+          >
+            Coach
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}
