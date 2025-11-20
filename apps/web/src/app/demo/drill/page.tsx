@@ -1,6 +1,8 @@
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import type { DiagramV1 } from "@/types/diagram";
 
+export const dynamic = "force-static";
+
 type DrillApiResponse = {
   ok: boolean;
   drill: {
@@ -15,7 +17,17 @@ type DrillApiResponse = {
   };
 };
 
+// Toggle this for dev vs live API.
+// true  = use demo-drill-static.json (instant render)
+// false = call http://localhost:4000/coach/generate-drill-vetted each time
+const USE_STATIC = true;
+
 async function fetchDrill(): Promise<DrillApiResponse> {
+  if (USE_STATIC) {
+    const data = await import("./demo-drill-static.json");
+    return data as DrillApiResponse;
+  }
+
   const res = await fetch("http://localhost:4000/coach/generate-drill-vetted", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,7 +61,7 @@ export default async function DrillDemoPage() {
   } catch (e: any) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-        <div className="mx-auto max-w-5xl space-y-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           <h1 className="text-xl font-semibold">ACI Drill Diagram Demo</h1>
           <p className="text-sm text-red-300">
             Failed to fetch drill from ACI API: {e?.message || String(e)}
@@ -62,7 +74,7 @@ export default async function DrillDemoPage() {
   if (!data.ok || !data.drill?.json?.diagramV1) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-        <div className="mx-auto max-w-5xl space-y-4">
+        <div className="max-w-4xl mx-auto space-y-4">
           <h1 className="text-xl font-semibold">ACI Drill Diagram Demo</h1>
           <p className="text-sm text-amber-300">
             API responded but no diagramV1 was found on the drill.
@@ -78,7 +90,7 @@ export default async function DrillDemoPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         <header className="space-y-1">
           <h1 className="text-xl font-bold tracking-tight">
             ACI Drill Diagram Demo

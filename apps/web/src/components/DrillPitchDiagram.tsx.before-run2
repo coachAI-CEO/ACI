@@ -9,14 +9,6 @@ type DrillPitchDiagramProps = {
 const WIDTH = 800;
 const HEIGHT = 520;
 
-const PITCH_MARGIN = 40;
-const PITCH_LEFT = PITCH_MARGIN;
-const PITCH_TOP = PITCH_MARGIN;
-const PITCH_WIDTH = WIDTH - PITCH_MARGIN * 2;
-const PITCH_HEIGHT = HEIGHT - PITCH_MARGIN * 2;
-const LANE_WIDTH = PITCH_WIDTH / 5;
-
-
 // Normalize 0–100 coordinates → svg space
 function nx(x: number) {
   return (Math.max(0, Math.min(100, x)) / 100) * WIDTH;
@@ -106,10 +98,10 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     >
       {/* Pitch background */}
       <rect
-        x={PITCH_LEFT}
-        y={PITCH_TOP}
-        width={PITCH_WIDTH}
-        height={PITCH_HEIGHT}
+        x={0}
+        y={0}
+        width={WIDTH}
+        height={HEIGHT}
         rx={24}
         ry={24}
         fill="#022c22"
@@ -117,16 +109,16 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
 
       {/* Shaded lanes (wide / half-spaces / central) */}
       {Array.from({ length: 5 }).map((_, i) => {
-        const laneWidth = PITCH_WIDTH / 5;
-        const x = PITCH_LEFT + i * laneWidth;
+        const laneWidth = WIDTH / 5;
+        const x = i * laneWidth;
         const colors = ["#022c22", "#064e3b", "#0f766e", "#064e3b", "#022c22"];
         return (
           <rect
             key={i}
             x={x}
-            y={PITCH_TOP}
+            y={0}
             width={laneWidth}
-            height={PITCH_HEIGHT}
+            height={HEIGHT}
             fill={colors[i]}
             opacity={0.75}
           />
@@ -134,23 +126,21 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       })}
 
       {/* Outer lines */}
-      
       <rect
-        x={PITCH_LEFT}
-        y={PITCH_TOP}
-        width={PITCH_WIDTH}
-        height={PITCH_HEIGHT}
+        x={40}
+        y={40}
+        width={WIDTH - 80}
+        height={HEIGHT - 80}
         fill="none"
         stroke="#e5e7eb"
         strokeWidth={2}
       />
 
       {/* Halfway line */}
-      
       <line
-        x1={PITCH_LEFT}
+        x1={40}
         y1={HEIGHT / 2}
-        x2={PITCH_LEFT + PITCH_WIDTH}
+        x2={WIDTH - 40}
         y2={HEIGHT / 2}
         stroke="#e5e7eb"
         strokeWidth={1.5}
@@ -158,7 +148,7 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
 
       {/* Vertical dashed lane guides */}
       {Array.from({ length: 4 }).map((_, i) => {
-        const x = PITCH_LEFT + LANE_WIDTH * (i + 1);
+        const x = 40 + ((WIDTH - 80) / 5) * (i + 1);
         return (
           <line
             key={i}
@@ -291,7 +281,7 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
                   y1={y2}
                   x2={x2 + ux * 24}
                   y2={y2 + uy * 24}
-                  stroke="#facc15"
+                  stroke="#22c55e"
                   strokeWidth={2}
                   strokeDasharray="4,6"
                   strokeLinecap="round"
@@ -303,28 +293,6 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
               fill={color}
             />
           </g>
-        );
-      })}
-
-      {/* Run indicators for attacking players */}
-      {layoutPlayers.map((p, idx) => {
-        if (p.team !== "ATT") return null;
-        const runBackX = p.screenX - 40;
-        const runBackY = p.screenY + 24;
-        const runFrontX = p.screenX;
-        const runFrontY = p.screenY;
-        return (
-          <line
-            key={"run-" + (p.id ?? idx)}
-            x1={runBackX}
-            y1={runBackY}
-            x2={runFrontX}
-            y2={runFrontY}
-            stroke="#ffffff"
-            strokeWidth={2}
-            strokeDasharray="4,8"
-            strokeLinecap="round"
-          />
         );
       })}
 

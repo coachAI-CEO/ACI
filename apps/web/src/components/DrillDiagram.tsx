@@ -95,13 +95,13 @@ export const DrillDiagram: React.FC<Props> = ({
         <defs>
           <marker
             id="arrow-head"
-            markerWidth="4"
-            markerHeight="4"
-            refX="3"
-            refY="2"
+            markerWidth="2"
+            markerHeight="2"
+            refX="2"
+            refY="1"
             orient="auto"
           >
-            <path d="M0,0 L4,2 L0,4 z" fill="#e5e7eb" />
+            <path d="M0,0 L3,1.5 L0,3 z" fill="#e5e7eb" />
           </marker>
         </defs>
 

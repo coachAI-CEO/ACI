@@ -9,14 +9,6 @@ type DrillPitchDiagramProps = {
 const WIDTH = 800;
 const HEIGHT = 520;
 
-const PITCH_MARGIN = 40;
-const PITCH_LEFT = PITCH_MARGIN;
-const PITCH_TOP = PITCH_MARGIN;
-const PITCH_WIDTH = WIDTH - PITCH_MARGIN * 2;
-const PITCH_HEIGHT = HEIGHT - PITCH_MARGIN * 2;
-const LANE_WIDTH = PITCH_WIDTH / 5;
-
-
 // Normalize 0–100 coordinates → svg space
 function nx(x: number) {
   return (Math.max(0, Math.min(100, x)) / 100) * WIDTH;
@@ -59,42 +51,8 @@ function arrowDash(style: string | undefined, type: string | undefined) {
 
 export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
   const players: any[] = Array.isArray(diagram?.players) ? diagram.players : [];
-  const balls: any[] = Array.isArray(diagram?.balls) ? diagram.balls : [];
   const arrows: any[] = Array.isArray(diagram?.arrows) ? diagram.arrows : [];
-  const firstPassIdx = arrows.findIndex(a => a.type === "pass");
   const goals: any[] = Array.isArray(diagram?.goals) ? diagram.goals : [];
-
-  const layoutPlayers = React.useMemo(() => {
-    type LayoutPlayer = (typeof players)[number] & { screenX: number; screenY: number };
-
-    const base: LayoutPlayer[] = players.map((p) => ({
-      ...p,
-      screenX: nx(p.x),
-      screenY: ny(p.y),
-    }));
-
-    const COLLISION_DISTANCE = 44; // px, ~2x player radius + a small gap
-
-    for (let i = 0; i < base.length; i++) {
-      for (let j = i + 1; j < base.length; j++) {
-        const dx = base[j].screenX - base[i].screenX;
-        const dy = base[j].screenY - base[i].screenY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!dist || dist >= COLLISION_DISTANCE) continue;
-
-        const overlap = COLLISION_DISTANCE - dist;
-        const ux = dx / dist;
-        const uy = dy / dist;
-
-        base[i].screenX -= (ux * overlap) / 2;
-        base[i].screenY -= (uy * overlap) / 2;
-        base[j].screenX += (ux * overlap) / 2;
-        base[j].screenY += (uy * overlap) / 2;
-      }
-    }
-
-    return base;
-  }, [players]);
   const coach = diagram?.coach || null;
 
   return (
@@ -106,10 +64,10 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     >
       {/* Pitch background */}
       <rect
-        x={PITCH_LEFT}
-        y={PITCH_TOP}
-        width={PITCH_WIDTH}
-        height={PITCH_HEIGHT}
+        x={0}
+        y={0}
+        width={WIDTH}
+        height={HEIGHT}
         rx={24}
         ry={24}
         fill="#022c22"
@@ -117,16 +75,16 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
 
       {/* Shaded lanes (wide / half-spaces / central) */}
       {Array.from({ length: 5 }).map((_, i) => {
-        const laneWidth = PITCH_WIDTH / 5;
-        const x = PITCH_LEFT + i * laneWidth;
+        const laneWidth = WIDTH / 5;
+        const x = i * laneWidth;
         const colors = ["#022c22", "#064e3b", "#0f766e", "#064e3b", "#022c22"];
         return (
           <rect
             key={i}
             x={x}
-            y={PITCH_TOP}
+            y={0}
             width={laneWidth}
-            height={PITCH_HEIGHT}
+            height={HEIGHT}
             fill={colors[i]}
             opacity={0.75}
           />
@@ -134,23 +92,21 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       })}
 
       {/* Outer lines */}
-      
       <rect
-        x={PITCH_LEFT}
-        y={PITCH_TOP}
-        width={PITCH_WIDTH}
-        height={PITCH_HEIGHT}
+        x={40}
+        y={40}
+        width={WIDTH - 80}
+        height={HEIGHT - 80}
         fill="none"
         stroke="#e5e7eb"
         strokeWidth={2}
       />
 
       {/* Halfway line */}
-      
       <line
-        x1={PITCH_LEFT}
+        x1={40}
         y1={HEIGHT / 2}
-        x2={PITCH_LEFT + PITCH_WIDTH}
+        x2={WIDTH - 40}
         y2={HEIGHT / 2}
         stroke="#e5e7eb"
         strokeWidth={1.5}
@@ -158,7 +114,7 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
 
       {/* Vertical dashed lane guides */}
       {Array.from({ length: 4 }).map((_, i) => {
-        const x = PITCH_LEFT + LANE_WIDTH * (i + 1);
+        const x = 40 + ((WIDTH - 80) / 5) * (i + 1);
         return (
           <line
             key={i}
@@ -249,14 +205,10 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
         const ux = dx / len;
         const uy = dy / len;
-        const arrowHead = 6;
+        const arrowHead = 10;
 
-        const ballOffset = 28;
-        const ballX = x1 + ux * ballOffset;
-        const ballY = y1 + uy * ballOffset;
-
-        const endX = x2 - ux * 24;
-        const endY = y2 - uy * 24;
+        const endX = x2 - ux * 18;
+        const endY = y2 - uy * 18;
 
         const leftX = endX - uy * arrowHead - ux * arrowHead;
         const leftY = endY + ux * arrowHead - uy * arrowHead;
@@ -276,28 +228,6 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
               strokeDasharray={dash}
               strokeLinecap="round"
             />
-            {idx === firstPassIdx && (
-              <>
-                <circle
-                  cx={ballX}
-                  cy={ballY}
-                  r={6}
-                  fill="#facc15"
-                  stroke="#fefce8"
-                  strokeWidth={2}
-                />
-                <line
-                  x1={x2}
-                  y1={y2}
-                  x2={x2 + ux * 24}
-                  y2={y2 + uy * 24}
-                  stroke="#facc15"
-                  strokeWidth={2}
-                  strokeDasharray="4,6"
-                  strokeLinecap="round"
-                />
-              </>
-            )}
             <polygon
               points={`${endX},${endY} ${leftX},${leftY} ${rightX},${rightY}`}
               fill={color}
@@ -306,33 +236,11 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         );
       })}
 
-      {/* Run indicators for attacking players */}
-      {layoutPlayers.map((p, idx) => {
-        if (p.team !== "ATT") return null;
-        const runBackX = p.screenX - 40;
-        const runBackY = p.screenY + 24;
-        const runFrontX = p.screenX;
-        const runFrontY = p.screenY;
-        return (
-          <line
-            key={"run-" + (p.id ?? idx)}
-            x1={runBackX}
-            y1={runBackY}
-            x2={runFrontX}
-            y2={runFrontY}
-            stroke="#ffffff"
-            strokeWidth={2}
-            strokeDasharray="4,8"
-            strokeLinecap="round"
-          />
-        );
-      })}
-
       {/* Players */}
-      {layoutPlayers.map((p, idx) => {
+      {players.map((p, idx) => {
         const { fill, stroke } = teamColors(p.team);
-        const x = p.screenX;
-        const y = p.screenY;
+        const x = nx(p.x);
+        const y = ny(p.y);
 
         return (
           <g key={p.id ?? idx}>
