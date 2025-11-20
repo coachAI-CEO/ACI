@@ -13,6 +13,11 @@ type DrillApiResponse = {
     json: {
       title?: string;
       diagramV1?: DiagramV1;
+      description?: string;
+      organization?: string;
+      constraints?: string[];
+      coachingPoints?: string[];
+      progressions?: string[];
     };
   };
 };
@@ -85,8 +90,15 @@ export default async function DrillDemoPage() {
   }
 
   const { drill } = data;
-  const diagram = drill.json.diagramV1!;
-  const title = drill.json.title ?? drill.title;
+  const meta = drill.json;
+  const diagram = meta.diagramV1!;
+  const title = meta.title ?? drill.title;
+  const description = meta.description ?? "";
+  const organization = meta.organization ?? "";
+  const constraints = Array.isArray(meta.constraints) ? meta.constraints : [];
+  const coachingPoints = Array.isArray(meta.coachingPoints) ? meta.coachingPoints : [];
+  const progressions = Array.isArray(meta.progressions) ? meta.progressions : [];
+
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
@@ -100,13 +112,84 @@ export default async function DrillDemoPage() {
           </p>
         </header>
 
-        <DrillDiagramCard
-          title={title}
-          gameModelId={drill.gameModelId}
-          phase={drill.phase}
-          zone={drill.zone}
-          diagram={diagram}
-        />
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
+          <div className="max-w-xl">
+            <DrillDiagramCard
+              title={title}
+              gameModelId={drill.gameModelId}
+              phase={drill.phase}
+              zone={drill.zone}
+              diagram={diagram}
+            />
+          </div>
+
+          <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">
+            <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+              Drill Details
+            </h2>
+
+            {organization && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  Organization
+                </h3>
+                <p className="text-xs leading-relaxed text-slate-300 whitespace-pre-line">
+                  {organization}
+                </p>
+              </div>
+            )}
+
+            {description && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  Description
+                </h3>
+                <p className="text-xs leading-relaxed text-slate-300 whitespace-pre-line">
+                  {description}
+                </p>
+              </div>
+            )}
+
+            {constraints.length > 0 && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  Constraints
+                </h3>
+                <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                  {constraints.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {coachingPoints.length > 0 && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  Coaching Points
+                </h3>
+                <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                  {coachingPoints.map((cp, i) => (
+                    <li key={i}>{cp}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {progressions.length > 0 && (
+              <div className="space-y-1">
+                <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
+                  Progressions
+                </h3>
+                <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                  {progressions.map((p, i) => (
+                    <li key={i}>{p}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </aside>
+        </section>
       </div>
     </main>
   );

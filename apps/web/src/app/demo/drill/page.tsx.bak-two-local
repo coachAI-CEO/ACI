@@ -1,0 +1,169 @@
+import DrillDiagramCard from "@/components/DrillDiagramCard";
+import type { DiagramV1 } from "@/types/diagram";
+
+type DrillApiResponse = {
+  ok: boolean;
+  drill: {
+    title: string;
+    gameModelId: string;
+    phase: string;
+    zone: string;
+    json: {
+      title?: string;
+      diagramV1?: DiagramV1;
+    };
+  };
+  error?: string;
+};
+
+type DrillConfig = {
+  key: string;
+  label: string;
+  body: any;
+};
+
+const DRILL_CONFIGS: DrillConfig[] = [
+  {
+    key: "possession-attacking-third",
+    label: "Sample 1 — POSSESSION · Attacking Third · U12",
+    body: {
+      gameModelId: "POSSESSION",
+      ageGroup: "U12",
+      phase: "ATTACKING",
+      zone: "ATTACKING_THIRD",
+      numbersMin: 10,
+      numbersMax: 12,
+      gkOptional: true,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 25,
+    },
+  },
+  {
+    key: "pressing-middle-third",
+    label: "Sample 2 — PRESSING · Middle Third · U12",
+    body: {
+      gameModelId: "PRESSING",
+      ageGroup: "U12",
+      phase: "DEFENDING",
+      zone: "MIDDLE_THIRD",
+      numbersMin: 10,
+      numbersMax: 12,
+      gkOptional: true,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 25,
+    },
+  },
+];
+
+async function fetchDrillForConfig(
+  config: DrillConfig
+): Promise<{ config: DrillConfig; data: DrillApiResponse | null; error?: string }> {
+  try {
+    const res = await fetch("http://localhost:4000/coach/generate-drill-vetted", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(config.body),
+    });
+
+    if (!res.ok) {
+      return {
+        config,
+        data: null,
+        error: `API error: ${res.status}`,
+      };
+    }
+
+    const json = (await res.json()) as DrillApiResponse;
+    return { config, data: json };
+  } catch (e: any) {
+    return {
+      config,
+      data: null,
+      error: e?.message || String(e),
+    };
+  }
+}
+
+export default async function DrillDemoPage() {
+  const results = await Promise.all(DRILL_CONFIGS.map(fetchDrillForConfig));
+
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-50 px-4 py-6 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        {/* Header */}
+        <header className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-400">
+            ACI · Diagram V1
+          </p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+            Drill Diagram Demo
+          </h1>
+          <p className="max-w-2xl text-xs sm:text-sm text-slate-400">
+            Each sample calls <code className="text-emerald-300">/coach/generate-drill-vetted</code>{" "}
+            with a different config and renders the returned{" "}
+            <code className="text-emerald-300">diagramV1</code>.
+          </p>
+        </header>
+
+        {/* Content */}
+        <div className="space-y-10">
+          {results.map(({ config, data, error }, idx) => {
+            if (error) {
+              return (
+                <section
+                  key={config.key}
+                  className="rounded-3xl border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm"
+                >
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-red-300">
+                    {config.label}
+                  </p>
+                  <p className="text-red-100">
+                    Failed to fetch drill: <span className="font-mono">{error}</span>
+                  </p>
+                </section>
+              );
+            }
+
+            if (!data?.ok || !data.drill?.json?.diagramV1) {
+              return (
+                <section
+                  key={config.key}
+                  className="rounded-3xl border border-amber-500/30 bg-amber-950/30 px-4 py-3 text-sm"
+                >
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-200">
+                    {config.label}
+                  </p>
+                  <p className="text-amber-100">
+                    API responded but no <code>diagramV1</code> was found on the drill payload.
+                  </p>
+                </section>
+              );
+            }
+
+            const drill = data.drill;
+            const diagram = drill.json.diagramV1!;
+            const title = drill.json.title ?? drill.title;
+
+            return (
+              <section key={config.key} className="space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                  {config.label}
+                </p>
+                <DrillDiagramCard
+                  title={title}
+                  gameModelId={drill.gameModelId}
+                  phase={drill.phase}
+                  zone={drill.zone}
+                  diagram={diagram}
+                />
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </main>
+  );
+}

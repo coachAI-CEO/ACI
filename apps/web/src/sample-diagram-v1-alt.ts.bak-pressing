@@ -1,0 +1,37 @@
+export const SAMPLE_DIAGRAM_V1_ALT: any = {
+  meta: {
+    title: "Right-Side Overload to Cut-Back",
+    gameModelId: "POSSESSION",
+    phase: "ATTACKING",
+    zone: "ATTACKING_THIRD",
+  },
+  players: [
+    { id: "A1",  number: 1,  team: "ATT", role: "GK", x: 15, y: 85 },
+    { id: "A4",  number: 4,  team: "ATT", role: "CB", x: 25, y: 60 },
+    { id: "A6",  number: 6,  team: "ATT", role: "DM", x: 40, y: 55 },
+    { id: "A8",  number: 8,  team: "ATT", role: "CM", x: 55, y: 50 },
+    { id: "A10", number: 10, team: "ATT", role: "AM", x: 72, y: 40 },
+    { id: "A7",  number: 7,  team: "ATT", role: "W",  x: 82, y: 30 },
+    { id: "A9",  number: 9,  team: "ATT", role: "ST", x: 72, y: 25 },
+
+    { id: "D4",  number: 4,  team: "DEF", role: "CB", x: 58, y: 35 },
+    { id: "D5",  number: 5,  team: "DEF", role: "CB", x: 50, y: 32 },
+    { id: "D6",  number: 6,  team: "DEF", role: "DM", x: 60, y: 45 },
+    { id: "D3",  number: 3,  team: "DEF", role: "FB", x: 70, y: 50 },
+  ],
+  balls: [
+    { id: "B1", x: 40, y: 55 }
+  ],
+  arrows: [
+    { id: "P1", type: "pass", style: "solid", from: { playerId: "A6" }, to: { playerId: "A8" } },
+    { id: "P2", type: "pass", style: "solid", from: { playerId: "A8" }, to: { playerId: "A7" } },
+    { id: "P3", type: "pass", style: "solid", from: { playerId: "A7" }, to: { playerId: "A10" } },
+    { id: "R1", type: "run",  style: "dashed", from: { playerId: "A9" }, to: { playerId: "A9" } },
+  ],
+  goals: [
+    { id: "G1", type: "BIG",   x: 50, y: 10, width: 16 },
+    { id: "G2", type: "SMALL", x: 15, y: 85, width: 10 },
+    { id: "G3", type: "SMALL", x: 85, y: 85, width: 10 },
+  ],
+  coach: { x: 12, y: 78 },
+};
