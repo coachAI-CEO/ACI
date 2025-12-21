@@ -14,7 +14,6 @@ const PITCH_LEFT = PITCH_MARGIN;
 const PITCH_TOP = PITCH_MARGIN;
 const PITCH_WIDTH = WIDTH - PITCH_MARGIN * 2;
 const PITCH_HEIGHT = HEIGHT - PITCH_MARGIN * 2;
-const LANE_WIDTH = PITCH_WIDTH / 5;
 
 
 // Normalize 0–100 coordinates → svg space
@@ -57,21 +56,285 @@ function arrowDash(style: string | undefined, type: string | undefined) {
   return undefined;
 }
 
+/**
+ * Normalize role names to standard position abbreviations
+ */
+function normalizeRoleToPosition(role: string | undefined): string {
+  if (!role) return "";
+  
+  const roleLower = role.toLowerCase();
+  
+  // Goalkeeper
+  if (roleLower.includes("gk") || roleLower.includes("goalkeeper")) return "GK";
+  
+  // Defenders
+  if (roleLower.includes("cb") || roleLower.includes("center-back") || roleLower.includes("centre-back")) {
+    if (roleLower.includes("lcb") || roleLower.includes("left")) return "LCB";
+    if (roleLower.includes("rcb") || roleLower.includes("right")) return "RCB";
+    return "CB";
+  }
+  if (roleLower.includes("fb") || roleLower.includes("fullback")) {
+    if (roleLower.includes("lb") || roleLower.includes("left")) return "LB";
+    if (roleLower.includes("rb") || roleLower.includes("right")) return "RB";
+    return "FB";
+  }
+  if (roleLower.includes("wb") || roleLower.includes("wingback")) {
+    if (roleLower.includes("lwb") || roleLower.includes("left")) return "LWB";
+    if (roleLower.includes("rwb") || roleLower.includes("right")) return "RWB";
+    return "WB";
+  }
+  
+  // Midfielders
+  if (roleLower.includes("dm") || roleLower.includes("cdm") || roleLower.includes("defensive midfielder") || roleLower.includes("dvan") || roleLower.includes("anchor")) {
+    if (roleLower.includes("ldm") || roleLower.includes("left")) return "LDM";
+    if (roleLower.includes("rdm") || roleLower.includes("right")) return "RDM";
+    return "DM";
+  }
+  if (roleLower.includes("cm") || roleLower.includes("central midfielder") || roleLower.includes("centre midfielder")) {
+    if (roleLower.includes("lcm") || roleLower.includes("left")) return "LCM";
+    if (roleLower.includes("rcm") || roleLower.includes("right")) return "RCM";
+    return "CM";
+  }
+  if (roleLower.includes("am") || roleLower.includes("cam") || roleLower.includes("attacking midfielder") || roleLower.includes("central attacking midfielder")) {
+    if (roleLower.includes("lam") || roleLower.includes("left")) return "LAM";
+    if (roleLower.includes("ram") || roleLower.includes("right")) return "RAM";
+    return "CAM";
+  }
+  
+  // Forwards/Wingers
+  if (roleLower.includes("w") || roleLower.includes("winger")) {
+    if (roleLower.includes("lw") || roleLower.includes("left")) return "LW";
+    if (roleLower.includes("rw") || roleLower.includes("right")) return "RW";
+    return "W";
+  }
+  if (roleLower.includes("st") || roleLower.includes("striker") || roleLower.includes("forward") || roleLower.includes("cf") || roleLower.includes("centre forward")) {
+    return "ST";
+  }
+  
+  // Pressing/defensive roles
+  if (roleLower.includes("press") || roleLower.includes("pressing")) {
+    return "CB"; // Default pressing player to CB
+  }
+  
+  // If it's already a short abbreviation (2-4 chars, all caps or mixed), return as-is
+  if (role.length <= 4 && /^[A-Z]+$/i.test(role)) {
+    return role.toUpperCase();
+  }
+  
+  // Default: return first 3-4 uppercase letters
+  return role.substring(0, 3).toUpperCase();
+}
+
+/**
+ * Normalize player numbers based on team and role.
+ * Defensive players should use numbers 2-6 (fullbacks, center-backs, defensive midfielders).
+ * Attacking players use 7-11 (wingers, attacking midfielders, strikers).
+ */
+function normalizePlayerNumber(
+  player: { team?: string; role?: string; number?: number; x?: number }
+): number {
+  const team = player.team?.toUpperCase();
+  const role = (player.role || "").toLowerCase();
+  const currentNum = player.number ?? 0;
+  const x = player.x ?? 50;
+
+  // Goalkeeper always gets 1
+  if (role.includes("gk") || role.includes("goalkeeper") || currentNum === 1) {
+    return 1;
+  }
+
+  // Defensive team should use 2-6 ONLY
+  // Note: For defenders, left/right is flipped because they face the opposite direction
+  if (team === "DEF") {
+    // Center-backs: 4 (left from defender's view = right on field) or 5 (right from defender's view = left on field)
+    if (role.includes("cb") || role.includes("center-back")) {
+      return x < 50 ? 5 : 4; // Flipped: x < 50 (left on field) = 5 (right from defender's view)
+    }
+    // Defensive midfielder: 6
+    if (role.includes("dm") || role.includes("cdm") || role.includes("defensive midfielder")) {
+      return 6;
+    }
+    // Fullbacks: 2 (left from defender's view = right on field) or 3 (right from defender's view = left on field)
+    if (role.includes("fb") || role.includes("fullback") || role.includes("lb") || role.includes("rb")) {
+      return x < 50 ? 3 : 2; // Flipped: x < 50 (left on field) = 3 (right from defender's view)
+    }
+    // Wingbacks: 2 or 3 (same as fullbacks)
+    if (role.includes("wb") || role.includes("wingback") || role.includes("lwb") || role.includes("rwb")) {
+      return x < 50 ? 3 : 2;
+    }
+    // If number is > 6 or < 2, map to defensive range (2-6)
+    if (currentNum > 6 || currentNum < 2) {
+      // Map to defensive range: 2-6
+      const defensiveNumbers = [2, 3, 4, 5, 6];
+      return defensiveNumbers[Math.abs(currentNum) % defensiveNumbers.length];
+    }
+    // If already in range 2-6, keep it
+    if (currentNum >= 2 && currentNum <= 6) {
+      return currentNum;
+    }
+    // Default defensive: 4 (center-back)
+    return 4;
+  }
+
+  // Attacking team uses 7-11 ONLY
+  if (team === "ATT") {
+    // If number is in defensive range (2-6), map to attacking range
+    if (currentNum >= 2 && currentNum <= 6) {
+      // Map: 2->7, 3->11, 4->8, 5->9, 6->10
+      const mapping: Record<number, number> = { 2: 7, 3: 11, 4: 8, 5: 9, 6: 10 };
+      return mapping[currentNum] ?? 8;
+    }
+    // If already in attacking range (7-11), keep it
+    if (currentNum >= 7 && currentNum <= 11) {
+      return currentNum;
+    }
+    // If number is outside range, map to attacking range
+    if (currentNum > 11 || currentNum < 7) {
+      const attackingNumbers = [7, 8, 9, 10, 11];
+      return attackingNumbers[Math.abs(currentNum) % attackingNumbers.length];
+    }
+    // Default attacking: 8 (central midfielder)
+    return 8;
+  }
+
+  // Neutral/GK: keep original number
+  return currentNum || 1;
+}
+
 export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
   const players: any[] = Array.isArray(diagram?.players) ? diagram.players : [];
   const balls: any[] = Array.isArray(diagram?.balls) ? diagram.balls : [];
   const arrows: any[] = Array.isArray(diagram?.arrows) ? diagram.arrows : [];
   const firstPassIdx = arrows.findIndex(a => a.type === "pass");
   const goals: any[] = Array.isArray(diagram?.goals) ? diagram.goals : [];
+  
+  // Determine pitch variant - default to THIRD for final third diagrams
+  const pitchVariant = diagram?.pitch?.variant || "THIRD";
 
   const layoutPlayers = React.useMemo(() => {
     type LayoutPlayer = (typeof players)[number] & { screenX: number; screenY: number };
 
-    const base: LayoutPlayer[] = players.map((p) => ({
-      ...p,
-      screenX: nx(p.x),
-      screenY: ny(p.y),
-    }));
+    // First pass: normalize numbers and adjust positioning
+    // For pressing scenarios: attackers start further back relative to defenders
+    const normalized = players.map((p) => {
+      const baseX = nx(p.x);
+      let baseY = ny(p.y);
+      
+      // Adjust Y position based on team for better pressing visualization
+      // In the diagram: Y=0 is at top (goal), Y increases downward
+      // ATT players should start further back (increase Y = move down/away from goal)
+      // DEF players stay higher (decrease Y = move up/closer to goal)
+      if (p.team === "ATT") {
+        // Push attacking players back by ~12% of pitch height
+        baseY = Math.min(HEIGHT - PITCH_MARGIN, baseY + (PITCH_HEIGHT * 0.12));
+      } else if (p.team === "DEF") {
+        // Adjust defensive players based on role:
+        // CBs should be furthest from GK (move down/further from goal)
+        // STs should be closest to GK (move up/closer to goal)
+        const role = (p.role || "").toLowerCase();
+        if (role.includes("cb") || role.includes("center-back") || role.includes("centre-back")) {
+          // Center-backs: move down (further from goal) - add to Y
+          baseY = Math.min(HEIGHT - PITCH_MARGIN, baseY + (PITCH_HEIGHT * 0.12));
+        } else if (role.includes("st") || role.includes("striker") || role.includes("forward") || role.includes("cf")) {
+          // Strikers: move up (closer to goal) - subtract from Y
+          baseY = Math.max(PITCH_TOP, baseY - (PITCH_HEIGHT * 0.10));
+        } else {
+          // Other defensive players (DM, FB, etc.): slight adjustment down
+          baseY = Math.min(HEIGHT - PITCH_MARGIN, baseY + (PITCH_HEIGHT * 0.04));
+        }
+      }
+      // Neutral/GK: no adjustment
+      
+      return {
+        ...p,
+        number: normalizePlayerNumber(p),
+        screenX: baseX,
+        screenY: baseY,
+      };
+    });
+
+    // Second pass: ensure unique numbers within each team
+    const teamGroups: Record<string, LayoutPlayer[]> = {};
+    normalized.forEach((p) => {
+      const team = p.team || "NEUTRAL";
+      if (!teamGroups[team]) teamGroups[team] = [];
+      teamGroups[team].push(p);
+    });
+
+    // Second pass: ensure unique numbers within each team and correct ranges
+    Object.keys(teamGroups).forEach((team) => {
+      const teamPlayers = teamGroups[team];
+      const usedNumbers = new Set<number>();
+      
+      teamPlayers.forEach((p) => {
+        const currentNum = p.number ?? 0;
+        let assigned = false;
+        
+        // Check if number is valid for this team and not already used
+        if (team === "DEF") {
+          // Defensive team must use 2-6
+          if (currentNum >= 2 && currentNum <= 6 && !usedNumbers.has(currentNum)) {
+            // Number is valid and unique
+            usedNumbers.add(currentNum);
+            assigned = true;
+          } else {
+            // Find next available number in range 2-6
+            for (let n = 2; n <= 6; n++) {
+              if (!usedNumbers.has(n)) {
+                p.number = n;
+                usedNumbers.add(n);
+                assigned = true;
+                break;
+              }
+            }
+          }
+        } else if (team === "ATT") {
+          // Attacking team must use 7-11
+          if (currentNum >= 7 && currentNum <= 11 && !usedNumbers.has(currentNum)) {
+            // Number is valid and unique
+            usedNumbers.add(currentNum);
+            assigned = true;
+          } else {
+            // Find next available number in range 7-11
+            for (let n = 7; n <= 11; n++) {
+              if (!usedNumbers.has(n)) {
+                p.number = n;
+                usedNumbers.add(n);
+                assigned = true;
+                break;
+              }
+            }
+          }
+        } else {
+          // Neutral/GK - use 1
+          if (currentNum === 1 && !usedNumbers.has(1)) {
+            usedNumbers.add(1);
+            assigned = true;
+          } else if (!usedNumbers.has(1)) {
+            p.number = 1;
+            usedNumbers.add(1);
+            assigned = true;
+          } else {
+            // 1 is already taken, keep current or default to 1
+            p.number = currentNum || 1;
+            assigned = true;
+          }
+        }
+        
+        // Ensure number is set (fallback)
+        if (!assigned) {
+          if (team === "DEF") {
+            p.number = 2 + (usedNumbers.size % 5);
+          } else if (team === "ATT") {
+            p.number = 7 + (usedNumbers.size % 5);
+          } else {
+            p.number = 1;
+          }
+        }
+      });
+    });
+
+    const base: LayoutPlayer[] = normalized;
 
     const COLLISION_DISTANCE = 44; // px, ~2x player radius + a small gap
 
@@ -116,22 +379,30 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       />
 
       {/* Shaded lanes (wide / half-spaces / central) */}
-      {Array.from({ length: 5 }).map((_, i) => {
-        const laneWidth = PITCH_WIDTH / 5;
-        const x = PITCH_LEFT + i * laneWidth;
+      {/* Lane proportions: wide (15%), half-space (20%), central (30%), half-space (20%), wide (15%) */}
+      {(() => {
+        const laneProportions = [0.15, 0.20, 0.30, 0.20, 0.15]; // Sum = 1.0
         const colors = ["#022c22", "#064e3b", "#0f766e", "#064e3b", "#022c22"];
-        return (
-          <rect
-            key={i}
-            x={x}
-            y={PITCH_TOP}
-            width={laneWidth}
-            height={PITCH_HEIGHT}
-            fill={colors[i]}
-            opacity={0.75}
-          />
-        );
-      })}
+        let currentX = PITCH_LEFT;
+        
+        return laneProportions.map((proportion, i) => {
+          const laneWidth = PITCH_WIDTH * proportion;
+          const x = currentX;
+          currentX += laneWidth;
+          
+          return (
+            <rect
+              key={i}
+              x={x}
+              y={PITCH_TOP}
+              width={laneWidth}
+              height={PITCH_HEIGHT}
+              fill={colors[i]}
+              opacity={0.75}
+            />
+          );
+        });
+      })()}
 
       {/* Outer lines */}
       
@@ -145,72 +416,157 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         strokeWidth={2}
       />
 
-      {/* Halfway line */}
-      
-      <line
-        x1={PITCH_LEFT}
-        y1={HEIGHT / 2}
-        x2={PITCH_LEFT + PITCH_WIDTH}
-        y2={HEIGHT / 2}
-        stroke="#e5e7eb"
-        strokeWidth={1.5}
-      />
+      {/* Halfway line - only for HALF and FULL */}
+      {(pitchVariant === "HALF" || pitchVariant === "FULL") && (
+        <line
+          x1={PITCH_LEFT}
+          y1={pitchVariant === "HALF" ? PITCH_TOP + PITCH_HEIGHT : HEIGHT / 2}
+          x2={PITCH_LEFT + PITCH_WIDTH}
+          y2={pitchVariant === "HALF" ? PITCH_TOP + PITCH_HEIGHT : HEIGHT / 2}
+          stroke="#e5e7eb"
+          strokeWidth={1.5}
+        />
+      )}
+
+      {/* Center circle - HALF shows half circle at bottom, FULL shows full circle in center */}
+      {(pitchVariant === "HALF" || pitchVariant === "FULL") && (() => {
+        const centerX = WIDTH / 2;
+        const radius = PITCH_WIDTH * 0.12; // ~12% of pitch width
+        
+        if (pitchVariant === "HALF") {
+          // Half circle at the bottom edge (where halfway line would be)
+          const centerY = PITCH_TOP + PITCH_HEIGHT;
+          return (
+            <path
+              d={`M ${centerX - radius} ${centerY} A ${radius} ${radius} 0 0 1 ${centerX + radius} ${centerY}`}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth={1.5}
+            />
+          );
+        } else {
+          // Full circle in the center for FULL field
+          const centerY = HEIGHT / 2;
+          return (
+            <circle
+              cx={centerX}
+              cy={centerY}
+              r={radius}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth={1.5}
+            />
+          );
+        }
+      })()}
 
       {/* Vertical dashed lane guides */}
-      {Array.from({ length: 4 }).map((_, i) => {
-        const x = PITCH_LEFT + LANE_WIDTH * (i + 1);
-        return (
+      {(() => {
+        const laneProportions = [0.15, 0.20, 0.30, 0.20, 0.15];
+        let currentX = PITCH_LEFT;
+        const dividerPositions: number[] = [];
+        
+        // Calculate divider positions between lanes
+        laneProportions.forEach((proportion, i) => {
+          if (i < laneProportions.length - 1) {
+            currentX += PITCH_WIDTH * proportion;
+            dividerPositions.push(currentX);
+          }
+        });
+        
+        return dividerPositions.map((x, i) => (
           <line
             key={i}
             x1={x}
-            y1={40}
+            y1={PITCH_TOP}
             x2={x}
-            y2={HEIGHT - 40}
+            y2={PITCH_TOP + PITCH_HEIGHT}
             stroke="#e5e7eb"
             strokeWidth={1}
             strokeDasharray="4,10"
             opacity={0.4}
           />
-        );
-      })}
+        ));
+      })()}
 
-      {/* Top penalty box + goal area */}
-      <rect
-        x={WIDTH / 2 - 120}
-        y={40}
-        width={240}
-        height={140}
-        fill="none"
-        stroke="#e5e7eb"
-        strokeWidth={2}
-      />
-      <rect
-        x={WIDTH / 2 - 60}
-        y={40}
-        width={120}
-        height={60}
-        fill="none"
-        stroke="#e5e7eb"
-        strokeWidth={2}
-      />
-      <rect
-        x={WIDTH / 2 - 40}
-        y={30}
-        width={80}
-        height={10}
-        fill="none"
-        stroke="#e5e7eb"
-        strokeWidth={2}
-      />
+      {/* Penalty boxes and goal areas */}
+      {/* Adjust proportions based on pitch variant */}
+      {(() => {
+        // For THIRD view: penalty box should be larger relative to visible area
+        // For HALF/FULL: use smaller proportions
+        const isThird = pitchVariant === "THIRD" || pitchVariant === "QUARTER";
+        const isFull = pitchVariant === "FULL";
+        const isHalf = pitchVariant === "HALF";
+        
+        // Penalty box dimensions
+        const penaltyBoxWidth = isThird ? PITCH_WIDTH * 0.40 : PITCH_WIDTH * 0.33;
+        const penaltyBoxHeight = isThird ? PITCH_HEIGHT * 0.40 : PITCH_HEIGHT * 0.25;
+        
+        // Goal area (6-yard box) dimensions
+        const goalAreaWidth = isThird ? PITCH_WIDTH * 0.22 : PITCH_WIDTH * 0.17;
+        const goalAreaHeight = isThird ? PITCH_HEIGHT * 0.18 : PITCH_HEIGHT * 0.10;
+        
+        // Goal dimensions
+        const goalWidth = isThird ? PITCH_WIDTH * 0.14 : PITCH_WIDTH * 0.11;
+        const goalHeight = 10;
+        
+        const renderPenaltyBox = (y: number, isTop: boolean) => (
+          <>
+            {/* Penalty box */}
+            <rect
+              x={WIDTH / 2 - penaltyBoxWidth / 2}
+              y={y}
+              width={penaltyBoxWidth}
+              height={penaltyBoxHeight}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth={2}
+            />
+            {/* Goal area (6-yard box) */}
+            <rect
+              x={WIDTH / 2 - goalAreaWidth / 2}
+              y={y}
+              width={goalAreaWidth}
+              height={goalAreaHeight}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth={2}
+            />
+            {/* Goal */}
+            <rect
+              x={WIDTH / 2 - goalWidth / 2}
+              y={isTop ? y - goalHeight : y + penaltyBoxHeight}
+              width={goalWidth}
+              height={goalHeight}
+              fill="none"
+              stroke="#e5e7eb"
+              strokeWidth={2}
+            />
+          </>
+        );
+        
+        return (
+          <>
+            {/* Top penalty box - always show for THIRD, HALF, or FULL */}
+            {renderPenaltyBox(PITCH_TOP, true)}
+            
+            {/* Bottom penalty box - only for FULL field */}
+            {isFull && renderPenaltyBox(PITCH_TOP + PITCH_HEIGHT - penaltyBoxHeight, false)}
+          </>
+        );
+      })()}
 
       {/* Goals from diagram.goals */}
       {goals.map((g) => {
         const gx = nx(g.x);
         const gy = ny(g.y);
-        const w = ((g.width ?? 10) / 100) * WIDTH || 60;
-
         const isBig = g.type === "BIG";
-        const height = isBig ? 12 : 8;
+        
+        // Mini goals should be much larger and more visible
+        const w = isBig 
+          ? ((g.width ?? 15) / 100) * WIDTH || 120  // Big goal: 15% of width or 120px
+          : ((g.width ?? 25) / 100) * WIDTH || 200;  // Mini goal: 25% of width or 200px (much larger)
+        const height = isBig ? 16 : 18;  // Mini goals: 18px height (was 12px)
         const color = isBig ? "#e5e7eb" : "#22c55e";
 
         return (
@@ -224,22 +580,24 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
             ry={4}
             fill="none"
             stroke={color}
-            strokeWidth={isBig ? 3 : 2}
+            strokeWidth={isBig ? 3 : 3}
           />
         );
       })}
 
       {/* Arrows */}
       {arrows.map((a, idx) => {
-        const fromPlayer = players.find((p) => p.id === a.from?.playerId);
-        const toPlayer = players.find((p) => p.id === a.to?.playerId);
+        // Use layoutPlayers to get adjusted positions (with team-based Y offsets)
+        const fromLayoutPlayer = layoutPlayers.find((p) => p.id === a.from?.playerId);
+        const toLayoutPlayer = layoutPlayers.find((p) => p.id === a.to?.playerId);
 
-        if (!fromPlayer || !toPlayer) return null;
+        if (!fromLayoutPlayer || !toLayoutPlayer) return null;
 
-        const x1 = nx(fromPlayer.x);
-        const y1 = ny(fromPlayer.y);
-        const x2 = nx(toPlayer.x);
-        const y2 = ny(toPlayer.y);
+        // Use the adjusted screen positions from layoutPlayers
+        const x1 = fromLayoutPlayer.screenX;
+        const y1 = fromLayoutPlayer.screenY;
+        const x2 = toLayoutPlayer.screenX;
+        const y2 = toLayoutPlayer.screenY;
 
         const color = arrowColor(a.type);
         const dash = arrowDash(a.style, a.type);
@@ -354,27 +712,15 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
             />
             <text
               x={x}
-              y={y + 4}
+              y={y + 5}
               textAnchor="middle"
               fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-              fontSize={13}
-              fontWeight={700}
+              fontSize={11}
+              fontWeight={600}
               fill="#0f172a"
             >
-              {p.number ?? ""}
+              {normalizeRoleToPosition(p.role)}
             </text>
-            {p.role && (
-              <text
-                x={x}
-                y={y + 30}
-                textAnchor="middle"
-                fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
-                fontSize={10}
-                fill="#e5e7eb"
-              >
-                {p.role}
-              </text>
-            )}
           </g>
         );
       })}

@@ -1,0 +1,108 @@
+{
+  "ok": true,
+  "drill": {
+    "id": "demo-alt-001",
+    "title": "Build-Up Through Wide Channels",
+    "gameModelId": "POSSESSION",
+    "phase": "BUILD_UP",
+    "zone": "MIDDLE_THIRD",
+    "ageGroup": "U14",
+    "durationMin": 20,
+    "qaScore": 4.2,
+    "approved": true,
+    "numbersMin": 8,
+    "numbersMax": 10,
+    "gkOptional": true,
+    "spaceConstraint": "HALF",
+    "goalsSupported": [],
+    "json": {
+      "sessionObjective": "Develop wide-channel progression in the build-up phase using fullbacks and wingers to break pressure.",
+      "difficulty": 2,
+      "coachingLevel": "D License / Grassroots Intermediate",
+      "playerLevel": "Competitive U14 (NPL / Pre-ECNL)",
+      "organization": "Format: 4v3+Neutral (U14). Area: Half field with wide channels marked. Objective: escape pressure through wide overloads and progress into middle third.",
+      "description": "A possession-based exercise focused on breaking pressure through wide areas. Players learn to recognize space, create triangles, and progress play into the next line.",
+      "constraints": [
+        "Outside players limited to 2 touches.",
+        "Ball must enter a wide channel before progressing forward.",
+        "Defending team must stay compact inside central channel for first 5 seconds."
+      ],
+      "progressions": [
+        "Add a recovering defender from midfield.",
+        "Allow winger to dribble inside after receiving in wide channel.",
+        "Add counter-press rule: immediate 5-second regain attempt upon loss."
+      ],
+      "coachingPoints": [
+        "Fullbacks open body shape to face forward.",
+        "Wingers check away then receive to feet.",
+        "Interior midfielder supports underneath for bounce passes.",
+        "Quick circulation to switch pressure when wide channel is blocked."
+      ],
+      "diagramV1": {
+        "pitch": {
+          "variant": "HALF",
+          "orientation": "HORIZONTAL",
+          "showZones": true,
+          "zones": {
+            "leftWide": true,
+            "leftHalfSpace": true,
+            "centralChannel": true,
+            "rightHalfSpace": true,
+            "rightWide": true
+          }
+        },
+        "players": [
+          { "id": "A1", "number": 2, "team": "ATT", "role": "RB", "x": 20, "y": 70, "facingAngle": 0, "labelStyle": "number-and-role" },
+          { "id": "A2", "number": 5, "team": "ATT", "role": "CB", "x": 40, "y": 60, "facingAngle": 0, "labelStyle": "number-and-role" },
+          { "id": "A3", "number": 8, "team": "ATT", "role": "CM", "x": 50, "y": 50, "facingAngle": 0, "labelStyle": "number-and-role" },
+          { "id": "A4", "number": 7, "team": "ATT", "role": "RW", "x": 80, "y": 65, "facingAngle": 270, "labelStyle": "number-and-role" },
+
+          { "id": "D1", "number": 9, "team": "DEF", "role": "ST", "x": 45, "y": 40, "facingAngle": 180, "labelStyle": "number-and-role" },
+          { "id": "D2", "number": 6, "team": "DEF", "role": "DM", "x": 55, "y": 45, "facingAngle": 180, "labelStyle": "number-and-role" },
+          { "id": "D3", "number": 4, "team": "DEF", "role": "CB", "x": 50, "y": 30, "facingAngle": 180, "labelStyle": "number-and-role" },
+
+          { "id": "N1", "number": 10, "team": "NEUTRAL", "role": "Neutral", "x": 60, "y": 55, "facingAngle": 90, "labelStyle": "number-and-role" }
+        ],
+
+        "coach": {
+          "x": 10,
+          "y": 80,
+          "label": "Coach",
+          "note": "Coach plays into CB to begin each repetition"
+        },
+
+        "arrows": [
+          { "from": { "playerId": "A2" }, "to": { "playerId": "A1" }, "type": "pass", "style": "solid" },
+          { "from": { "playerId": "A1" }, "to": { "playerId": "A3" }, "type": "pass", "style": "solid" },
+          { "from": { "playerId": "A3" }, "to": { "playerId": "A4" }, "type": "pass", "style": "dotted" }
+        ],
+
+        "goals": [
+          {
+            "id": "G-BIG",
+            "type": "BIG",
+            "width": 12,
+            "x": 50,
+            "y": 10,
+            "facingAngle": 90,
+            "teamAttacks": "ATT"
+          }
+        ]
+      }
+    }
+  },
+  "qa": {
+    "pass": true,
+    "scores": {
+      "structure": 4,
+      "gameModel": 5,
+      "psych": 4,
+      "clarity": 4,
+      "realism": 4,
+      "constraints": 5,
+      "safety": 5
+    },
+    "summary": "Well-organized wide-channel progression drill with excellent spacing detail."
+  },
+  "fixDecision": { "code": "OK" }
+}

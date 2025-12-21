@@ -1,4 +1,5 @@
 import { generateText } from "../gemini";
+import type { Drill } from "../types/drill";
 
 export type DrillQAScores = {
   structure?: number;
@@ -51,6 +52,14 @@ function normalizeScores(scores: Partial<DrillQAScores> | null | undefined): num
 export function fixDrillDecision(
   scores: Partial<DrillQAScores> | null | undefined
 ): FixDecision {
+  // BYPASS QA: If env flag set, always accept drills (for debugging)
+  if (process.env.BYPASS_QA === "1") {
+    return {
+      code: "OK",
+      reason: "QA BYPASSED via BYPASS_QA=1 flag (debugging mode)",
+    };
+  }
+
   const vals = normalizeScores(scores);
 
   if (!vals.length) {
@@ -142,26 +151,19 @@ function buildInlineFixerPrompt(drill: any, qa: any): string {
  *   - If USE_LLM_FIXER !== '1': behaves like stub (no LLM).
  *   - If USE_LLM_FIXER === '1': calls Gemini and returns improved drill when parseable.
  */
-export async function fixDrill(drill: any, qa: any) {
+export async function fixDrill(drill: Partial<Drill>, qa: any) {
   const decision = fixDrillDecision(qa?.scores || null);
 
   const actions: Array<{ code: string; reason: string }> = [];
 
-  // 1) Non-patchable paths: no LLM
+  // 1) NEEDS_REGEN: Try fixing first (don't skip LLM)
+  // We'll attempt to fix even low-scoring drills before regenerating
   if (decision.code === "NEEDS_REGEN") {
+    // Continue to LLM fixer attempt below (don't return early)
     actions.push({
       code: "NEEDS_REGEN",
-      reason: "At least one QA dimension is ≤2; recommend regenerating drill instead of auto-fix.",
+      reason: "At least one QA dimension is ≤2; attempting fix before regenerating.",
     });
-    return {
-      drill,
-      qa,
-      decision,
-      raw: {
-        fixed: false,
-        actions,
-      },
-    };
   }
 
   if (decision.code === "OK") {
@@ -196,8 +198,8 @@ export async function fixDrill(drill: any, qa: any) {
     };
   }
 
-  // 2) PATCHABLE — but possibly stubbed
-  if (decision.code !== "PATCHABLE") {
+  // 2) NEEDS_REGEN or PATCHABLE — attempt LLM fix if enabled
+  if (decision.code !== "PATCHABLE" && decision.code !== "NEEDS_REGEN") {
     actions.push({
       code: "UNKNOWN",
       reason: "Unexpected fixer decision code; skipping LLM fixer.",
@@ -215,8 +217,8 @@ export async function fixDrill(drill: any, qa: any) {
 
   if (process.env.USE_LLM_FIXER !== "1") {
     actions.push({
-      code: "PATCHABLE",
-      reason: "LLM fixer disabled by env (USE_LLM_FIXER != '1'); returning original drill.",
+      code: decision.code,
+      reason: `LLM fixer disabled by env (USE_LLM_FIXER != '1'); returning original drill.`,
     });
     return {
       drill,
@@ -229,7 +231,7 @@ export async function fixDrill(drill: any, qa: any) {
     };
   }
 
-  // 3) PATCHABLE + LLM allowed → call Gemini
+  // 3) NEEDS_REGEN or PATCHABLE + LLM allowed → call Gemini to fix
   try {
     const prompt = buildInlineFixerPrompt(drill, qa);
     const text = await generateText(prompt);
@@ -237,8 +239,8 @@ export async function fixDrill(drill: any, qa: any) {
 
     if (fixedJson && typeof fixedJson === "object") {
       actions.push({
-        code: "PATCHABLE",
-        reason: "Applied LLM-based localized fixes to the drill based on QA.",
+        code: decision.code,
+        reason: `Applied LLM-based fixes to the drill based on QA (${decision.code}).`,
       });
 
       const merged = {

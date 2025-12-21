@@ -17,6 +17,7 @@ enum GameModelId {
 enum Phase {
   ATTACKING
   DEFENDING
+  TRANSITION
   TRANSITION_TO_ATTACK
   TRANSITION_TO_DEFEND
 }
@@ -34,6 +35,18 @@ enum SpaceConstraint {
   QUARTER
 }
 
+enum PlayerLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CoachLevel {
+  GRASSROOTS
+  USSF_C
+  USSF_B_PLUS
+}
+
 enum ArtifactType {
   DRILL
   SESSION
@@ -44,6 +57,32 @@ enum ArtifactType {
 model Drill {
   id          String      @id @default(uuid())
   title       String
+
+  // Tactical & psych metadata
+  principleIds     Json?   // array of strings
+  psychThemeIds    Json?   // array of strings
+
+  // Physical / conditioning
+  energySystem     String? // "ATP-PC" | "Anaerobic" | "Aerobic"
+  rpeMin           Int?
+  rpeMax           Int?
+
+  // Session constraints
+  numbersMin       Int?
+  numbersMax       Int?
+  spaceConstraint  String?
+  goalsAvailable   Int?
+  goalMode         String?
+  
+  // Formation & level metadata
+  formationUsed    String?
+  playerLevel      PlayerLevel?
+  coachLevel       CoachLevel?
+
+  // GK metadata
+  needGKFocus      Boolean? @default(false)
+  gkFocus          String?
+
   gameModelId GameModelId
   phase       Phase
   zone        Zone
@@ -51,12 +90,6 @@ model Drill {
   durationMin Int?
   qaScore     Float?
   approved    Boolean     @default(false)
-
-  numbersMin      Int
-  numbersMax      Int
-  gkOptional      Boolean         @default(true)
-  spaceConstraint SpaceConstraint
-  goalsSupported  Int[]
 
   json           Json
   visualThumbSvg String?

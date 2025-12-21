@@ -8,10 +8,202 @@ export const deriveGoalsSupported = (json: any) => {
 import { applyYouthGuards } from "./youth-guards";
 import { postProcessDrill } from "./postprocess";
 import { fixDrillDecision } from "./fixer";
-import { normalizeGoals } from "./goal-normalizer";
 import { generateText } from "../gemini";
 import { prisma } from "../prisma";
-import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill";
+import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
+
+/**
+ * Sanitize LLM output to enforce clarity rules:
+ * - Remove forbidden duplicate keys (diagramV1, progression)
+ * - Merge alternate keys into canonical ones
+ * - Remove nested json wrappers
+ */
+function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
+  const warnings: string[] = [];
+  console.log("[SANITIZER] Starting sanitization...");
+  console.log("[SANITIZER] drill.organization type:", typeof drill.organization);
+  console.log("[SANITIZER] drill.json?.organization type:", typeof drill.json?.organization);
+  console.log("[SANITIZER] has diagramV1?", !!drill.diagramV1);
+  console.log("[SANITIZER] has drill.json.diagramV1?", !!drill.json?.diagramV1);
+  console.log("[SANITIZER] has progression?", !!drill.progression);
+  console.log("[SANITIZER] has drill.json.progression?", !!drill.json?.progression);
+  
+  // Helper to fix a single object level
+  const fixDiagramAndProgression = (obj: any, prefix: string = "") => {
+    // Remove diagramV1 if diagram also exists
+    if (obj.diagramV1 && obj.diagram) {
+      delete obj.diagramV1;
+      warnings.push(`${prefix}Removed duplicate 'diagramV1' (kept 'diagram')`);
+    }
+    
+    // If only diagramV1 exists, rename to diagram
+    if (obj.diagramV1 && !obj.diagram) {
+      obj.diagram = obj.diagramV1;
+      delete obj.diagramV1;
+      warnings.push(`${prefix}Renamed 'diagramV1' to 'diagram'`);
+    }
+    
+    // Merge progression into progressions
+    if (obj.progression) {
+      const existing = Array.isArray(obj.progressions) ? obj.progressions : [];
+      const singular = Array.isArray(obj.progression) ? obj.progression : [obj.progression];
+      obj.progressions = [...existing, ...singular].filter((x, i, arr) => 
+        arr.indexOf(x) === i // dedupe
+      );
+      delete obj.progression;
+      warnings.push(`${prefix}Merged 'progression' into 'progressions'`);
+    }
+  };
+  
+  // 1-3. Fix at top level
+  fixDiagramAndProgression(drill, "");
+  
+  // Fix at drill.json level
+  if (drill.json && typeof drill.json === "object") {
+    console.log("🔍 [SANITIZER] Before fix - drill.json has diagramV1?", !!drill.json.diagramV1);
+    console.log("🔍 [SANITIZER] Before fix - drill.json has progression?", !!drill.json.progression);
+    fixDiagramAndProgression(drill.json, "[json] ");
+    console.log("🔍 [SANITIZER] After fix - drill.json has diagramV1?", !!drill.json.diagramV1);
+    console.log("🔍 [SANITIZER] After fix - drill.json has progression?", !!drill.json.progression);
+  }
+  
+  // 4. Remove nested json.json wrappers (if LLM wrapped output incorrectly)
+  if (drill.json && typeof drill.json === "object" && Object.keys(drill.json).length > 0) {
+    // Check if drill.json contains drill-like keys
+    const hasContent = drill.json.title || drill.json.description || drill.json.diagram;
+    if (hasContent) {
+      warnings.push("Removed nested 'json' wrapper");
+      const nested = drill.json;
+      delete drill.json;
+      // Merge nested content into drill (without overwriting existing)
+      Object.keys(nested).forEach(key => {
+        if (!(key in drill)) {
+          drill[key] = nested[key];
+        }
+      });
+    }
+  }
+  
+  // 5. Ensure progressions is array (not string)
+  if (drill.progressions && !Array.isArray(drill.progressions)) {
+    drill.progressions = [drill.progressions];
+    warnings.push("Converted 'progressions' to array");
+  }
+  
+  // 6. Convert organization from string to structured object
+  const convertOrganization = (orgString: string) => {
+    const areaMatch = orgString.match(/(\d+)\s*x\s*(\d+)\s*(?:yd|yard)/i);
+    const lengthYards = areaMatch ? parseInt(areaMatch[1]) : 40;
+    const widthYards = areaMatch ? parseInt(areaMatch[2]) : 30;
+    
+    return {
+      setupSteps: [
+        `Mark out a ${lengthYards}x${widthYards} yard area using cones.`,
+        `Split players into two teams and assign colored bibs.`,
+        `Position players according to the starting formation.`,
+        `Place the coach at the designated restart position.`,
+        `Prepare multiple balls at the coach's position.`,
+        `Explain the objective and scoring rules to all players.`
+      ],
+      area: { lengthYards, widthYards },
+      rotation: "Rotate players every 2-3 minutes or after scoring events.",
+      restarts: "Coach restarts play after goals, out of bounds, or stoppages.",
+      scoring: orgString.includes("double") || orgString.includes("bonus") || orgString.includes("2 point")
+        ? "Goals = 1 point. Bonus points for one-touch finishes or specific actions."
+        : "Standard scoring: 1 point per goal."
+    };
+  };
+  
+  // Fix at top level
+  if (typeof drill.organization === "string") {
+    warnings.push("Converting drill.organization from STRING to OBJECT");
+    drill.organization = convertOrganization(drill.organization);
+  }
+  
+  // Fix at drill.json level (CRITICAL - this is where the LLM puts it!)
+  if (drill.json && typeof drill.json.organization === "string") {
+    console.log("🔧 [SANITIZER] FOUND STRING organization in drill.json, converting to object...");
+    warnings.push("Converting drill.json.organization from STRING to OBJECT");
+    drill.json.organization = convertOrganization(drill.json.organization);
+    console.log("✅ [SANITIZER] Converted! Type is now:", typeof drill.json.organization);
+    console.log("✅ [SANITIZER] setupSteps count:", drill.json.organization.setupSteps?.length);
+  } else {
+    console.log("⚠️ [SANITIZER] drill.json.organization type:", typeof drill.json?.organization);
+  }
+  
+  // 6b. Ensure area fields are numbers (not strings) - CRITICAL for clarity score
+  const ensureAreaIsNumeric = (org: any, prefix: string = "") => {
+    if (org && org.area) {
+      if (typeof org.area.lengthYards === "string") {
+        org.area.lengthYards = parseInt(org.area.lengthYards, 10) || 40;
+        warnings.push(`${prefix}Converted area.lengthYards from string to number`);
+      }
+      if (typeof org.area.widthYards === "string") {
+        org.area.widthYards = parseInt(org.area.widthYards, 10) || 30;
+        warnings.push(`${prefix}Converted area.widthYards from string to number`);
+      }
+      // Ensure they're numbers (handle null/undefined)
+      if (typeof org.area.lengthYards !== "number") {
+        org.area.lengthYards = Number(org.area.lengthYards) || 40;
+        warnings.push(`${prefix}Fixed area.lengthYards to number`);
+      }
+      if (typeof org.area.widthYards !== "number") {
+        org.area.widthYards = Number(org.area.widthYards) || 30;
+        warnings.push(`${prefix}Fixed area.widthYards to number`);
+      }
+    }
+  };
+  
+  // Fix at top level
+  if (drill.organization && typeof drill.organization === "object") {
+    ensureAreaIsNumeric(drill.organization, "");
+  }
+  
+  // Fix at drill.json level
+  if (drill.json && drill.json.organization && typeof drill.json.organization === "object") {
+    ensureAreaIsNumeric(drill.json.organization, "[json] ");
+  }
+  
+  // 7. Auto-fix age mismatches
+  const correctAge = drill.ageGroup || drill.json?.ageGroup;
+  if (correctAge) {
+    const agePattern = /U\d+/g;
+    const fixAgeInField = (obj: any, field: string, prefix: string = "") => {
+      if (!obj || !obj[field]) return;
+      
+      if (typeof obj[field] === "string") {
+        const fixed = obj[field].replace(agePattern, correctAge);
+        if (fixed !== obj[field]) {
+          obj[field] = fixed;
+          warnings.push(`${prefix}Fixed age in ${field} to ${correctAge}`);
+        }
+      } else if (typeof obj[field] === "object") {
+        const str = JSON.stringify(obj[field]);
+        const fixed = str.replace(agePattern, correctAge);
+        if (str !== fixed) {
+          obj[field] = JSON.parse(fixed);
+          warnings.push(`${prefix}Fixed age in ${field} to ${correctAge}`);
+        }
+      }
+    };
+    
+    // Fix at top level
+    fixAgeInField(drill, "organization", "");
+    fixAgeInField(drill, "loadNotes", "");
+    fixAgeInField(drill, "description", "");
+    fixAgeInField(drill, "setup", "");
+    
+    // Fix at drill.json level
+    if (drill.json) {
+      fixAgeInField(drill.json, "organization", "[json] ");
+      fixAgeInField(drill.json, "loadNotes", "[json] ");
+      fixAgeInField(drill.json, "description", "[json] ");
+      fixAgeInField(drill.json, "setup", "[json] ");
+    }
+  }
+  
+  return { drill, warnings };
+}
 
 
 function parseJsonSafe(text: string) {
@@ -39,11 +231,20 @@ function parseJsonSafe(text: string) {
 export async function generateAndReviewDrill(
   input: Parameters<typeof buildDrillPrompt>[0]
 ) {
-  // 1) Generate
+  // 1) Generate (45s timeout for reliability - Gemini can be slow for complex prompts)
   const prompt = buildDrillPrompt(input);
-  const genText = await generateText(prompt);
-  const drill: any = parseJsonSafe(genText);
+  console.log(`[DRILL] Starting generation with ${prompt.length} char prompt...`);
+  const genText = await generateText(prompt, { timeout: 45000, retries: 0 });
+  let drill: any = parseJsonSafe(genText);
   if (!drill) throw new Error("LLM returned non-JSON drill");
+
+  // 1.5) Sanitize output to remove forbidden keys
+  const { drill: sanitizedDrill, warnings } = sanitizeDrillOutput(drill);
+  drill = sanitizedDrill;
+  
+  if (warnings.length > 0) {
+    console.log("[DRILL_SANITIZER] Applied fixes:", warnings);
+  }
 
   // Youth guards / structural guards.
   applyYouthGuards(drill, input);
@@ -71,15 +272,18 @@ export async function generateAndReviewDrill(
   }
 
   // Let the shared post-processor handle goalMode, diagram, equipment, etc.
+  let processedFields: any = {};
   try {
-    postProcessDrill({ json: drill }, input);
-  } catch {
-    // never hard-crash on post-processing
+    processedFields = postProcessDrill({ json: drill }, input);
+  } catch (err) {
+    console.error("postProcessDrill error:", err);
+    // never hard-crash on post-processing, but log the error
   }
 
-  // 2) First QA (same LLM)
+  // 2) First QA (40s timeout - QA can be slow with large drill objects)
   const qaPrompt = buildQAReviewerPrompt(drill);
-  const qaText = await generateText(qaPrompt);
+  console.log(`[DRILL] Starting QA with ${qaPrompt.length} char prompt...`);
+  const qaText = await generateText(qaPrompt, { timeout: 40000, retries: 0 }); // 40s timeout, no retries for speed
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error("LLM returned non-JSON QA");
 
@@ -90,8 +294,6 @@ export async function generateAndReviewDrill(
   const finalDrill = drill;
   const finalQa = qaJson;
 
-  // 4) Normalize goalsSupported from the final drill
-  const goalsSupported = normalizeGoals(finalDrill, input);
   // Average QA score
   const avgScore =
     finalQa?.scores
@@ -111,31 +313,73 @@ export async function generateAndReviewDrill(
   }
 
   // JSON we persist to the DB
+  // Use processedFields.json (cleaned) instead of finalDrill (may have forbidden keys)
   const jsonForDb = {
-    ...finalDrill,
-    goalsSupported,
+    ...(processedFields.json || finalDrill), // Use cleaned version if available
+    goalsSupported: processedFields.goalsSupported || [],
     qa: finalQa,
   };
 
-  // Persist drill
+  // Final cleanup: ensure forbidden keys are removed from jsonForDb
+  if (jsonForDb.diagramV1) {
+    delete jsonForDb.diagramV1;
+    console.log("🗑️ [DRILL] Removed diagramV1 from jsonForDb (final cleanup)");
+  }
+  if (jsonForDb.progression) {
+    delete jsonForDb.progression;
+    console.log("🗑️ [DRILL] Removed progression from jsonForDb (final cleanup)");
+  }
+  
+  console.log("💾 [DB SAVE] jsonForDb.organization type:", typeof jsonForDb.organization);
+  console.log("💾 [DB SAVE] jsonForDb.json?.organization type:", typeof jsonForDb.json?.organization);
+
+  // Persist drill with all normalized fields from postProcessDrill
   const created = await prisma.drill.create({
     data: {
-      title: jsonForDb.title ?? "Untitled",
+      title: processedFields.title || jsonForDb.title || "Untitled",
       gameModelId: input.gameModelId as any,
       phase: input.phase as any,
       zone: input.zone as any,
       ageGroup: input.ageGroup,
-      durationMin: jsonForDb.durationMin ?? input.durationMin ?? 25,
+      durationMin: processedFields.durationMin ?? input.durationMin ?? 25,
       qaScore: avgScore,
       approved: !!finalQa.pass,
-      numbersMin: input.numbersMin,
-      numbersMax: input.numbersMax,
-      gkOptional: input.goalsAvailable >= 1 ? false : !!input.gkOptional,
+      
+      // --- NORMALIZED FIELDS FROM POSTPROCESS ---
+      numbersMin: processedFields.numbersMin ?? input.numbersMin,
+      numbersMax: processedFields.numbersMax ?? input.numbersMax,
+      
+      principleIds: Array.isArray(processedFields.principleIds) 
+        ? processedFields.principleIds 
+        : [],
+      psychThemeIds: Array.isArray(processedFields.psychThemeIds) 
+        ? processedFields.psychThemeIds 
+        : [],
+      
+      energySystem: processedFields.energySystem ?? "Aerobic",
+      rpeMin: processedFields.rpeMin ?? 3,
+      rpeMax: processedFields.rpeMax ?? 6,
+      
+      goalsAvailable: processedFields.goalsAvailable ?? 0,
+      goalMode: processedFields.goalMode,
+      
+      // --- NEW: Formation & Level fields (from input, validated) ---
+      // Store attacking formation in formationUsed for backward compatibility
+      // Both formations are also stored in json.formationAttacking and json.formationDefending
+      formationUsed: input.formationAttacking, // Use attacking formation as primary
+      playerLevel: input.playerLevel as any,
+      coachLevel: input.coachLevel as any,
+      
+      needGKFocus: processedFields.needGKFocus ?? false,
+      gkFocus: processedFields.gkFocus,
+      
       spaceConstraint: input.spaceConstraint as any,
-      goalsSupported: Array.isArray(goalsSupported) ? goalsSupported : [],
+      
       json: jsonForDb,
     },
   });
+  
+  console.log("✅ [DB CREATED] created.json.organization type:", typeof (created.json as any)?.organization);
 
   // Persist QA snapshot
   await prisma.qAReport.create({
@@ -146,6 +390,35 @@ export async function generateAndReviewDrill(
       summary: finalQa.summary ?? "",
     },
   });
+
+  // --- DB CHECK: Verify critical fields were persisted correctly ---
+  const dbCheck = await prisma.drill.findUnique({
+    where: { id: created.id },
+    select: {
+      formationUsed: true,
+      playerLevel: true,
+      coachLevel: true,
+    },
+  });
+
+  if (!dbCheck?.formationUsed || !dbCheck?.playerLevel || !dbCheck?.coachLevel) {
+    throw new Error(
+      `DB_CHECK_FAILED: Critical fields missing after save. ` +
+      `formationUsed=${dbCheck?.formationUsed}, playerLevel=${dbCheck?.playerLevel}, coachLevel=${dbCheck?.coachLevel}`
+    );
+  }
+
+  if (
+    dbCheck.formationUsed !== input.formationAttacking ||
+    dbCheck.playerLevel !== input.playerLevel ||
+    dbCheck.coachLevel !== input.coachLevel
+  ) {
+    throw new Error(
+      `DB_CHECK_FAILED: Field mismatch after save. ` +
+      `Expected: formationUsed=${input.formationAttacking}, playerLevel=${input.playerLevel}, coachLevel=${input.coachLevel}. ` +
+      `Got: formationUsed=${dbCheck.formationUsed}, playerLevel=${dbCheck.playerLevel}, coachLevel=${dbCheck.coachLevel}`
+    );
+  }
 
     return {
     drill: created,

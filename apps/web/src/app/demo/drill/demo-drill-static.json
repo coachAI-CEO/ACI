@@ -1,17 +1,17 @@
 {
   "ok": true,
   "drill": {
-    "id": "b82f850b-3160-4cd0-9a61-804bc525aac5",
-    "title": "Final Third Overload & Finish",
+    "id": "demo-midfield-build-6v4-gk",
+    "title": "Midfield Build-Out 6v4 + GK",
     "gameModelId": "POSSESSION",
     "phase": "ATTACKING",
-    "zone": "ATTACKING_THIRD",
-    "ageGroup": "U12",
-    "durationMin": 25,
-    "qaScore": 4.428571428571429,
+    "zone": "MIDDLE_THIRD",
+    "ageGroup": "U14",
+    "durationMin": 22,
+    "qaScore": 4.5,
     "approved": true,
     "numbersMin": 10,
-    "numbersMax": 12,
+    "numbersMax": 16,
     "gkOptional": false,
     "spaceConstraint": "HALF",
     "goalsSupported": [],
@@ -19,220 +19,76 @@
       "qa": {
         "pass": true,
         "notes": [
-          "Clarity Error: The `progressions` array contains a significant error. It states adding a recovering defender creates a '6v5'. For a 4v3+GK base drill, this should be a 4v4+GK. The second `progression` array correctly identifies this as a '4v4 momentary transition'.",
-          "Data Inconsistency: The JSON contains two similar but conflicting keys: `progressions` and `progression`. These should be consolidated into a single, accurate list.",
-          "Realism vs. Pedagogy: The '3 pass minimum' constraint is a strong pedagogical tool for this topic, but coaches should be prepared to relax it if it stifles clear, realistic shooting opportunities that arise earlier.",
-          "Player Numbers: The organization (4v3+GK = 8 players) and the `numbers` key (10-12 players) are slightly disconnected. It should be clarified that the total player count includes substitutes/resting players to avoid confusion during setup.",
-          "Diagram Shape: The attacking shape is listed as '2-1-1' but the player roles/positions in the diagram (`Build-L`, `Build-R`, `CAM`, `Winger`) could be interpreted differently. While functional, clarifying the intended shape (e.g., 'a diamond with one player holding width') could improve clarity."
+          "Excellent alignment between the build-out topic and the positional structure (back four + pivot).",
+          "Constraints are purposeful and age-appropriate for U14 competitive players.",
+          "The defensive pressing cues are clear but leave room for guided discovery.",
+          "Session duration and work:rest structure are realistic for a main block within a 75–90 minute training."
         ],
         "scores": {
           "psych": 5,
           "safety": 5,
-          "clarity": 3,
+          "clarity": 4,
           "realism": 4,
           "gameModel": 5,
           "structure": 4,
           "constraints": 5
         },
-        "summary": "A strong, well-structured drill for teaching final third possession principles to a U12 group. The exercise shows excellent alignment with its stated game model and psychological theme, and its constraints are purposefully designed to drive specific behaviors. However, it is held back by significant clarity issues, including a major typo in a progression description and duplicate data keys, which require correction before implementation."
+        "summary": "A clean, game-realistic 6v4 + GK build-out exercise in the middle third that emphasizes positional play, pressing cues, and playing through pressure. Well-structured for U14 with clear constraints and coaching focus."
       },
-      "zone": "ATTACKING_THIRD",
+
+      "zone": "MIDDLE_THIRD",
       "phase": "ATTACKING",
-      "setup": "Set up 4v3+GK in Width of the 18-yard box to the halfway line (~44x35yd for U12). Coach at midfield with balls. Mark a wide channel (for winger isolation) and a cutback zone. Start from CAM on coach restart.",
-      "title": "Final Third Overload & Finish",
-      "diagram": {
-        "coach": {
-          "x": 10,
-          "y": 80,
-          "restart": "Coach plays into CAM to start each 90s rep"
-        },
-        "pitch": "CUSTOM",
-        "teams": [
-          {
-            "color": "blue",
-            "count": 4,
-            "label": "Attack"
-          },
-          {
-            "color": "red",
-            "count": 3,
-            "label": "Defend"
-          }
+      "setup": "Use half a pitch, oriented horizontally. Mark the middle third from the top of the penalty area to slightly past midfield. One full-size goal for the build-out team, two mini-goals at the halfway line for the pressing team. Balls with the coach beside the goal.",
+      "title": "Midfield Build-Out 6v4 + GK",
+
+      "teamShape": {
+        "formation": "4-3-3",
+        "attackRoles": [
+          { "role": "GK",  "line": "last", "side": "central" },
+          { "role": "RB",  "line": "back", "side": "right" },
+          { "role": "RCB", "line": "back", "side": "right" },
+          { "role": "LCB", "line": "back", "side": "left" },
+          { "role": "LB",  "line": "back", "side": "left" },
+          { "role": "DM",  "line": "middle", "side": "central" },
+          { "role": "CM",  "line": "middle", "side": "right" },
+          { "role": "CM",  "line": "middle", "side": "left" }
         ],
-        "arrows": [
-          {
-            "to": "CAM",
-            "from": "Build-L",
-            "toId": "A3",
-            "type": "pass",
-            "style": "solid",
-            "fromId": "A1"
-          },
-          {
-            "to": "Winger",
-            "from": "CAM",
-            "toId": "A4",
-            "type": "pass",
-            "style": "solid",
-            "fromId": "A3"
-          },
-          {
-            "to": "Endline",
-            "from": "Winger",
-            "toId": "M1",
-            "type": "dribble",
-            "style": "dotted",
-            "fromId": "A4"
-          },
-          {
-            "to": "CutbackSpot",
-            "from": "Endline",
-            "toId": "M2",
-            "type": "pass",
-            "style": "solid",
-            "fromId": "M1"
-          },
-          {
-            "to": "BoxRun",
-            "from": "Build-R",
-            "toId": "M3",
-            "type": "run",
-            "style": "dashed",
-            "fromId": "A2"
-          }
+        "defendRoles": [
+          { "role": "ST", "line": "front", "side": "right" },
+          { "role": "ST", "line": "front", "side": "left" },
+          { "role": "W",  "line": "wide",  "side": "right" },
+          { "role": "W",  "line": "wide",  "side": "left" }
         ],
-        "fieldSize": {
-          "widthYards": 44,
-          "lengthYards": 35
-        },
-        "miniGoals": 2,
-        "startingPositions": [
-          {
-            "x": 35,
-            "y": 70,
-            "id": "A1",
-            "team": "Attack",
-            "label": "Build-L"
-          },
-          {
-            "x": 60,
-            "y": 68,
-            "id": "A2",
-            "team": "Attack",
-            "label": "Build-R"
-          },
-          {
-            "x": 50,
-            "y": 55,
-            "id": "A3",
-            "team": "Attack",
-            "label": "CAM"
-          },
-          {
-            "x": 85,
-            "y": 48,
-            "id": "A4",
-            "team": "Attack",
-            "label": "Winger"
-          },
-          {
-            "x": 45,
-            "y": 40,
-            "id": "D1",
-            "team": "Defend",
-            "label": "CB-L"
-          },
-          {
-            "x": 55,
-            "y": 40,
-            "id": "D2",
-            "team": "Defend",
-            "label": "CB-R"
-          },
-          {
-            "x": 50,
-            "y": 52,
-            "id": "D3",
-            "team": "Defend",
-            "label": "DM"
-          },
-          {
-            "x": 50,
-            "y": 20,
-            "id": "G1",
-            "team": "GK",
-            "label": "GK"
-          },
-          {
-            "x": 92,
-            "y": 18,
-            "id": "M1",
-            "team": "Marker",
-            "label": "Endline"
-          },
-          {
-            "x": 56,
-            "y": 30,
-            "id": "M2",
-            "team": "Marker",
-            "label": "CutbackSpot"
-          },
-          {
-            "x": 54,
-            "y": 34,
-            "id": "M3",
-            "team": "Marker",
-            "label": "BoxRun"
-          }
+        "notes": "Attacking team uses a back four plus single pivot and one advanced CM. Pressing team sets a front two with wide screeners to lock play to one side."
+      },
+
+      "numbersOnField": {
+        "attackersOnField": 6,
+        "defendersOnField": 4,
+        "neutralsOnField": 1,
+        "gkForAttack": true,
+        "gkForDefend": false,
+        "totalPlayersOnField": 11
+      },
+
+      "roleUsage": {
+        "activeAttackRoles": [
+          "GK",
+          "RB",
+          "RCB",
+          "LCB",
+          "LB",
+          "DM",
+          "CM"
         ],
-        "startingShapeAttack": "2-1-1",
-        "startingShapeDefend": "2-1-0"
+        "activeDefendRoles": [
+          "ST",
+          "W"
+        ],
+        "activeNeutralRoles": [],
+        "notes": "Diagram shows the back four, pivot and one CM for the build-out, plus a 2+2 pressing structure for the defending team."
       },
-      "numbers": {
-        "max": 12,
-        "min": 10
-      },
-      "ageGroup": "U12",
-      "goalMode": "MINI2",
-      "equipment": [
-        "Cones",
-        "Bibs (2 colors)",
-        "Soccer balls",
-        "2 Mini-goals"
-      ],
-      "loadNotes": {
-        "rationale": "Short work intervals preserve decision quality and avoid excessive fatigue for U12.",
-        "structure": "8 x 90s with 90s rest (1:1) — rotate groups briskly"
-      },
-      "gkOptional": true,
-      "psychTheme": "Creativity & Problem-Solving",
-      "constraints": [
-        "Controlled start: Defenders cannot press beyond the CAM’s starting line until after the CAM’s first touch.",
-        "Attacking team must complete 3 passes before shooting.",
-        "A goal scored with a one-touch finish is worth double points.",
-        "Defending team has 8 seconds to score in a mini-goal after winning possession."
-      ],
-      "description": "A directional game focused on using a numerical advantage to create scoring opportunities in the attacking third. The attacking team learns to be patient in possession, recognize overloads, and execute final passes and shots, while the defending team works on staying compact and transitioning quickly.",
-      "durationMin": 25,
-      "gameModelId": "POSSESSION",
-      "progression": [
-        "Coaching challenge: Encourage third-man runs with guided questions and freeze moments.",
-        "Add one recovering defender from halfway on coach signal → creates 4v4 momentary transition."
-      ],
-      "organization": "Format: 4v3+GK (U12). Area: Width of the 18-yard box to the halfway line (~44x35yd for U12). Objective: POSSESSION principles (switch → third-man timing → cutback). Rotation via 90s bouts (1:1 rest).",
-      "progressions": [
-        "Add a recovering defender: One defender starts at the halfway line and can join the defense once the attacking team makes their first pass, making it a 6v5.",
-        "Introduce a 'Combination Zone' at the top of the penalty area. Goals resulting from an assist inside this zone are worth triple points."
-      ],
-      "scoringHints": [
-        "+1 bonus point for a goal scored by a third-man runner (e.g., CAM timing beyond the 9)."
-      ],
-      "coachingPoints": [
-        "Attacking Team: Quality and speed of pass. Movement to create space for self or others. Recognize the free player and exploit the overload. Decision making in front of goal (pass, dribble, or shoot).",
-        "Defending Team: Stay compact to protect the center. Communication and clear roles (pressure, cover, balance). Quick transition from defense to attack.",
-        "GK: starting position & communication on cutbacks; quick distribution on saves."
-      ],
-      "goalsAvailable": 2,
+
       "diagramV1": {
         "pitch": {
           "variant": "HALF",
@@ -248,154 +104,174 @@
         },
         "players": [
           {
-            "id": "A1",
-            "number": 8,
-            "team": "ATT",
-            "role": "Build-L",
-            "x": 35,
-            "y": 70,
-            "relativePosition": "half-space-left",
-            "facingAngle": 90,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "A2",
-            "number": 8,
-            "team": "ATT",
-            "role": "Build-R",
-            "x": 60,
-            "y": 68,
-            "relativePosition": "half-space-right",
-            "facingAngle": 90,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "A3",
-            "number": 10,
-            "team": "ATT",
-            "role": "AM",
-            "x": 50,
-            "y": 55,
-            "relativePosition": "central",
-            "facingAngle": 90,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "A4",
-            "number": 7,
-            "team": "ATT",
-            "role": "W",
-            "x": 85,
-            "y": 48,
-            "relativePosition": "wide-right",
-            "facingAngle": 90,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "D1",
-            "number": 4,
-            "team": "DEF",
-            "role": "CB",
-            "x": 45,
-            "y": 40,
-            "relativePosition": "central",
-            "facingAngle": 270,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "D2",
-            "number": 5,
-            "team": "DEF",
-            "role": "CB",
-            "x": 55,
-            "y": 40,
-            "relativePosition": "central",
-            "facingAngle": 270,
-            "labelStyle": "number-and-role"
-          },
-          {
-            "id": "D3",
-            "number": 6,
-            "team": "DEF",
-            "role": "DM",
-            "x": 50,
-            "y": 52,
-            "relativePosition": "central",
-            "facingAngle": 270,
-            "labelStyle": "number-and-role"
-          },
-          {
             "id": "G1",
             "number": 1,
             "team": "NEUTRAL",
             "role": "GK",
             "x": 50,
-            "y": 20,
+            "y": 18,
             "relativePosition": "central",
-            "facingAngle": 90,
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A1",
+            "number": 2,
+            "team": "ATT",
+            "role": "RB",
+            "x": 32,
+            "y": 30,
+            "relativePosition": "wide-right",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A2",
+            "number": 4,
+            "team": "ATT",
+            "role": "RCB",
+            "x": 42,
+            "y": 32,
+            "relativePosition": "central-right",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A3",
+            "number": 5,
+            "team": "ATT",
+            "role": "LCB",
+            "x": 58,
+            "y": 32,
+            "relativePosition": "central-left",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A4",
+            "number": 3,
+            "team": "ATT",
+            "role": "LB",
+            "x": 68,
+            "y": 30,
+            "relativePosition": "wide-left",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A5",
+            "number": 6,
+            "team": "ATT",
+            "role": "DM",
+            "x": 50,
+            "y": 42,
+            "relativePosition": "central",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "A6",
+            "number": 8,
+            "team": "ATT",
+            "role": "CM",
+            "x": 62,
+            "y": 50,
+            "relativePosition": "half-space-left",
+            "facingAngle": 180,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "D1",
+            "number": 9,
+            "team": "DEF",
+            "role": "ST",
+            "x": 46,
+            "y": 60,
+            "relativePosition": "central-right",
+            "facingAngle": 0,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "D2",
+            "number": 10,
+            "team": "DEF",
+            "role": "ST",
+            "x": 54,
+            "y": 60,
+            "relativePosition": "central-left",
+            "facingAngle": 0,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "D3",
+            "number": 7,
+            "team": "DEF",
+            "role": "W",
+            "x": 30,
+            "y": 56,
+            "relativePosition": "wide-right",
+            "facingAngle": 0,
+            "labelStyle": "number-and-role"
+          },
+          {
+            "id": "D4",
+            "number": 11,
+            "team": "DEF",
+            "role": "W",
+            "x": 70,
+            "y": 56,
+            "relativePosition": "wide-left",
+            "facingAngle": 0,
             "labelStyle": "number-and-role"
           }
         ],
         "coach": {
-          "x": 10,
-          "y": 80,
+          "x": 18,
+          "y": 24,
           "label": "Coach",
-          "note": "Coach plays into CAM to start each 90s rep"
+          "note": "Coach starts play with GK or CB from the goal area."
         },
         "balls": [],
         "cones": [],
         "arrows": [
           {
-            "from": {
-              "playerId": "A1"
-            },
-            "to": {
-              "playerId": "A3"
-            },
+            "from": { "playerId": "G1" },
+            "to": { "playerId": "A2" },
             "type": "pass",
             "style": "solid",
             "weight": "normal"
           },
           {
-            "from": {
-              "playerId": "A3"
-            },
-            "to": {
-              "playerId": "A4"
-            },
+            "from": { "playerId": "A2" },
+            "to": { "playerId": "A5" },
             "type": "pass",
             "style": "solid",
             "weight": "normal"
           },
           {
-            "from": {
-              "playerId": "A4"
-            },
-            "to": {
-              "playerId": "M1"
-            },
+            "from": { "playerId": "A5" },
+            "to": { "playerId": "A6" },
+            "type": "pass",
+            "style": "solid",
+            "weight": "normal"
+          },
+          {
+            "from": { "playerId": "A5" },
+            "to": { "playerId": "A1" },
+            "type": "pass",
+            "style": "solid",
+            "weight": "normal"
+          },
+          {
+            "from": { "playerId": "D1" },
+            "to": { "playerId": "A2" },
             "type": "run",
-            "style": "dotted",
+            "style": "dashed",
             "weight": "normal"
           },
           {
-            "from": {
-              "playerId": "M1"
-            },
-            "to": {
-              "playerId": "M2"
-            },
-            "type": "pass",
-            "style": "solid",
-            "weight": "normal"
-          },
-          {
-            "from": {
-              "playerId": "A2"
-            },
-            "to": {
-              "playerId": "M3"
-            },
+            "from": { "playerId": "D2" },
+            "to": { "playerId": "A5" },
             "type": "run",
             "style": "dashed",
             "weight": "normal"
@@ -409,35 +285,73 @@
             "type": "BIG",
             "width": 12,
             "x": 50,
-            "y": 10,
-            "facingAngle": 90,
+            "y": 12,
+            "facingAngle": 180,
             "teamAttacks": "ATT"
           },
           {
             "id": "MG1",
             "type": "MINI",
             "width": 6,
-            "x": 25,
-            "y": 90,
-            "facingAngle": 270,
+            "x": 30,
+            "y": 80,
+            "facingAngle": 0,
             "teamAttacks": "DEF"
           },
           {
             "id": "MG2",
             "type": "MINI",
             "width": 6,
-            "x": 75,
-            "y": 90,
-            "facingAngle": 270,
+            "x": 70,
+            "y": 80,
+            "facingAngle": 0,
             "teamAttacks": "DEF"
           }
         ]
-      }
+      },
+      "loadNotes": {
+        "rationale": "Focused main block for build-out principles with repeated exposure under moderate pressure.",
+        "structure": "4 x 4-minute sets, 2-minute coaching/rotation (24 minutes total including rest)."
+      },
+      "gkOptional": false,
+      "psychTheme": "Composure & Scanning",
+      "sessionObjective": "Coach the back four and pivot to build through the middle third against a 2+2 press while maintaining composure and finding the free player.",
+      "constraints": [
+        "Attacking team must involve the pivot (DM) at least once before playing beyond the midline.",
+        "Goals for the pressing team (DEF) only count from counter-attacks into the mini-goals within 6 seconds of winning the ball.",
+        "If the attacking team loses the ball, they must immediately counter-press for 3 seconds before dropping.",
+        "GK must play short (no clipped balls beyond the halfway line on first action)."
+      ],
+      "description": "A 6v4 + GK build-out scenario in the middle third where the back four and pivot learn to open passing lanes, recognize pressure cues, and play through or around a compact front four press. The defending team practices coordinated triggers, steering play to one side and attacking quickly into mini-goals.",
+      "difficulty": 3,
+      "coachingLevel": "D/C License or experienced grassroots",
+      "playerLevel": "Competitive U14 (pre-ECNL/NPL)",
+      "progression": [
+        "Allow one extra midfielder from the attacking team to join from the far side after the first pass to create a 7v4 and reward switches of play.",
+        "Tighten time constraints for the build-out (must cross the midline within 10 seconds) to train quicker circulation under pressure."
+      ],
+      "organization": "Format: 6v4 + GK. Area: Half pitch, focused on the middle third. Attacking team (blue) builds from the GK and back four with a pivot and one CM. Defending team (red) presses with a front two and two wide screeners. Full-size goal for the build-out team, two mini-goals at the halfway line for the pressing team.",
+      "progressions": [
+        "Add a second pivot (another CM) to create a 7v4 overload and challenge the defending team to press higher or drop into a mid-block.",
+        "Flip the pressing direction after several reps so the build-out team must learn to solve the problem on both sides."
+      ],
+      "scoringHints": [
+        "1 point for progressing beyond the midline in control.",
+        "2 points for a goal scored after breaking the first pressing line with a vertical pass.",
+        "2 points for the defending team scoring into a mini-goal within 6 seconds of winning the ball."
+      ],
+      "coachingPoints": [
+        "GK and CBs: Body shape to see both sides, first touch away from pressure, play the way you face if pressed.",
+        "DM: Constantly adjust angle and distance to be the free player; scan before receiving; play one or two-touch to accelerate circulation.",
+        "Fullbacks: Start high and wide, time drops to receive on the half-turn; recognize when to step in with the ball.",
+        "Pressing team: Curved runs to screen the pivot, clear communication of triggers (poor touch, backwards pass, or bounce into the GK)."
+      ],
+      "goalsAvailable": 1
     },
     "visualThumbSvg": null,
     "visualHash": null,
-    "createdAt": "2025-11-19T17:13:34.812Z",
-    "updatedAt": "2025-11-19T17:13:34.812Z"
+    "createdAt": "2025-11-20T18:00:00.000Z",
+    "updatedAt": "2025-11-20T18:00:00.000Z"
   },
   "qa": {
     "pass": true,
@@ -445,37 +359,29 @@
       "structure": 4,
       "gameModel": 5,
       "psych": 5,
-      "clarity": 3,
+      "clarity": 4,
       "realism": 4,
       "constraints": 5,
       "safety": 5
     },
-    "summary": "A strong, well-structured drill for teaching final third possession principles to a U12 group. The exercise shows excellent alignment with its stated game model and psychological theme, and its constraints are purposefully designed to drive specific behaviors. However, it is held back by significant clarity issues, including a major typo in a progression description and duplicate data keys, which require correction before implementation.",
+    "summary": "Demo QA wrapper for the ACI frontend. This drill is suitable as a static example for the diagram and card layout.",
     "notes": [
-      "Clarity Error: The `progressions` array contains a significant error. It states adding a recovering defender creates a '6v5'. For a 4v3+GK base drill, this should be a 4v4+GK. The second `progression` array correctly identifies this as a '4v4 momentary transition'.",
-      "Data Inconsistency: The JSON contains two similar but conflicting keys: `progressions` and `progression`. These should be consolidated into a single, accurate list.",
-      "Realism vs. Pedagogy: The '3 pass minimum' constraint is a strong pedagogical tool for this topic, but coaches should be prepared to relax it if it stifles clear, realistic shooting opportunities that arise earlier.",
-      "Player Numbers: The organization (4v3+GK = 8 players) and the `numbers` key (10-12 players) are slightly disconnected. It should be clarified that the total player count includes substitutes/resting players to avoid confusion during setup.",
-      "Diagram Shape: The attacking shape is listed as '2-1-1' but the player roles/positions in the diagram (`Build-L`, `Build-R`, `CAM`, `Winger`) could be interpreted differently. While functional, clarifying the intended shape (e.g., 'a diamond with one player holding width') could improve clarity."
+      "Static demo drill JSON, not yet sourced from the live API.",
+      "Includes teamShape, numbersOnField, and roleUsage for future backend wiring."
     ]
   },
   "fixDecision": {
-    "code": "PATCHABLE",
-    "reason": "All QA dimensions are ≥3 but at least one = 3 → patchable with targeted fixes."
+    "code": "OK",
+    "reason": "Static vetted example for UI demo; already in high-quality state."
   },
   "fixer": {
     "decision": {
-      "code": "PATCHABLE",
-      "reason": "All QA dimensions are ≥3 but at least one = 3 → patchable with targeted fixes."
+      "code": "OK",
+      "reason": "No auto-fix applied for static demo drill."
     },
     "raw": {
       "fixed": false,
-      "actions": [
-        {
-          "code": "PATCHABLE",
-          "reason": "LLM fixer disabled by env (USE_LLM_FIXER != '1'); returning original drill."
-        }
-      ]
+      "actions": []
     }
   }
 }

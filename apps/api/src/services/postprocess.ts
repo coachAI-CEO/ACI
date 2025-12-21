@@ -1,4 +1,6 @@
 import assert from "node:assert";
+import type { EnergySystem } from "../types/drill";
+import { normalizeGoalFields } from "./goal-normalizer";
 
 // --- Canonicalization helpers ---
 
@@ -197,37 +199,84 @@ function __canonEquip(list: string[]): string[] {
   return uniq;
 }
 
-export function postProcessDrill(drill: any, body?: any) {
+export function postProcessDrill({ json }: { json: any }, input: any) {
+  const body = json || {};
+
   // guard
-  assert(drill && typeof drill === "object", "postProcessDrill: drill must be object");
-  drill.json = drill.json || {};
-  const json = drill.json;
+  assert(json && typeof json === "object", "postProcessDrill: drill must be object");
+  json.json = json.json || {};
+  const raw = json.json;
+  
+  console.log("📦 [POSTPROCESS] raw.organization type:", typeof raw.organization);
+  console.log("📦 [POSTPROCESS] body.organization type:", typeof body.organization);
 
-  // 1) pick goalsAvailable from request body first, fallback to json
-  const goalsAvailable: number =
-    (body && typeof body.goalsAvailable === "number"
-      ? body.goalsAvailable
-      : undefined) ??
-    (typeof json.goalsAvailable === "number" ? json.goalsAvailable : 0);
+  // Compute QA score and approval in the same scope
+  const qa = body.qa || {};
+  const qaScore =
+    qa?.scores
+      ? Object.values(qa.scores).reduce(
+          (a: number, b: any) => a + Number(b || 0),
+          0
+        ) / Math.max(1, Object.keys(qa.scores || {}).length)
+      : null;
+  const approved = !!qa.pass;
 
-  // 2) decide mode + diagram + GK presence
-  let goalMode: "MINI2" | "LARGE" | null = null;
+  // --- NORMALIZE GOAL FIELDS USING SINGLE HELPER ---
+  const goalNormalization = normalizeGoalFields({
+    goalsAvailable: typeof body.goalsAvailable === "number" 
+      ? body.goalsAvailable 
+      : input.goalsAvailable ?? 0,
+    rawGoalMode: body.goalMode,
+    json: body,
+  });
+
+  const { goalMode, goalsAvailable, goalsSupported } = goalNormalization;
+
+  // Update diagram based on normalized goalMode
   ensureDiagram(json);
-
-  if (goalsAvailable >= 2) {
-    goalMode = "MINI2";
+  if (goalMode === "MINI2") {
     json.diagram.miniGoals = 2;
     setGKPresence(json, false);
-  } else if (goalsAvailable === 1) {
-    goalMode = "LARGE";
+  } else if (goalMode === "LARGE") {
     json.diagram.miniGoals = 0;
     setGKPresence(json, true);
   } else {
-    goalMode = null;
     json.diagram.miniGoals = 0;
     setGKPresence(json, false);
   }
   json.goalMode = goalMode;
+
+  // --- NEW LOCAL HELPERS (defined once, used in return) ---
+  const principleIds: string[] = Array.isArray(body.principleIds)
+    ? body.principleIds
+    : [];
+
+  const psychThemeIds: string[] = Array.isArray(body.psychThemeIds)
+    ? body.psychThemeIds
+    : [];
+
+  const energySystem: EnergySystem =
+    (body.energySystem as EnergySystem) ?? "Aerobic";
+
+  const rpeMin: number =
+    typeof body.rpeMin === "number"
+      ? body.rpeMin
+      : 3;
+
+  const rpeMax: number =
+    typeof body.rpeMax === "number"
+      ? body.rpeMax
+      : 6;
+
+  const numbersMin: number =
+    typeof body.numbers?.min === "number"
+      ? body.numbers.min
+      : input.numbersMin;
+
+  const numbersMax: number =
+    typeof body.numbers?.max === "number"
+      ? body.numbers.max
+      : input.numbersMax;
 
   // 3) equipment canonicalization + enforcement by mode
   const essentials = ["Bibs (2 colors)", "Soccer balls", "Cones"];
@@ -291,4 +340,101 @@ export function postProcessDrill(drill: any, body?: any) {
   } catch {
     /* noop */
   }
+
+  // Ensure body.json.organization is set to the processed value (if it's an object)
+  const processedOrg = raw.organization ?? body.organization ?? "";
+  console.log("🔧 [POSTPROCESS] processedOrg type:", typeof processedOrg);
+  console.log("🔧 [POSTPROCESS] body.json exists?", !!body.json);
+  if (typeof processedOrg === "object" && body.json) {
+    body.json.organization = processedOrg;
+    console.log("✅ [POSTPROCESS] Set body.json.organization to object");
+  } else {
+    console.log("⚠️ [POSTPROCESS] NOT setting body.json.organization (processedOrg type:", typeof processedOrg, ", body.json:", !!body.json, ")");
+  }
+  
+  // Remove forbidden keys from body.json (sanitizer should have done this, but ensure it)
+  // Remove unconditionally - these keys are forbidden regardless
+  if (body.json) {
+    if (body.json.diagramV1) {
+      delete body.json.diagramV1;
+      console.log("🗑️ [POSTPROCESS] Removed diagramV1 from body.json (forbidden key)");
+    }
+    if (body.json.progression) {
+      delete body.json.progression;
+      console.log("🗑️ [POSTPROCESS] Removed progression from body.json (forbidden key)");
+    }
+  }
+  
+  // Also remove from body itself (top level) if they exist
+  if (body.diagramV1) {
+    delete body.diagramV1;
+    console.log("🗑️ [POSTPROCESS] Removed diagramV1 from body (forbidden key)");
+  }
+  if (body.progression) {
+    delete body.progression;
+    console.log("🗑️ [POSTPROCESS] Removed progression from body (forbidden key)");
+  }
+  
+  return {
+    title: body.title ?? "",
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+    zone: input.zone,
+    ageGroup: input.ageGroup,
+    durationMin: input.durationMin ?? body.durationMin ?? 20,
+    qaScore,
+    approved,
+    json: body,
+
+    // --- NORMALIZED METADATA FIELDS ---
+    principleIds,
+    psychThemeIds,
+
+    energySystem,
+
+    rpeMin,
+    rpeMax,
+
+    numbersMin,
+    numbersMax,
+
+    spaceConstraint: input.spaceConstraint,
+
+    // Goal fields from normalized result
+    goalsAvailable,
+    goalMode,
+    goalsSupported,
+
+    // --- NEW: Formation & Level fields (source of truth: input) ---
+    formationUsed: input.formationAttacking, // Use attacking formation as primary for backward compatibility
+    playerLevel: input.playerLevel,
+    coachLevel: input.coachLevel,
+
+    needGKFocus: !!body.needGKFocus,
+    gkFocus:
+      typeof body.gkFocus === "string"
+        ? body.gkFocus
+        : null,
+
+    // Check nested raw.X first (sanitizer fixes these), then body.X
+    organization: processedOrg,
+    description: raw.description ?? body.description ?? "",
+    coachingPoints: raw.coachingPoints ?? body.coachingPoints ?? [],
+    progressions:
+      raw.progressions ??
+      body.progressions ??
+      body.progression ??
+      [],
+    scoringHints: raw.scoringHints ?? body.scoringHints ?? [],
+    constraints: raw.constraints ?? body.constraints ?? [],
+    equipment: raw.equipment ?? body.equipment ?? [],
+
+    diagramV1: raw.diagramV1 ?? body.diagramV1 ?? raw.diagram ?? body.diagram ?? {},
+    diagram: raw.diagram ?? body.diagram ?? undefined,
+
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+
+    // ...existing fields...
+  };
 }

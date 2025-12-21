@@ -29,15 +29,8 @@ export async function saveGeneratedDrill(json: any) {
     durationMin: Math.trunc(Number(json?.durationMin ?? 20)),
     numbersMin: Math.trunc(Number(json?.numbersMin ?? 10)),
     numbersMax: Math.trunc(Number(json?.numbersMax ?? 12)),
-    gkOptional: Boolean(json?.gkOptional ?? false),
 
     spaceConstraint: sc as Prisma.DrillCreateInput["spaceConstraint"],
-
-    goalsSupported: Array.isArray(json?.goalsSupported)
-      ? (json.goalsSupported as number[])
-      : typeof json?.goalsAvailable === "number"
-        ? [Number(json.goalsAvailable)]
-        : [],
 
     json: json ?? {},
   };

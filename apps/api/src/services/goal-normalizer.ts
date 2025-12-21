@@ -1,80 +1,66 @@
-export type GoalMode = "NOGOAL" | "LARGE" | "MINI2";
+/**
+ * Goal normalization module
+ * Provides a single function to normalize goal-related fields deterministically
+ */
 
-type Team = { color: string; count: number; label: string };
-type Diagram = {
-  miniGoals?: number;
-  teams?: Team[];
-  [k: string]: any;
-};
+export type GoalMode = "MINI2" | "LARGE" | null;
 
-type DrillJson = {
-  gameModel?: string;
-  equipment?: string[];
-  goalMode?: GoalMode | null;
-  diagram?: Diagram;
-  [k: string]: any;
-};
-
-type Input = {
-  goalsAvailable?: number;
-  [k: string]: any;
-};
-
-function ensureArray<T>(x: T[] | undefined): T[] {
-  return Array.isArray(x) ? x : [];
+interface NormalizeGoalsInput {
+  goalsAvailable?: number | null;
+  rawGoalMode?: string | null;
+  json?: any;
 }
 
-function setTeams(diagram: Diagram, goalMode: GoalMode) {
-  const teams = ensureArray(diagram.teams);
-  const withoutGK = teams.filter(t => t.label !== "GK" && t.color.toLowerCase() !== "green");
+interface NormalizeGoalsOutput {
+  goalMode: GoalMode;
+  goalsAvailable: number;
+  goalsSupported: number[];
+}
 
-  if (goalMode === "LARGE") {
-    // ensure a GK team exists (green, count 1)
-    const hasGK = teams.some(t => t.label === "GK" || t.color.toLowerCase() === "green");
-    diagram.teams = hasGK ? teams : [...withoutGK, { color: "green", count: 1, label: "GK" }];
-  } else {
-    // remove GK if present
-    diagram.teams = withoutGK;
+/**
+ * Normalize goal mode and availability
+ * 
+ * Policy:
+ * - goalsAvailable === 0 → goalMode = null
+ * - goalsAvailable === 1 → goalMode = "LARGE" (one full-size goal + GK)
+ * - goalsAvailable >= 2 → goalMode = "MINI2" (two mini goals)
+ * - goalsSupported reflects adaptability (what goal configs this drill can support)
+ */
+export function normalizeGoalFields(input: NormalizeGoalsInput): NormalizeGoalsOutput {
+  const goalsAvailable = typeof input.goalsAvailable === "number" 
+    ? input.goalsAvailable 
+    : 0;
+
+  let goalMode: GoalMode = null;
+  let goalsSupported: number[] = [];
+
+  if (goalsAvailable === 0) {
+    goalMode = null;
+    goalsSupported = [0];
+  } else if (goalsAvailable === 1) {
+    goalMode = "LARGE";
+    goalsSupported = [1];
+  } else if (goalsAvailable >= 2) {
+    goalMode = "MINI2";
+    goalsSupported = [2];
   }
-}
 
-function normalizeEquipment(eq: string[] | undefined, goalMode: GoalMode): string[] {
-  const list = ensureArray(eq).slice();
-
-  // remove any existing goal mentions (case-insensitive)
-  const rm = (s: string) => !/mini-?goals?|full[- ]?size(d)? goals?|full[- ]?size(d)? goal/i.test(s);
-  const cleaned = list.filter(rm);
-
-  if (goalMode === "LARGE") {
-    cleaned.push("1 Full-size goal");
-  } else if (goalMode === "MINI2") {
-    cleaned.push("2 Mini-goals");
+  // Check if drill JSON indicates flexibility (has both mini and large goal equipment)
+  // This would allow goalsSupported to include multiple values
+  if (input.json?.equipment) {
+    const eq = Array.isArray(input.json.equipment) ? input.json.equipment : [];
+    const hasMini = eq.some((e: string) => /mini[\-\s]?goal/i.test(String(e)));
+    const hasLarge = eq.some((e: string) => /(full[\-\s]?size|large)[\s]?goal/i.test(String(e)));
+    
+    if (hasMini && hasLarge && !goalsSupported.includes(1) && !goalsSupported.includes(2)) {
+      // Drill could support both configurations
+      goalsSupported = [1, 2];
+    }
   }
-  // NOGOAL => no goals re-added
-  return cleaned;
-}
 
-export function normalizeGoals(drill: { json?: DrillJson }, input: Input) {
-  if (!drill || !drill.json) return;
-
-  const j = drill.json;
-  const goals = typeof input.goalsAvailable === "number" ? input.goalsAvailable : 0;
-
-  let mode: GoalMode = "NOGOAL";
-  if (goals >= 2) mode = "MINI2";
-  else if (goals === 1) mode = "LARGE";
-  else mode = "NOGOAL";
-
-  j.goalMode = mode;
-
-  // diagram
-  j.diagram = j.diagram || {};
-  if (mode === "MINI2") j.diagram.miniGoals = 2;
-  else j.diagram.miniGoals = 0;
-
-  // GK team presence
-  setTeams(j.diagram, mode);
-
-  // equipment normalization
-  j.equipment = normalizeEquipment(j.equipment, mode);
+  return {
+    goalMode,
+    goalsAvailable,
+    goalsSupported,
+  };
 }

@@ -11,19 +11,60 @@ export function applyYouthGuards(drill: any, input: any) {
   const hasGK = (input?.goalsAvailable ?? 0) >= 1;
 
   // === 1) Time: switch to 90s work / 90s rest (1:1), short high-quality bouts
+  const ageGroup = input?.ageGroup || "U12";
   drill.loadNotes = {
     structure: "8 x 90s with 90s rest (1:1) — rotate groups briskly",
-    rationale: "Short work intervals preserve decision quality and avoid excessive fatigue for U12."
+    rationale: `Short work intervals preserve decision quality and avoid excessive fatigue for ${ageGroup}.`
   };
 
-  // === 2) Area: reduce from half pitch → “18-yard-box width to halfway” (~44x35yd U12)
-  const areaText = "Width of the 18-yard box to the halfway line (~44x35yd for U12)";
+  // === 2) Area: reduce from half pitch → "18-yard-box width to halfway" (~44x35yd for age group)
+  const areaText = `Width of the 18-yard box to the halfway line (~44x35yd for ${ageGroup})`;
   drill.setup =
     `Set up ${ATK}v${DEF}${hasGK?'+GK':''} in ${areaText}. ` +
     `Coach at midfield with balls. Mark a wide channel (for winger isolation) and a cutback zone. Start from CAM on coach restart.`;
-  drill.organization =
-    `Format: ${ATK}v${DEF}${hasGK?'+GK':''} (U12). Area: ${areaText}. ` +
-    `Objective: POSSESSION principles (switch → third-man timing → cutback). Rotation via 90s bouts (1:1 rest).`;
+  
+  // Preserve organization object if it exists, otherwise create structured object from string
+  if (typeof drill.organization === "object" && drill.organization !== null) {
+    // Already an object - preserve it but ensure it has required fields
+    if (!drill.organization.setupSteps) {
+      drill.organization.setupSteps = [
+        `Mark out a 44x35 yard area using cones.`,
+        `Split players into two teams and assign colored bibs.`,
+        `Position players according to the starting formation.`,
+        `Place the coach at the designated restart position.`,
+        `Prepare multiple balls at the coach's position.`,
+        `Explain the objective and scoring rules to all players.`
+      ];
+    }
+    if (!drill.organization.area) {
+      drill.organization.area = { lengthYards: 44, widthYards: 35 };
+    }
+    if (!drill.organization.rotation) {
+      drill.organization.rotation = "Rotate players every 2-3 minutes or after scoring events.";
+    }
+    if (!drill.organization.restarts) {
+      drill.organization.restarts = "Coach restarts play after goals, out of bounds, or stoppages.";
+    }
+    if (!drill.organization.scoring) {
+      drill.organization.scoring = "Standard scoring: 1 point per goal.";
+    }
+  } else {
+    // Convert string to structured object
+    drill.organization = {
+      setupSteps: [
+        `Mark out a 44x35 yard area using cones.`,
+        `Split players into two teams and assign colored bibs.`,
+        `Position players according to the starting formation.`,
+        `Place the coach at the designated restart position.`,
+        `Prepare multiple balls at the coach's position.`,
+        `Explain the objective and scoring rules to all players.`
+      ],
+      area: { lengthYards: 44, widthYards: 35 },
+      rotation: "Rotate players every 2-3 minutes or after scoring events.",
+      restarts: "Coach restarts play after goals, out of bounds, or stoppages.",
+      scoring: "Standard scoring: 1 point per goal."
+    };
+  }
 
   // === 3) Diagram coherence (counts, shapes, custom size), arrows for combo → endline → cutback + box run
   drill.diagram = ensureObj(drill.diagram);
@@ -81,8 +122,9 @@ export function applyYouthGuards(drill: any, input: any) {
   }
   drill.constraints = constraintsOut;
 
-  // === 5) Progressions: reframe “third-man” as coaching challenge, not a rule; keep one recovering-def step
-  const progIn = ensureArr(drill.progression);
+  // === 5) Progressions: reframe "third-man" as coaching challenge, not a rule; keep one recovering-def step
+  // Read from both progression (singular, forbidden) and progressions (plural, correct)
+  const progIn = ensureArr(drill.progression ?? drill.progressions);
   const progOut: string[] = [];
   let addedRecovering = false;
   for (const p of progIn) {
@@ -110,7 +152,12 @@ export function applyYouthGuards(drill: any, input: any) {
   if (!addedRecovering) {
     progOut.push("Add one recovering defender from halfway on coach signal → creates 4v4 momentary transition.");
   }
-  drill.progression = progOut;
+  // Use 'progressions' (plural) not 'progression' (singular) - singular is forbidden
+  drill.progressions = progOut;
+  // Remove singular if it exists
+  if (drill.progression) {
+    delete drill.progression;
+  }
 
   // === 6) Scoring: make third-man a bonus (not mandatory)
   const scoring = ensureArr((drill as any).scoringHints);

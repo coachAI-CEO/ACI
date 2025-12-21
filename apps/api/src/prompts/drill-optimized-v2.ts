@@ -10,7 +10,8 @@ export interface DrillPromptInput {
   spaceConstraint: string;
   durationMin?: number;
   
-  formationUsed: string;
+  formationAttacking: string;
+  formationDefending: string;
   playerLevel: string;
   coachLevel: string;
 }
@@ -42,8 +43,8 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
           "Place two mini-goals 10 yards apart on one end line",
           "Place one full-size goal with goalkeeper on the opposite end",
           "Divide 9 players into two teams: 4 attackers (blue), 4 defenders (red), 1 goalkeeper",
-          "Position attackers in a 2-2 formation within the area",
-          "Position defenders to mark attackers closely",
+          "Position attackers in their specified attacking formation within the area",
+          "Position defenders in their specified defending formation to mark attackers closely",
           "Coach stands at the sideline with multiple balls ready",
           "Start play with coach passing ball to an attacking player"
         ],
@@ -91,7 +92,10 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "   The SAME numbers must appear in: description text, organization.setupSteps, diagram.players array, numbersOnField object.",
     "   Example: If description says '4v4+GK', then setupSteps must say '4 attackers, 4 defenders, 1 GK',",
     "   diagram must have 9 players total, and numbersOnField must be {attackersOnField: 4, defendersOnField: 4, gkForDefend: true, totalPlayersOnField: 9}",
-    "6. formationUsed=" + input.formationUsed + " → roles (e.g., 4-3-3 uses ST/LW/RW, not generic 'forward').",
+    "6. FORMATIONS:",
+    "   - Attacking formation: " + input.formationAttacking + " → ATT team roles (e.g., 4-3-3 uses ST/LW/RW, not generic 'forward').",
+    "   - Defending formation: " + input.formationDefending + " → DEF team roles (e.g., 4-4-2 uses CB/LB/RB, not generic 'defender').",
+    "   - Position players in diagram according to their team's formation.",
     "7. playerLevel=" + input.playerLevel + ": BEGINNER=simple, INTERMEDIATE=some combinations, ADVANCED=complex, game-realistic.",
     "8. coachLevel=" + input.coachLevel + ": GRASSROOTS=simple language, USSF_C=moderate detail, USSF_B_PLUS=advanced tactical detail.",
     "9. spaceConstraint=" + input.spaceConstraint + " sets area size; goalsAvailable=" + input.goalsAvailable + " sets goalMode (0=NONE, 1=LARGE, 2+=MINI2).",
@@ -99,7 +103,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "REQUIRED FIELDS:",
     "{",
     '  "title": string, "ageGroup": "' + input.ageGroup + '", "phase": "' + input.phase + '", "zone": "' + input.zone + '",',
-    '  "gameModelId": "' + input.gameModelId + '", "formationUsed": "' + input.formationUsed + '",',
+    '  "gameModelId": "' + input.gameModelId + '", "formationAttacking": "' + input.formationAttacking + '", "formationDefending": "' + input.formationDefending + '",',
     '  "playerLevel": "' + input.playerLevel + '", "coachLevel": "' + input.coachLevel + '",',
     '  "description": string,  // MUST be ≥40 chars. 2-3 sentences explaining what players DO (actions, not just objective).',
     '    // ❌ BAD: "A possession game in the final third"',
@@ -142,7 +146,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     '  "goalMode": string, "goalsAvailable": ' + input.goalsAvailable + ', "gkOptional": ' + (input.gkOptional ? 'true' : 'false'),
     '}',
     "",
-    "DIAGRAM: ATT attacks bottom→top (y: 80→10), x: 0–100. Position roles per formationUsed. DEF faces 180° for pressing. Keep spacing realistic and age-appropriate.",
+    "DIAGRAM: ATT attacks bottom→top (y: 80→10), x: 0–100. Position ATT players per formationAttacking=" + input.formationAttacking + ". Position DEF players per formationDefending=" + input.formationDefending + ". DEF faces 180° for pressing. Keep spacing realistic and age-appropriate.",
     "",
     "⚠️ VALIDATION CHECKLIST - Run this BEFORE outputting JSON (ALL must pass or clarity=2):",
     "",

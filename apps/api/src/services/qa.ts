@@ -1,3 +1,5 @@
+import type { Drill } from "../types/drill";
+
 export type DrillQAScores = {
   structure: number;
   gameModel: number;
@@ -162,3 +164,7 @@ export function runDrillQAStub(drill: any): DrillQA {
  * This allows callers to depend on runDrillQA while we wire the full LLM reviewer.
  */
 export const runDrillQA = runDrillQAStub;
+
+// Use DrillLike in function signatures / variables where a partial drill is handled.
+// e.g.
+// function runQaChecks(drill: DrillLike) { ... }
