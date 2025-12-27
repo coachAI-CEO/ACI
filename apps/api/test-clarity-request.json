@@ -1,0 +1,15 @@
+{
+  "gameModelId": "POSSESSION",
+  "ageGroup": "U10",
+  "phase": "ATTACKING",
+  "zone": "ATTACKING_THIRD",
+  "formationUsed": "2-3-1",
+  "playerLevel": "INTERMEDIATE",
+  "coachLevel": "GRASSROOTS",
+  "numbersMin": 8,
+  "numbersMax": 10,
+  "goalsAvailable": 2,
+  "spaceConstraint": "HALF",
+  "durationMin": 20
+}
+

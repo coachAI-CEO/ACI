@@ -11,6 +11,17 @@ export type DrillQAScores = {
   safety?: number;
 };
 
+export type SessionQAScores = {
+  structure?: number;
+  gameModel?: number;
+  psych?: number;
+  clarity?: number;
+  realism?: number;
+  constraints?: number;
+  safety?: number;
+  progression?: number; // Additional score for session drill progression
+};
+
 export type FixDecisionCode = "NO_QA_OR_PASS" | "NEEDS_REGEN" | "PATCHABLE" | "OK";
 
 export interface FixDecision {
@@ -61,6 +72,81 @@ export function fixDrillDecision(
   }
 
   const vals = normalizeScores(scores);
+
+  if (!vals.length) {
+    return {
+      code: "NO_QA_OR_PASS",
+      reason: "No QA scores present; fixer is a no-op except for logging / metadata.",
+    };
+  }
+
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const hasThree = vals.some((v) => v === 3);
+  const allAtLeastFour = vals.every((v) => v >= 4);
+
+  // Hard fail: any dimension ≤ 2 → force regeneration
+  if (min <= 2) {
+    return {
+      code: "NEEDS_REGEN",
+      reason: "At least one QA dimension is ≤2; treat as hard fail → full regeneration required.",
+    };
+  }
+
+  // Clean pass: all ≥4
+  if (allAtLeastFour) {
+    return {
+      code: "OK",
+      reason: "All QA dimensions are ≥4 → high quality, no fixer needed.",
+    };
+  }
+
+  // Patchable: all ≥3 but at least one exactly 3
+  if (hasThree && min >= 3) {
+    return {
+      code: "PATCHABLE",
+      reason: "All QA dimensions are ≥3 but at least one = 3 → patchable with targeted fixes.",
+    };
+  }
+
+  // Fallback: values exist but do not hit the above patterns
+  return {
+    code: "PATCHABLE",
+    reason: "Scores are mixed; treat as patchable with targeted fixes.",
+  };
+}
+
+/**
+ * Session fixer decision - same logic as drill fixer but with progression score
+ */
+export function fixSessionDecision(
+  scores: Partial<SessionQAScores> | null | undefined
+): FixDecision {
+  // BYPASS QA: If env flag set, always accept sessions (for debugging)
+  if (process.env.BYPASS_QA === "1") {
+    return {
+      code: "OK",
+      reason: "QA BYPASSED via BYPASS_QA=1 flag (debugging mode)",
+    };
+  }
+
+  const keys: (keyof SessionQAScores)[] = [
+    "structure",
+    "gameModel",
+    "psych",
+    "clarity",
+    "realism",
+    "constraints",
+    "safety",
+    "progression",
+  ];
+
+  const vals = keys
+    .map((k) => {
+      const v = (scores as any)?.[k];
+      return typeof v === "number" && !Number.isNaN(v) ? v : null;
+    })
+    .filter((v) => v !== null) as number[];
 
   if (!vals.length) {
     return {

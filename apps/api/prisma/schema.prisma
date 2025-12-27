@@ -47,6 +47,15 @@ enum CoachLevel {
   USSF_B_PLUS
 }
 
+enum DrillType {
+  WARMUP
+  TECHNICAL
+  TACTICAL
+  CONDITIONED_GAME
+  FULL_GAME
+  COOLDOWN
+}
+
 enum ArtifactType {
   DRILL
   SESSION
@@ -55,33 +64,36 @@ enum ArtifactType {
 }
 
 model Drill {
-  id          String      @id @default(uuid())
-  title       String
+  id    String @id @default(uuid())
+  title String
 
   // Tactical & psych metadata
-  principleIds     Json?   // array of strings
-  psychThemeIds    Json?   // array of strings
+  principleIds  Json? // array of strings
+  psychThemeIds Json? // array of strings
 
   // Physical / conditioning
-  energySystem     String? // "ATP-PC" | "Anaerobic" | "Aerobic"
-  rpeMin           Int?
-  rpeMax           Int?
+  energySystem String? // "ATP-PC" | "Anaerobic" | "Aerobic"
+  rpeMin       Int?
+  rpeMax       Int?
 
   // Session constraints
-  numbersMin       Int?
-  numbersMax       Int?
-  spaceConstraint  String?
-  goalsAvailable   Int?
-  goalMode         String?
-  
+  numbersMin      Int?
+  numbersMax      Int?
+  spaceConstraint String?
+  goalsAvailable  Int?
+  goalMode        String?
+
   // Formation & level metadata
-  formationUsed    String?
-  playerLevel      PlayerLevel?
-  coachLevel       CoachLevel?
+  formationUsed String?
+  playerLevel   PlayerLevel?
+  coachLevel    CoachLevel?
+
+  // Drill type metadata
+  drillType DrillType?
 
   // GK metadata
-  needGKFocus      Boolean? @default(false)
-  gkFocus          String?
+  needGKFocus Boolean? @default(false)
+  gkFocus     String?
 
   gameModelId GameModelId
   phase       Phase
@@ -98,17 +110,68 @@ model Drill {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  qaReports QAReport[]
+  qaReports QAReport[] @relation("DrillQAReports")
+}
+
+model Session {
+  id    String @id @default(uuid())
+  title String
+
+  // Tactical & psych metadata
+  principleIds  Json? // array of strings
+  psychThemeIds Json? // array of strings
+
+  // Physical / conditioning
+  energySystem String? // "ATP-PC" | "Anaerobic" | "Aerobic"
+  rpeMin       Int?
+  rpeMax       Int?
+
+  // Session constraints
+  numbersMin      Int?
+  numbersMax      Int?
+  spaceConstraint String?
+  goalsAvailable  Int?
+  goalMode        String?
+
+  // Formation & level metadata
+  formationUsed String?
+  playerLevel   PlayerLevel?
+  coachLevel    CoachLevel?
+
+  gameModelId GameModelId
+  phase       Phase?
+  zone        Zone?
+  ageGroup    String
+  durationMin Int? // Total session duration (60 or 90 minutes)
+  qaScore     Float?
+  approved    Boolean     @default(false)
+
+  json           Json
+  visualThumbSvg String?
+  visualHash     String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  qaReports QAReport[] @relation("SessionQAReports")
 }
 
 model QAReport {
-  id         String   @id @default(uuid())
-  artifactId String
-  artifact   Drill    @relation(fields: [artifactId], references: [id])
-  pass       Boolean
-  scores     Json
-  summary    String?
-  createdAt  DateTime @default(now())
+  id           String       @id @default(uuid())
+  artifactId   String
+  artifactType ArtifactType @default(DRILL)
+  drillId      String?
+  sessionId    String?
+  drill        Drill?       @relation("DrillQAReports", fields: [drillId], references: [id], onDelete: Cascade)
+  session      Session?     @relation("SessionQAReports", fields: [sessionId], references: [id], onDelete: Cascade)
+  pass         Boolean
+  scores       Json
+  summary      String?
+  createdAt    DateTime     @default(now())
+
+  @@index([artifactId, artifactType])
+  @@index([drillId])
+  @@index([sessionId])
 }
 
 model ArtifactEmbedding {

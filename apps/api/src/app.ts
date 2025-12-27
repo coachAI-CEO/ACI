@@ -6,6 +6,7 @@ import modelsRoute from "./models-route";
 import dbRoutes from "./db-routes";
 
 import drillRoutes from "./routes-drill";
+import sessionRoutes from "./routes-session";
 import coachRoutes from "./routes-coach";
 import fixerRoutes from "./routes-fixer";
 
@@ -19,6 +20,7 @@ app.use(routes);
 app.use(modelsRoute);
 app.use(dbRoutes);
 app.use(drillRoutes);
+app.use(sessionRoutes);
 app.use(fixerRoutes);
 app.use(coachRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
 

@@ -3,6 +3,7 @@ export interface DrillPromptInput {
   ageGroup: string;
   phase: string;
   zone: string;
+  drillType: string; // WARMUP | TECHNICAL | TACTICAL | CONDITIONED_GAME | FULL_GAME | COOLDOWN
   numbersMin: number;
   numbersMax: number;
   gkOptional?: boolean;
@@ -17,10 +18,193 @@ export interface DrillPromptInput {
 }
 
 /**
+ * Get drill type-specific guidance that significantly changes the prompt
+ */
+function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: string): string {
+  const base = `For ${ageGroup} ${playerLevel} players, `;
+  
+  switch (drillType) {
+    case "WARMUP":
+      return [
+        "🎯 WARMUP DRILL REQUIREMENTS:",
+        "",
+        "PURPOSE: Activation, technical touches, low intensity preparation",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 5-15 minutes (shorter than other drills)",
+        "- Intensity: LOW (RPE 3-5)",
+        "- Focus: High touches, low pressure, movement patterns",
+        "- Space: Smaller areas (QUARTER or THIRD of field)",
+        "- Players: Fewer players (4-8 total), can be unopposed or light opposition",
+        "- Equipment: Minimal (cones, balls, maybe small goals)",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Emphasize activation, movement, technical touches",
+        "- Organization: Simple setup, quick rotation, continuous flow",
+        "- Coaching Points: Focus on movement quality, ball control, body positioning",
+        "- Progressions: Increase speed/intensity, add light pressure",
+        "- Constraints: Keep it simple, avoid complex rules",
+        "- loadNotes.structure: Short work periods (30s-2min) with equal or longer rest",
+        "",
+        "❌ DO NOT: Create complex tactical situations, high pressure, long duration",
+        "✅ DO: Keep it simple, fun, movement-focused, high repetition",
+        "",
+        base + "create a warmup that gets players moving, touching the ball frequently, and preparing for training."
+      ].join("\n");
+
+    case "TECHNICAL":
+      return [
+        "🎯 TECHNICAL DRILL REQUIREMENTS:",
+        "",
+        "PURPOSE: Skill development, repetition, muscle memory",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 10-20 minutes",
+        "- Intensity: MEDIUM (RPE 4-6)",
+        "- Focus: Specific technique repetition (passing, shooting, first touch, dribbling)",
+        "- Space: Medium areas (THIRD or HALF of field)",
+        "- Players: Medium groups (6-12 total), can be unopposed or opposed",
+        "- Equipment: Specific to technique (goals for finishing, targets for passing)",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Clearly state the technical skill being developed",
+        "- Organization: Repetitive structure, clear progression from simple to complex",
+        "- Coaching Points: Technical cues (body position, contact point, follow-through)",
+        "- Progressions: Add pressure, increase speed, add decision-making",
+        "- Constraints: Focus on technique quality, not game situations",
+        "- loadNotes.structure: Repetitive work periods (1-3min) with short rest",
+        "",
+        "❌ DO NOT: Create complex game situations, focus on tactics over technique",
+        "✅ DO: Emphasize repetition, quality of execution, specific technical focus",
+        "",
+        base + "create a technical drill that develops a specific skill through repetition and quality practice."
+      ].join("\n");
+
+    case "TACTICAL":
+      return [
+        "🎯 TACTICAL DRILL REQUIREMENTS:",
+        "",
+        "PURPOSE: Game understanding, decision-making, patterns of play",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 15-30 minutes",
+        "- Intensity: MEDIUM-HIGH (RPE 5-7)",
+        "- Focus: Tactical concepts, decision-making, game situations",
+        "- Space: Medium to large areas (HALF or FULL field depending on concept)",
+        "- Players: Game-realistic numbers (8-16 total)",
+        "- Equipment: Goals, cones for zones/constraints",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Emphasize tactical objective (build-up, pressing, transitions)",
+        "- Organization: Game-like setup with specific constraints to focus on tactical concept",
+        "- Coaching Points: Tactical cues (when to press, where to position, decision-making)",
+        "- Progressions: Remove constraints, add complexity, increase game-realistic elements",
+        "- Constraints: Shape behavior to emphasize tactical concept",
+        "- loadNotes.structure: Game-like work periods (3-5min) with rest",
+        "",
+        "❌ DO NOT: Focus on isolated technique, create unrealistic situations",
+        "✅ DO: Emphasize decision-making, game understanding, tactical patterns",
+        "",
+        base + "create a tactical drill that develops game understanding and decision-making in realistic situations."
+      ].join("\n");
+
+    case "CONDITIONED_GAME":
+      return [
+        "🎯 CONDITIONED GAME REQUIREMENTS:",
+        "",
+        "PURPOSE: Apply skills in game context with specific constraints",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 20-40 minutes",
+        "- Intensity: HIGH (RPE 6-8)",
+        "- Focus: Game application with modified rules to emphasize specific concepts",
+        "- Space: Large areas (HALF or FULL field)",
+        "- Players: Game-realistic numbers (10-20 total)",
+        "- Equipment: Full goals, cones for constraints",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Emphasize game context and the constraint/condition",
+        "- Organization: Game-like setup with clear rules and constraints",
+        "- Coaching Points: Game-related cues, applying previous work",
+        "- Progressions: Modify constraints, change conditions, increase game realism",
+        "- Constraints: Specific rules that shape play (e.g., 'must pass through middle third', 'offside applies')",
+        "- loadNotes.structure: Game-like periods (4-8min) with rest",
+        "",
+        "❌ DO NOT: Create isolated drills, ignore game context",
+        "✅ DO: Emphasize game application, realistic situations, constraint-based learning",
+        "",
+        base + "create a conditioned game that applies skills in a game context with specific constraints."
+      ].join("\n");
+
+    case "FULL_GAME":
+      return [
+        "🎯 FULL GAME REQUIREMENTS:",
+        "",
+        "PURPOSE: Match simulation, full game context",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 30-60 minutes",
+        "- Intensity: VERY HIGH (RPE 7-9)",
+        "- Focus: Full game simulation, all aspects of play",
+        "- Space: FULL field",
+        "- Players: Full team numbers (18-22 total for 9v9 or 11v11)",
+        "- Equipment: Full goals, full field markings",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Emphasize match simulation, full game context",
+        "- Organization: Full field setup, realistic game structure",
+        "- Coaching Points: Game management, all phases of play",
+        "- Progressions: Adjust game format, add specific focus areas",
+        "- Constraints: Minimal - let the game flow naturally",
+        "- loadNotes.structure: Match periods (15-30min halves) with halftime",
+        "",
+        "❌ DO NOT: Over-constrain, create unrealistic situations",
+        "✅ DO: Emphasize full game context, realistic match conditions",
+        "",
+        base + "create a full game scenario that simulates match conditions."
+      ].join("\n");
+
+    case "COOLDOWN":
+      return [
+        "🎯 COOLDOWN DRILL REQUIREMENTS:",
+        "",
+        "PURPOSE: Recovery, stretching, reflection",
+        "",
+        "CHARACTERISTICS:",
+        "- Duration: 5-10 minutes",
+        "- Intensity: VERY LOW (RPE 2-3)",
+        "- Focus: Recovery, light movement, stretching",
+        "- Space: Small area or no specific area needed",
+        "- Players: All players together",
+        "- Equipment: Minimal (cones for stretching stations, balls optional)",
+        "",
+        "CONTENT REQUIREMENTS:",
+        "- Description: Emphasize recovery, cool-down, reflection",
+        "- Organization: Simple, relaxed structure, optional light ball work",
+        "- Coaching Points: Recovery cues, stretching technique, reflection questions",
+        "- Progressions: N/A (cooldown doesn't progress)",
+        "- Constraints: Keep it relaxed, no pressure",
+        "- loadNotes.structure: Continuous light activity (5-10min) or static stretching",
+        "",
+        "❌ DO NOT: Create intense activity, complex organization",
+        "✅ DO: Emphasize recovery, light movement, stretching, reflection",
+        "",
+        base + "create a cooldown activity that helps players recover and reflect."
+      ].join("\n");
+
+    default:
+      return `⚠️ Unknown drill type: ${drillType}. Use standard drill structure.`;
+  }
+}
+
+/**
  * Optimized generator prompt - conservative 35% reduction while maintaining quality
  */
 export function buildDrillPrompt(input: DrillPromptInput): string {
   const ctx = JSON.stringify(input, null, 2);
+
+  // Build drill type-specific guidance
+  const drillTypeGuidance = getDrillTypeGuidance(input.drillType, input.ageGroup, input.playerLevel);
 
   return [
     "SYSTEM: Output ONE JSON object matching the structure below.",
@@ -31,6 +215,9 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "- Do NOT wrap JSON in markdown or add comments.",
     "",
     "INPUT:", ctx,
+    "",
+    "⚠️ DRILL TYPE: " + input.drillType + " - This SIGNIFICANTLY changes the drill structure and content:",
+    drillTypeGuidance,
     "",
     "EXAMPLE OUTPUT (copy this structure EXACTLY - this scores Structure=4, Clarity=4+):",
     JSON.stringify({

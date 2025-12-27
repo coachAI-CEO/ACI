@@ -317,6 +317,7 @@ export async function generateAndReviewDrill(
   const jsonForDb = {
     ...(processedFields.json || finalDrill), // Use cleaned version if available
     goalsSupported: processedFields.goalsSupported || [],
+    drillType: input.drillType, // Store drillType in JSON
     qa: finalQa,
   };
 
@@ -370,6 +371,9 @@ export async function generateAndReviewDrill(
       playerLevel: input.playerLevel as any,
       coachLevel: input.coachLevel as any,
       
+      // --- NEW: Drill Type field (only include if provided) ---
+      ...(input.drillType ? { drillType: input.drillType as any } : {}),
+      
       needGKFocus: processedFields.needGKFocus ?? false,
       gkFocus: processedFields.gkFocus,
       
@@ -385,6 +389,8 @@ export async function generateAndReviewDrill(
   await prisma.qAReport.create({
     data: {
       artifactId: created.id,
+      artifactType: "DRILL",
+      drillId: created.id,
       pass: !!finalQa.pass,
       scores: finalQa.scores ?? {},
       summary: finalQa.summary ?? "",

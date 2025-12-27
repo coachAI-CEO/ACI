@@ -201,22 +201,74 @@ function normalizePlayerNumber(
   return currentNum || 1;
 }
 
-export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
-  const players: any[] = Array.isArray(diagram?.players) ? diagram.players : [];
+function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
+  // Handle both formats: { players: [...] } and { elements: [...] }
+  let players: any[] = [];
+  if (Array.isArray(diagram?.players)) {
+    players = diagram.players;
+  } else if (Array.isArray(diagram?.elements)) {
+    // If diagram has elements array, try to extract players from it
+    console.warn("[DrillPitchDiagram] Diagram uses 'elements' format instead of 'players' format. Elements:", diagram.elements);
+    // Try to filter elements that look like players (have team, role, x, y, etc.)
+    players = diagram.elements.filter((el: any) => 
+      (el.team || el.role || el.type === 'player') && 
+      typeof el.x === 'number' && 
+      typeof el.y === 'number'
+    );
+    // If no filtered results, use elements as-is (might be player objects)
+    if (players.length === 0 && diagram.elements.length > 0) {
+      console.warn("[DrillPitchDiagram] No player-like elements found, using all elements:", diagram.elements);
+      players = diagram.elements;
+    }
+  }
+  
   const balls: any[] = Array.isArray(diagram?.balls) ? diagram.balls : [];
   const arrows: any[] = Array.isArray(diagram?.arrows) ? diagram.arrows : [];
   const firstPassIdx = arrows.findIndex(a => a.type === "pass");
   const goals: any[] = Array.isArray(diagram?.goals) ? diagram.goals : [];
   
+  // Debug: log diagram structure
+  React.useEffect(() => {
+    if (players.length === 0) {
+      console.warn("[DrillPitchDiagram] No players found in diagram:", {
+        hasDiagram: !!diagram,
+        diagramKeys: diagram ? Object.keys(diagram) : [],
+        hasPlayers: !!diagram?.players,
+        hasElements: !!diagram?.elements,
+        playersArray: diagram?.players,
+        elementsArray: diagram?.elements,
+        elementsLength: diagram?.elements?.length,
+        fullDiagram: diagram
+      });
+    } else {
+      console.log(`[DrillPitchDiagram] Found ${players.length} players in diagram`);
+    }
+  }, [diagram, players.length]);
+  
   // Determine pitch variant - default to THIRD for final third diagrams
   const pitchVariant = diagram?.pitch?.variant || "THIRD";
 
   const layoutPlayers = React.useMemo(() => {
+    const perfStart = performance.now();
     type LayoutPlayer = (typeof players)[number] & { screenX: number; screenY: number };
+
+    // Filter out invalid players (missing x/y coordinates)
+    const validPlayers = players.filter((p) => 
+      typeof p.x === 'number' && 
+      typeof p.y === 'number' && 
+      !isNaN(p.x) && 
+      !isNaN(p.y) &&
+      isFinite(p.x) &&
+      isFinite(p.y)
+    );
+    
+    if (validPlayers.length !== players.length) {
+      console.warn(`[DrillPitchDiagram] Filtered out ${players.length - validPlayers.length} invalid players (missing/invalid x/y coordinates)`);
+    }
 
     // First pass: normalize numbers and adjust positioning
     // For pressing scenarios: attackers start further back relative to defenders
-    const normalized = players.map((p) => {
+    const normalized = validPlayers.map((p) => {
       const baseX = nx(p.x);
       let baseY = ny(p.y);
       
@@ -337,26 +389,60 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     const base: LayoutPlayer[] = normalized;
 
     const COLLISION_DISTANCE = 44; // px, ~2x player radius + a small gap
+    const COLLISION_DISTANCE_SQ = COLLISION_DISTANCE * COLLISION_DISTANCE; // Squared distance for comparison (avoids sqrt)
 
-    for (let i = 0; i < base.length; i++) {
-      for (let j = i + 1; j < base.length; j++) {
-        const dx = base[j].screenX - base[i].screenX;
-        const dy = base[j].screenY - base[i].screenY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!dist || dist >= COLLISION_DISTANCE) continue;
+    // Optimized collision detection: use squared distance to avoid expensive sqrt until collision detected
+    // Limit iterations to prevent infinite loops with very crowded players
+    const MAX_ITERATIONS = 5;
+    let iterations = 0;
+    let hasCollisions = true;
 
-        const overlap = COLLISION_DISTANCE - dist;
-        const ux = dx / dist;
-        const uy = dy / dist;
+    while (hasCollisions && iterations < MAX_ITERATIONS) {
+      hasCollisions = false;
+      iterations++;
 
-        base[i].screenX -= (ux * overlap) / 2;
-        base[i].screenY -= (uy * overlap) / 2;
-        base[j].screenX += (ux * overlap) / 2;
-        base[j].screenY += (uy * overlap) / 2;
+      for (let i = 0; i < base.length; i++) {
+        for (let j = i + 1; j < base.length; j++) {
+          const dx = base[j].screenX - base[i].screenX;
+          const dy = base[j].screenY - base[i].screenY;
+          const distSq = dx * dx + dy * dy; // Squared distance (no sqrt needed for comparison)
+          
+          if (distSq >= COLLISION_DISTANCE_SQ || distSq === 0) continue;
+
+          // Only calculate sqrt when collision is detected
+          const dist = Math.sqrt(distSq);
+          hasCollisions = true;
+
+          const overlap = COLLISION_DISTANCE - dist;
+          const ux = dx / dist;
+          const uy = dy / dist;
+
+          base[i].screenX -= (ux * overlap) / 2;
+          base[i].screenY -= (uy * overlap) / 2;
+          base[j].screenX += (ux * overlap) / 2;
+          base[j].screenY += (uy * overlap) / 2;
+        }
       }
     }
 
-    return base;
+    const perfTime = performance.now() - perfStart;
+    console.log(`[PERF] Diagram layoutPlayers calculation: ${perfTime.toFixed(2)}ms (${base.length} players, ${iterations} collision iterations)`);
+
+    // Final validation: ensure all players have valid screen coordinates
+    const validLayoutPlayers = base.filter(p => 
+      typeof p.screenX === 'number' && 
+      typeof p.screenY === 'number' &&
+      !isNaN(p.screenX) && 
+      !isNaN(p.screenY) &&
+      isFinite(p.screenX) &&
+      isFinite(p.screenY)
+    );
+    
+    if (validLayoutPlayers.length !== base.length) {
+      console.warn(`[DrillPitchDiagram] Filtered out ${base.length - validLayoutPlayers.length} players with invalid screen coordinates`);
+    }
+
+    return validLayoutPlayers;
   }, [players]);
   const coach = diagram?.coach || null;
 
@@ -557,7 +643,7 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       })()}
 
       {/* Goals from diagram.goals */}
-      {goals.map((g) => {
+      {goals.map((g, goalIdx) => {
         const gx = nx(g.x);
         const gy = ny(g.y);
         const isBig = g.type === "BIG";
@@ -568,10 +654,12 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
           : ((g.width ?? 25) / 100) * WIDTH || 200;  // Mini goal: 25% of width or 200px (much larger)
         const height = isBig ? 16 : 18;  // Mini goals: 18px height (was 12px)
         const color = isBig ? "#e5e7eb" : "#22c55e";
+        // Use stable key: prefer id, fallback to type+position+index
+        const goalKey = g.id || `goal-${g.type}-${g.x}-${g.y}-${goalIdx}`;
 
         return (
           <rect
-            key={g.id}
+            key={goalKey}
             x={gx - w / 2}
             y={gy - height / 2}
             width={w}
@@ -592,6 +680,11 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         const toLayoutPlayer = layoutPlayers.find((p) => p.id === a.to?.playerId);
 
         if (!fromLayoutPlayer || !toLayoutPlayer) return null;
+        
+        // Use stable key for arrows
+        const arrowKey = a.from?.playerId && a.to?.playerId 
+          ? `arrow-${a.from.playerId}-${a.to.playerId}-${a.type ?? 'pass'}-${idx}`
+          : `arrow-${idx}`;
 
         // Use the adjusted screen positions from layoutPlayers
         const x1 = fromLayoutPlayer.screenX;
@@ -623,7 +716,7 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         const rightY = endY - ux * arrowHead - uy * arrowHead;
 
         return (
-          <g key={idx}>
+          <g key={arrowKey}>
             <line
               x1={x1}
               y1={y1}
@@ -665,35 +758,57 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       })}
 
       {/* Run indicators for attacking players */}
-      {layoutPlayers.map((p, idx) => {
-        if (p.team !== "ATT") return null;
-        const runBackX = p.screenX - 40;
-        const runBackY = p.screenY + 24;
-        const runFrontX = p.screenX;
-        const runFrontY = p.screenY;
-        return (
-          <line
-            key={"run-" + (p.id ?? idx)}
-            x1={runBackX}
-            y1={runBackY}
-            x2={runFrontX}
-            y2={runFrontY}
-            stroke="#ffffff"
-            strokeWidth={2}
-            strokeDasharray="4,8"
-            strokeLinecap="round"
-          />
-        );
-      })}
+      {layoutPlayers
+        .filter(p => {
+          // Filter out invalid coordinates
+          const isValid = p.team === "ATT" && 
+            typeof p.screenX === 'number' && 
+            typeof p.screenY === 'number' &&
+            !isNaN(p.screenX) && 
+            !isNaN(p.screenY) &&
+            isFinite(p.screenX) &&
+            isFinite(p.screenY);
+          return isValid;
+        })
+        .map((p, idx) => {
+          const runBackX = p.screenX - 40;
+          const runBackY = p.screenY + 24;
+          const runFrontX = p.screenX;
+          const runFrontY = p.screenY;
+          // Use stable key: prefer id, fallback to team+number+idx for uniqueness
+          const stableKey = p.id || `run-att-${p.number ?? idx}-${idx}`;
+          return (
+            <line
+              key={stableKey}
+              x1={runBackX}
+              y1={runBackY}
+              x2={runFrontX}
+              y2={runFrontY}
+              stroke="#ffffff"
+              strokeWidth={2}
+              strokeDasharray="4,8"
+              strokeLinecap="round"
+            />
+          );
+        })}
 
       {/* Players */}
       {layoutPlayers.map((p, idx) => {
         const { fill, stroke } = teamColors(p.team);
         const x = p.screenX;
         const y = p.screenY;
+        
+        // Validate coordinates - skip rendering if invalid
+        if (typeof x !== 'number' || typeof y !== 'number' || isNaN(x) || isNaN(y) || !isFinite(x) || !isFinite(y)) {
+          console.warn(`[DrillPitchDiagram] Skipping player ${idx} with invalid coordinates: x=${x}, y=${y}`, p);
+          return null;
+        }
+        
+        // Use stable key: prefer id, fallback to team+number+role+idx for uniqueness
+        const stableKey = p.id || `player-${p.team}-${p.number ?? 'n'}-${p.role ?? 'r'}-${idx}`;
 
         return (
-          <g key={p.id ?? idx}>
+          <g key={stableKey}>
             <circle
               cx={x}
               cy={y}
@@ -754,3 +869,5 @@ export default function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     </svg>
   );
 }
+
+export default DrillPitchDiagram;

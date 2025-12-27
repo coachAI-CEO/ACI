@@ -24,12 +24,16 @@ const GameModelIdSchema = z.enum(["COACHAI", "POSSESSION", "PRESSING", "TRANSITI
 const PhaseSchema = z.enum(["ATTACKING", "DEFENDING", "TRANSITION", "TRANSITION_TO_ATTACK", "TRANSITION_TO_DEFEND"]);
 const ZoneSchema = z.enum(["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"]);
 const SpaceConstraintSchema = z.enum(["FULL", "HALF", "THIRD", "QUARTER"]);
+const DrillTypeSchema = z.enum(["WARMUP", "TECHNICAL", "TACTICAL", "CONDITIONED_GAME", "FULL_GAME", "COOLDOWN"]);
 
 const GenerateDrillRequestSchema = z.object({
   gameModelId: GameModelIdSchema,
   phase: PhaseSchema,
   zone: ZoneSchema,
   ageGroup: z.string().min(1),
+  
+  // NEW: Required drill type
+  drillType: DrillTypeSchema,
   
   // NEW: Required formation & level fields (separate for attacking and defending)
   formationAttacking: FormationUsedSchema,
@@ -65,6 +69,7 @@ const FixDecisionSchema = z.object({
 const DrillResponseSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
+  drillType: DrillTypeSchema,
   formationAttacking: FormationUsedSchema,
   formationDefending: FormationUsedSchema,
   playerLevel: PlayerLevelSchema,
@@ -190,7 +195,8 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
         if (drillResponse.json?.organization && !drillResponse.organization) {
           drillResponse.organization = drillResponse.json.organization;
         }
-        // Add both formations to response (from input)
+        // Add drillType and formations to response (from input)
+        drillResponse.drillType = input.drillType;
         drillResponse.formationAttacking = input.formationAttacking;
         drillResponse.formationDefending = input.formationDefending;
         

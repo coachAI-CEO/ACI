@@ -57,6 +57,7 @@ type GeneratorConfig = {
   ageGroup: string;
   phase: string;
   zone: string;
+  drillType: string;
   formationAttacking: string;
   formationDefending: string;
   playerLevel: string;
@@ -123,6 +124,7 @@ function getDefaultConfig(): GeneratorConfig {
     ageGroup,
     phase: "ATTACKING",
     zone: "ATTACKING_THIRD",
+    drillType: "TACTICAL",
     formationAttacking: getDefaultFormation(ageGroup), // Ensures valid formation for age
     formationDefending: getDefaultFormation(ageGroup), // Default to same as attacking
     playerLevel: "INTERMEDIATE",
@@ -191,6 +193,10 @@ function getConfigFromSearchParams(
     ageGroup,
     phase: parseStringOrDefault(searchParams.phase, defaults.phase),
     zone: parseStringOrDefault(searchParams.zone, defaults.zone),
+    drillType: parseStringOrDefault(
+      searchParams.drillType,
+      defaults.drillType
+    ),
     formationAttacking,
     formationDefending,
     playerLevel: parseStringOrDefault(
@@ -229,13 +235,17 @@ async function fetchDrill(
   config: GeneratorConfig,
   useStatic: boolean
 ): Promise<DrillApiResponse> {
+  const perfStart = Date.now();
+  
   if (useStatic) {
     const data = await import("./demo-drill-static.json");
+    console.log(`[PERF] Static drill loaded in ${Date.now() - perfStart}ms`);
     return data as DrillApiResponse;
   }
 
   // Debug: log the config being sent
   console.log("[DRILL_GEN] Sending config:", JSON.stringify(config, null, 2));
+  const apiStart = Date.now();
   
   const res = await fetch("http://localhost:4000/coach/generate-drill-vetted", {
     method: "POST",
@@ -243,6 +253,9 @@ async function fetchDrill(
     cache: "no-store",
     body: JSON.stringify(config),
   });
+
+  const apiTime = Date.now() - apiStart;
+  console.log(`[PERF] API call completed in ${(apiTime / 1000).toFixed(2)}s`);
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
@@ -253,7 +266,13 @@ async function fetchDrill(
     );
   }
 
-  return res.json();
+  const parseStart = Date.now();
+  const data = await res.json();
+  const parseTime = Date.now() - parseStart;
+  console.log(`[PERF] JSON parsing completed in ${parseTime}ms`);
+  console.log(`[PERF] Total fetchDrill time: ${((Date.now() - perfStart) / 1000).toFixed(2)}s`);
+  
+  return data;
 }
 
 type PageProps = {
@@ -262,16 +281,21 @@ type PageProps = {
 
 
 export default async function DrillDemoPage({ searchParams }: PageProps) {
+  const pageStart = Date.now();
   const resolvedSearchParams = await (searchParams as any);
 
+  const configStart = Date.now();
   const config = getConfigFromSearchParams(resolvedSearchParams);
   const hasParams = Object.keys(resolvedSearchParams || {}).length > 0;
   const useStatic = !hasParams; // initial load uses static demo, query → live API
+  console.log(`[PERF] Config parsing: ${Date.now() - configStart}ms`);
 
   let data: DrillApiResponse;
 
+  const fetchStart = Date.now();
   try {
     data = await fetchDrill(config, useStatic);
+    console.log(`[PERF] fetchDrill total: ${((Date.now() - fetchStart) / 1000).toFixed(2)}s`);
   } catch (e: any) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
@@ -347,6 +371,9 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
     zoneLabel[drill.zone] ?? drill.zone.toLowerCase().replace(/_/g, " ");
 
   const sourceLabel = useStatic ? "Static demo JSON" : "/coach/generate-drill-vetted";
+
+  const pageTime = Date.now() - pageStart;
+  console.log(`[PERF] Total server-side page render: ${(pageTime / 1000).toFixed(2)}s`);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
@@ -452,19 +479,22 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 </select>
               </div>
 
-              {/* Player Level */}
+              {/* Drill Type */}
               <div className="space-y-1">
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                  Player Level
+                  Drill Type
                 </label>
                 <select
-                  name="playerLevel"
-                  defaultValue={config.playerLevel}
+                  name="drillType"
+                  defaultValue={config.drillType}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                 >
-                  <option value="BEGINNER">Beginner</option>
-                  <option value="INTERMEDIATE">Intermediate</option>
-                  <option value="ADVANCED">Advanced</option>
+                  <option value="WARMUP">Warmup</option>
+                  <option value="TECHNICAL">Technical</option>
+                  <option value="TACTICAL">Tactical</option>
+                  <option value="CONDITIONED_GAME">Conditioned Game</option>
+                  <option value="FULL_GAME">Full Game</option>
+                  <option value="COOLDOWN">Cooldown</option>
                 </select>
               </div>
             </div>
@@ -499,6 +529,22 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 />
               </div>
 
+              {/* Player Level */}
+              <div className="space-y-1">
+                <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                  Player Level
+                </label>
+                <select
+                  name="playerLevel"
+                  defaultValue={config.playerLevel}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                >
+                  <option value="BEGINNER">Beginner</option>
+                  <option value="INTERMEDIATE">Intermediate</option>
+                  <option value="ADVANCED">Advanced</option>
+                </select>
+              </div>
+
               {/* Coach Level */}
               <div className="space-y-1">
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
@@ -531,7 +577,10 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   <option value="QUARTER">Quarter</option>
                 </select>
               </div>
+            </div>
 
+                {/* Row 3: 4 fields */}
+                <div className="grid gap-4 sm:grid-cols-5">
               {/* Goals available */}
               <div className="space-y-1">
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
@@ -546,10 +595,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                 />
               </div>
-                </div>
 
-                {/* Row 3: 3 fields (Players min-max takes more space) */}
-                <div className="grid gap-4 sm:grid-cols-5">
               {/* Numbers min/max */}
               <div className="space-y-1">
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
