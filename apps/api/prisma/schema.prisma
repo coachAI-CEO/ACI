@@ -102,6 +102,7 @@ model Drill {
   durationMin Int?
   qaScore     Float?
   approved    Boolean     @default(false)
+  savedToVault Boolean    @default(false) // Vault system: mark drills saved to vault
 
   json           Json
   visualThumbSvg String?
@@ -111,6 +112,9 @@ model Drill {
   updatedAt DateTime @updatedAt
 
   qaReports QAReport[] @relation("DrillQAReports")
+  
+  @@index([savedToVault])
+  @@index([gameModelId, ageGroup, phase, zone])
 }
 
 model Session {
@@ -145,6 +149,10 @@ model Session {
   durationMin Int? // Total session duration (60 or 90 minutes)
   qaScore     Float?
   approved    Boolean     @default(false)
+  savedToVault Boolean    @default(false) // Vault system: mark sessions saved to vault
+  isSeries    Boolean     @default(false) // Vault system: is this part of a series?
+  seriesId     String?     // Vault system: if part of series, link to series group
+  seriesNumber Int?        // Vault system: position in series (1, 2, 3, etc.)
 
   json           Json
   visualThumbSvg String?
@@ -154,6 +162,28 @@ model Session {
   updatedAt DateTime @updatedAt
 
   qaReports QAReport[] @relation("SessionQAReports")
+  skillFocuses SkillFocus[]
+  
+  @@index([savedToVault])
+  @@index([isSeries, seriesId])
+  @@index([gameModelId, ageGroup, phase, zone])
+}
+
+model SkillFocus {
+  id         String   @id @default(uuid())
+  sessionId  String?
+  seriesId   String?
+  sessionIds Json?
+  title      String
+  summary    String?
+  keySkills  Json
+  coachingPoints Json?
+  createdAt  DateTime @default(now())
+
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([seriesId])
 }
 
 model QAReport {

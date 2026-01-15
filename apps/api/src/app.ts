@@ -9,6 +9,8 @@ import drillRoutes from "./routes-drill";
 import sessionRoutes from "./routes-session";
 import coachRoutes from "./routes-coach";
 import fixerRoutes from "./routes-fixer";
+import vaultRoutes from "./routes-vault";
+import skillFocusRoutes from "./routes-skill-focus";
 
 const app = express();
 
@@ -23,5 +25,7 @@ app.use(drillRoutes);
 app.use(sessionRoutes);
 app.use(fixerRoutes);
 app.use(coachRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
+app.use(vaultRoutes);  // Vault system routes
+app.use(skillFocusRoutes); // Skill focus routes
 
 export default app;
