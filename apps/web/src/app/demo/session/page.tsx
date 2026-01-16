@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SessionForm from "@/components/SessionForm";
 import SessionFormWithLoading from "@/components/SessionFormWithLoading";
@@ -60,12 +60,13 @@ type SessionApiResponse = {
     drills: SessionDrill[];
     sessionPlan?: {
       totalDuration: number;
-      breakdown: Array<{ drillType: string; duration: number }>;
+      breakdown: Array<{ drillType: string; duration: number; durationMin?: number }>;
     };
     equipment?: string[];
     coachingNotes?: string;
     principleIds?: string[];
     psychThemeIds?: string[];
+    skillFocus?: SkillFocus;
   };
   qa?: {
     pass: boolean;
@@ -73,6 +74,14 @@ type SessionApiResponse = {
     scores?: Record<string, number>;
   };
   fixDecision?: any;
+  hasRecommendations?: boolean;
+  recommendations?: any[];
+  error?: string;
+  raw?: {
+    created?: {
+      id?: string;
+    };
+  };
 };
 
 type ProgressiveSeriesApiResponse = {
@@ -103,6 +112,17 @@ type SkillFocus = {
   summary?: string;
   keySkills?: string[];
   coachingPoints?: string[];
+  psychology?: {
+    good?: string[];
+    bad?: string[];
+  };
+  sectionPhrases?: Record<
+    string,
+    {
+      encourage?: string[];
+      correct?: string[];
+    }
+  >;
   createdAt?: string;
 };
 
@@ -178,7 +198,8 @@ function getDefaultConfig(): SessionConfig {
   const ageGroup = "U12";
   const phase: Phase = "ATTACKING";
   const zone: Zone = "ATTACKING_THIRD";
-  const defaultTopic = getRandomTopic(phase, zone);
+  const coachLevel = "GRASSROOTS";
+  const defaultTopic = getRandomTopic(phase, zone, coachLevel);
   return {
     gameModelId: "POSSESSION",
     ageGroup,
@@ -198,7 +219,7 @@ function getDefaultConfig(): SessionConfig {
 }
 
 function parseNumberOrDefault(
-  v: string | string[] | undefined,
+  v: string | string[] | undefined | null,
   fallback: number
 ): number {
   if (Array.isArray(v)) v = v[0];
@@ -207,7 +228,7 @@ function parseNumberOrDefault(
 }
 
 function parseStringOrDefault(
-  v: string | string[] | undefined,
+  v: string | string[] | undefined | null,
   fallback: string
 ): string {
   if (Array.isArray(v)) v = v[0];
@@ -220,10 +241,11 @@ function getConfigFromSearchParams(
   const defaults = getDefaultConfig();
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
+  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
   
-  // Get topic from params, or default to first topic for the phase/zone combination
+  // Get topic from params, or default to first topic for the phase/zone + coach level combination
   const topicParam = searchParams.get("topic");
-  const availableTopics = getTopicsForPhaseAndZone(phase, zone);
+  const availableTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
   const defaultTopic = availableTopics[0] || defaults.topic || "";
   const topic = topicParam && availableTopics.includes(topicParam) ? topicParam : defaultTopic;
   
@@ -436,6 +458,7 @@ async function generateSkillFocusForSeries(input: { seriesId?: string; sessionId
 
 function SessionDemoPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [data, setData] = useState<SessionApiResponse | null>(null);
   const [seriesData, setSeriesData] = useState<ProgressiveSeriesApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -465,6 +488,12 @@ function SessionDemoPageContent() {
 
   useEffect(() => {
     const sessionId = searchParams.get("sessionId");
+    const hasAnyParams = searchParams.toString().length > 0;
+    if (!sessionId && !hasAnyParams) {
+      setError(null);
+      setSkillFocus(null);
+      setSeriesSkillFocus(null);
+    }
     
     // If sessionId is provided, load that session instead of generating
     if (sessionId) {
@@ -474,6 +503,55 @@ function SessionDemoPageContent() {
       
       fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}`)
         .then(async (res) => {
+          if (res.status === 404) {
+            try {
+              const cached = sessionStorage.getItem(`vaultSession:${sessionId}`);
+              if (cached) {
+                const cachedSession = JSON.parse(cached);
+                const sessionData = cachedSession.json || {};
+                const qaFromJson = sessionData.qa || {};
+                const qaData = {
+                  pass: cachedSession.approved || qaFromJson.pass || false,
+                  summary: qaFromJson.summary,
+                  scores: qaFromJson.scores || {},
+                };
+                setData({
+                  ok: true,
+                  session: {
+                    id: cachedSession.id,
+                    title: cachedSession.title,
+                    gameModelId: cachedSession.gameModelId,
+                    phase: cachedSession.phase,
+                    zone: cachedSession.zone,
+                    ageGroup: cachedSession.ageGroup,
+                    durationMin: cachedSession.durationMin,
+                    summary: sessionData.summary,
+                    drills: sessionData.drills || [],
+                    sessionPlan: sessionData.sessionPlan,
+                    equipment: sessionData.equipment,
+                    coachingNotes: sessionData.coachingNotes,
+                    principleIds: Array.isArray(cachedSession.principleIds) ? cachedSession.principleIds : [],
+                    psychThemeIds: Array.isArray(cachedSession.psychThemeIds) ? cachedSession.psychThemeIds : [],
+                  },
+                  qa: qaData,
+                });
+                setSavedToVault(true);
+                setLoading(false);
+                setError(null);
+                return null;
+              }
+            } catch {
+              // ignore cache errors
+            }
+            setError("Session not found in vault. It may have been removed.");
+            setData(null);
+            setSeriesData(null);
+            setSavedToVault(false);
+            setSkillFocus(null);
+            setLoading(false);
+            router.replace("/demo/session");
+            return null;
+          }
           if (!res.ok) {
             throw new Error(`Session not found: ${res.status}`);
           }
@@ -513,6 +591,7 @@ function SessionDemoPageContent() {
               },
               qa: qaData,
             });
+            setSkillFocus(sessionData.skillFocus || null);
             setSeriesData(null);
             setShowRecommendations(false);
             setRecommendations([]);
@@ -599,6 +678,7 @@ function SessionDemoPageContent() {
               setSeriesData(null);
             } else {
               setData(result);
+              setSkillFocus(result.session?.skillFocus || null);
               setSeriesData(null);
               setShowRecommendations(false);
               setRecommendations([]);
@@ -623,9 +703,10 @@ function SessionDemoPageContent() {
   }, [searchParamsString]);
 
   // Get current session (single mode or selected tab from series)
+  const seriesList = seriesData?.series ?? [];
   const currentSeriesItem =
-    sessionMode === "series" && seriesData?.series?.length
-      ? seriesData.series[Math.min(selectedSeriesTab, seriesData.series.length - 1)]
+    sessionMode === "series" && seriesList.length
+      ? seriesList[Math.min(selectedSeriesTab, seriesList.length - 1)]
       : null;
 
   const currentSessionData =
@@ -637,21 +718,46 @@ function SessionDemoPageContent() {
             session: currentSeriesItem.session,
             qa: currentSeriesItem.qa,
             fixDecision: currentSeriesItem.fixDecision,
+            raw: currentSeriesItem as any,
           }
         : null;
 
   const session = currentSessionData?.session;
   const qaScores = (currentSessionData?.qa?.scores || {}) as Record<string, number>;
   const qaPass = currentSessionData?.qa?.pass;
+  const resolvedSessionId = (() => {
+    const direct = session?.id;
+    if (typeof direct === "string") {
+      const trimmed = direct.trim();
+      if (trimmed && trimmed !== "undefined" && trimmed !== "null") {
+        return trimmed;
+      }
+    }
+    const rawId = (currentSessionData as any)?.raw?.created?.id as string | undefined;
+    if (typeof rawId === "string") {
+      const trimmed = rawId.trim();
+      if (trimmed && trimmed !== "undefined" && trimmed !== "null") {
+        return trimmed;
+      }
+    }
+    const fallback = currentSeriesItem?.id;
+    if (typeof fallback === "string") {
+      const trimmed = fallback.trim();
+      if (trimmed && trimmed !== "undefined" && trimmed !== "null") {
+        return trimmed;
+      }
+    }
+    return undefined;
+  })();
 
   // Check vault status when session changes
   useEffect(() => {
-    if (session?.id) {
-      checkVaultStatus(session.id);
+    if (resolvedSessionId) {
+      checkVaultStatus(resolvedSessionId);
     } else {
       setSavedToVault(false);
     }
-  }, [session?.id]);
+  }, [resolvedSessionId]);
 
   async function checkVaultStatus(sessionId: string) {
     setCheckingVaultStatus(true);
@@ -704,7 +810,7 @@ function SessionDemoPageContent() {
   }, []);
 
   useEffect(() => {
-    const sessionId = data?.session?.id;
+    const sessionId = resolvedSessionId;
     if (!sessionId) {
       setSkillFocus(null);
       return;
@@ -712,7 +818,7 @@ function SessionDemoPageContent() {
     fetchSkillFocusForSessionId(sessionId)
       .then((focus) => setSkillFocus(focus))
       .catch(() => setSkillFocus(null));
-  }, [data?.session?.id]);
+  }, [resolvedSessionId]);
 
   useEffect(() => {
     const firstSession: any = seriesData?.series?.[0]?.session;
@@ -789,6 +895,7 @@ function SessionDemoPageContent() {
                     </label>
                     <select
                       name="phase"
+                    id="phase"
                       defaultValue={config.phase}
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                     >
@@ -805,6 +912,7 @@ function SessionDemoPageContent() {
                     </label>
                     <select
                       name="zone"
+                    id="zone"
                       defaultValue={config.zone}
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                     >
@@ -820,8 +928,10 @@ function SessionDemoPageContent() {
                       Topic
                     </label>
                     <TopicSelect
+                      key={`${config.phase}-${config.zone}-${config.coachLevel}`}
                       phase={config.phase as Phase}
                       zone={config.zone as Zone}
+                      coachLevel={config.coachLevel}
                       defaultValue={config.topic}
                       name="topic"
                       id="topic"
@@ -923,6 +1033,7 @@ function SessionDemoPageContent() {
                     </label>
                     <select
                       name="coachLevel"
+                      id="coachLevel"
                       defaultValue={config.coachLevel}
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                     >
@@ -1145,12 +1256,63 @@ function SessionDemoPageContent() {
                       </div>
                     </div>
                     <div className="flex gap-2 ml-4">
-                      <Link
-                        href={`/demo/session?sessionId=${rec.session.id}`}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setLoading(true);
+                            setShowRecommendations(false);
+
+                            const source = rec.session;
+                            if (!source) {
+                              alert("Recommended session data is missing.");
+                              setLoading(false);
+                              return;
+                            }
+
+                            const sessionData = source.json || {};
+                            const qaFromJson = sessionData.qa || {};
+                            const qaData = {
+                              pass: source.approved || qaFromJson.pass || false,
+                              summary: qaFromJson.summary,
+                              scores: qaFromJson.scores || {},
+                            };
+
+                            setData({
+                              ok: true,
+                              session: {
+                                id: source.id,
+                                title: source.title,
+                                gameModelId: source.gameModelId,
+                                phase: source.phase,
+                                zone: source.zone,
+                                ageGroup: source.ageGroup,
+                                durationMin: source.durationMin,
+                                summary: sessionData.summary,
+                                drills: sessionData.drills || [],
+                                sessionPlan: sessionData.sessionPlan,
+                                equipment: sessionData.equipment,
+                                coachingNotes: sessionData.coachingNotes,
+                                principleIds: Array.isArray(source.principleIds) ? source.principleIds : [],
+                                psychThemeIds: Array.isArray(source.psychThemeIds) ? source.psychThemeIds : [],
+                              },
+                              qa: qaData,
+                            });
+                            setSkillFocus(sessionData.skillFocus || null);
+                            setSeriesData(null);
+                            setSessionMode("single");
+                            setSavedToVault(!!source.savedToVault);
+                          } catch (e: any) {
+                            console.error("[RECOMMENDATION_VIEW] Error loading recommended session:", e);
+                            alert(`Error loading recommended session: ${e?.message || String(e)}`);
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
                         className="inline-flex items-center rounded-full bg-blue-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-blue-400"
                       >
                         View
-                      </Link>
+                      </button>
                       <Link
                         href="/vault"
                         className="inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/20"
@@ -1175,15 +1337,15 @@ function SessionDemoPageContent() {
         )}
 
         {/* Series Tabs (if series mode) */}
-        {!loading && seriesData?.ok && seriesData?.series?.length > 0 && (
+        {!loading && seriesData?.ok && seriesList.length > 0 && (
           <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold">
-                  {seriesData.metadata.totalSessions}-Session Progressive Series
+                  {(seriesData.metadata?.totalSessions || seriesList.length)}-Session Progressive Series
                 </h2>
                 <p className="text-xs text-slate-400">
-                  {seriesData.metadata.gameModelId} • {seriesData.metadata.ageGroup}
+                  {seriesData.metadata?.gameModelId || ""} {seriesData.metadata?.ageGroup ? `• ${seriesData.metadata.ageGroup}` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -1191,7 +1353,7 @@ function SessionDemoPageContent() {
                   onClick={async () => {
                     try {
                       setGeneratingSeriesSkillFocus(true);
-                      const sessionIds = seriesData.series.map(s => s.id).filter(Boolean) as string[];
+                      const sessionIds = seriesList.map(s => s.id).filter(Boolean) as string[];
                       if (sessionIds.length === 0) {
                         alert("Cannot generate focus: Sessions don't have IDs yet");
                         setGeneratingSeriesSkillFocus(false);
@@ -1206,15 +1368,23 @@ function SessionDemoPageContent() {
                     }
                   }}
                   disabled={generatingSeriesSkillFocus}
-                  className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                    seriesSkillFocus
+                      ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                      : "border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700"
+                  }`}
                 >
-                  {generatingSeriesSkillFocus ? "⚡ Generating Focus..." : "🎯 Series Skill Focus"}
+                  {generatingSeriesSkillFocus
+                    ? "⚡ Generating Focus..."
+                    : seriesSkillFocus
+                    ? "✓ Series Skill Focus"
+                    : "🎯 Series Skill Focus"}
                 </button>
                 <button
                   onClick={async () => {
                     try {
                       setSavingSeries(true);
-                      const sessionIds = seriesData.series.map(s => s.id).filter(Boolean) as string[];
+                      const sessionIds = seriesList.map(s => s.id).filter(Boolean) as string[];
                       if (sessionIds.length === 0) {
                         alert("Cannot save: Sessions don't have IDs yet");
                         setSavingSeries(false);
@@ -1298,10 +1468,71 @@ function SessionDemoPageContent() {
                     </ul>
                   </div>
                 )}
+                {(Array.isArray(seriesSkillFocus.psychology?.good) || Array.isArray(seriesSkillFocus.psychology?.bad)) && (
+                  <div className="mt-3">
+                    <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Psychological Watch</div>
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      {Array.isArray(seriesSkillFocus.psychology?.good) && seriesSkillFocus.psychology?.good?.length > 0 && (
+                        <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3">
+                          <div className="text-[11px] uppercase tracking-widest text-emerald-200/80">Encourage</div>
+                          <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-emerald-100/80">
+                            {seriesSkillFocus.psychology?.good?.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {Array.isArray(seriesSkillFocus.psychology?.bad) && seriesSkillFocus.psychology?.bad?.length > 0 && (
+                        <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3">
+                          <div className="text-[11px] uppercase tracking-widest text-rose-200/80">Correct</div>
+                          <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-rose-100/80">
+                            {seriesSkillFocus.psychology?.bad?.map((item, i) => (
+                              <li key={i}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {seriesSkillFocus.sectionPhrases && (
+                  <div className="mt-4">
+                    <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Section Phrases</div>
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      {Object.entries(seriesSkillFocus.sectionPhrases).map(([section, phrases]) => (
+                        <div key={section} className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                          <div className="text-[11px] uppercase tracking-widest text-slate-300">
+                            {section.replace("_", " ")}
+                          </div>
+                          {Array.isArray(phrases?.encourage) && phrases.encourage.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
+                              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100/80">
+                                {phrases.encourage.map((item, i) => (
+                                  <li key={i}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {Array.isArray(phrases?.correct) && phrases.correct.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
+                              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-rose-100/80">
+                                {phrases.correct.map((item, i) => (
+                                  <li key={i}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="flex gap-2 border-b border-slate-700/70 -mx-6 px-6 pb-4">
-              {seriesData.series.map((seriesItem, index) => (
+              {seriesList.map((seriesItem, index) => (
                 <button
                   key={seriesItem.sessionNumber}
                   onClick={() => setSelectedSeriesTab(index)}
@@ -1322,7 +1553,7 @@ function SessionDemoPageContent() {
             </div>
             <div className="mt-4">
               <p className="text-xs text-slate-400">
-                {seriesData.series[selectedSeriesTab]?.session.summary || "Progressive training series"}
+                {seriesList[selectedSeriesTab]?.session.summary || "Progressive training series"}
               </p>
             </div>
           </section>
@@ -1373,11 +1604,11 @@ function SessionDemoPageContent() {
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-3 pt-2">
-                {session.id && !savedToVault && (
+                {resolvedSessionId && !savedToVault && (
                   <button
                     onClick={async () => {
                       try {
-                        const sessionId = session.id;
+                        const sessionId = resolvedSessionId;
                         console.log("[VAULT FRONTEND] Attempting to save session");
                         console.log("[VAULT FRONTEND] Session object:", { id: sessionId, hasId: !!sessionId, idType: typeof sessionId });
                         console.log("[VAULT FRONTEND] Full session:", session);
@@ -1458,12 +1689,12 @@ function SessionDemoPageContent() {
                 <button
                   onClick={async () => {
                     try {
-                      if (!session.id) {
+                      if (!resolvedSessionId) {
                         alert("Session ID is missing. Generate a session first.");
                         return;
                       }
                       setGeneratingSkillFocus(true);
-                      const focus = await generateSkillFocusForSessionId(session.id);
+                      const focus = await generateSkillFocusForSessionId(resolvedSessionId);
                       setSkillFocus(focus);
                     } catch (e: any) {
                       alert("Error generating skill focus: " + e.message);
@@ -1472,17 +1703,51 @@ function SessionDemoPageContent() {
                     }
                   }}
                   disabled={generatingSkillFocus || !session.id}
-                  className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                    skillFocus
+                      ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                      : "border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700"
+                  }`}
                 >
-                  {generatingSkillFocus ? "⚡ Generating Skill Focus..." : "🎯 Generate Skill Focus"}
+                  {generatingSkillFocus
+                    ? "⚡ Generating Skill Focus..."
+                    : skillFocus
+                    ? "✓ Skill Focus Ready"
+                    : "🎯 Generate Skill Focus"}
                 </button>
                 <button
                   onClick={async () => {
                     try {
+                      // Ensure we're sending the full session with all drill data including diagrams
+                      // Preserve both diagram and diagramV1 if they exist
+                      // Include skill focus if it's been generated
+                      const sessionForExport = {
+                        ...session,
+                        skillFocus: skillFocus || session.skillFocus || null, // Include skill focus from state or session
+                        drills: session.drills?.map((drill: any) => {
+                          const drillCopy = { ...drill };
+                          // Ensure at least one diagram field exists if either exists
+                          if (drill.diagramV1 && !drill.diagram) {
+                            drillCopy.diagram = drill.diagramV1;
+                          }
+                          return drillCopy;
+                        }) || [],
+                      };
+                      console.log("[PDF_EXPORT] Sending session to PDF export:", {
+                        title: sessionForExport.title,
+                        drillsCount: sessionForExport.drills?.length,
+                        drillsWithDiagrams: sessionForExport.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
+                        firstDrillHasDiagram: !!(sessionForExport.drills?.[0]?.diagram || sessionForExport.drills?.[0]?.diagramV1),
+                        firstDrillDiagramSample: sessionForExport.drills?.[0] ? {
+                          hasDiagram: !!sessionForExport.drills[0].diagram,
+                          hasDiagramV1: !!sessionForExport.drills[0].diagramV1,
+                          diagramPlayers: sessionForExport.drills[0].diagram?.players?.length || sessionForExport.drills[0].diagramV1?.players?.length || 0,
+                        } : null,
+                      });
                       const response = await fetch("/api/export-session-pdf", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ session }),
+                        body: JSON.stringify({ session: sessionForExport }),
                       });
                       if (!response.ok) {
                         const error = await response.json();
@@ -1535,6 +1800,13 @@ function SessionDemoPageContent() {
                 </div>
               )}
 
+              {/* QA Scores Display */}
+              {Object.keys(qaScores).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-700">
+                  <QAScoresDisplay scores={qaScores} pass={qaPass} />
+                </div>
+              )}
+
               {skillFocus && (
                 <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                   <div className="text-xs text-emerald-300 uppercase tracking-widest">Player Skill Focus</div>
@@ -1564,13 +1836,67 @@ function SessionDemoPageContent() {
                       </ul>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* QA Scores Display */}
-              {Object.keys(qaScores).length > 0 && (
-                <div className="mt-4 pt-4 border-t border-slate-700">
-                  <QAScoresDisplay scores={qaScores} pass={qaPass} />
+                  {(Array.isArray(skillFocus.psychology?.good) || Array.isArray(skillFocus.psychology?.bad)) && (
+                    <div className="mt-3">
+                      <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Psychological Watch</div>
+                    <div className="mt-2 grid gap-3 md:grid-cols-2">
+                      {Array.isArray(skillFocus.psychology?.good) && skillFocus.psychology?.good?.length > 0 && (
+                          <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3">
+                          <div className="text-[11px] uppercase tracking-widest text-emerald-200/80">Encourage</div>
+                            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-emerald-100/80">
+                              {skillFocus.psychology?.good?.map((item, i) => (
+                                <li key={i}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      {Array.isArray(skillFocus.psychology?.bad) && skillFocus.psychology?.bad?.length > 0 && (
+                          <div className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-3">
+                          <div className="text-[11px] uppercase tracking-widest text-rose-200/80">Correct</div>
+                            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-rose-100/80">
+                              {skillFocus.psychology?.bad?.map((item, i) => (
+                                <li key={i}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {skillFocus.sectionPhrases && (
+                    <div className="mt-4">
+                      <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Section Phrases</div>
+                      <div className="mt-2 grid gap-3 md:grid-cols-2">
+                        {Object.entries(skillFocus.sectionPhrases).map(([section, phrases]) => (
+                          <div key={section} className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                            <div className="text-[11px] uppercase tracking-widest text-slate-300">
+                              {section.replace("_", " ")}
+                            </div>
+                            {Array.isArray(phrases?.encourage) && phrases.encourage.length > 0 && (
+                              <div className="mt-2">
+                                <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
+                                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100/80">
+                                  {phrases.encourage.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {Array.isArray(phrases?.correct) && phrases.correct.length > 0 && (
+                              <div className="mt-2">
+                                <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
+                                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-rose-100/80">
+                                  {phrases.correct.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </section>

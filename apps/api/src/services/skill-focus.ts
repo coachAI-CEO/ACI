@@ -89,6 +89,33 @@ export async function generateSkillFocusForSession(sessionId: string) {
       summary: focus.summary || null,
       keySkills: focus.keySkills || [],
       coachingPoints: focus.coachingPoints || [],
+      psychologyGood: focus.psychology?.good || [],
+      psychologyBad: focus.psychology?.bad || [],
+      sectionPhrases: focus.sectionPhrases || null,
+    },
+  });
+
+  // Persist skill focus into the session JSON for easy retrieval
+  const sessionJson = (session.json as any) || {};
+  await prisma.session.update({
+    where: { id: sessionId },
+    data: {
+      json: {
+        ...sessionJson,
+        skillFocus: {
+          id: created.id,
+          title: created.title,
+          summary: created.summary,
+          keySkills: created.keySkills,
+          coachingPoints: created.coachingPoints,
+          psychology: {
+            good: created.psychologyGood || [],
+            bad: created.psychologyBad || [],
+          },
+          sectionPhrases: created.sectionPhrases || null,
+          createdAt: created.createdAt,
+        },
+      },
     },
   });
 
@@ -134,6 +161,9 @@ export async function generateSkillFocusForSeries(input: { seriesId?: string; se
       summary: focus.summary || null,
       keySkills: focus.keySkills || [],
       coachingPoints: focus.coachingPoints || [],
+      psychologyGood: focus.psychology?.good || [],
+      psychologyBad: focus.psychology?.bad || [],
+      sectionPhrases: focus.sectionPhrases || null,
     },
   });
 

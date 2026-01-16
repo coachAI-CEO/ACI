@@ -60,8 +60,8 @@ export default function QAScoresDisplay({ scores, pass }: QAScoresDisplayProps) 
   const averageScore = scoreEntries.reduce((sum, [_, score]) => sum + (score as number), 0) / scoreEntries.length;
 
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-900/50 p-4">
-      <div className="mb-4 flex items-center justify-between">
+    <details className="rounded-lg border border-slate-700 bg-slate-900/50 p-4">
+      <summary className="flex items-center justify-between cursor-pointer select-none">
         <h3 className="text-sm font-semibold text-slate-200">Quality Scores</h3>
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-400">Average:</span>
@@ -83,9 +83,9 @@ export default function QAScoresDisplay({ scores, pass }: QAScoresDisplayProps) 
             </span>
           )}
         </div>
-      </div>
+      </summary>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {scoreEntries.map(([key, score]) => {
           const scoreNum = score as number;
           const percentage = (scoreNum / 5) * 100;
@@ -128,7 +128,7 @@ export default function QAScoresDisplay({ scores, pass }: QAScoresDisplayProps) 
           );
         })}
       </div>
-    </div>
+    </details>
   );
 }
 

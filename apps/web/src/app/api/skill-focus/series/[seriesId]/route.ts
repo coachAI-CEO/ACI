@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest, context: { params: { seriesId: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ seriesId: string }> }) {
   try {
-    const { seriesId } = context.params;
+    const { seriesId } = await context.params;
     const res = await fetch(`http://localhost:4000/skill-focus/series/${seriesId}`);
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));

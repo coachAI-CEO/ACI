@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { getTopicsForPhaseAndZone } from "@/data/session-topics";
 
 const FORMATION_BY_AGE: Record<string, string[]> = {
   // 7v7 formations (U8-U12)
@@ -35,8 +36,20 @@ export default function SessionForm({ children }: { children: React.ReactNode })
       const ageGroupSelect = document.getElementById("ageGroup") as HTMLSelectElement;
       const formationAttackingSelect = document.getElementById("formationAttacking") as HTMLSelectElement;
       const formationDefendingSelect = document.getElementById("formationDefending") as HTMLSelectElement;
+      const phaseSelect = document.getElementById("phase") as HTMLSelectElement;
+      const zoneSelect = document.getElementById("zone") as HTMLSelectElement;
+      const coachLevelSelect = document.getElementById("coachLevel") as HTMLSelectElement;
+      const topicSelect = document.getElementById("topic") as HTMLSelectElement;
 
-      if (!ageGroupSelect || !formationAttackingSelect || !formationDefendingSelect) {
+      if (
+        !ageGroupSelect ||
+        !formationAttackingSelect ||
+        !formationDefendingSelect ||
+        !phaseSelect ||
+        !zoneSelect ||
+        !coachLevelSelect ||
+        !topicSelect
+      ) {
         // Retry if elements not found yet
         setTimeout(init, 50);
         return;
@@ -105,14 +118,49 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         });
       };
 
+      const updateTopics = () => {
+        const phase = phaseSelect.value || "ATTACKING";
+        const zone = zoneSelect.value || "ATTACKING_THIRD";
+        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
+        const validTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
+        const currentTopic = topicSelect.value;
+        const currentOptions = Array.from(topicSelect.options).map(opt => opt.value);
+        const topicsMatch = currentOptions.length === validTopics.length &&
+          currentOptions.every(opt => validTopics.includes(opt)) &&
+          validTopics.every(opt => currentOptions.includes(opt));
+
+        if (!topicsMatch) {
+          topicSelect.innerHTML = "";
+          validTopics.forEach((topic) => {
+            const option = document.createElement("option");
+            option.value = topic;
+            option.textContent = topic;
+            if (topic === currentTopic) {
+              option.selected = true;
+            }
+            topicSelect.appendChild(option);
+          });
+          if (!validTopics.includes(currentTopic)) {
+            topicSelect.value = validTopics[0] || "";
+          }
+        }
+      };
+
       // Run once immediately to fix any mismatches
       updateFormations();
+      updateTopics();
       
-      // Listen for age group changes
+      // Listen for changes that should impact formations/topics
       ageGroupSelect.addEventListener("change", updateFormations);
+      phaseSelect.addEventListener("change", updateTopics);
+      zoneSelect.addEventListener("change", updateTopics);
+      coachLevelSelect.addEventListener("change", updateTopics);
       
       return () => {
         ageGroupSelect.removeEventListener("change", updateFormations);
+        phaseSelect.removeEventListener("change", updateTopics);
+        zoneSelect.removeEventListener("change", updateTopics);
+        coachLevelSelect.removeEventListener("change", updateTopics);
       };
     };
 

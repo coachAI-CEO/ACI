@@ -65,11 +65,11 @@ export const DrillDiagram: React.FC<Props> = ({
   width = 520,
   height = 340,
 }) => {
-  const { pitch, players, coach, arrows } = diagram;
+  const { pitch = {}, players = [], coach, arrows = [] } = diagram || {};
 
   // Map playerId -> player
   const playerMap = new Map<string, DiagramPlayer>();
-  players.forEach((p) => playerMap.set(p.id, p));
+  if (players) players.forEach((p) => playerMap.set(p.id, p));
 
   const getPointCoords = (ref: { playerId?: string; x?: number; y?: number }) => {
     if (ref.playerId && playerMap.has(ref.playerId)) {
@@ -262,7 +262,7 @@ export const DrillDiagram: React.FC<Props> = ({
         />
 
         {/* Arrows (passes, runs, etc.) */}
-        {arrows.map((a, idx) => {
+        {arrows && arrows.map((a, idx) => {
           const from = getPointCoords(a.from);
           const to = getPointCoords(a.to);
           if (!from || !to) return null;
@@ -287,7 +287,7 @@ export const DrillDiagram: React.FC<Props> = ({
         })}
 
         {/* Players */}
-        {players.map((p) => {
+        {players && players.map((p) => {
           const radius = 3.4;
           const col = teamColor(p.team);
           const num = p.number ?? 0;

@@ -178,6 +178,9 @@ model SkillFocus {
   summary    String?
   keySkills  Json
   coachingPoints Json?
+  psychologyGood Json?
+  psychologyBad  Json?
+  sectionPhrases Json?
   createdAt  DateTime @default(now())
 
   session Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)

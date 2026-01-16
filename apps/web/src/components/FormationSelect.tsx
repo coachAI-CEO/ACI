@@ -54,90 +54,42 @@ export default function FormationSelect({
   className,
 }: FormationSelectProps) {
   const [currentAgeGroup, setCurrentAgeGroup] = useState(initialAgeGroup);
-  const [selectedFormation, setSelectedFormation] = useState(defaultValue);
-  const hasInitialized = useRef(false);
+  const [selectedFormation, setSelectedFormation] = useState(() => {
+    const validFormations = getValidFormations(initialAgeGroup);
+    return validFormations.includes(defaultValue) ? defaultValue : getDefaultFormation(initialAgeGroup);
+  });
+  const [renderKey, setRenderKey] = useState(0);
+  const ageGroupRef = useRef(currentAgeGroup);
 
-  // Read actual DOM value on mount and sync
-  useEffect(() => {
-    const updateFromDOM = () => {
-      const ageGroupSelect = document.getElementById("ageGroup") as HTMLSelectElement;
-      if (!ageGroupSelect) return;
-
-      const domAgeGroup = ageGroupSelect.value;
-      if (domAgeGroup) {
-        setCurrentAgeGroup((prev) => {
-          if (domAgeGroup !== prev) {
-            const validFormations = getValidFormations(domAgeGroup);
-            setSelectedFormation((prevForm) => {
-              if (!validFormations.includes(prevForm)) {
-                return getDefaultFormation(domAgeGroup);
-              }
-              return prevForm;
-            });
-            return domAgeGroup;
-          }
-          return prev;
-        });
-      }
-    };
-
-    // Try multiple times to catch DOM updates
-    if (!hasInitialized.current) {
-      updateFromDOM();
-      const timer1 = setTimeout(updateFromDOM, 10);
-      const timer2 = setTimeout(updateFromDOM, 100);
-      hasInitialized.current = true;
-      
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-      };
-    }
-  }, []);
-
-  // Listen for age group changes
+  // Listen for age group changes via DOM events
   useEffect(() => {
     const ageGroupSelect = document.getElementById("ageGroup") as HTMLSelectElement;
     if (!ageGroupSelect) return;
 
     const handleChange = () => {
       const newAgeGroup = ageGroupSelect.value;
-      if (newAgeGroup && newAgeGroup !== currentAgeGroup) {
-        setCurrentAgeGroup(newAgeGroup);
+      if (newAgeGroup && newAgeGroup !== ageGroupRef.current) {
+        ageGroupRef.current = newAgeGroup;
         const validFormations = getValidFormations(newAgeGroup);
-        setSelectedFormation((prev) => {
+        setCurrentAgeGroup(newAgeGroup);
+        setSelectedFormation(prev => {
           if (!validFormations.includes(prev)) {
             return getDefaultFormation(newAgeGroup);
           }
           return prev;
         });
+        setRenderKey(k => k + 1);
       }
     };
+
+    // Sync on mount
+    if (ageGroupSelect.value && ageGroupSelect.value !== ageGroupRef.current) {
+      handleChange();
+    }
 
     ageGroupSelect.addEventListener("change", handleChange);
-    return () => {
-      ageGroupSelect.removeEventListener("change", handleChange);
-    };
-  }, [currentAgeGroup]);
-
-  // Also update when prop changes (server-side update)
-  useEffect(() => {
-    if (initialAgeGroup !== currentAgeGroup) {
-      // Check if DOM matches prop
-      const ageGroupSelect = document.getElementById("ageGroup") as HTMLSelectElement;
-      const domValue = ageGroupSelect?.value;
-      
-      // Use DOM value if available, otherwise use prop
-      const ageGroupToUse = domValue || initialAgeGroup;
-      if (ageGroupToUse !== currentAgeGroup) {
-        setCurrentAgeGroup(ageGroupToUse);
-        const validFormations = getValidFormations(ageGroupToUse);
-        if (!validFormations.includes(selectedFormation)) {
-          setSelectedFormation(getDefaultFormation(ageGroupToUse));
-        }
-      }
-    }
-  }, [initialAgeGroup, currentAgeGroup, selectedFormation]);
+    return () => ageGroupSelect.removeEventListener("change", handleChange);
+  }, []); // Empty dependency - only run once on mount
 
   const validFormations = getValidFormations(currentAgeGroup);
   const formationType = getFormationType(currentAgeGroup);
@@ -145,6 +97,7 @@ export default function FormationSelect({
   return (
     <div>
       <select
+        key={renderKey}
         name={name}
         id={id}
         value={selectedFormation}
@@ -152,7 +105,7 @@ export default function FormationSelect({
         className={className}
       >
         {validFormations.map((formation) => (
-          <option key={formation} value={formation}>
+          <option key={`${renderKey}-${formation}`} value={formation}>
             {formation}
           </option>
         ))}

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest, context: { params: Promise<{ sessionId: string }> }) {
+export async function GET(request: NextRequest) {
   try {
-    const { sessionId } = await context.params;
-    const res = await fetch(`http://localhost:4000/skill-focus/session/${sessionId}`);
+    const { searchParams } = new URL(request.url);
+    const res = await fetch(`http://localhost:4000/vault/sessions?${searchParams.toString()}`);
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       return NextResponse.json(

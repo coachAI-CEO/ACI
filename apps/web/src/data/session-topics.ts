@@ -1,0 +1,503 @@
+export type Phase = "ATTACKING" | "DEFENDING" | "TRANSITION";
+export type Zone = "DEFENSIVE_THIRD" | "MIDDLE_THIRD" | "ATTACKING_THIRD";
+export type CoachLevel = "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | string;
+
+const COMBO_TOPICS: Record<string, string[]> = {
+  "ATTACKING|DEFENSIVE_THIRD": [
+    "Playing Out Under Pressure",
+    "First Line Breaks",
+    "Build-Up Patterns (Back Line)",
+    "GK Distribution Options",
+    "Finding the 6",
+    "Creating 2v1s in Build-Up",
+    "Switching from the Back",
+    "Third-Man Support in Build-Up",
+    "Body Shape to Receive",
+    "Scanning Before Receive",
+    "Tempo Control in Build-Up",
+    "Breaking Press Triggers",
+    "Support Angles for CBs",
+    "Wide Outlet Options",
+    "Progressive Passing Lanes",
+    "Patience vs. Risk Balance",
+    "Playing Forward on First Touch",
+    "Rest Defense Setup",
+    "Communication in Build-Up",
+    "Decision Making Under Press",
+    "Switch Through the 6",
+    "Breaking First Line with Dribble",
+    "Fullback Support Angles",
+    "Center Back Split Positioning",
+    "GK as Third Center Back",
+    "Using the 6 to Bounce",
+    "Playing into the 8s",
+    "Open Body to Play Forward",
+    "Patience vs Vertical Pass",
+    "Wide Overlap Timing",
+  ],
+  "ATTACKING|MIDDLE_THIRD": [
+    "Breaking Lines",
+    "Midfield Rotation",
+    "Third-Man Runs",
+    "Switching the Point of Attack",
+    "Positional Play (Possession)",
+    "Creating Overloads",
+    "Combination Play",
+    "Half-Space Occupation",
+    "Tempo Changes",
+    "Through Balls & Timing",
+    "Support Angles",
+    "Progressive Passing",
+    "Receiving on the Half-Turn",
+    "Attract & Release",
+    "Quick One-Touch Play",
+    "Attacking Width",
+    "Attacking Depth",
+    "Breaking Compact Blocks",
+    "Decision Making in Build-Up",
+    "Off-Ball Movement Cues",
+    "Central Overloads",
+    "Wide Isolation to 1v1",
+    "Late Runner Timing",
+    "Underlap Patterns",
+    "Third-Man Wall Pass",
+    "Breaking with Carries",
+    "Switch After Two Passes",
+    "Recycling Possession",
+    "Split Pass to 10",
+    "Half-Space Combinations",
+  ],
+  "ATTACKING|ATTACKING_THIRD": [
+    "Final Third Penetration",
+    "Chance Creation",
+    "Crossing & Finishing",
+    "Cutbacks & Box Entries",
+    "Combination Play in the Box",
+    "Through Balls & Timing",
+    "Third-Man Runs to Goal",
+    "Attacking the Near Post",
+    "Attacking the Far Post",
+    "1v1 to Beat Defender",
+    "Finishing Under Pressure",
+    "Quick Combinations (Give & Go)",
+    "Creating 2v1s Wide",
+    "Switch to Weak Side Finish",
+    "Arrivals from Midfield",
+    "Attacking Set Pieces",
+    "Decision Making in Final Third",
+    "Tempo in the Final Pass",
+    "Body Shape for Finishing",
+    "Rebounds & Second Balls",
+    "One-Touch Finishes",
+    "Finishing from Cutbacks",
+    "Create Separation in Box",
+    "Timing of Crosses",
+    "Near Post Runs",
+    "Far Post Runs",
+    "Blindside Runs",
+    "Second Phase Attacks",
+    "Quick Shot Selection",
+    "Combining with 9",
+  ],
+  "DEFENDING|DEFENSIVE_THIRD": [
+    "Protecting the Box",
+    "Delaying and Containing",
+    "Compactness & Lines",
+    "Zonal Defending",
+    "Marking in Key Areas",
+    "Defending Crosses",
+    "Clearance Decisions",
+    "Tracking Runners",
+    "Communication in Defense",
+    "Blocking Passing Lanes",
+    "Tackling Technique",
+    "1v1 Defending",
+    "Defending 2v2s",
+    "Forcing Play Wide",
+    "Managing Cutbacks",
+    "Defensive Set Pieces",
+    "Recovery Runs",
+    "GK + Back Line Coordination",
+    "Body Shape to Defend",
+    "Decision Making Under Pressure",
+    "Defending the Near Post",
+    "Defending the Far Post",
+    "Box Compactness",
+    "Tracking Cutback Zone",
+    "Clearing to Safe Areas",
+    "Protecting Central Lane",
+    "Defending Through Balls",
+    "Step or Drop Decision",
+    "Defensive Body Shape",
+    "GK Communication",
+  ],
+  "DEFENDING|MIDDLE_THIRD": [
+    "Pressing Triggers",
+    "Defensive Shape",
+    "Pressing as a Unit",
+    "Compactness Between Lines",
+    "Forcing Play Wide",
+    "Screening the 6",
+    "Intercepting Passing Lanes",
+    "Delaying the Attack",
+    "Midfield Pressure",
+    "Double-Team Moments",
+    "Defending the Half-Spaces",
+    "Tracking Midfield Runs",
+    "Counter-Pressing",
+    "Communication & Shifts",
+    "Managing Switches",
+    "Tackling Technique",
+    "Defensive Transitions",
+    "Body Shape to Defend",
+    "Recovery Sprint Triggers",
+    "Decision Making on Press",
+    "Pressing Trap Setup",
+    "Force Inside or Outside",
+    "Second Line Pressure",
+    "Cover and Balance",
+    "Staggered Lines",
+    "Block Passing to 9",
+    "Compactness Front to Back",
+    "Shielding Central Zone",
+    "Step on Bad Touch",
+    "Delay and Recover",
+  ],
+  "DEFENDING|ATTACKING_THIRD": [
+    "High Press Triggers",
+    "Pressing the GK",
+    "Locking Play to One Side",
+    "Counter-Pressing",
+    "Winning Second Balls",
+    "Compact High Line",
+    "Forcing Long Balls",
+    "Pressing as Front 3",
+    "Angle of Approach",
+    "Cover Shadow Use",
+    "Pressing Support",
+    "Transition to Defend",
+    "Immediate Pressure After Loss",
+    "Communication in High Press",
+    "Tracking Back After Press",
+    "Recover to Mid Block",
+    "Defending Quick Counters",
+    "Body Shape to Press",
+    "Decision Making to Press/Drop",
+    "Rest Defense Shape",
+    "Pressing Cues from 9",
+    "Shadow the 6",
+    "Curved Press Runs",
+    "Double Team Wide",
+    "Cut Off Switch",
+    "Line of Confrontation",
+    "Press After Back Pass",
+    "Force to Weak Foot",
+    "Support Angles in Press",
+    "High Press Rest Defense",
+  ],
+  "TRANSITION|DEFENSIVE_THIRD": [
+    "First Pass Forward",
+    "Secure the Ball After Win",
+    "Exit Under Pressure",
+    "GK Distribution in Transition",
+    "Transition to Attack",
+    "Support Angles on Regain",
+    "Quick Switch After Regain",
+    "Protect the Ball",
+    "Second Ball Reactions",
+    "Playing Through the 6",
+    "Speed of Play on Regain",
+    "Compact to Expand",
+    "Decision: Play or Pause",
+    "Counter-Pressing Triggers",
+    "Recovery Shape After Loss",
+    "Clear vs. Build Decision",
+    "Communication on Regain",
+    "Awareness of Space",
+    "Scanning Before Regain",
+    "First Touch Direction",
+    "Outlet Pass to Wide",
+    "Find the 10 Early",
+    "Switch via GK",
+    "Break the First Press",
+    "Support Under the Ball",
+    "Bounce to Reset",
+    "Carry Out of Pressure",
+    "Immediate Width",
+    "First Touch Forward",
+    "Risk vs Safe Decision",
+  ],
+  "TRANSITION|MIDDLE_THIRD": [
+    "Speed of Play on Transition",
+    "Support Angles on Transition",
+    "Counter-Attack Patterns",
+    "Immediate Pressure After Loss",
+    "Winning Second Balls",
+    "Switching After Regain",
+    "Playing Forward Quickly",
+    "Re-Organize After Loss",
+    "Compact to Expand",
+    "Delay the Counter",
+    "First Pass Forward",
+    "Finishing the Counter",
+    "Communication on Transition",
+    "Transition to Defend",
+    "Transition to Attack",
+    "Awareness of Numbers Up/Down",
+    "Recovery Runs",
+    "Counter-Pressing",
+    "Decision Making on Counter",
+    "Tempo Control After Regain",
+    "Vertical Pass on Regain",
+    "Dribble to Commit",
+    "First Look Forward",
+    "Wide Counter Outlet",
+    "Central Penetration",
+    "Third-Man Support",
+    "Protect Lead in Transition",
+    "Counter-Pause-Control",
+    "Fast Support Runs",
+    "Secure After Counter",
+  ],
+  "TRANSITION|ATTACKING_THIRD": [
+    "Finish the Counter",
+    "Quick Shots on Regain",
+    "Second Ball Reactions",
+    "Counter-Pressing",
+    "Immediate Pressure After Loss",
+    "Rest Defense Shape",
+    "Re-Organize After Loss",
+    "Support the Ball on Regain",
+    "Decision: Shoot or Combine",
+    "Fast Break Attacks",
+    "Attacking the Box Early",
+    "Wide Outlet on Counter",
+    "Timing the Final Pass",
+    "Numbers Up Decision Making",
+    "Delay vs. Go",
+    "Win the 2nd Ball",
+    "Defend the Counter",
+    "Communication in Transition",
+    "Recover to Block",
+    "Awareness of Space to Attack",
+    "Shoot on First Touch",
+    "Exploit Numbers Up",
+    "Find the Far Post",
+    "Cutback on Fast Break",
+    "Attack the Box Quickly",
+    "One-Two to Finish",
+    "Draw Foul in Transition",
+    "Press After Shot",
+    "Second Ball Finish",
+    "Quick Restart",
+  ],
+};
+
+type TopicLevelVariants = {
+  grassroots: string;
+  ussfC: string;
+  ussfBPlus: string;
+};
+
+// Hand-authored level-specific labels for key topics.
+// If a topic is not present here, all coach levels will just see the base text.
+const TOPIC_VARIANTS: Record<string, TopicLevelVariants> = {
+  // ATTACKING | ATTACKING_THIRD
+  "Final Third Penetration": {
+    grassroots: "Final Third Penetration",
+    ussfC: "Final Third Penetration – combinations & overloads",
+    ussfBPlus: "Final Third Penetration – breaking lines vs compact blocks",
+  },
+  "Chance Creation": {
+    grassroots: "Chance Creation",
+    ussfC: "Chance Creation – triggers for the final pass",
+    ussfBPlus: "Chance Creation – manipulating the back line & keeper",
+  },
+  "Crossing & Finishing": {
+    grassroots: "Crossing & Finishing",
+    ussfC: "Crossing & Finishing – timing of runs & delivery",
+    ussfBPlus: "Crossing & Finishing – exploiting weak-side & cutback zones",
+  },
+  "Cutbacks & Box Entries": {
+    grassroots: "Cutbacks & Box Entries",
+    ussfC: "Cutbacks & Box Entries – zones & arrival timing",
+    ussfBPlus: "Cutbacks & Box Entries – creating overloads in the assist zone",
+  },
+  "Combination Play in the Box": {
+    grassroots: "Combination Play in the Box",
+    ussfC: "Combination Play in the Box – 1‑2s & third‑man runs",
+    ussfBPlus: "Combination Play in the Box – breaking tight blocks centrally",
+  },
+  "Through Balls & Timing": {
+    grassroots: "Through Balls & Timing",
+    ussfC: "Through Balls & Timing – cues, angles & runs",
+    ussfBPlus: "Through Balls & Timing – exploiting spaces between & behind lines",
+  },
+  "Third-Man Runs to Goal": {
+    grassroots: "Third-Man Runs to Goal",
+    ussfC: "Third-Man Runs to Goal – timing support & release",
+    ussfBPlus: "Third-Man Runs to Goal – dismarking & breaking the last line",
+  },
+  "Attacking the Near Post": {
+    grassroots: "Attacking the Near Post",
+    ussfC: "Attacking the Near Post – first contact & body shape",
+    ussfBPlus: "Attacking the Near Post – front‑zone occupation & rotations",
+  },
+  "Attacking the Far Post": {
+    grassroots: "Attacking the Far Post",
+    ussfC: "Attacking the Far Post – blindside runs",
+    ussfBPlus: "Attacking the Far Post – weak‑side overloads & second phase",
+  },
+  "1v1 to Beat Defender": {
+    grassroots: "1v1 to Beat Defender",
+    ussfC: "1v1 to Beat Defender – moves, deception & finish",
+    ussfBPlus: "1v1 to Beat Defender – isolations, support & rest defense",
+  },
+  "Finishing Under Pressure": {
+    grassroots: "Finishing Under Pressure",
+    ussfC: "Finishing Under Pressure – speed of action & decisions",
+    ussfBPlus: "Finishing Under Pressure – shot selection vs block & keeper",
+  },
+  "Quick Combinations (Give & Go)": {
+    grassroots: "Quick Combinations (Give & Go)",
+    ussfC: "Quick Combinations – 1‑2s to enter the box",
+    ussfBPlus: "Quick Combinations – disorganising the last line centrally",
+  },
+  "Creating 2v1s Wide": {
+    grassroots: "Creating 2v1s Wide",
+    ussfC: "Creating 2v1s Wide – roles of winger & fullback",
+    ussfBPlus: "Creating 2v1s Wide – fixing inside & exploiting outside",
+  },
+  "Switch to Weak Side Finish": {
+    grassroots: "Switch to Weak Side Finish",
+    ussfC: "Switch to Weak Side Finish – circulation & timing",
+    ussfBPlus: "Switch to Weak Side Finish – stretch & isolate far‑side defender",
+  },
+  "Arrivals from Midfield": {
+    grassroots: "Arrivals from Midfield",
+    ussfC: "Arrivals from Midfield – late box runs",
+    ussfBPlus: "Arrivals from Midfield – timing from second line vs markers",
+  },
+  "Attacking Set Pieces": {
+    grassroots: "Attacking Set Pieces",
+    ussfC: "Attacking Set Pieces – roles & runs",
+    ussfBPlus: "Attacking Set Pieces – routines vs zonal & mixed blocks",
+  },
+  "Decision Making in Final Third": {
+    grassroots: "Decision Making in Final Third",
+    ussfC: "Decision Making in Final Third – shoot, pass or cross",
+    ussfBPlus: "Decision Making in Final Third – selecting best option vs structure",
+  },
+  "Tempo in the Final Pass": {
+    grassroots: "Tempo in the Final Pass",
+    ussfC: "Tempo in the Final Pass – when to slow or speed up",
+    ussfBPlus: "Tempo in the Final Pass – controlling rhythm to unbalance lines",
+  },
+  "Body Shape for Finishing": {
+    grassroots: "Body Shape for Finishing",
+    ussfC: "Body Shape for Finishing – first touch & preparation",
+    ussfBPlus: "Body Shape for Finishing – disguising finish & attacking rebounds",
+  },
+  "Rebounds & Second Balls": {
+    grassroots: "Rebounds & Second Balls",
+    ussfC: "Rebounds & Second Balls – reacting in the box",
+    ussfBPlus: "Rebounds & Second Balls – box occupation after first shot",
+  },
+  "One-Touch Finishes": {
+    grassroots: "One-Touch Finishes",
+    ussfC: "One-Touch Finishes – timing & body orientation",
+    ussfBPlus: "One-Touch Finishes – attacking front & back zones",
+  },
+  "Finishing from Cutbacks": {
+    grassroots: "Finishing from Cutbacks",
+    ussfC: "Finishing from Cutbacks – positioning around penalty spot",
+    ussfBPlus: "Finishing from Cutbacks – timing breaks from second line",
+  },
+  "Create Separation in Box": {
+    grassroots: "Create Separation in Box",
+    ussfC: "Create Separation in Box – double movements",
+    ussfBPlus: "Create Separation in Box – manipulating markers & screening",
+  },
+  "Timing of Crosses": {
+    grassroots: "Timing of Crosses",
+    ussfC: "Timing of Crosses – relate runner & crosser",
+    ussfBPlus: "Timing of Crosses – early vs late delivery to exploit spaces",
+  },
+  "Near Post Runs": {
+    grassroots: "Near Post Runs",
+    ussfC: "Near Post Runs – cues & starting positions",
+    ussfBPlus: "Near Post Runs – attacking front space vs zonal lines",
+  },
+  "Far Post Runs": {
+    grassroots: "Far Post Runs",
+    ussfC: "Far Post Runs – weak‑side timing",
+    ussfBPlus: "Far Post Runs – blindside attacking & overloads",
+  },
+  "Blindside Runs": {
+    grassroots: "Blindside Runs",
+    ussfC: "Blindside Runs – starting positions & triggers",
+    ussfBPlus: "Blindside Runs – attacking defenders’ blind shoulder in box",
+  },
+  "Second Phase Attacks": {
+    grassroots: "Second Phase Attacks",
+    ussfC: "Second Phase Attacks – organise around cleared balls",
+    ussfBPlus: "Second Phase Attacks – structure for sustained pressure",
+  },
+  "Quick Shot Selection": {
+    grassroots: "Quick Shot Selection",
+    ussfC: "Quick Shot Selection – first touch to finish",
+    ussfBPlus: "Quick Shot Selection – choosing finish based on pressure & angle",
+  },
+  "Combining with 9": {
+    grassroots: "Combining with 9",
+    ussfC: "Combining with 9 – set, spin & third‑man",
+    ussfBPlus: "Combining with 9 – using the striker to fix & free runners",
+  },
+};
+
+function applyCoachLevelToTopics(
+  topics: string[],
+  coachLevel?: CoachLevel
+): string[] {
+  const levelKey =
+    (coachLevel && (coachLevel as string).toUpperCase()) || "GRASSROOTS";
+
+  return topics.map((base) => {
+    const variant = TOPIC_VARIANTS[base];
+    if (!variant) {
+      // No hand-authored variant yet: keep a single, clean label for all levels
+      return base;
+    }
+
+    if (levelKey === "USSF_C") {
+      return variant.ussfC;
+    }
+    if (levelKey === "USSF_B_PLUS") {
+      return variant.ussfBPlus;
+    }
+    // Default / GRASSROOTS
+    return variant.grassroots;
+  });
+}
+
+export function getTopicsForPhaseAndZone(
+  phase?: Phase | string,
+  zone?: Zone | string,
+  coachLevel?: CoachLevel
+): string[] {
+  const phaseKey = phase || "ATTACKING";
+  const zoneKey = zone || "ATTACKING_THIRD";
+  const key = `${phaseKey}|${zoneKey}`;
+  const list = COMBO_TOPICS[key] || COMBO_TOPICS["ATTACKING|ATTACKING_THIRD"];
+  const levelled = applyCoachLevelToTopics(list, coachLevel);
+  return levelled.slice(0, 30);
+}
+
+export function getRandomTopic(
+  phase?: Phase | string,
+  zone?: Zone | string,
+  coachLevel?: CoachLevel
+): string {
+  const topics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
+  return topics[Math.floor(Math.random() * topics.length)] || "Final Third Penetration";
+}

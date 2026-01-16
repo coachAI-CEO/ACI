@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest, context: { params: Promise<{ sessionId: string }> }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ sessionId: string }> }) {
   try {
     const { sessionId } = await context.params;
-    const res = await fetch(`http://localhost:4000/skill-focus/session/${sessionId}`);
+    const res = await fetch(`http://localhost:4000/vault/sessions/${sessionId}/remove`, {
+      method: "POST",
+    });
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       return NextResponse.json(
