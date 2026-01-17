@@ -644,8 +644,19 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
 
       {/* Goals from diagram.goals */}
       {goals.map((g, goalIdx) => {
+        // Skip goals with invalid positions
+        if (g.x === undefined || g.y === undefined || g.x === null || g.y === null) {
+          return null;
+        }
+        
         const gx = nx(g.x);
         const gy = ny(g.y);
+        
+        // Skip if calculated position is NaN
+        if (isNaN(gx) || isNaN(gy)) {
+          return null;
+        }
+        
         const isBig = g.type === "BIG";
         
         // Mini goals should be much larger and more visible

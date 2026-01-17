@@ -1,4 +1,4 @@
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import type { Drill } from "../types/drill";
 
 export type DrillQAScores = {
@@ -319,8 +319,15 @@ export async function fixDrill(drill: Partial<Drill>, qa: any) {
 
   // 3) NEEDS_REGEN or PATCHABLE + LLM allowed → call Gemini to fix
   try {
+    // Set metrics context for fixer
+    setMetricsContext({
+      operationType: "fixer",
+    });
+    
     const prompt = buildInlineFixerPrompt(drill, qa);
     const text = await generateText(prompt);
+    clearMetricsContext();
+    
     const fixedJson = parseJsonSafe(text);
 
     if (fixedJson && typeof fixedJson === "object") {

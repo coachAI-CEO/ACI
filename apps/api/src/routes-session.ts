@@ -3,8 +3,36 @@ import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { findSimilarSessions } from "./services/vault";
 import { generateSessionPdf } from "./services/pdf-export";
+import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 
 const r = express.Router();
+
+// AI Chat endpoint for coaching assistant
+r.post("/ai/chat", async (req, res) => {
+  try {
+    const { prompt, context } = req.body;
+    if (!prompt) {
+      return res.status(400).json({ ok: false, error: "prompt is required" });
+    }
+    
+    // Set metrics context for tracking chat interactions
+    setMetricsContext({
+      operationType: "chat",
+      ageGroup: context?.ageGroup,
+      gameModelId: context?.gameModelId,
+    });
+    
+    try {
+      const text = await generateText(prompt, { timeout: 30000, retries: 0 });
+      return res.json({ ok: true, text });
+    } finally {
+      clearMetricsContext();
+    }
+  } catch (e: any) {
+    console.error("[AI_CHAT] Error:", e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
 
 r.post("/ai/generate-session", async (req, res) => {
   const debug = String(req.query.debug || "") === "1";

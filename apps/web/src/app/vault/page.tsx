@@ -621,25 +621,53 @@ export default function VaultPage() {
                     <p>{series.length === 0 ? "No series in vault yet." : "No series match the selected filters."}</p>
                   </div>
                 ) : (
-                  filteredSeries.map((s) => {
+                filteredSeries.map((s) => {
                     const firstSession = s.sessions[0];
                     const seriesPhase = firstSession?.phase ? phaseLabel[firstSession.phase] : null;
                     const seriesZone = firstSession?.zone ? zoneLabel[firstSession.zone] : null;
-                    const seriesNameParts = [
-                      gameModelLabel[s.gameModelId],
-                      s.ageGroup,
-                      seriesPhase,
-                      seriesZone,
-                    ].filter(Boolean);
+                    
+                    // Build unique descriptive series title from first session
+                    let seriesTitle: string;
+                    if (firstSession?.title) {
+                      // Clean up the first session title to use as series title
+                      let baseTitle = firstSession.title
+                        .replace(/^(Session \d+:?\s*)/i, "") // Remove "Session 1:" prefix
+                        .replace(/\s*-\s*Part\s*\d+/i, "")   // Remove "- Part 1" suffix
+                        .trim();
+                      
+                      // If title is too long, truncate intelligently
+                      if (baseTitle.length > 50) {
+                        // Try to cut at a natural break point
+                        const breakPoints = [" - ", ": ", " and ", " & "];
+                        for (const bp of breakPoints) {
+                          const idx = baseTitle.indexOf(bp);
+                          if (idx > 15 && idx < 50) {
+                            baseTitle = baseTitle.substring(0, idx);
+                            break;
+                          }
+                        }
+                        if (baseTitle.length > 50) {
+                          baseTitle = baseTitle.substring(0, 47) + "...";
+                        }
+                      }
+                      
+                      seriesTitle = `${baseTitle} (${s.ageGroup})`;
+                    } else {
+                      // Fallback to game model + age group
+                      seriesTitle = `${gameModelLabel[s.gameModelId] || s.gameModelId} Training (${s.ageGroup})`;
+                    }
 
                     return (
                     <div
                       key={s.seriesId}
                       className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-3"
                     >
-                      <h3 className="font-semibold text-xs mb-2 text-slate-200">
-                        {seriesNameParts.join(" • ")} Series
+                      <h3 className="font-semibold text-xs mb-1 text-slate-200 leading-tight">
+                        {seriesTitle}
                       </h3>
+                      <p className="text-[9px] text-slate-500 mb-2">
+                        {s.totalSessions} Sessions {seriesPhase ? `• ${seriesPhase}` : ""} {seriesZone ? `• ${seriesZone}` : ""}
+                      </p>
                       <div className="text-[10px] text-slate-400 mb-2">
                         <span className="text-emerald-400/70">{s.totalSessions} sessions</span>
                         {firstSession?.durationMin && (
@@ -686,19 +714,25 @@ export default function VaultPage() {
                           </span>
                         )}
                       </div>
-                      <div className="space-y-1">
-                        {s.sessions.map((session) => (
+                      <div className="space-y-0.5">
+                        {s.sessions.map((session, idx) => (
                           <div
                             key={session.id}
                             onClick={() => setSelectedSession(session)}
-                            className="text-[10px] p-2 rounded-lg bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition-colors border border-slate-700/50"
+                            className="text-[10px] py-1 px-2 rounded bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition-colors border border-slate-700/50"
                           >
-                            <div className="font-medium text-slate-200">
+                            <div className="font-medium text-slate-200 line-clamp-1">
                               {session.title}
                             </div>
                           </div>
                         ))}
                       </div>
+                      <Link
+                        href={`/demo/session?seriesId=${s.seriesId}`}
+                        className="mt-2 inline-flex items-center text-[10px] text-emerald-400/70 hover:text-emerald-300"
+                      >
+                        View Full Series →
+                      </Link>
                     </div>
                   )})
                 )

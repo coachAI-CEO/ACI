@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { buildSkillFocusPrompt, SkillFocusContext } from "../prompts/skill-focus";
 
 function parseJsonSafe(text: string) {
@@ -62,13 +62,25 @@ function buildSeriesContext(sessions: any[]): SkillFocusContext {
 }
 
 async function generateSkillFocus(context: SkillFocusContext) {
-  const prompt = buildSkillFocusPrompt(context);
-  const raw = await generateText(prompt, { timeout: 45000, retries: 0 });
-  const parsed = parseJsonSafe(raw);
-  if (!parsed) {
-    throw new Error("LLM returned non-JSON skill focus");
+  // Set metrics context for tracking
+  setMetricsContext({
+    operationType: "skill_focus",
+    ageGroup: context.ageGroup,
+    gameModelId: context.gameModelId,
+    phase: context.phase || undefined,
+  });
+  
+  try {
+    const prompt = buildSkillFocusPrompt(context);
+    const raw = await generateText(prompt, { timeout: 45000, retries: 0 });
+    const parsed = parseJsonSafe(raw);
+    if (!parsed) {
+      throw new Error("LLM returned non-JSON skill focus");
+    }
+    return parsed;
+  } finally {
+    clearMetricsContext();
   }
-  return parsed;
 }
 
 export async function generateSkillFocusForSession(sessionId: string) {

@@ -1,4 +1,4 @@
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { prisma } from "../prisma";
 import { buildSessionPrompt, buildSessionQAReviewerPrompt } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
@@ -32,10 +32,19 @@ function parseJsonSafe(text: string) {
 export async function generateAndReviewSession(
   input: Parameters<typeof buildSessionPrompt>[0]
 ) {
-  // 1) Generate (longer timeout for sessions - more complex than drills)
-  const prompt = buildSessionPrompt(input);
-  console.log(`[SESSION] Starting generation with ${prompt.length} char prompt...`);
-  const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
+  // Set metrics context for tracking
+  setMetricsContext({
+    operationType: "session",
+    ageGroup: input.ageGroup,
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+  });
+  
+  try {
+    // 1) Generate (longer timeout for sessions - more complex than drills)
+    const prompt = buildSessionPrompt(input);
+    console.log(`[SESSION] Starting generation with ${prompt.length} char prompt...`);
+    const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
   
   // Log raw response for debugging (first 5000 chars to see diagram structure)
   const rawPreview = genText.substring(0, 5000);
@@ -151,7 +160,14 @@ export async function generateAndReviewSession(
     });
   }
 
-  // 2) QA Review
+  // 2) QA Review - update metrics context
+  setMetricsContext({
+    operationType: "qa_review",
+    ageGroup: input.ageGroup,
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+  });
+  
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[SESSION] Starting QA with ${qaPrompt.length} char prompt...`);
   const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
@@ -240,18 +256,21 @@ export async function generateAndReviewSession(
     console.error("fixSessionDecision error", err);
   }
 
-  return {
-    session: {
-      ...finalSession,
-      id: created.id,
-      qaScore: avgScore,
-      approved: !!finalQa.pass,
-    },
-    qa: finalQa,
-    fixDecision,
-    raw: {
-      created: { id: created.id },
-    },
-  };
+    return {
+      session: {
+        ...finalSession,
+        id: created.id,
+        qaScore: avgScore,
+        approved: !!finalQa.pass,
+      },
+      qa: finalQa,
+      fixDecision,
+      raw: {
+        created: { id: created.id },
+      },
+    };
+  } finally {
+    clearMetricsContext();
+  }
 }
 

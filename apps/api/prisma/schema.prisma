@@ -217,3 +217,71 @@ model ArtifactEmbedding {
 
   @@index([artifactType, artifactId])
 }
+
+// Admin metrics tracking
+model ApiMetrics {
+  id              String   @id @default(uuid())
+  
+  // What was generated
+  operationType   String   // "session", "drill", "series", "skill_focus", "qa_review"
+  artifactId      String?  // Link to session/drill ID if applicable
+  
+  // LLM metrics
+  model           String   // "gemini-3-flash-preview", "gemini-2.5-flash"
+  promptTokens    Int?     // Input tokens
+  completionTokens Int?    // Output tokens
+  totalTokens     Int?     // Total tokens
+  promptLength    Int      // Prompt character length
+  responseLength  Int?     // Response character length
+  
+  // Timing
+  durationMs      Int      // How long the API call took
+  
+  // Status
+  success         Boolean  @default(true)
+  errorMessage    String?
+  
+  // Metadata
+  ageGroup        String?
+  gameModelId     String?
+  phase           String?
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([operationType])
+  @@index([createdAt])
+  @@index([model])
+  @@index([success])
+}
+
+// Daily aggregated metrics for fast dashboard queries
+model DailyMetrics {
+  id              String   @id @default(uuid())
+  date            DateTime @db.Date @unique
+  
+  // Counts
+  totalApiCalls   Int      @default(0)
+  successfulCalls Int      @default(0)
+  failedCalls     Int      @default(0)
+  
+  // By operation type
+  sessionsGenerated    Int @default(0)
+  drillsGenerated      Int @default(0)
+  seriesGenerated      Int @default(0)
+  skillFocusGenerated  Int @default(0)
+  qaReviewsRun         Int @default(0)
+  
+  // Tokens
+  totalPromptTokens     Int @default(0)
+  totalCompletionTokens Int @default(0)
+  totalTokens           Int @default(0)
+  
+  // Timing
+  totalDurationMs       Int @default(0)
+  avgDurationMs         Int @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([date])
+}

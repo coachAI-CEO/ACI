@@ -11,6 +11,7 @@ import PlayerCountInputs from "@/components/PlayerCountInputs";
 import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import TopicSelect from "@/components/TopicSelect";
+import CoachChat from "@/components/CoachChat";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import type { DiagramV1 } from "@/types/diagram";
 
@@ -343,20 +344,20 @@ async function fetchProgressiveSeries(
   console.log("[PROGRESSIVE_SERIES] Sending config:", JSON.stringify(config, null, 2), `numberOfSessions: ${numberOfSessions}`, `skipRecommendation: ${skipRecommendation}`);
   const apiStart = Date.now();
   
+  // Use Next.js API route to avoid CORS issues
   const url = `/api/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
+  
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    cache: "no-store",
     body: JSON.stringify({
       baseInput: config,
       numberOfSessions,
     }),
-    // Note: Browser fetch timeout is handled by the Next.js API route
-  }).catch((fetchError) => {
-    // Handle network errors
+  }).catch((fetchError: any) => {
+    console.error("[PROGRESSIVE_SERIES] Fetch error:", fetchError);
     if (fetchError.message?.includes('fetch failed') || fetchError.code === 'ECONNREFUSED') {
-      throw new Error("Cannot connect to API server. Please ensure the backend server is running on port 4000.");
+      throw new Error("Cannot connect to server. Please refresh the page and try again.");
     }
     throw fetchError;
   });
@@ -366,9 +367,28 @@ async function fetchProgressiveSeries(
   console.log(`[PROGRESSIVE_SERIES] Response status: ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    console.error(`[PROGRESSIVE_SERIES] Error response:`, errorData);
-    const errorMessage = errorData?.error || `API error: ${res.status}`;
+    const errorText = await res.text().catch(() => "");
+    console.error(`[PROGRESSIVE_SERIES] Error response (${res.status}):`, errorText);
+    
+    let errorData: any = {};
+    try {
+      errorData = errorText ? JSON.parse(errorText) : {};
+    } catch {
+      errorData = { error: errorText || `API error: ${res.status}` };
+    }
+    
+    let errorMessage = errorData?.error || `API error: ${res.status}`;
+    
+    // Make connection errors more helpful
+    if (res.status === 503) {
+      if (errorMessage.includes("Cannot connect") || errorMessage.includes("ECONNREFUSED")) {
+        errorMessage = "Backend server is not running. Please start the API server on port 4000.";
+      } else {
+        errorMessage = "Connection interrupted during generation. Your sessions may still be generating - check the Vault in a few minutes to see if they appear.";
+      }
+    } else if (res.status === 504) {
+      errorMessage = "Request timed out. The sessions may still be generating - check the Vault.";
+    }
     throw new Error(errorMessage);
   }
 
@@ -477,6 +497,14 @@ function SessionDemoPageContent() {
   const [justSaved, setJustSaved] = useState<boolean>(false);
   const [seriesSavedToVault, setSeriesSavedToVault] = useState<boolean>(false);
   const [savingSeries, setSavingSeries] = useState<boolean>(false);
+  const [chatOpen, setChatOpen] = useState<boolean>(false);
+  const [pendingSeriesCheck, setPendingSeriesCheck] = useState<{
+    startTime: number;
+    expectedCount: number;
+    config: any;
+  } | null>(null);
+  const [foundPendingSeries, setFoundPendingSeries] = useState<any[] | null>(null);
+  const [checkingForSeries, setCheckingForSeries] = useState(false);
   const [skillFocus, setSkillFocus] = useState<SkillFocus | null>(null);
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
@@ -608,9 +636,76 @@ function SessionDemoPageContent() {
       return;
     }
     
+    // If seriesId is provided, load the series from vault
+    const seriesId = searchParams.get("seriesId");
+    if (seriesId) {
+      setLoading(true);
+      setError(null);
+      setSessionMode("series");
+      
+      fetch(`/api/vault/series/${encodeURIComponent(seriesId)}`)
+        .then(async (res) => {
+          if (!res.ok) {
+            throw new Error("Series not found in vault");
+          }
+          const data = await res.json();
+          if (data.ok && data.sessions && data.sessions.length > 0) {
+            // Convert vault sessions to series format
+            const seriesSessions = data.sessions.map((s: any) => {
+              const sessionData = s.json || {};
+              const qaFromJson = sessionData.qa || {};
+              return {
+                session: {
+                  id: s.id,
+                  title: s.title,
+                  gameModelId: s.gameModelId,
+                  phase: s.phase,
+                  zone: s.zone,
+                  ageGroup: s.ageGroup,
+                  durationMin: s.durationMin,
+                  summary: sessionData.summary,
+                  drills: sessionData.drills || [],
+                  sessionPlan: sessionData.sessionPlan,
+                  equipment: sessionData.equipment,
+                  coachingNotes: sessionData.coachingNotes,
+                  principleIds: Array.isArray(s.principleIds) ? s.principleIds : [],
+                  psychThemeIds: Array.isArray(s.psychThemeIds) ? s.psychThemeIds : [],
+                  skillFocus: sessionData.skillFocus || null,
+                },
+                qa: {
+                  pass: s.approved || qaFromJson.pass || false,
+                  summary: qaFromJson.summary,
+                  scores: qaFromJson.scores || {},
+                },
+              };
+            });
+            
+            setSeriesData({
+              ok: true,
+              series: seriesSessions,
+            });
+            setData(null);
+            setSelectedSeriesTab(0);
+            setSeriesSavedToVault(true); // Series from vault is already saved
+            setShowRecommendations(false);
+            setRecommendations([]);
+          } else {
+            throw new Error("No sessions found in series");
+          }
+        })
+        .catch((e) => {
+          setError(e?.message || String(e));
+          setData(null);
+          setSeriesData(null);
+        })
+        .finally(() => setLoading(false));
+      return;
+    }
+    
     if (hasParams) {
       const isSeries = searchParams.get("series") === "true";
       const numberOfSessions = parseInt(searchParams.get("numberOfSessions") || "3");
+      const autoGenerate = searchParams.get("autoGenerate") === "true";
       
       setError(null);
       setSessionMode(isSeries ? "series" : "single");
@@ -624,8 +719,12 @@ function SessionDemoPageContent() {
       
       setLoading(true);
       
+      // If autoGenerate is true (from chat), skip recommendations
+      const skipRecommendation = autoGenerate;
+      
       if (isSeries) {
-        fetchProgressiveSeries(config, numberOfSessions, false)
+        const generationStartTime = Date.now();
+        fetchProgressiveSeries(config, numberOfSessions, skipRecommendation)
           .then((result) => {
             console.log("[SESSION_PAGE] Progressive series result:", {
               ok: result.ok,
@@ -633,10 +732,12 @@ function SessionDemoPageContent() {
               seriesLength: result.series?.length,
               hasRecommendations: !!result.hasRecommendations,
               recommendationsCount: result.recommendations?.length,
+              autoGenerate,
+              skipRecommendation,
             });
             
-            // Check if we got recommendations instead of a series
-            if (result.hasRecommendations && result.recommendations) {
+            // Check if we got recommendations instead of a series (only if not auto-generating)
+            if (!autoGenerate && result.hasRecommendations && result.recommendations) {
               console.log("[SESSION_PAGE] Showing recommendations instead of generating");
               setRecommendations(result.recommendations);
               setShowRecommendations(true);
@@ -649,6 +750,8 @@ function SessionDemoPageContent() {
               setSelectedSeriesTab(0);
               setShowRecommendations(false);
               setRecommendations([]);
+              // Series is auto-saved to vault now
+              setSeriesSavedToVault(true);
             } else {
               console.error("[SESSION_PAGE] Invalid progressive series response:", result);
               throw new Error(result.message || "No sessions were generated in the series. Please try again.");
@@ -656,7 +759,22 @@ function SessionDemoPageContent() {
           })
           .catch((e) => {
             console.error("[SESSION_PAGE] Progressive series error:", e);
-            setError(e?.message || String(e));
+            const errorMsg = e?.message || String(e);
+            // If it's a timeout/connection error, start polling for the series
+            if (errorMsg.includes("interrupted") || errorMsg.includes("timeout") || errorMsg.includes("503")) {
+              setError(
+                "GENERATION_IN_PROGRESS: The connection timed out, but your sessions are being generated in the background. " +
+                "Checking the Vault for your series..."
+              );
+              // Start polling for the created series
+              setPendingSeriesCheck({
+                startTime: generationStartTime,
+                expectedCount: numberOfSessions,
+                config: config,
+              });
+            } else {
+              setError(errorMsg);
+            }
             setSeriesData(null);
             setData(null);
             setShowRecommendations(false);
@@ -668,10 +786,10 @@ function SessionDemoPageContent() {
           });
       } else {
         setProgressInfo({ isSeries: false });
-        fetchSession(config, false)
+        fetchSession(config, skipRecommendation)
           .then((result) => {
-            // Check if we got recommendations
-            if (result.hasRecommendations && result.recommendations) {
+            // Check if we got recommendations (only if not auto-generating)
+            if (!autoGenerate && result.hasRecommendations && result.recommendations) {
               setRecommendations(result.recommendations);
               setShowRecommendations(true);
               setData(null);
@@ -701,6 +819,88 @@ function SessionDemoPageContent() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParamsString]);
+
+  // Poll for series that were being generated when connection timed out
+  useEffect(() => {
+    if (!pendingSeriesCheck) return;
+    
+    const { startTime, expectedCount, config } = pendingSeriesCheck;
+    let pollCount = 0;
+    const maxPolls = 30; // Poll for up to 5 minutes (10s intervals)
+    
+    const pollForSeries = async () => {
+      setCheckingForSeries(true);
+      try {
+        // Query vault for sessions created after startTime with matching parameters
+        const res = await fetch("/api/vault/sessions");
+        if (!res.ok) throw new Error("Failed to fetch vault");
+        const data = await res.json();
+        
+        if (data.ok && data.sessions) {
+          // Find sessions created after our start time with matching parameters
+          const matchingSessions = data.sessions.filter((s: any) => {
+            const createdAt = new Date(s.createdAt).getTime();
+            // Session created after we started generating
+            if (createdAt < startTime) return false;
+            // Match key parameters
+            if (config.ageGroup && s.ageGroup !== config.ageGroup) return false;
+            if (config.gameModelId && s.gameModelId !== config.gameModelId) return false;
+            if (config.phase && s.phase !== config.phase) return false;
+            return true;
+          });
+          
+          console.log("[POLL] Found matching sessions:", matchingSessions.length, "expected:", expectedCount);
+          
+          if (matchingSessions.length >= expectedCount) {
+            // Found all sessions!
+            setFoundPendingSeries(matchingSessions.slice(0, expectedCount));
+            setPendingSeriesCheck(null);
+            setCheckingForSeries(false);
+            setError(
+              `SERIES_FOUND: Your ${expectedCount}-session series has been created successfully!`
+            );
+            return true; // Stop polling
+          }
+          
+          if (matchingSessions.length > 0) {
+            // Found some sessions, update the message
+            setError(
+              `GENERATION_IN_PROGRESS: Found ${matchingSessions.length}/${expectedCount} sessions so far. Still generating...`
+            );
+          }
+        }
+      } catch (err) {
+        console.error("[POLL] Error checking vault:", err);
+      }
+      setCheckingForSeries(false);
+      return false; // Continue polling
+    };
+    
+    // Initial poll
+    pollForSeries();
+    
+    // Set up interval polling
+    const intervalId = setInterval(async () => {
+      pollCount++;
+      if (pollCount >= maxPolls) {
+        clearInterval(intervalId);
+        setPendingSeriesCheck(null);
+        setCheckingForSeries(false);
+        setError(
+          "GENERATION_IN_PROGRESS: Generation is taking longer than expected. " +
+          "Please check the Vault manually - your sessions may still appear."
+        );
+        return;
+      }
+      
+      const found = await pollForSeries();
+      if (found) {
+        clearInterval(intervalId);
+      }
+    }, 10000); // Poll every 10 seconds
+    
+    return () => clearInterval(intervalId);
+  }, [pendingSeriesCheck]);
 
   // Get current session (single mode or selected tab from series)
   const seriesList = seriesData?.series ?? [];
@@ -1197,6 +1397,8 @@ function SessionDemoPageContent() {
                           setSeriesData(result);
                           setData(null);
                           setSelectedSeriesTab(0);
+                          // Series is auto-saved to vault now
+                          setSeriesSavedToVault(true);
                         } else {
                           throw new Error("No sessions were generated in the series");
                         }
@@ -1329,31 +1531,178 @@ function SessionDemoPageContent() {
 
         {/* Error state */}
         {error && (
-          <div className="rounded-3xl border border-red-700/70 bg-red-900/20 px-6 py-5">
-            <p className="text-sm text-red-300">
-              Failed to fetch session from ACI API: {error}
-            </p>
+          <div className={`rounded-3xl border px-6 py-5 ${
+            error.startsWith("SERIES_FOUND:")
+              ? "border-emerald-600/70 bg-emerald-900/20"
+              : error.startsWith("GENERATION_IN_PROGRESS:")
+              ? "border-amber-600/70 bg-amber-900/20"
+              : "border-red-700/70 bg-red-900/20"
+          }`}>
+            {error.startsWith("SERIES_FOUND:") && foundPendingSeries ? (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">✅</span>
+                  <div>
+                    <p className="text-sm font-medium text-emerald-200">
+                      Series Created Successfully!
+                    </p>
+                    <p className="text-sm text-emerald-300/80 mt-1">
+                      {error.replace("SERIES_FOUND: ", "")}
+                    </p>
+                  </div>
+                </div>
+                {/* Show the created sessions */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {foundPendingSeries.map((session, idx) => (
+                    <div
+                      key={session.id}
+                      className="rounded-xl border border-emerald-700/50 bg-emerald-950/30 p-4"
+                    >
+                      <p className="text-xs text-emerald-400 mb-1">Session {idx + 1}</p>
+                      <h4 className="text-sm font-medium text-emerald-100 line-clamp-2">
+                        {session.title}
+                      </h4>
+                      <p className="text-xs text-emerald-300/70 mt-2">
+                        {session.ageGroup} • {session.phase} • {session.durationMin} min
+                      </p>
+                      <Link
+                        href={`/demo/session?sessionId=${session.id}`}
+                        className="inline-flex items-center mt-3 text-xs text-emerald-400 hover:text-emerald-300"
+                      >
+                        View Session →
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Link
+                    href="/vault"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <span>🗂️</span>
+                    View in Vault
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setFoundPendingSeries(null);
+                    }}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : error.startsWith("GENERATION_IN_PROGRESS:") ? (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  {checkingForSeries ? (
+                    <span className="text-2xl animate-spin">🔄</span>
+                  ) : (
+                    <span className="text-2xl">⏳</span>
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-amber-200">
+                      {checkingForSeries ? "Checking for your sessions..." : "Sessions are being generated..."}
+                    </p>
+                    <p className="text-sm text-amber-300/80 mt-1">
+                      {error.replace("GENERATION_IN_PROGRESS: ", "")}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Link
+                    href="/vault"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <span>🗂️</span>
+                    Check Vault
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setError(null);
+                      setPendingSeriesCheck(null);
+                    }}
+                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-red-300">
+                Failed to fetch session from ACI API: {error}
+              </p>
+            )}
           </div>
         )}
 
         {/* Series Tabs (if series mode) */}
         {!loading && seriesData?.ok && seriesList.length > 0 && (
           <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {(seriesData.metadata?.totalSessions || seriesList.length)}-Session Progressive Series
-                </h2>
-                <p className="text-xs text-slate-400">
-                  {seriesData.metadata?.gameModelId || ""} {seriesData.metadata?.ageGroup ? `• ${seriesData.metadata.ageGroup}` : ""}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
+            {(() => {
+              // Build descriptive series title from first session
+              const firstSession = seriesList[0]?.session;
+              const sessionCount = seriesData.metadata?.totalSessions || seriesList.length;
+              const ageGroup = firstSession?.ageGroup || seriesData.metadata?.ageGroup;
+              const zone = firstSession?.zone;
+              
+              // Map phase to readable name
+              const phaseNames: Record<string, string> = {
+                ATTACKING: "Attacking",
+                DEFENDING: "Defending",
+                TRANSITION_ATT_DEF: "Att→Def Transition",
+                TRANSITION_DEF_ATT: "Def→Att Transition",
+              };
+              const phaseName = firstSession?.phase ? phaseNames[firstSession.phase] || "" : "";
+              
+              // Build unique descriptive series title from first session
+              let seriesTitle: string;
+              if (firstSession?.title) {
+                // Clean up the first session title to use as series title
+                let baseTitle = firstSession.title
+                  .replace(/^(Session \d+:?\s*)/i, "") // Remove "Session 1:" prefix
+                  .replace(/\s*-\s*Part\s*\d+/i, "")   // Remove "- Part 1" suffix
+                  .trim();
+                
+                // If title is too long, truncate intelligently
+                if (baseTitle.length > 55) {
+                  // Try to cut at a natural break point
+                  const breakPoints = [" - ", ": ", " and ", " & "];
+                  for (const bp of breakPoints) {
+                    const idx = baseTitle.indexOf(bp);
+                    if (idx > 15 && idx < 55) {
+                      baseTitle = baseTitle.substring(0, idx);
+                      break;
+                    }
+                  }
+                  if (baseTitle.length > 55) {
+                    baseTitle = baseTitle.substring(0, 52) + "...";
+                  }
+                }
+                
+                seriesTitle = baseTitle;
+              } else {
+                seriesTitle = `${sessionCount}-Session Progressive Training`;
+              }
+              
+              return (
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      {seriesTitle}
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      {sessionCount} Sessions {ageGroup ? `• ${ageGroup}` : ""} {phaseName ? `• ${phaseName}` : ""} {zone ? `• ${zone}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
                 <button
                   onClick={async () => {
                     try {
                       setGeneratingSeriesSkillFocus(true);
-                      const sessionIds = seriesList.map(s => s.id).filter(Boolean) as string[];
+                      // Handle both formats: s.session?.id (from vault) or s.id (from generation)
+                      const sessionIds = seriesList.map(s => s.session?.id || s.id).filter(Boolean) as string[];
                       if (sessionIds.length === 0) {
                         alert("Cannot generate focus: Sessions don't have IDs yet");
                         setGeneratingSeriesSkillFocus(false);
@@ -1384,7 +1733,8 @@ function SessionDemoPageContent() {
                   onClick={async () => {
                     try {
                       setSavingSeries(true);
-                      const sessionIds = seriesList.map(s => s.id).filter(Boolean) as string[];
+                      // Handle both formats: s.session?.id (from vault) or s.id (from generation)
+                      const sessionIds = seriesList.map(s => s.session?.id || s.id).filter(Boolean) as string[];
                       if (sessionIds.length === 0) {
                         alert("Cannot save: Sessions don't have IDs yet");
                         setSavingSeries(false);
@@ -1437,8 +1787,10 @@ function SessionDemoPageContent() {
                     → Go to Vault
                   </Link>
                 )}
-              </div>
-            </div>
+                  </div>
+                </div>
+              );
+            })()}
             {seriesSkillFocus && (
               <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                 <div className="text-xs text-emerald-300 uppercase tracking-widest">Series Skill Focus</div>
@@ -1534,7 +1886,7 @@ function SessionDemoPageContent() {
             <div className="flex gap-2 border-b border-slate-700/70 -mx-6 px-6 pb-4">
               {seriesList.map((seriesItem, index) => (
                 <button
-                  key={seriesItem.sessionNumber}
+                  key={seriesItem.session?.id || `session-${index}`}
                   onClick={() => setSelectedSeriesTab(index)}
                   className={`px-4 py-2 text-sm font-semibold rounded-t-lg transition-colors ${
                     selectedSeriesTab === index
@@ -1542,7 +1894,7 @@ function SessionDemoPageContent() {
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                   }`}
                 >
-                  Session {seriesItem.sessionNumber}
+                  Session {seriesItem.sessionNumber || index + 1}
                   {seriesItem.qaScore && (
                     <span className="ml-2 text-xs">
                       (QA: {seriesItem.qaScore.toFixed(1)})
@@ -2075,6 +2427,68 @@ function SessionDemoPageContent() {
           </>
         )}
       </div>
+
+      {/* Floating Chat Button */}
+      <button
+        onClick={() => setChatOpen(!chatOpen)}
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg transition-all duration-300 flex items-center justify-center ${
+          chatOpen
+            ? "bg-slate-700 hover:bg-slate-600"
+            : "bg-emerald-600 hover:bg-emerald-500"
+        }`}
+        title="Coach Assistant"
+      >
+        {chatOpen ? (
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        ) : (
+          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        )}
+      </button>
+
+      {/* Chat Panel */}
+      {chatOpen && (
+        <div className="fixed bottom-24 right-6 z-50 w-96 h-[500px] shadow-2xl rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+          <CoachChat
+            onSessionSelect={(session) => {
+              // Navigate to view the selected session
+              if (session?.id) {
+                router.push(`/demo/session?sessionId=${session.id}`);
+                setChatOpen(false);
+              }
+            }}
+            onGenerateRequest={(params) => {
+              // Build query params and navigate to trigger generation
+              const queryParams = new URLSearchParams();
+              if (params.ageGroup) queryParams.set("ageGroup", params.ageGroup);
+              if (params.gameModelId) queryParams.set("gameModelId", params.gameModelId);
+              if (params.phase) queryParams.set("phase", params.phase);
+              if (params.zone) queryParams.set("zone", params.zone);
+              if (params.topic) queryParams.set("topic", params.topic);
+              if (params.durationMin) queryParams.set("durationMin", String(params.durationMin));
+              if (params.numbersMin) queryParams.set("numbersMin", String(params.numbersMin));
+              if (params.numbersMax) queryParams.set("numbersMax", String(params.numbersMax));
+              if (params.formationAttacking) queryParams.set("formationAttacking", params.formationAttacking);
+              if (params.formationDefending) queryParams.set("formationDefending", params.formationDefending);
+              if (params.playerLevel) queryParams.set("playerLevel", params.playerLevel);
+              if (params.coachLevel) queryParams.set("coachLevel", params.coachLevel);
+              if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) queryParams.set("goalsAvailable", String(params.goalsAvailable));
+              // Series mode
+              if (params.numberOfSessions && params.numberOfSessions > 1) {
+                queryParams.set("series", "true");
+                queryParams.set("numberOfSessions", String(params.numberOfSessions));
+              }
+              // Flag to skip recommendations and auto-generate
+              queryParams.set("autoGenerate", "true");
+              setChatOpen(false);
+              router.push(`/demo/session?${queryParams.toString()}`);
+            }}
+          />
+        </div>
+      )}
     </main>
   );
 }

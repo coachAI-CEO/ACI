@@ -1,4 +1,4 @@
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { prisma } from "../prisma";
 import { buildProgressiveSessionPrompt, ProgressiveSessionPromptInput } from "../prompts/session-progressive";
 import { buildSessionQAReviewerPrompt } from "../prompts/session";
@@ -73,7 +73,14 @@ async function generateSingleProgressiveSession(
     });
   }
 
-  // Run QA review
+  // Run QA review - update metrics context
+  setMetricsContext({
+    operationType: "qa_review",
+    ageGroup: input.ageGroup,
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+  });
+  
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[PROGRESSIVE_SESSION] Running QA for Session ${input.sessionNumber}...`);
   const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
@@ -155,8 +162,21 @@ export async function generateProgressiveSessionSeries(
     ageGroup: string;
     generatedAt: string;
   };
+  seriesId: string;
 }> {
   console.log(`[PROGRESSIVE_SERIES] Starting generation of ${numberOfSessions} progressive sessions...`);
+  
+  // Generate a unique series ID upfront so all sessions are linked
+  const seriesId = `series-${Date.now()}`;
+  console.log(`[PROGRESSIVE_SERIES] Series ID: ${seriesId}`);
+  
+  // Set metrics context for tracking
+  setMetricsContext({
+    operationType: "series",
+    ageGroup: baseInput.ageGroup,
+    gameModelId: baseInput.gameModelId,
+    phase: baseInput.phase,
+  });
   
   const maxRetries = Number(process.env.PROGRESSIVE_SESSION_MAX_RETRIES ?? 1);
   const retryDelayMs = Number(process.env.PROGRESSIVE_SESSION_RETRY_DELAY_MS ?? 5000);
@@ -222,6 +242,11 @@ export async function generateProgressiveSessionSeries(
         spaceConstraint: baseInput.spaceConstraint as any,
         goalsAvailable: baseInput.goalsAvailable ?? 0,
         json: jsonForDb,
+        // Auto-save to vault as part of series
+        savedToVault: true,
+        isSeries: true,
+        seriesId: seriesId,
+        seriesNumber: i,
       },
     });
 
@@ -256,6 +281,9 @@ export async function generateProgressiveSessionSeries(
 
   console.log(`[PROGRESSIVE_SERIES] ✅ All ${numberOfSessions} sessions generated successfully`);
 
+  // Clear metrics context
+  clearMetricsContext();
+  
   return {
     ok: true,
     series: sessions,
@@ -265,5 +293,6 @@ export async function generateProgressiveSessionSeries(
       ageGroup: baseInput.ageGroup,
       generatedAt: new Date().toISOString(),
     },
+    seriesId: seriesId,
   };
 }

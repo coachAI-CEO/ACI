@@ -12,6 +12,36 @@ import {
 
 const r = express.Router();
 
+// Find sessions not saved to vault (orphaned sessions)
+r.get("/vault/orphaned-sessions", async (req, res) => {
+  try {
+    const orphaned = await prisma.session.findMany({
+      where: { savedToVault: false },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    
+    return res.json({
+      ok: true,
+      count: orphaned.length,
+      sessions: orphaned.map(s => ({
+        id: s.id,
+        title: s.title,
+        ageGroup: s.ageGroup,
+        formationUsed: s.formationUsed,
+        gameModelId: s.gameModelId,
+        phase: s.phase,
+        createdAt: s.createdAt,
+        isSeries: s.isSeries,
+        seriesId: s.seriesId,
+        seriesNumber: s.seriesNumber,
+      })),
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
 r.post("/vault/sessions/:sessionId/save", async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -54,6 +84,41 @@ r.get("/vault/series", async (req, res) => {
     const series = await getVaultSeries();
     return res.json({ ok: true, series });
   } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Get sessions by seriesId
+r.get("/vault/series/:seriesId", async (req, res) => {
+  try {
+    const { seriesId } = req.params;
+    console.log("[VAULT] Fetching series with ID:", seriesId);
+    
+    const sessions = await prisma.session.findMany({
+      where: {
+        seriesId,
+        savedToVault: true,
+        isSeries: true,
+      },
+      orderBy: { seriesNumber: "asc" },
+    });
+    
+    console.log("[VAULT] Found sessions:", sessions.length);
+    
+    if (sessions.length === 0) {
+      // Debug: check if any sessions exist with this seriesId without the filters
+      const allWithSeriesId = await prisma.session.findMany({
+        where: { seriesId },
+        select: { id: true, savedToVault: true, isSeries: true, seriesNumber: true },
+      });
+      console.log("[VAULT] Debug - all sessions with seriesId:", allWithSeriesId);
+      
+      return res.status(404).json({ ok: false, error: "Series not found" });
+    }
+    
+    return res.json({ ok: true, sessions, seriesId });
+  } catch (e: any) {
+    console.error("[VAULT] Error fetching series:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
@@ -143,6 +208,85 @@ r.get("/vault/sessions/:sessionId/status", async (req, res) => {
     }
     return res.json({ ok: true, savedToVault: session.savedToVault });
   } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Semantic search endpoint for chat assistant
+r.post("/vault/sessions/search", async (req, res) => {
+  try {
+    const { query, params, limit = 5 } = req.body;
+    
+    // Build database filters from extracted params
+    const where: any = {
+      savedToVault: true,
+    };
+    
+    if (params?.ageGroup) {
+      where.ageGroup = params.ageGroup;
+    }
+    if (params?.gameModelId) {
+      where.gameModelId = params.gameModelId;
+    }
+    if (params?.phase) {
+      where.phase = params.phase;
+    }
+    if (params?.zone) {
+      where.zone = params.zone;
+    }
+    
+    // Fetch matching sessions
+    const sessions = await prisma.session.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, 20),
+      select: {
+        id: true,
+        title: true,
+        gameModelId: true,
+        ageGroup: true,
+        phase: true,
+        zone: true,
+        durationMin: true,
+        formationUsed: true,
+        qaScore: true,
+        json: true,
+      },
+    });
+    
+    // If we have a query string, do basic text matching on title and summary
+    let results: Array<{ session: typeof sessions[number]; similarity: number }>;
+    
+    if (query && typeof query === "string") {
+      const queryLower = query.toLowerCase();
+      const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+      
+      results = sessions.map(s => {
+        const title = (s.title || "").toLowerCase();
+        const summary = ((s.json as any)?.summary || "").toLowerCase();
+        const content = title + " " + summary;
+        
+        // Simple relevance score based on word matches
+        let score = 0;
+        for (const word of queryWords) {
+          if (content.includes(word)) score += 1;
+        }
+        
+        return {
+          session: s,
+          similarity: Math.min(1, score / Math.max(queryWords.length, 1)),
+        };
+      })
+      .filter(r => r.similarity > 0)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+    } else {
+      results = sessions.map(s => ({ session: s, similarity: 1 }));
+    }
+    
+    return res.json({ ok: true, results, count: results.length });
+  } catch (e: any) {
+    console.error("[VAULT_SEARCH] Error:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });

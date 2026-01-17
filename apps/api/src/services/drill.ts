@@ -8,7 +8,7 @@ export const deriveGoalsSupported = (json: any) => {
 import { applyYouthGuards } from "./youth-guards";
 import { postProcessDrill } from "./postprocess";
 import { fixDrillDecision } from "./fixer";
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
 
@@ -231,10 +231,19 @@ function parseJsonSafe(text: string) {
 export async function generateAndReviewDrill(
   input: Parameters<typeof buildDrillPrompt>[0]
 ) {
-  // 1) Generate (45s timeout for reliability - Gemini can be slow for complex prompts)
-  const prompt = buildDrillPrompt(input);
-  console.log(`[DRILL] Starting generation with ${prompt.length} char prompt...`);
-  const genText = await generateText(prompt, { timeout: 45000, retries: 0 });
+  // Set metrics context for tracking
+  setMetricsContext({
+    operationType: "drill",
+    ageGroup: input.ageGroup,
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+  });
+  
+  try {
+    // 1) Generate (45s timeout for reliability - Gemini can be slow for complex prompts)
+    const prompt = buildDrillPrompt(input);
+    console.log(`[DRILL] Starting generation with ${prompt.length} char prompt...`);
+    const genText = await generateText(prompt, { timeout: 45000, retries: 0 });
   let drill: any = parseJsonSafe(genText);
   if (!drill) throw new Error("LLM returned non-JSON drill");
 
@@ -281,6 +290,14 @@ export async function generateAndReviewDrill(
   }
 
   // 2) First QA (40s timeout - QA can be slow with large drill objects)
+  // Update metrics context for QA
+  setMetricsContext({
+    operationType: "qa_review",
+    ageGroup: input.ageGroup,
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+  });
+  
   const qaPrompt = buildQAReviewerPrompt(drill);
   console.log(`[DRILL] Starting QA with ${qaPrompt.length} char prompt...`);
   const qaText = await generateText(qaPrompt, { timeout: 40000, retries: 0 }); // 40s timeout, no retries for speed
@@ -427,8 +444,11 @@ export async function generateAndReviewDrill(
   }
 
     return {
-    drill: created,
-    qa: finalQa,
-    raw: { genText, qaText },
-  };
+      drill: created,
+      qa: finalQa,
+      raw: { genText, qaText },
+    };
+  } finally {
+    clearMetricsContext();
+  }
 }

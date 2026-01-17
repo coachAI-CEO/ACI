@@ -83,6 +83,34 @@ export const DrillDiagram: React.FC<Props> = ({
 
   // 5 vertical lanes for HALF pitch (0–100)
   const laneWidth = 20;
+  
+  // Detect orientation and goal position based on player positions
+  // Look for GK (goalkeeper) to determine where the defending goal is
+  const orientation = pitch.orientation || "HORIZONTAL";
+  
+  // Find GK position to determine goal placement
+  const gkPlayer = players?.find(p => p.role === "GK" || p.role === "Goalkeeper");
+  
+  // Determine goal side based on GK position or default to attacking right
+  // For HORIZONTAL: goal can be on LEFT (x<20) or RIGHT (x>80)
+  // For VERTICAL: goal can be on TOP (y<20) or BOTTOM (y>80)
+  let goalSide: "top" | "bottom" | "left" | "right" = "top";
+  
+  if (orientation === "HORIZONTAL") {
+    // Default to goal on right (attacking direction left-to-right)
+    goalSide = "right";
+    // If GK is on left side, goal is on left (defending), so attacking goal is on right
+    // If GK is on right side, attacking goal is on left
+    if (gkPlayer) {
+      goalSide = gkPlayer.x < 50 ? "left" : "right";
+    }
+  } else {
+    // VERTICAL: Default goal at top
+    goalSide = "top";
+    if (gkPlayer) {
+      goalSide = gkPlayer.y < 50 ? "top" : "bottom";
+    }
+  }
 
   return (
     <div className="w-full flex flex-col items-center gap-2">
@@ -201,57 +229,77 @@ export const DrillDiagram: React.FC<Props> = ({
           strokeWidth={0.9}
         />
 
-        {/* Halfway line */}
-        <line
-          x1={2}
-          y1={50}
-          x2={98}
-          y2={50}
-          stroke={pitchLineColor}
-          strokeWidth={0.5}
-          opacity={0.7}
-        />
+        {/* Halfway line - horizontal for VERTICAL orientation, vertical for HORIZONTAL */}
+        {orientation === "HORIZONTAL" ? (
+          <line
+            x1={50}
+            y1={5}
+            x2={50}
+            y2={95}
+            stroke={pitchLineColor}
+            strokeWidth={0.5}
+            opacity={0.7}
+          />
+        ) : (
+          <line
+            x1={2}
+            y1={50}
+            x2={98}
+            y2={50}
+            stroke={pitchLineColor}
+            strokeWidth={0.5}
+            opacity={0.7}
+          />
+        )}
 
-        {/* Penalty box + goal at top */}
-        <rect
-          x={30}
-          y={5}
-          width={40}
-          height={18}
-          fill="none"
-          stroke={pitchLineColor}
-          strokeWidth={0.75}
-        />
-        <rect
-          x={40}
-          y={5}
-          width={20}
-          height={7}
-          fill="none"
-          stroke={pitchLineColor}
-          strokeWidth={0.65}
-        />
-        <line
-          x1={45}
-          y1={5}
-          x2={55}
-          y2={5}
-          stroke={pitchLineColor}
-          strokeWidth={1.2}
-        />
+        {/* Penalty box + goal - position based on goalSide */}
+        {goalSide === "top" && (
+          <>
+            <rect x={30} y={5} width={40} height={18} fill="none" stroke={pitchLineColor} strokeWidth={0.75} />
+            <rect x={40} y={5} width={20} height={7} fill="none" stroke={pitchLineColor} strokeWidth={0.65} />
+            <line x1={45} y1={5} x2={55} y2={5} stroke={pitchLineColor} strokeWidth={1.2} />
+          </>
+        )}
+        {goalSide === "bottom" && (
+          <>
+            <rect x={30} y={77} width={40} height={18} fill="none" stroke={pitchLineColor} strokeWidth={0.75} />
+            <rect x={40} y={88} width={20} height={7} fill="none" stroke={pitchLineColor} strokeWidth={0.65} />
+            <line x1={45} y1={95} x2={55} y2={95} stroke={pitchLineColor} strokeWidth={1.2} />
+          </>
+        )}
+        {goalSide === "left" && (
+          <>
+            <rect x={2} y={30} width={18} height={40} fill="none" stroke={pitchLineColor} strokeWidth={0.75} />
+            <rect x={2} y={40} width={7} height={20} fill="none" stroke={pitchLineColor} strokeWidth={0.65} />
+            <line x1={2} y1={45} x2={2} y2={55} stroke={pitchLineColor} strokeWidth={1.2} />
+          </>
+        )}
+        {goalSide === "right" && (
+          <>
+            <rect x={80} y={30} width={18} height={40} fill="none" stroke={pitchLineColor} strokeWidth={0.75} />
+            <rect x={91} y={40} width={7} height={20} fill="none" stroke={pitchLineColor} strokeWidth={0.65} />
+            <line x1={98} y1={45} x2={98} y2={55} stroke={pitchLineColor} strokeWidth={1.2} />
+          </>
+        )}
 
-        {/* Center circle arc */}
-        <path
-          d={`
-            M 50 50
-            m -9 0
-            a 9 9 0 0 0 18 0
-          `}
-          fill="none"
-          stroke={pitchLineColor}
-          strokeWidth={0.5}
-          opacity={0.6}
-        />
+        {/* Center circle arc - adjust based on orientation */}
+        {orientation === "HORIZONTAL" ? (
+          <path
+            d={`M 50 50 m 0 -9 a 9 9 0 0 1 0 18`}
+            fill="none"
+            stroke={pitchLineColor}
+            strokeWidth={0.5}
+            opacity={0.6}
+          />
+        ) : (
+          <path
+            d={`M 50 50 m -9 0 a 9 9 0 0 0 18 0`}
+            fill="none"
+            stroke={pitchLineColor}
+            strokeWidth={0.5}
+            opacity={0.6}
+          />
+        )}
 
         {/* Arrows */}
         {arrows && arrows.map((a, idx) => {

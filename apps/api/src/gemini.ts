@@ -2,8 +2,27 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
 dotenv.config({ path: "../../.env" });
 
+import { prisma } from "./prisma";
+
 const key = process.env.GEMINI_API_KEY;
 if (!key) throw new Error("GEMINI_API_KEY missing in .env");
+
+// Metrics tracking context (set before calling generateText)
+let metricsContext: {
+  operationType?: string;
+  artifactId?: string;
+  ageGroup?: string;
+  gameModelId?: string;
+  phase?: string;
+} = {};
+
+export function setMetricsContext(ctx: typeof metricsContext) {
+  metricsContext = ctx;
+}
+
+export function clearMetricsContext() {
+  metricsContext = {};
+}
 
 // Use gemini-3-flash-preview as primary (better clarity scores, similar speed)
 // Fallback to gemini-2.5-flash if preview model unavailable
@@ -52,11 +71,45 @@ async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RET
       
       const elapsed = Date.now() - startTime;
       console.log(`[Gemini] Success in ${elapsed}ms`);
-      return r.response.text();
+      
+      const responseText = r.response.text();
+      
+      // Extract token usage from response metadata (if available)
+      const usageMetadata = r.response?.usageMetadata;
+      const promptTokens = usageMetadata?.promptTokenCount || null;
+      const completionTokens = usageMetadata?.candidatesTokenCount || null;
+      const totalTokens = usageMetadata?.totalTokenCount || null;
+      
+      // Store metrics asynchronously (don't await to avoid slowing down response)
+      storeMetrics({
+        model: modelName,
+        promptLength: prompt.length,
+        responseLength: responseText.length,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        durationMs: elapsed,
+        success: true,
+      }).catch(e => console.error("[Gemini] Failed to store metrics:", e.message));
+      
+      return responseText;
     } catch (e: any) {
       const elapsed = Date.now() - startTime;
       console.log(`[Gemini] Error after ${elapsed}ms: ${e.message || e}`);
       lastErr = e;
+      
+      // Store error metrics
+      storeMetrics({
+        model: modelName,
+        promptLength: prompt.length,
+        responseLength: null,
+        promptTokens: null,
+        completionTokens: null,
+        totalTokens: null,
+        durationMs: elapsed,
+        success: false,
+        errorMessage: e.message || String(e),
+      }).catch(err => console.error("[Gemini] Failed to store error metrics:", err.message));
       
       // Don't retry quota errors - they won't resolve with retries
       if (isQuotaError(e)) throw e;
@@ -74,6 +127,43 @@ async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RET
     }
   }
   throw lastErr;
+}
+
+// Store API metrics in database
+async function storeMetrics(data: {
+  model: string;
+  promptLength: number;
+  responseLength: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  durationMs: number;
+  success: boolean;
+  errorMessage?: string;
+}) {
+  try {
+    await prisma.apiMetrics.create({
+      data: {
+        operationType: metricsContext.operationType || "unknown",
+        artifactId: metricsContext.artifactId,
+        model: data.model,
+        promptTokens: data.promptTokens,
+        completionTokens: data.completionTokens,
+        totalTokens: data.totalTokens,
+        promptLength: data.promptLength,
+        responseLength: data.responseLength,
+        durationMs: data.durationMs,
+        success: data.success,
+        errorMessage: data.errorMessage,
+        ageGroup: metricsContext.ageGroup,
+        gameModelId: metricsContext.gameModelId,
+        phase: metricsContext.phase,
+      },
+    });
+  } catch (e: any) {
+    // Don't throw - metrics storage should not break main functionality
+    console.error("[Metrics] Failed to store:", e.message);
+  }
 }
 
 export async function generateText(prompt: string, options?: { timeout?: number; retries?: number }) {
