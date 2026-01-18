@@ -2,6 +2,59 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import DrillDiagram from "@/components/DrillDiagram";
+
+// Label mappings (same as vault)
+const drillTypeLabel: Record<string, string> = {
+  WARMUP: "Warm-up",
+  TECHNICAL: "Technical",
+  TACTICAL: "Tactical",
+  CONDITIONED_GAME: "Conditioned Game",
+  COOLDOWN: "Cool-down",
+};
+
+const drillTypeColors: Record<string, { bg: string; text: string; border: string }> = {
+  WARMUP: { bg: "bg-yellow-900/30", text: "text-yellow-300", border: "border-yellow-700/30" },
+  TECHNICAL: { bg: "bg-blue-900/30", text: "text-blue-300", border: "border-blue-700/30" },
+  TACTICAL: { bg: "bg-purple-900/30", text: "text-purple-300", border: "border-purple-700/30" },
+  CONDITIONED_GAME: { bg: "bg-orange-900/30", text: "text-orange-300", border: "border-orange-700/30" },
+  COOLDOWN: { bg: "bg-cyan-900/30", text: "text-cyan-300", border: "border-cyan-700/30" },
+};
+
+const gameModelLabel: Record<string, string> = {
+  POSSESSION: "Possession",
+  PRESSING: "Pressing",
+  TRANSITION: "Transition",
+  COACHAI: "Balanced",
+};
+
+const phaseLabel: Record<string, string> = {
+  ATTACKING: "Attacking",
+  DEFENDING: "Defending",
+  TRANSITION: "Transition",
+};
+
+const zoneLabel: Record<string, string> = {
+  DEFENSIVE_THIRD: "Defensive Third",
+  MIDDLE_THIRD: "Middle Third",
+  ATTACKING_THIRD: "Attacking Third",
+};
+
+const playerLevelLabel: Record<string, string> = {
+  BEGINNER: "Beginner",
+  DEVELOPING: "Developing",
+  INTERMEDIATE: "Intermediate",
+  ADVANCED: "Advanced",
+  ELITE: "Elite",
+};
+
+const coachLevelLabel: Record<string, string> = {
+  ENTRY: "Entry",
+  GRASSROOTS: "Grassroots",
+  QUALIFIED: "Qualified",
+  ADVANCED: "Advanced",
+  ELITE: "Elite",
+};
 
 type Stats = {
   database: {
@@ -137,7 +190,8 @@ type SessionReviewResult = {
 };
 
 type SessionRegenerateResult = {
-  original: { id: string; refCode?: string | null; title: string };
+  replaced: boolean;
+  original: { id: string; refCode?: string | null; title: string } | null;
   replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
 };
 
@@ -181,6 +235,19 @@ export default function AdminDashboard() {
   const [reviewResult, setReviewResult] = useState<SessionReviewResult | null>(null);
   const [regenerateRunning, setRegenerateRunning] = useState<boolean>(false);
   const [regenerateResult, setRegenerateResult] = useState<SessionRegenerateResult | null>(null);
+  const [regenerateReplace, setRegenerateReplace] = useState<boolean>(false);
+  const [viewingSession, setViewingSession] = useState<any | null>(null);
+  const [loadingSession, setLoadingSession] = useState<boolean>(false);
+  
+  // QA Status Analytics
+  const [qaAnalytics, setQaAnalytics] = useState<{
+    total: number;
+    withQA: number;
+    withoutQA: number;
+    statusCounts: Record<string, number>;
+    sessionsByStatus: Record<string, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>>;
+  } | null>(null);
+  const [loadingQaAnalytics, setLoadingQaAnalytics] = useState<boolean>(false);
 
   const checkSystemStatus = useCallback(async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -221,6 +288,21 @@ export default function AdminDashboard() {
   }, []);
 
   // NOTE: keep fetchData defined before callbacks that reference it (TDZ-safe)
+  const fetchQaAnalytics = useCallback(async () => {
+    setLoadingQaAnalytics(true);
+    try {
+      const res = await fetch("/api/admin/analytics/qa-status");
+      const data = await res.json();
+      if (res.ok && data?.ok) {
+        setQaAnalytics(data);
+      }
+    } catch (e: any) {
+      console.error("Error fetching QA analytics:", e);
+    } finally {
+      setLoadingQaAnalytics(false);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const [statsRes, timelineRes, recentRes, operationsRes, ageRes] = await Promise.all([
@@ -308,11 +390,12 @@ export default function AdminDashboard() {
   useEffect(() => {
     fetchData();
     checkSystemStatus();
+    fetchQaAnalytics();
     
     // Check system status every 30 seconds
     const statusInterval = setInterval(checkSystemStatus, 30000);
     return () => clearInterval(statusInterval);
-  }, [fetchData, checkSystemStatus]);
+  }, [fetchData, checkSystemStatus, fetchQaAnalytics]);
 
   // Poll bulk job progress while running
   useEffect(() => {
@@ -355,7 +438,7 @@ export default function AdminDashboard() {
     setReviewRunning(true);
     setReviewError(null);
     setReviewResult(null);
-    setRegenerateResult(null);
+    setRegenerateResult(null); // Clear previous regeneration result
 
     try {
       const res = await fetch("/api/admin/sessions/review", {
@@ -391,27 +474,46 @@ export default function AdminDashboard() {
     setRegenerateResult(null);
 
     try {
+      console.log("[ADMIN] Starting session regeneration:", { ref, replace: regenerateReplace });
       const res = await fetch("/api/admin/sessions/regenerate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionRef: ref }),
+        body: JSON.stringify({ sessionRef: ref, replace: regenerateReplace }),
       });
+      
       const data = await res.json();
+      console.log("[ADMIN] Regeneration response:", { ok: data?.ok, status: res.status, data });
+      
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || `Regeneration failed (${res.status})`);
       }
+      
+      if (!data?.replacement) {
+        throw new Error("No replacement session returned from server");
+      }
+      
       setRegenerateResult({
-        original: data.original,
+        replaced: data.replaced || false,
+        original: data.original || null,
         replacement: data.replacement,
+      });
+      // Clear any previous errors
+      setReviewError(null);
+      console.log("[ADMIN] Regeneration successful:", {
+        replaced: data.replaced,
+        original: data.original?.refCode || data.original?.id,
+        replacement: data.replacement?.refCode || data.replacement?.id,
       });
       // Refresh stats to show new session in counts
       fetchData();
     } catch (e: any) {
+      console.error("[ADMIN] Regeneration error:", e);
       setReviewError(e?.message || String(e));
+      setRegenerateResult(null);
     } finally {
       setRegenerateRunning(false);
     }
-  }, [reviewRef, fetchData]);
+  }, [reviewRef, regenerateReplace, fetchData]);
 
   if (loading) {
     return (
@@ -808,6 +910,66 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {regenerateResult && (
+            <div className="mt-3 rounded-lg border border-emerald-700/50 bg-emerald-900/20 p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-2xl">✓</div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-emerald-300 mb-2">
+                    {regenerateResult.replaced 
+                      ? "Session Successfully Replaced" 
+                      : "Replacement Session Generated"}
+                  </div>
+                  <div className="text-xs text-emerald-200/80 space-y-1">
+                    {regenerateResult.replaced && regenerateResult.original ? (
+                      <div>
+                        <span className="text-slate-400">Replaced </span>
+                        <span className="font-mono font-semibold text-emerald-300">
+                          {regenerateResult.original.refCode || regenerateResult.original.id}
+                        </span>
+                        <span className="text-slate-400"> with </span>
+                        <span className="font-mono font-semibold text-emerald-300">
+                          {regenerateResult.replacement.refCode || regenerateResult.replacement.id}
+                        </span>
+                      </div>
+                    ) : regenerateResult.original ? (
+                      <div>
+                        <span className="text-slate-400">Original: </span>
+                        <span className="font-mono text-emerald-300">
+                          {regenerateResult.original.refCode || regenerateResult.original.id}
+                        </span>
+                        <span className="text-slate-400"> → Replacement: </span>
+                        <span className="font-mono text-emerald-300">
+                          {regenerateResult.replacement.refCode || regenerateResult.replacement.id}
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-slate-400">New session: </span>
+                        <span className="font-mono font-semibold text-emerald-300">
+                          {regenerateResult.replacement.refCode || regenerateResult.replacement.id}
+                        </span>
+                      </div>
+                    )}
+                    {regenerateResult.replacement.title && (
+                      <div className="text-slate-300 mt-1">
+                        {regenerateResult.replacement.title}
+                      </div>
+                    )}
+                    {typeof regenerateResult.replacement.qaScore === "number" && (
+                      <div className="mt-1">
+                        <span className="text-slate-400">QA Score: </span>
+                        <span className={regenerateResult.replacement.approved ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                          {regenerateResult.replacement.qaScore.toFixed(2)} ({regenerateResult.replacement.approved ? "PASS" : "FAIL"})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {reviewResult && (
             <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/30 p-4 space-y-3">
               <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -860,45 +1022,54 @@ export default function AdminDashboard() {
               </details>
 
               <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="regenerateReplace"
+                    type="checkbox"
+                    checked={regenerateReplace}
+                    onChange={(e) => setRegenerateReplace(e.target.checked)}
+                    disabled={regenerateRunning || !reviewResult}
+                    className="rounded bg-slate-800 border-slate-600"
+                  />
+                  <label htmlFor="regenerateReplace" className="text-xs text-slate-400 cursor-pointer">
+                    Replace session (delete old)
+                  </label>
+                </div>
                 <button
                   onClick={runSessionRegenerate}
-                  disabled={regenerateRunning || !reviewResult}
+                  disabled={regenerateRunning || !reviewResult || !!regenerateResult}
                   className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    regenerateRunning
+                    regenerateRunning || regenerateResult
                       ? "bg-slate-700 text-slate-300 cursor-not-allowed"
                       : "bg-emerald-600 hover:bg-emerald-500 text-white"
                   }`}
                 >
-                  {regenerateRunning ? "Regenerating..." : "Regenerate Session"}
+                  {regenerateRunning ? "Regenerating..." : regenerateResult ? "Regeneration Complete" : "Regenerate Session"}
                 </button>
                 {regenerateResult && (
-                  <div className="flex-1 rounded-lg border border-emerald-700/40 bg-emerald-900/10 p-2">
-                    <div className="text-xs font-semibold text-emerald-300 mb-1">
-                      Replacement session generated
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                      <span className="text-slate-500 font-mono">
-                        {regenerateResult.replacement.refCode || regenerateResult.replacement.id}
-                      </span>
-                      <span className="text-slate-400 truncate">
-                        {regenerateResult.replacement.title || "Session"}
-                      </span>
-                      {typeof regenerateResult.replacement.qaScore === "number" && (
-                        <>
-                          <span className="text-slate-500">•</span>
-                          <span className={regenerateResult.replacement.approved ? "text-emerald-400" : "text-red-400"}>
-                            {regenerateResult.replacement.approved ? "PASS" : "FAIL"} ({regenerateResult.replacement.qaScore.toFixed(2)})
-                          </span>
-                        </>
-                      )}
-                      <Link
-                        href={`/demo/session?sessionId=${encodeURIComponent(regenerateResult.replacement.id)}`}
-                        className="text-emerald-400 hover:text-emerald-300 ml-auto"
-                      >
-                        Open replacement →
-                      </Link>
-                    </div>
-                  </div>
+                  <button
+                    onClick={async () => {
+                      setLoadingSession(true);
+                      try {
+                        // Fetch session by ID from vault API
+                        const res = await fetch(`/api/vault/sessions/${encodeURIComponent(regenerateResult.replacement.id)}`);
+                        const data = await res.json();
+                        if (res.ok && data && !data.error) {
+                          setViewingSession(data);
+                        } else {
+                          alert(data?.error || "Session not found");
+                        }
+                      } catch (e: any) {
+                        alert("Error loading session: " + e.message);
+                      } finally {
+                        setLoadingSession(false);
+                      }
+                    }}
+                    disabled={loadingSession}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {loadingSession ? "Loading..." : `View ${regenerateResult.replaced ? "New" : "Replacement"} Session`}
+                  </button>
                 )}
               </div>
             </div>
@@ -1202,6 +1373,120 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* QA Status Analytics */}
+        <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300">QA Status Analytics</h2>
+            <button
+              onClick={fetchQaAnalytics}
+              disabled={loadingQaAnalytics}
+              className="px-3 py-1 text-xs rounded-lg border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {loadingQaAnalytics ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+          
+          {qaAnalytics ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="px-3 py-2 bg-emerald-900/30 rounded-lg border border-emerald-700/30">
+                  <div className="text-xs text-emerald-300/70 mb-1">OK</div>
+                  <div className="text-2xl font-bold text-emerald-400">{qaAnalytics.statusCounts.OK || 0}</div>
+                  <div className="text-[10px] text-emerald-300/50 mt-1">
+                    {qaAnalytics.total > 0 ? ((qaAnalytics.statusCounts.OK / qaAnalytics.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-yellow-900/30 rounded-lg border border-yellow-700/30">
+                  <div className="text-xs text-yellow-300/70 mb-1">PATCHABLE</div>
+                  <div className="text-2xl font-bold text-yellow-400">{qaAnalytics.statusCounts.PATCHABLE || 0}</div>
+                  <div className="text-[10px] text-yellow-300/50 mt-1">
+                    {qaAnalytics.total > 0 ? ((qaAnalytics.statusCounts.PATCHABLE / qaAnalytics.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-red-900/30 rounded-lg border border-red-700/30">
+                  <div className="text-xs text-red-300/70 mb-1">NEEDS_REGEN</div>
+                  <div className="text-2xl font-bold text-red-400">{qaAnalytics.statusCounts.NEEDS_REGEN || 0}</div>
+                  <div className="text-[10px] text-red-300/50 mt-1">
+                    {qaAnalytics.total > 0 ? ((qaAnalytics.statusCounts.NEEDS_REGEN / qaAnalytics.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1">NO_QA</div>
+                  <div className="text-2xl font-bold text-slate-300">{qaAnalytics.statusCounts.NO_QA_OR_PASS || 0}</div>
+                  <div className="text-[10px] text-slate-400/50 mt-1">
+                    {qaAnalytics.total > 0 ? ((qaAnalytics.statusCounts.NO_QA_OR_PASS / qaAnalytics.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400 space-y-1">
+                <div>Total Vault Sessions: <span className="text-slate-200 font-semibold">{qaAnalytics.total}</span></div>
+                <div>Sessions with QA: <span className="text-slate-200 font-semibold">{qaAnalytics.withQA}</span></div>
+                <div>Sessions without QA: <span className="text-slate-200 font-semibold">{qaAnalytics.withoutQA}</span></div>
+              </div>
+
+              {/* Show sample sessions for each status */}
+              {(qaAnalytics.statusCounts.PATCHABLE > 0 || qaAnalytics.statusCounts.NEEDS_REGEN > 0) && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-300 mb-2">
+                    View Sample Sessions by Status
+                  </summary>
+                  <div className="mt-3 space-y-4">
+                    {qaAnalytics.statusCounts.PATCHABLE > 0 && qaAnalytics.sessionsByStatus.PATCHABLE.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-yellow-400 mb-2">
+                          PATCHABLE Sessions ({qaAnalytics.statusCounts.PATCHABLE} total)
+                        </div>
+                        <div className="space-y-1">
+                          {qaAnalytics.sessionsByStatus.PATCHABLE.slice(0, 5).map((s) => (
+                            <div key={s.id} className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {s.refCode && (
+                                <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                  {s.refCode}
+                                </span>
+                              )}
+                              <span className="truncate">{s.title}</span>
+                              {s.qaScore !== null && (
+                                <span className="text-yellow-400 ml-auto">QA: {s.qaScore.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {qaAnalytics.statusCounts.NEEDS_REGEN > 0 && qaAnalytics.sessionsByStatus.NEEDS_REGEN.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-red-400 mb-2">
+                          NEEDS_REGEN Sessions ({qaAnalytics.statusCounts.NEEDS_REGEN} total)
+                        </div>
+                        <div className="space-y-1">
+                          {qaAnalytics.sessionsByStatus.NEEDS_REGEN.slice(0, 5).map((s) => (
+                            <div key={s.id} className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {s.refCode && (
+                                <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                  {s.refCode}
+                                </span>
+                              )}
+                              <span className="truncate">{s.title}</span>
+                              {s.qaScore !== null && (
+                                <span className="text-red-400 ml-auto">QA: {s.qaScore.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          ) : loadingQaAnalytics ? (
+            <div className="text-center py-4 text-sm text-slate-400">Loading QA analytics...</div>
+          ) : (
+            <div className="text-center py-4 text-sm text-slate-500">Click Refresh to load QA analytics</div>
+          )}
+        </div>
+
         {/* Age Group Distribution */}
         <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-slate-300 mb-1">Sessions by Age Group</h2>
@@ -1326,6 +1611,167 @@ export default function AdminDashboard() {
           ACI Admin Dashboard • Data refreshes {autoRefresh ? "every 10s" : "on demand"}
         </div>
       </div>
+
+      {/* Session View Modal (similar to vault) */}
+      {viewingSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-700/70 bg-slate-900/90 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-lg font-semibold text-slate-200">{viewingSession.title}</h2>
+                  {viewingSession.refCode && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(viewingSession.refCode!)}
+                      className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                      title="Click to copy reference code"
+                    >
+                      {viewingSession.refCode}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs uppercase tracking-wide">Game Model:</span>
+                    <span className="text-emerald-400">{gameModelLabel[viewingSession.gameModelId] || viewingSession.gameModelId}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs uppercase tracking-wide">Age:</span>
+                    <span className="text-slate-200">{viewingSession.ageGroup}</span>
+                  </div>
+                  {viewingSession.phase && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Phase:</span>
+                      <span className="text-slate-200">{phaseLabel[viewingSession.phase] || viewingSession.phase}</span>
+                    </div>
+                  )}
+                  {viewingSession.zone && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Zone:</span>
+                      <span className="text-slate-200">{zoneLabel[viewingSession.zone] || viewingSession.zone}</span>
+                    </div>
+                  )}
+                  {viewingSession.formationUsed && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Formation:</span>
+                      <span className="text-blue-300">{viewingSession.formationUsed}</span>
+                    </div>
+                  )}
+                  {viewingSession.coachLevel && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Coach Level:</span>
+                      <span className="text-amber-300">{coachLevelLabel[viewingSession.coachLevel] || viewingSession.coachLevel}</span>
+                    </div>
+                  )}
+                  {viewingSession.playerLevel && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Player Level:</span>
+                      <span className="text-purple-300">{playerLevelLabel[viewingSession.playerLevel] || viewingSession.playerLevel}</span>
+                    </div>
+                  )}
+                  {(viewingSession.numbersMin || viewingSession.numbersMax) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Players:</span>
+                      <span className="text-cyan-300">
+                        {viewingSession.numbersMin === viewingSession.numbersMax 
+                          ? `${viewingSession.numbersMin}`
+                          : `${viewingSession.numbersMin || '?'}-${viewingSession.numbersMax || '?'}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingSession(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500"
+                aria-label="Close preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-6">
+              {viewingSession.json?.summary && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Summary</h3>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {viewingSession.json.summary}
+                  </p>
+                </div>
+              )}
+
+              {viewingSession.json?.drills && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
+                  {viewingSession.json.drills.map((drill: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${
+                          drillTypeColors[drill.drillType]?.bg || "bg-slate-800"
+                        } ${drillTypeColors[drill.drillType]?.text || "text-slate-300"} border ${
+                          drillTypeColors[drill.drillType]?.border || "border-slate-700"
+                        }`}>
+                          {drillTypeLabel[drill.drillType] || drill.drillType}
+                        </span>
+                        {drill.durationMin && (
+                          <span className="text-[10px] text-slate-500">{drill.durationMin} min</span>
+                        )}
+                      </div>
+                      <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title}</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {drill.diagram && (
+                          <div className="flex items-center justify-center">
+                            <DrillDiagram
+                              diagram={drill.diagram}
+                              width={220}
+                              height={140}
+                            />
+                          </div>
+                        )}
+                        
+                        <div className="space-y-2">
+                          {drill.description && (
+                            <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{drill.description}</p>
+                          )}
+                          {drill.coachingPoints && drill.coachingPoints.length > 0 && (
+                            <div>
+                              <span className="text-[9px] text-slate-500 uppercase">Key Points:</span>
+                              <ul className="text-[10px] text-slate-400 mt-1">
+                                {drill.coachingPoints.slice(0, 2).map((pt: string, j: number) => (
+                                  <li key={j} className="truncate">• {pt}</li>
+                                ))}
+                                {drill.coachingPoints.length > 2 && (
+                                  <li className="text-slate-500">+{drill.coachingPoints.length - 2} more</li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 border-t border-slate-700/50">
+                <Link
+                  href={`/demo/session?sessionId=${viewingSession.id}`}
+                  className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                >
+                  View Full Session
+                </Link>
+                <button
+                  onClick={() => setViewingSession(null)}
+                  className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

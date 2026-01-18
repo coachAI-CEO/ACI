@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: NextRequest, context: { params: Promise<{ sessionId: string }> }) {
+const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const { sessionId } = await params;
+  const url = `${API_URL}/vault/sessions/${encodeURIComponent(sessionId)}`;
+
   try {
-    const { sessionId } = await context.params;
-    const res = await fetch(`http://localhost:4000/vault/sessions/${sessionId}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       return NextResponse.json(
@@ -11,8 +23,10 @@ export async function GET(request: NextRequest, context: { params: Promise<{ ses
         { status: res.status }
       );
     }
+    
     const data = await res.json();
-    return NextResponse.json(data);
+    // Return the session directly (not wrapped in ok/session)
+    return NextResponse.json(data.session || data);
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || String(e) },

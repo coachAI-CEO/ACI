@@ -5,6 +5,7 @@ import { generateProgressiveSessionSeries } from "./services/session-progressive
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { buildSessionQAReviewerPrompt } from "./prompts/session";
 import { fixSessionDecision } from "./services/fixer";
+import type { FixDecisionCode } from "./services/fixer";
 
 const r = express.Router();
 
@@ -712,6 +713,7 @@ r.post("/admin/sessions/review", async (req, res) => {
 
 r.post("/admin/sessions/regenerate", async (req, res) => {
   const sessionRef = String(req.body?.sessionRef || "").trim();
+  const replace = req.body?.replace === true; // If true, delete old session instead of marking as superseded
 
   if (!sessionRef) {
     return res.status(400).json({ ok: false, error: "sessionRef is required (id or refCode)" });
@@ -755,29 +757,45 @@ r.post("/admin/sessions/regenerate", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Failed to generate replacement session" });
   }
 
-  // Mark original session JSON as superseded
-  await prisma.session.update({
-    where: { id: sessionRow.id },
-    data: {
-      approved: false,
-      json: {
-        ...(sessionJson || {}),
-        supersededBy: {
-          id: replacement.id,
-          refCode: replacement.refCode,
-          title: replacement.title,
-        },
-      } as any,
-    },
-  });
+  if (replace) {
+    // Delete old session
+    // Note: QAReports and SkillFocus will cascade delete automatically (via onDelete: Cascade in schema)
+    // Favorites must be deleted explicitly (no cascade delete in schema)
+    await prisma.favorite.deleteMany({
+      where: { sessionId: sessionRow.id },
+    });
+    
+    await prisma.session.delete({
+      where: { id: sessionRow.id },
+    });
+  } else {
+    // Mark original session JSON as superseded (keep both)
+    await prisma.session.update({
+      where: { id: sessionRow.id },
+      data: {
+        approved: false,
+        json: {
+          ...(sessionJson || {}),
+          supersededBy: {
+            id: replacement.id,
+            refCode: replacement.refCode,
+            title: replacement.title,
+          },
+        } as any,
+      },
+    });
+  }
 
   return res.json({
     ok: true,
-    original: {
-      id: sessionRow.id,
-      refCode: sessionRow.refCode,
-      title: sessionRow.title,
-    },
+    replaced: replace,
+    original: replace
+      ? null
+      : {
+          id: sessionRow.id,
+          refCode: sessionRow.refCode,
+          title: sessionRow.title,
+        },
     replacement: {
       id: replacement.id,
       refCode: replacement.refCode,
@@ -786,6 +804,93 @@ r.post("/admin/sessions/regenerate", async (req, res) => {
       approved: replacement.approved,
     },
   });
+});
+
+// ------------------------------------
+// Admin: QA Status Analytics
+// ------------------------------------
+r.get("/admin/analytics/qa-status", async (_req, res) => {
+  try {
+    // Get all sessions with their latest QA reports
+    const sessions = await prisma.session.findMany({
+      where: {
+        savedToVault: true, // Only count vault sessions
+      },
+      include: {
+        qaReports: {
+          orderBy: { createdAt: "desc" },
+          take: 1, // Get only the latest QA report
+        },
+      },
+    });
+
+    // Compute fixDecision for each session based on latest QA scores
+    const statusCounts: Record<FixDecisionCode, number> = {
+      OK: 0,
+      PATCHABLE: 0,
+      NEEDS_REGEN: 0,
+      NO_QA_OR_PASS: 0,
+    };
+
+    const sessionsByStatus: Record<FixDecisionCode, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>> = {
+      OK: [],
+      PATCHABLE: [],
+      NEEDS_REGEN: [],
+      NO_QA_OR_PASS: [],
+    };
+
+    for (const session of sessions) {
+      const latestQA = session.qaReports[0];
+      let fixDecisionCode: FixDecisionCode = "NO_QA_OR_PASS";
+
+      if (latestQA && latestQA.scores) {
+        const scores = latestQA.scores as any;
+        const fixDecision = fixSessionDecision(scores);
+        fixDecisionCode = fixDecision.code;
+      } else if (session.qaScore !== null) {
+        // If no QA report but has qaScore, try to infer from approved status
+        fixDecisionCode = session.approved ? "OK" : "NO_QA_OR_PASS";
+      }
+
+      statusCounts[fixDecisionCode]++;
+      sessionsByStatus[fixDecisionCode].push({
+        id: session.id,
+        refCode: session.refCode,
+        title: session.title,
+        qaScore: session.qaScore,
+      });
+    }
+
+    // Sort sessions by QA score (highest first) for each status
+    Object.keys(sessionsByStatus).forEach((key) => {
+      sessionsByStatus[key as FixDecisionCode].sort((a, b) => {
+        if (a.qaScore === null && b.qaScore === null) return 0;
+        if (a.qaScore === null) return 1;
+        if (b.qaScore === null) return -1;
+        return b.qaScore - a.qaScore;
+      });
+    });
+
+    const total = sessions.length;
+    const withQA = sessions.filter((s) => s.qaReports.length > 0).length;
+    const withoutQA = total - withQA;
+
+    return res.json({
+      ok: true,
+      total,
+      withQA,
+      withoutQA,
+      statusCounts,
+      sessionsByStatus: {
+        OK: sessionsByStatus.OK.slice(0, 10), // Top 10 for each status
+        PATCHABLE: sessionsByStatus.PATCHABLE.slice(0, 10),
+        NEEDS_REGEN: sessionsByStatus.NEEDS_REGEN.slice(0, 10),
+        NO_QA_OR_PASS: sessionsByStatus.NO_QA_OR_PASS.slice(0, 10),
+      },
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
 });
 
 export default r;
