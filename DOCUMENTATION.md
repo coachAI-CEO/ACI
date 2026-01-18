@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 17, 2025  
-**Version:** 1.0.0
+**Last Updated:** January 15, 2026  
+**Version:** 1.1.0
 
 ## Table of Contents
 
@@ -88,6 +88,7 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 4. **Vault System**
    - Save and organize generated content
    - Filter by game model, age group, phase, zone
+   - Search by name or reference code (NEW)
    - View sessions, drills, and series
    - Extract individual drills from sessions
 
@@ -225,6 +226,10 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `GET /admin/metrics/by-operation` - Operation statistics
 - `GET /admin/stats/by-age-group` - Age group statistics
 - `GET /health` - Health check endpoint
+- `POST /admin/random-sessions/start` - Start bulk session/series generation (NEW)
+- `GET /admin/random-sessions/:jobId` - Get bulk generation job status (NEW)
+- `POST /admin/sessions/review` - Run QA review on a session (NEW)
+- `POST /admin/sessions/regenerate` - Manually regenerate a session with new QA (NEW)
 
 #### Skill Focus Endpoints
 - `GET /skill-focus/session/:sessionId` - Get skill focus for session
@@ -284,8 +289,10 @@ All backend endpoints are proxied through Next.js API routes:
    - System metrics and statistics
    - Token usage and costs
    - Operation breakdowns
-   - System status monitoring (NEW)
+   - System status monitoring
    - Revenue calculator
+   - Bulk session/series generation (NEW)
+   - Session QA review and manual regeneration (NEW)
 
 ### Navigation
 
@@ -524,6 +531,30 @@ pnpm test
 
 ## Recent Changes
 
+### January 15, 2026
+
+#### Vault Search (NEW)
+- ✅ Added search functionality to vault page
+- ✅ Search by session/drill/series names or reference codes
+- ✅ Case-insensitive matching across all tabs
+- ✅ Works in combination with existing filters
+- ✅ Shows filtered count vs total in tab labels
+
+#### Session Review & Regeneration (NEW)
+- ✅ Manual session regeneration workflow
+- ✅ Separate QA review and regeneration endpoints
+- ✅ Regenerate button appears after QA review
+- ✅ New sessions auto-saved to vault with QA scores
+- ✅ Original sessions marked as superseded
+- ✅ Removed auto-regenerate checkbox (replaced with manual button)
+
+#### Admin Dashboard Enhancements
+- ✅ Bulk session/series generation with progress tracking
+- ✅ Session QA review card with scores and decision
+- ✅ Manual regeneration workflow
+- ✅ System status monitoring (backend and database)
+- ✅ Age group statistics split by sessions vs series
+
 ### January 17, 2025
 
 #### Favorites System
@@ -638,4 +669,4 @@ No environment variables required (uses defaults).
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 17, 2025
+**Last Updated:** January 15, 2026
