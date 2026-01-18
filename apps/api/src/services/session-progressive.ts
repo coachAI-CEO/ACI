@@ -4,6 +4,7 @@ import { buildProgressiveSessionPrompt, ProgressiveSessionPromptInput } from "..
 import { buildSessionQAReviewerPrompt } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
 import { SessionPromptInput } from "../prompts/session";
+import { generateRefCode } from "../utils/ref-code";
 
 /**
  * Parse JSON safely from LLM text output
@@ -212,14 +213,27 @@ export async function generateProgressiveSessionSeries(
       retryDelay
     );
     
+    // Generate unique reference code for series sessions
+    const sessionRefCode = await generateRefCode("series");
+    
+    // Add ref codes to embedded drills in the session JSON
+    const drillsWithRefCodes = result.session.drills ? await Promise.all(
+      result.session.drills.map(async (drill: any) => ({
+        ...drill,
+        refCode: drill.refCode || await generateRefCode("drill"),
+      }))
+    ) : [];
+
     // Persist to database
     const jsonForDb = {
       ...result.session,
+      drills: drillsWithRefCodes,
       qa: result.qa,
     };
 
     const created = await prisma.session.create({
       data: {
+        refCode: sessionRefCode,
         title: jsonForDb.title || `Session ${i}`,
         gameModelId: baseInput.gameModelId as any,
         phase: baseInput.phase as any,
@@ -267,6 +281,8 @@ export async function generateProgressiveSessionSeries(
       session: {
         ...result.session,
         id: created.id,
+        refCode: sessionRefCode,
+        drills: drillsWithRefCodes,
         qaScore: result.qaScore,
         approved: !!result.qa.pass,
       },

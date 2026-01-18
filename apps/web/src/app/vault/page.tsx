@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import DrillDiagram from "@/components/DrillDiagram";
+import { getUserHeaders } from "@/lib/user";
 
 type VaultSession = {
   id: string;
+  refCode?: string; // Human-readable reference code (S-XXXX or SR-XXXX)
   title: string;
   gameModelId: string;
   ageGroup: string;
@@ -24,6 +26,7 @@ type VaultSession = {
   coachLevel?: string;
   numbersMin?: number;
   numbersMax?: number;
+  favoriteCount?: number;
 };
 
 type VaultSeries = {
@@ -37,6 +40,7 @@ type VaultSeries = {
 
 type VaultDrill = {
   id: string; // generated: sessionId-drillIndex
+  refCode?: string; // Human-readable reference code (D-XXXX)
   drillType: string;
   title: string;
   description: string;
@@ -47,6 +51,7 @@ type VaultDrill = {
   diagram?: any;
   // Parent session info
   sessionId: string;
+  sessionRefCode?: string;
   sessionTitle: string;
   sessionAgeGroup: string;
   sessionGameModelId: string;
@@ -108,15 +113,26 @@ const coachLevelLabel: Record<string, string> = {
 };
 
 export default function VaultPage() {
+  console.log('[VAULT] Component rendering...');
+  
   const [sessions, setSessions] = useState<VaultSession[]>([]);
   const [series, setSeries] = useState<VaultSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"sessions" | "series" | "drills">("drills");
+  
+  useEffect(() => {
+    console.log('[VAULT] Component mounted');
+  }, []);
   const [selectedSession, setSelectedSession] = useState<VaultSession | null>(null);
   const [selectedDrill, setSelectedDrill] = useState<VaultDrill | null>(null);
   const [skillFocus, setSkillFocus] = useState<any | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
+  
+  // Favorites state
+  const [favoritedSessions, setFavoritedSessions] = useState<Set<string>>(new Set());
+  const [favoritedSeries, setFavoritedSeries] = useState<Set<string>>(new Set());
+  
   const [filters, setFilters] = useState({
     gameModelId: "",
     ageGroup: "",
@@ -159,6 +175,7 @@ export default function VaultPage() {
     const sessionDrills = session.json?.drills || [];
     return sessionDrills.map((drill: any, index: number) => ({
       id: `${session.id}-${index}`,
+      refCode: drill.refCode, // Drill reference code (D-XXXX)
       drillType: drill.drillType || "TECHNICAL",
       title: drill.title || `Drill ${index + 1}`,
       description: drill.description || "",
@@ -168,6 +185,7 @@ export default function VaultPage() {
       coachingPoints: drill.coachingPoints,
       diagram: drill.diagram || drill.diagramV1,
       sessionId: session.id,
+      sessionRefCode: session.refCode, // Parent session reference code
       sessionTitle: session.title,
       sessionAgeGroup: session.ageGroup,
       sessionGameModelId: session.gameModelId,
@@ -192,9 +210,84 @@ export default function VaultPage() {
     return true;
   });
 
+  const loadVaultData = useCallback(async () => {
+    console.log('[VAULT] Starting loadVaultData...');
+    setLoading(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams();
+      if (filters.gameModelId) params.append("gameModelId", filters.gameModelId);
+      if (filters.ageGroup) params.append("ageGroup", filters.ageGroup);
+      if (filters.phase) params.append("phase", filters.phase);
+      if (filters.zone) params.append("zone", filters.zone);
+
+      console.log('[VAULT] Fetching data from API...');
+      const sessionsUrl = `/api/vault/sessions?${params.toString()}`;
+      const seriesUrl = `/api/vault/series`;
+      console.log('[VAULT] Sessions URL:', sessionsUrl);
+      console.log('[VAULT] Series URL:', seriesUrl);
+
+      // Add timeout to fetch calls
+      const fetchWithTimeout = (url: string, timeout = 10000) => {
+        return Promise.race([
+          fetch(url),
+          new Promise<Response>((_, reject) =>
+            setTimeout(() => reject(new Error('Request timeout')), timeout)
+          ),
+        ]);
+      };
+
+      const [sessionsRes, seriesRes] = await Promise.all([
+        fetchWithTimeout(sessionsUrl),
+        fetchWithTimeout(seriesUrl),
+      ]);
+      
+      console.log('[VAULT] API responses received:', {
+        sessionsStatus: sessionsRes.status,
+        seriesStatus: seriesRes.status,
+      });
+
+      if (!sessionsRes.ok) {
+        const errorText = await sessionsRes.text().catch(() => 'Unknown error');
+        console.error('[VAULT] Sessions API error:', sessionsRes.status, errorText);
+        throw new Error(`Sessions API error: ${sessionsRes.status} - ${errorText}`);
+      }
+      if (!seriesRes.ok) {
+        const errorText = await seriesRes.text().catch(() => 'Unknown error');
+        console.error('[VAULT] Series API error:', seriesRes.status, errorText);
+        throw new Error(`Series API error: ${seriesRes.status} - ${errorText}`);
+      }
+
+      const sessionsData = await sessionsRes.json();
+      const seriesData = await seriesRes.json();
+      
+      console.log('[VAULT] Loaded:', {
+        sessions: sessionsData.sessions?.length || 0,
+        series: seriesData.series?.length || 0,
+      });
+
+      setSessions(sessionsData.sessions || []);
+      setSeries(seriesData.series || []);
+      
+      // Check which items are favorited (non-blocking)
+      const sessionIds = sessionsData.sessions?.map((s: any) => s.id).filter(Boolean) || [];
+      const seriesIds = seriesData.series?.map((s: any) => s.seriesId).filter(Boolean) || [];
+      if (sessionIds.length > 0 || seriesIds.length > 0) {
+        checkFavorites(sessionIds, seriesIds).catch(() => {
+          // Silently fail - favorites are optional
+        });
+      }
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.gameModelId, filters.ageGroup, filters.phase, filters.zone]);
+
   useEffect(() => {
     loadVaultData();
-  }, [activeTab, filters]);
+  }, [loadVaultData]);
 
   useEffect(() => {
     const sessionId = selectedSession?.id;
@@ -208,49 +301,94 @@ export default function VaultPage() {
       .catch(() => setSkillFocus(null));
   }, [selectedSession?.id]);
 
-  async function loadVaultData() {
-    setLoading(true);
-    setError(null);
-
+  // Check favorites status for loaded items (non-blocking)
+  async function checkFavorites(sessionIds: string[], seriesIds: string[]) {
     try {
-      const params = new URLSearchParams();
-      if (filters.gameModelId) params.append("gameModelId", filters.gameModelId);
-      if (filters.ageGroup) params.append("ageGroup", filters.ageGroup);
-      if (filters.phase) params.append("phase", filters.phase);
-      if (filters.zone) params.append("zone", filters.zone);
-
-      const [sessionsRes, seriesRes] = await Promise.all([
-        fetch(`/api/vault/sessions?${params.toString()}`),
-        fetch("/api/vault/series"),
-      ]);
-
-      if (!sessionsRes.ok) throw new Error(`API error: ${sessionsRes.status}`);
-      if (!seriesRes.ok) throw new Error(`API error: ${seriesRes.status}`);
-
-      const sessionsData = await sessionsRes.json();
-      const seriesData = await seriesRes.json();
-
-      setSessions(sessionsData.sessions || []);
-      setSeries(seriesData.series || []);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setLoading(false);
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getUserHeaders(),
+        },
+        body: JSON.stringify({ sessionIds, seriesIds }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const favSessions = new Set<string>();
+        const favSeries = new Set<string>();
+        
+        if (data.sessions) {
+          Object.entries(data.sessions).forEach(([id, isFav]) => {
+            if (isFav) favSessions.add(id);
+          });
+        }
+        if (data.series) {
+          Object.entries(data.series).forEach(([id, isFav]) => {
+            if (isFav) favSeries.add(id);
+          });
+        }
+        
+        setFavoritedSessions(favSessions);
+        setFavoritedSeries(favSeries);
+      }
+    } catch (e) {
+      // Silently fail - favorites are optional and shouldn't block vault loading
+      console.debug("Favorites check failed (non-critical):", e);
     }
   }
 
-  async function removeFromVault(sessionId: string) {
+  // Toggle favorite for a session
+  async function toggleSessionFavorite(sessionId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const isFavorited = favoritedSessions.has(sessionId);
+    
     try {
-      const res = await fetch(`/api/vault/sessions/${sessionId}/remove`, {
-        method: "POST",
+      const res = await fetch(`/api/favorites/session/${sessionId}`, {
+        method: isFavorited ? "DELETE" : "POST",
+        headers: getUserHeaders(),
       });
-      if (!res.ok) throw new Error("Failed to remove from vault");
-      await loadVaultData();
-      if (selectedSession?.id === sessionId) {
-        setSelectedSession(null);
+      
+      if (res.ok) {
+        setFavoritedSessions(prev => {
+          const next = new Set(prev);
+          if (isFavorited) {
+            next.delete(sessionId);
+          } else {
+            next.add(sessionId);
+          }
+          return next;
+        });
       }
-    } catch (e: any) {
-      alert("Error removing from vault: " + e.message);
+    } catch (e) {
+      console.error("Error toggling favorite:", e);
+    }
+  }
+
+  // Toggle favorite for a series
+  async function toggleSeriesFavorite(seriesId: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const isFavorited = favoritedSeries.has(seriesId);
+    
+    try {
+      const res = await fetch(`/api/favorites/series/${seriesId}`, {
+        method: isFavorited ? "DELETE" : "POST",
+        headers: getUserHeaders(),
+      });
+      
+      if (res.ok) {
+        setFavoritedSeries(prev => {
+          const next = new Set(prev);
+          if (isFavorited) {
+            next.delete(seriesId);
+          } else {
+            next.add(seriesId);
+          }
+          return next;
+        });
+      }
+    } catch (e) {
+      console.error("Error toggling series favorite:", e);
     }
   }
 
@@ -266,12 +404,20 @@ export default function VaultPage() {
                 Browse and manage your saved training sessions and progressive series
               </p>
             </div>
-            <Link
-              href="/demo/session"
-              className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-            >
-              ➕ Generate New Session
-            </Link>
+            <div className="flex gap-3">
+              <Link
+                href="/vault/favorites"
+                className="inline-flex items-center rounded-full border border-pink-500/50 bg-pink-500/10 px-4 py-2 text-sm font-semibold text-pink-400 hover:bg-pink-500/20 transition-colors"
+              >
+                ♥ My Favorites
+              </Link>
+              <Link
+                href="/demo/session"
+                className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+              >
+                ➕ Generate New
+              </Link>
+            </div>
           </div>
         </header>
 
@@ -445,13 +591,39 @@ export default function VaultPage() {
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-xs text-slate-200 leading-tight mb-1">{session.title}</h3>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-xs text-slate-200 leading-tight">{session.title}</h3>
+                            {session.refCode && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(session.refCode!);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                                title="Click to copy"
+                              >
+                                {session.refCode}
+                              </button>
+                            )}
+                          </div>
                           {session.durationMin && (
                             <div className="text-[9px] text-slate-500">
                               {session.durationMin} min session
                             </div>
                           )}
                         </div>
+                        {/* TEMPORARILY DISABLED: Favorite button */}
+                        {/* <button
+                          onClick={(e) => toggleSessionFavorite(session.id, e)}
+                          className={`text-lg transition-colors ${
+                            favoritedSessions.has(session.id)
+                              ? "text-pink-400 hover:text-pink-300"
+                              : "text-slate-600 hover:text-pink-400"
+                          }`}
+                          title={favoritedSessions.has(session.id) ? "Remove from favorites" : "Add to favorites"}
+                        >
+                          {favoritedSessions.has(session.id) ? "♥" : "♡"}
+                        </button> */}
                       </div>
                       <div className="text-[10px] text-slate-400 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -513,17 +685,6 @@ export default function VaultPage() {
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm("Remove from vault?")) {
-                            removeFromVault(session.id);
-                          }
-                        }}
-                        className="mt-2 text-[10px] text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        Remove from vault
-                      </button>
                     </div>
                   ))
                 )
@@ -562,8 +723,22 @@ export default function VaultPage() {
                           )}
                         </div>
                         
-                        {/* Drill Title */}
-                        <h3 className="font-semibold text-xs text-slate-200 leading-tight mb-2">{drill.title}</h3>
+                        {/* Drill Title with Ref Code */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="font-semibold text-xs text-slate-200 leading-tight">{drill.title}</h3>
+                          {drill.refCode && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(drill.refCode!);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors flex-shrink-0"
+                              title="Click to copy"
+                            >
+                              {drill.refCode}
+                            </button>
+                          )}
+                        </div>
                         
                         {/* Description Preview */}
                         {drill.description && (
@@ -657,14 +832,44 @@ export default function VaultPage() {
                       seriesTitle = `${gameModelLabel[s.gameModelId] || s.gameModelId} Training (${s.ageGroup})`;
                     }
 
+                    // Get ref code from first session with SR prefix for series display
+                    const seriesRefCode = firstSession?.refCode;
+                    
                     return (
                     <div
                       key={s.seriesId}
                       className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-3"
                     >
-                      <h3 className="font-semibold text-xs mb-1 text-slate-200 leading-tight">
-                        {seriesTitle}
-                      </h3>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <h3 className="font-semibold text-xs text-slate-200 leading-tight">
+                            {seriesTitle}
+                          </h3>
+                          {seriesRefCode && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(seriesRefCode);
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                              title="Click to copy series ref"
+                            >
+                              {seriesRefCode}
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => toggleSeriesFavorite(s.seriesId, e)}
+                          className={`text-lg transition-colors ${
+                            favoritedSeries.has(s.seriesId)
+                              ? "text-pink-400 hover:text-pink-300"
+                              : "text-slate-600 hover:text-pink-400"
+                          }`}
+                          title={favoritedSeries.has(s.seriesId) ? "Remove from favorites" : "Add to favorites"}
+                        >
+                          {favoritedSeries.has(s.seriesId) ? "♥" : "♡"}
+                        </button>
+                      </div>
                       <p className="text-[9px] text-slate-500 mb-2">
                         {s.totalSessions} Sessions {seriesPhase ? `• ${seriesPhase}` : ""} {seriesZone ? `• ${seriesZone}` : ""}
                       </p>
@@ -721,8 +926,22 @@ export default function VaultPage() {
                             onClick={() => setSelectedSession(session)}
                             className="text-[10px] py-1 px-2 rounded bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition-colors border border-slate-700/50"
                           >
-                            <div className="font-medium text-slate-200 line-clamp-1">
-                              {session.title}
+                            <div className="flex items-center gap-2">
+                              {session.refCode && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(session.refCode!);
+                                  }}
+                                  className="px-1 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[8px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors flex-shrink-0"
+                                  title="Click to copy"
+                                >
+                                  {session.refCode}
+                                </button>
+                              )}
+                              <span className="font-medium text-slate-200 line-clamp-1">
+                                {session.title}
+                              </span>
                             </div>
                           </div>
                         ))}
@@ -746,7 +965,18 @@ export default function VaultPage() {
             <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-700/70 bg-slate-900/90 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold mb-3 text-slate-200">{selectedSession.title}</h2>
+                  <div className="flex items-center gap-3 mb-3">
+                    <h2 className="text-lg font-semibold text-slate-200">{selectedSession.title}</h2>
+                    {selectedSession.refCode && (
+                      <button
+                        onClick={() => navigator.clipboard.writeText(selectedSession.refCode!)}
+                        className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                        title="Click to copy reference code"
+                      >
+                        {selectedSession.refCode}
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-4 text-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-slate-400 text-xs uppercase tracking-wide">Game Model:</span>
@@ -1062,16 +1292,6 @@ export default function VaultPage() {
                     className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition-colors"
                   >
                     📄 Export PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm("Remove from vault?")) {
-                        removeFromVault(selectedSession.id);
-                      }
-                    }}
-                    className="inline-flex items-center rounded-full border border-red-700/70 bg-red-900/20 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-900/30 transition-colors"
-                  >
-                    Remove from Vault
                   </button>
                 </div>
               </div>

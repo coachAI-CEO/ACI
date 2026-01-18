@@ -64,8 +64,9 @@ enum ArtifactType {
 }
 
 model Drill {
-  id    String @id @default(uuid())
-  title String
+  id      String  @id @default(uuid())
+  refCode String? @unique // Human-readable reference code (D-XXXX format)
+  title   String
 
   // Tactical & psych metadata
   principleIds  Json? // array of strings
@@ -103,6 +104,7 @@ model Drill {
   qaScore     Float?
   approved    Boolean     @default(false)
   savedToVault Boolean    @default(false) // Vault system: mark drills saved to vault
+  favoriteCount Int       @default(0)    // Number of users who favorited this drill
 
   json           Json
   visualThumbSvg String?
@@ -113,13 +115,15 @@ model Drill {
 
   qaReports QAReport[] @relation("DrillQAReports")
   
+  @@index([refCode])
   @@index([savedToVault])
   @@index([gameModelId, ageGroup, phase, zone])
 }
 
 model Session {
-  id    String @id @default(uuid())
-  title String
+  id      String  @id @default(uuid())
+  refCode String? @unique // Human-readable reference code (S-XXXX or SR-XXXX format)
+  title   String
 
   // Tactical & psych metadata
   principleIds  Json? // array of strings
@@ -153,6 +157,7 @@ model Session {
   isSeries    Boolean     @default(false) // Vault system: is this part of a series?
   seriesId     String?     // Vault system: if part of series, link to series group
   seriesNumber Int?        // Vault system: position in series (1, 2, 3, etc.)
+  favoriteCount Int        @default(0)    // Number of users who favorited this session
 
   json           Json
   visualThumbSvg String?
@@ -164,6 +169,7 @@ model Session {
   qaReports QAReport[] @relation("SessionQAReports")
   skillFocuses SkillFocus[]
   
+  @@index([refCode])
   @@index([savedToVault])
   @@index([isSeries, seriesId])
   @@index([gameModelId, ageGroup, phase, zone])
@@ -284,4 +290,36 @@ model DailyMetrics {
   updatedAt       DateTime @updatedAt
   
   @@index([date])
+}
+
+// User model (placeholder for future authentication)
+model User {
+  id        String     @id @default(uuid())
+  email     String?    @unique  // Optional for now, will be required with auth
+  name      String?
+  createdAt DateTime   @default(now())
+  favorites Favorite[]
+}
+
+// Favorites - allows users to save sessions, drills, or series
+model Favorite {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Polymorphic reference - only one will be set per favorite
+  sessionId   String?  // References Session.id
+  drillId     String?  // References Drill.id
+  seriesId    String?  // References Session.seriesId for series groups
+  
+  createdAt   DateTime @default(now())
+  
+  // Ensure a user can only favorite each item once
+  @@unique([userId, sessionId])
+  @@unique([userId, drillId])
+  @@unique([userId, seriesId])
+  @@index([userId])
+  @@index([sessionId])
+  @@index([drillId])
+  @@index([seriesId])
 }

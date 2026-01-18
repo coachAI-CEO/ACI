@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon --watch src --exec \"ts-node --project tsconfig.json src/index.ts\"",
+    "dev": "nodemon --watch src -e ts,js,json --exec \"ts-node --project tsconfig.json src/index.ts\"",
     "bulk:sessions": "ts-node --project tsconfig.json src/scripts/generate-bulk-sessions.ts",
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts"
   },

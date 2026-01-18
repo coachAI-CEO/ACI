@@ -7,6 +7,12 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   recommendations?: any[];
+  referencedItems?: Array<{
+    refCode: string;
+    type: string;
+    title: string;
+    id: string;
+  }>;
   extractedParams?: any;
   readyToGenerate?: boolean;
   isLoading?: boolean;
@@ -33,7 +39,9 @@ export const CoachChat: React.FC<CoachChatProps> = ({
         "For example:\n" +
         '"My U14s struggle to keep the ball under pressure"\n' +
         '"I need a session on breaking low blocks for U16"\n' +
-        '"3-session series on pressing for my U12 team"',
+        '"3-session series on pressing for my U12 team"\n\n' +
+        "💡 You can also reference existing items:\n" +
+        '"Improve S-7K2M" or "Explain drill D-9M3P"',
     },
   ]);
   const [input, setInput] = useState("");
@@ -92,6 +100,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
             role: "assistant",
             content: data.message || data.error || "Something went wrong",
             recommendations: data.recommendations,
+            referencedItems: data.referencedItems,
             extractedParams: data.extractedParams,
             readyToGenerate: data.readyToGenerate,
           },
@@ -147,7 +156,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-[300px] max-h-[500px]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -173,6 +182,27 @@ export const CoachChat: React.FC<CoachChatProps> = ({
                 <>
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
 
+                  {/* Referenced Items */}
+                  {msg.referencedItems && msg.referencedItems.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-xs text-slate-400 font-medium">
+                        📎 Referenced items:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {msg.referencedItems.map((item, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSelectSession({ id: item.id, title: item.title })}
+                            className="inline-flex items-center gap-2 px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                          >
+                            <span className="font-mono">{item.refCode}</span>
+                            <span className="text-slate-300 truncate max-w-[120px]">{item.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Recommendations */}
                   {msg.recommendations && msg.recommendations.length > 0 && (
                     <div className="mt-3 space-y-2">
@@ -185,10 +215,17 @@ export const CoachChat: React.FC<CoachChatProps> = ({
                           onClick={() => handleSelectSession(rec.session || rec)}
                           className="w-full text-left p-2 rounded-lg bg-slate-700/50 hover:bg-slate-700 transition-colors"
                         >
-                          <p className="text-sm font-medium text-white truncate">
-                            {rec.session?.title || rec.title}
-                          </p>
-                          <p className="text-xs text-slate-400">
+                          <div className="flex items-center gap-2">
+                            {(rec.session?.refCode || rec.refCode) && (
+                              <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[10px] font-mono border border-cyan-700/30">
+                                {rec.session?.refCode || rec.refCode}
+                              </span>
+                            )}
+                            <p className="text-sm font-medium text-white truncate flex-1">
+                              {rec.session?.title || rec.title}
+                            </p>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">
                             {rec.session?.ageGroup || rec.ageGroup} •{" "}
                             {rec.session?.gameModelId || rec.gameModelId}
                             {rec.similarity && (

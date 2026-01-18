@@ -1,6 +1,7 @@
 import express from "express";
 import { z } from "zod";
 import { prisma } from "./prisma";
+import { parseRefCode, extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import {
   findSimilarSessions,
   saveSessionToVault,
@@ -63,6 +64,7 @@ r.post("/vault/sessions/:sessionId/remove", async (req, res) => {
 });
 
 r.get("/vault/sessions", async (req, res) => {
+  console.log("[VAULT] GET /vault/sessions - Request received");
   try {
     const filters = {
       gameModelId: req.query.gameModelId as string | undefined,
@@ -72,16 +74,23 @@ r.get("/vault/sessions", async (req, res) => {
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       offset: req.query.offset ? parseInt(req.query.offset as string) : undefined,
     };
+    console.log("[VAULT] Filters:", filters);
+    console.log("[VAULT] Calling getVaultSessions...");
     const result = await getVaultSessions(filters);
+    console.log("[VAULT] Result - Sessions count:", result.sessions?.length || 0);
     return res.json({ ok: true, ...result });
   } catch (e: any) {
+    console.error("[VAULT] Error in /vault/sessions:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
 r.get("/vault/series", async (req, res) => {
+  console.log("[VAULT] GET /vault/series - Request received");
   try {
+    console.log("[VAULT] Calling getVaultSeries...");
     const series = await getVaultSeries();
+    console.log("[VAULT] Result - Series count:", series?.length || 0);
     return res.json({ ok: true, series });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
@@ -287,6 +296,119 @@ r.post("/vault/sessions/search", async (req, res) => {
     return res.json({ ok: true, results, count: results.length });
   } catch (e: any) {
     console.error("[VAULT_SEARCH] Error:", e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Lookup by reference code (D-XXXX, S-XXXX, SR-XXXX)
+r.get("/vault/lookup/:refCode", async (req, res) => {
+  try {
+    const { refCode } = req.params;
+    const parsed = parseRefCode(refCode);
+    
+    if (!parsed) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid reference code format. Expected D-XXXX, S-XXXX, or SR-XXXX",
+      });
+    }
+    
+    const result = await lookupByRefCode(refCode);
+    
+    if (!result) {
+      return res.status(404).json({
+        ok: false,
+        error: `No ${parsed.type} found with reference code ${refCode.toUpperCase()}`,
+      });
+    }
+    
+    return res.json({
+      ok: true,
+      type: result.type,
+      refCode: refCode.toUpperCase(),
+      data: result.data,
+    });
+  } catch (e: any) {
+    console.error("[VAULT_LOOKUP] Error:", e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Lookup multiple reference codes at once
+r.post("/vault/lookup", async (req, res) => {
+  try {
+    const { refCodes } = req.body;
+    
+    if (!Array.isArray(refCodes) || refCodes.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "refCodes must be a non-empty array",
+      });
+    }
+    
+    const results: Array<{
+      refCode: string;
+      type: "drill" | "session" | null;
+      data: any;
+      found: boolean;
+    }> = [];
+    
+    for (const code of refCodes.slice(0, 20)) { // Limit to 20 lookups
+      const result = await lookupByRefCode(code);
+      results.push({
+        refCode: code.toUpperCase(),
+        type: result?.type || null,
+        data: result?.data || null,
+        found: !!result,
+      });
+    }
+    
+    return res.json({
+      ok: true,
+      results,
+      found: results.filter(r => r.found).length,
+      notFound: results.filter(r => !r.found).length,
+    });
+  } catch (e: any) {
+    console.error("[VAULT_LOOKUP_BATCH] Error:", e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Extract reference codes from text
+r.post("/vault/extract-refs", async (req, res) => {
+  try {
+    const { text } = req.body;
+    
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({
+        ok: false,
+        error: "text must be a non-empty string",
+      });
+    }
+    
+    const refCodes = extractRefCodes(text);
+    
+    // Lookup each extracted code
+    const results = await Promise.all(
+      refCodes.map(async (code) => {
+        const result = await lookupByRefCode(code);
+        return {
+          refCode: code,
+          type: result?.type || null,
+          found: !!result,
+          title: result?.data?.title || null,
+        };
+      })
+    );
+    
+    return res.json({
+      ok: true,
+      refCodes,
+      results,
+    });
+  } catch (e: any) {
+    console.error("[VAULT_EXTRACT_REFS] Error:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });

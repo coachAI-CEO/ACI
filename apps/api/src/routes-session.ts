@@ -4,6 +4,7 @@ import { generateProgressiveSessionSeries } from "./services/session-progressive
 import { findSimilarSessions } from "./services/vault";
 import { generateSessionPdf } from "./services/pdf-export";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
+import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 
 const r = express.Router();
 
@@ -15,6 +16,64 @@ r.post("/ai/chat", async (req, res) => {
       return res.status(400).json({ ok: false, error: "prompt is required" });
     }
     
+    // Extract any reference codes from the prompt
+    const refCodes = extractRefCodes(prompt);
+    const referencedItems: Array<{ refCode: string; type: string; data: any }> = [];
+    
+    // Lookup each referenced item
+    for (const code of refCodes) {
+      const result = await lookupByRefCode(code);
+      if (result) {
+        referencedItems.push({
+          refCode: code,
+          type: result.type,
+          data: result.data,
+        });
+      }
+    }
+    
+    // Build enhanced prompt with referenced context
+    let enhancedPrompt = prompt;
+    
+    if (referencedItems.length > 0) {
+      const contextParts = referencedItems.map(item => {
+        const json = item.data.json || {};
+        if (item.type === "session") {
+          return `
+[Referenced Session: ${item.refCode}]
+Title: ${item.data.title}
+Age Group: ${item.data.ageGroup}
+Game Model: ${item.data.gameModelId}
+Phase: ${item.data.phase || "N/A"}
+Zone: ${item.data.zone || "N/A"}
+Duration: ${item.data.durationMin || 90} minutes
+Formation: ${item.data.formationUsed || "N/A"}
+Summary: ${json.summary || "No summary available"}
+Drills: ${(json.drills || []).map((d: any) => `${d.refCode || ""} ${d.title}`).join(", ") || "None"}
+`;
+        } else {
+          return `
+[Referenced Drill: ${item.refCode}]
+Title: ${item.data.title}
+Age Group: ${item.data.ageGroup}
+Game Model: ${item.data.gameModelId}
+Phase: ${item.data.phase}
+Zone: ${item.data.zone}
+Duration: ${item.data.durationMin || 25} minutes
+Drill Type: ${item.data.drillType || "N/A"}
+Description: ${json.description || json.objective || "No description available"}
+`;
+        }
+      });
+      
+      enhancedPrompt = `The user has referenced the following items from their vault:
+${contextParts.join("\n")}
+
+User's request: ${prompt}
+
+Please help the user with their request, using the context of the referenced items above.`;
+    }
+    
     // Set metrics context for tracking chat interactions
     setMetricsContext({
       operationType: "chat",
@@ -23,8 +82,17 @@ r.post("/ai/chat", async (req, res) => {
     });
     
     try {
-      const text = await generateText(prompt, { timeout: 30000, retries: 0 });
-      return res.json({ ok: true, text });
+      const text = await generateText(enhancedPrompt, { timeout: 30000, retries: 0 });
+      return res.json({
+        ok: true,
+        text,
+        referencedItems: referencedItems.map(item => ({
+          refCode: item.refCode,
+          type: item.type,
+          title: item.data.title,
+          id: item.data.id,
+        })),
+      });
     } finally {
       clearMetricsContext();
     }

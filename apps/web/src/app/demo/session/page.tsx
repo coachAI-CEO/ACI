@@ -13,6 +13,7 @@ import DrillDiagramCard from "@/components/DrillDiagramCard";
 import TopicSelect from "@/components/TopicSelect";
 import CoachChat from "@/components/CoachChat";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
+import { getUserHeaders } from "@/lib/user";
 import type { DiagramV1 } from "@/types/diagram";
 
 type OrganizationObject = {
@@ -28,6 +29,7 @@ type OrganizationObject = {
 };
 
 type SessionDrill = {
+  refCode?: string; // Drill reference code (D-XXXX)
   drillType: string;
   title: string;
   durationMin?: number;
@@ -51,6 +53,7 @@ type SessionApiResponse = {
   ok: boolean;
   session: {
     id?: string;
+    refCode?: string; // Session reference code (S-XXXX or SR-XXXX)
     title: string;
     gameModelId: string;
     phase?: string;
@@ -94,6 +97,7 @@ type ProgressiveSeriesApiResponse = {
     fixDecision?: any;
     qaScore?: number | null;
     id?: string;
+    refCode?: string; // Session reference code from series generation
   }>;
   metadata?: {
     totalSessions: number;
@@ -498,6 +502,7 @@ function SessionDemoPageContent() {
   const [seriesSavedToVault, setSeriesSavedToVault] = useState<boolean>(false);
   const [savingSeries, setSavingSeries] = useState<boolean>(false);
   const [chatOpen, setChatOpen] = useState<boolean>(false);
+  const [isFavorited, setIsFavorited] = useState<boolean>(false);
   const [pendingSeriesCheck, setPendingSeriesCheck] = useState<{
     startTime: number;
     expectedCount: number;
@@ -974,6 +979,51 @@ function SessionDemoPageContent() {
       console.error("[VAULT] Error checking vault status:", e);
     } finally {
       setCheckingVaultStatus(false);
+    }
+  }
+
+  // Check if session is favorited
+  useEffect(() => {
+    if (resolvedSessionId) {
+      checkFavoriteStatus(resolvedSessionId);
+    } else {
+      setIsFavorited(false);
+    }
+  }, [resolvedSessionId]);
+
+  async function checkFavoriteStatus(sessionId: string) {
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getUserHeaders(),
+        },
+        body: JSON.stringify({ sessionIds: [sessionId] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsFavorited(data.sessions?.[sessionId] || false);
+      }
+    } catch (e) {
+      console.error("[FAVORITES] Error checking status:", e);
+    }
+  }
+
+  async function toggleFavorite() {
+    if (!resolvedSessionId) return;
+    
+    try {
+      const res = await fetch(`/api/favorites/session/${resolvedSessionId}`, {
+        method: isFavorited ? "DELETE" : "POST",
+        headers: getUserHeaders(),
+      });
+      
+      if (res.ok) {
+        setIsFavorited(!isFavorited);
+      }
+    } catch (e) {
+      console.error("[FAVORITES] Error toggling:", e);
     }
   }
 
@@ -1729,64 +1779,16 @@ function SessionDemoPageContent() {
                     ? "✓ Series Skill Focus"
                     : "🎯 Series Skill Focus"}
                 </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      setSavingSeries(true);
-                      // Handle both formats: s.session?.id (from vault) or s.id (from generation)
-                      const sessionIds = seriesList.map(s => s.session?.id || s.id).filter(Boolean) as string[];
-                      if (sessionIds.length === 0) {
-                        alert("Cannot save: Sessions don't have IDs yet");
-                        setSavingSeries(false);
-                        return;
-                      }
-                      const response = await fetch("/api/vault/series", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          seriesId: `series-${Date.now()}`,
-                          sessionIds,
-                        }),
-                      });
-                      if (!response.ok) {
-                        const error = await response.json();
-                        alert("Error saving series to vault: " + (error.error || "Unknown error"));
-                        setSavingSeries(false);
-                        return;
-                      }
-                      setSeriesSavedToVault(true);
-                      setJustSaved(true);
-                      // Hide the "just saved" message after 5 seconds
-                      setTimeout(() => setJustSaved(false), 5000);
-                    } catch (e: any) {
-                      alert("Error saving series to vault: " + e.message);
-                    } finally {
-                      setSavingSeries(false);
-                    }
-                  }}
-                  disabled={seriesSavedToVault || savingSeries}
-                  className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition-all ${
-                    seriesSavedToVault
-                      ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-400 cursor-default"
-                      : "border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                  } ${savingSeries ? "opacity-50 cursor-wait" : ""}`}
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-sm font-medium">
+                  <span>✓</span>
+                  <span>Auto-saved to Vault</span>
+                </span>
+                <Link
+                  href="/vault"
+                  className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
                 >
-                  {savingSeries ? (
-                    <>⏳ Saving...</>
-                  ) : seriesSavedToVault ? (
-                    <>✓ Series Saved to Vault</>
-                  ) : (
-                    <>💾 Save Series to Vault</>
-                  )}
-                </button>
-                {justSaved && seriesSavedToVault && (
-                  <Link
-                    href="/vault"
-                    className="inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-400 hover:bg-blue-500/20 transition-all animate-pulse"
-                  >
-                    → Go to Vault
-                  </Link>
-                )}
+                  📂 View in Vault
+                </Link>
                   </div>
                 </div>
               );
@@ -1894,10 +1896,15 @@ function SessionDemoPageContent() {
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
                   }`}
                 >
-                  Session {seriesItem.sessionNumber || index + 1}
+                  <span>Session {seriesItem.sessionNumber || index + 1}</span>
+                  {(seriesItem.refCode || seriesItem.session?.refCode) && (
+                    <span className="ml-2 text-xs font-mono text-cyan-400">
+                      {seriesItem.refCode || seriesItem.session?.refCode}
+                    </span>
+                  )}
                   {seriesItem.qaScore && (
-                    <span className="ml-2 text-xs">
-                      (QA: {seriesItem.qaScore.toFixed(1)})
+                    <span className="ml-2 text-xs opacity-60">
+                      QA: {seriesItem.qaScore.toFixed(1)}
                     </span>
                   )}
                 </button>
@@ -1919,12 +1926,31 @@ function SessionDemoPageContent() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-semibold">{session.title}</h2>
-                  {savedToVault && (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-xs font-medium">
-                      <span>✓</span>
-                      <span>Saved to Vault</span>
-                    </span>
+                  {session.refCode && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(session.refCode!)}
+                      className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                      title="Click to copy reference code"
+                    >
+                      {session.refCode}
+                    </button>
                   )}
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-xs font-medium">
+                    <span>✓</span>
+                    <span>In Vault</span>
+                  </span>
+                  <button
+                    onClick={toggleFavorite}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isFavorited
+                        ? "bg-pink-500/20 text-pink-400 border border-pink-500/50"
+                        : "bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-pink-500/10 hover:text-pink-400"
+                    }`}
+                    title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    <span>{isFavorited ? "♥" : "♡"}</span>
+                    <span>{isFavorited ? "Favorited" : "Favorite"}</span>
+                  </button>
                 </div>
                 <div className="flex gap-4 text-sm text-slate-300">
                   <div>
@@ -1956,88 +1982,12 @@ function SessionDemoPageContent() {
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-3 pt-2">
-                {resolvedSessionId && !savedToVault && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        const sessionId = resolvedSessionId;
-                        console.log("[VAULT FRONTEND] Attempting to save session");
-                        console.log("[VAULT FRONTEND] Session object:", { id: sessionId, hasId: !!sessionId, idType: typeof sessionId });
-                        console.log("[VAULT FRONTEND] Full session:", session);
-                        
-                        if (!sessionId || typeof sessionId !== 'string') {
-                          alert("Error: Session ID is missing or invalid");
-                          return;
-                        }
-                        
-                        const url = `/api/vault/sessions/${encodeURIComponent(sessionId)}/save`;
-                        console.log("[VAULT FRONTEND] Calling URL:", url);
-                        
-                        const response = await fetch(url, {
-                          method: "POST",
-                        });
-                        
-                        console.log("[VAULT FRONTEND] Response status:", response.status, response.statusText);
-                        console.log("[VAULT FRONTEND] Response headers:", Object.fromEntries(response.headers.entries()));
-                        
-                        if (!response.ok) {
-                          let errorText = "";
-                          let errorJson = null;
-                          
-                          try {
-                            errorText = await response.text();
-                            console.log("[VAULT FRONTEND] Error response text:", errorText);
-                            
-                            try {
-                              errorJson = JSON.parse(errorText);
-                              console.error("[VAULT FRONTEND] Parsed error JSON:", errorJson);
-                            } catch (e) {
-                              console.error("[VAULT FRONTEND] Could not parse error as JSON:", e);
-                            }
-                          } catch (e) {
-                            console.error("[VAULT FRONTEND] Could not read error response:", e);
-                          }
-                          
-                          const errorMessage = errorJson?.error || errorText || `HTTP ${response.status}: ${response.statusText}`;
-                          console.error("[VAULT FRONTEND] Final error message:", errorMessage);
-                          alert("Error saving to vault: " + errorMessage);
-                          return;
-                        }
-                        const result = await response.json();
-                        console.log("[VAULT FRONTEND] Save successful:", result);
-                        setSavedToVault(true);
-                        setJustSaved(true);
-                        // Hide the "just saved" message after 5 seconds
-                        setTimeout(() => setJustSaved(false), 5000);
-                      } catch (e: any) {
-                        console.error("[VAULT FRONTEND] Save exception:", e);
-                        alert("Error saving to vault: " + e.message);
-                      }
-                    }}
-                    disabled={savedToVault || checkingVaultStatus}
-                    className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition-all ${
-                      savedToVault
-                        ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-400 cursor-default"
-                        : "border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                    } ${checkingVaultStatus ? "opacity-50 cursor-wait" : ""}`}
-                  >
-                    {checkingVaultStatus ? (
-                      <>⏳ Checking...</>
-                    ) : savedToVault ? (
-                      <>✓ Saved to Vault</>
-                    ) : (
-                      <>💾 Save to Vault</>
-                    )}
-                  </button>
-                )}
-                {justSaved && (
-                  <Link
-                    href="/vault"
-                    className="inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-400 hover:bg-blue-500/20 transition-all animate-pulse"
-                  >
-                    → Go to Vault
-                  </Link>
-                )}
+                <Link
+                  href="/vault"
+                  className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
+                >
+                  📂 View in Vault
+                </Link>
                 <button
                   onClick={async () => {
                     try {
@@ -2269,7 +2219,18 @@ function SessionDemoPageContent() {
                   <section key={drillKey} className="rounded-3xl border border-slate-700/70 bg-slate-900/70 p-6 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold">{drill.title}</h3>
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold">{drill.title}</h3>
+                          {drill.refCode && (
+                            <button
+                              onClick={() => navigator.clipboard.writeText(drill.refCode!)}
+                              className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                              title="Click to copy reference code"
+                            >
+                              {drill.refCode}
+                            </button>
+                          )}
+                        </div>
                         <div className="flex gap-4 mt-1 text-sm text-slate-400">
                           <span>{drillTypeLabel[drill.drillType] || drill.drillType}</span>
                           {drill.durationMin && <span>{drill.durationMin} minutes</span>}

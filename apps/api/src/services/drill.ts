@@ -11,6 +11,7 @@ import { fixDrillDecision } from "./fixer";
 import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
+import { generateRefCode } from "../utils/ref-code";
 
 /**
  * Sanitize LLM output to enforce clarity rules:
@@ -351,9 +352,13 @@ export async function generateAndReviewDrill(
   console.log("💾 [DB SAVE] jsonForDb.organization type:", typeof jsonForDb.organization);
   console.log("💾 [DB SAVE] jsonForDb.json?.organization type:", typeof jsonForDb.json?.organization);
 
+  // Generate unique reference code for the drill
+  const drillRefCode = await generateRefCode("drill");
+
   // Persist drill with all normalized fields from postProcessDrill
   const created = await prisma.drill.create({
     data: {
+      refCode: drillRefCode,
       title: processedFields.title || jsonForDb.title || "Untitled",
       gameModelId: input.gameModelId as any,
       phase: input.phase as any,
@@ -395,6 +400,9 @@ export async function generateAndReviewDrill(
       gkFocus: processedFields.gkFocus,
       
       spaceConstraint: input.spaceConstraint as any,
+      
+      // Auto-save to vault
+      savedToVault: true,
       
       json: jsonForDb,
     },

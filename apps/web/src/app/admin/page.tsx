@@ -101,6 +101,56 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [pricePerSession, setPricePerSession] = useState(0.10);
+  
+  // System status
+  const [systemStatus, setSystemStatus] = useState<{
+    backend: "checking" | "online" | "offline";
+    database: "checking" | "online" | "offline";
+    lastChecked: Date | null;
+  }>({
+    backend: "checking",
+    database: "checking",
+    lastChecked: null,
+  });
+
+  const checkSystemStatus = useCallback(async () => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    
+    // Check backend API
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+      
+      const res = await fetch(`${apiUrl}/health`, { 
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      clearTimeout(timeoutId);
+      
+      if (res.ok) {
+        setSystemStatus(prev => ({ ...prev, backend: "online" }));
+        
+        // Check database via admin stats endpoint
+        try {
+          const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
+          if (statsRes.ok) {
+            setSystemStatus(prev => ({ ...prev, database: "online" }));
+          } else {
+            setSystemStatus(prev => ({ ...prev, database: "offline" }));
+          }
+        } catch {
+          setSystemStatus(prev => ({ ...prev, database: "offline" }));
+        }
+      } else {
+        setSystemStatus(prev => ({ ...prev, backend: "offline", database: "offline" }));
+      }
+    } catch (e) {
+      setSystemStatus(prev => ({ ...prev, backend: "offline", database: "offline" }));
+    } finally {
+      setSystemStatus(prev => ({ ...prev, lastChecked: new Date() }));
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -134,7 +184,12 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]);
+    checkSystemStatus();
+    
+    // Check system status every 30 seconds
+    const statusInterval = setInterval(checkSystemStatus, 30000);
+    return () => clearInterval(statusInterval);
+  }, [fetchData, checkSystemStatus]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -218,6 +273,77 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* System Status */}
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">System Status</h2>
+            {systemStatus.lastChecked && (
+              <span className="text-xs text-slate-400">
+                Last checked: {systemStatus.lastChecked.toLocaleTimeString()}
+              </span>
+            )}
+            <button
+              onClick={checkSystemStatus}
+              className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Backend API Status */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+              <div className={`w-3 h-3 rounded-full ${
+                systemStatus.backend === "online" ? "bg-emerald-400 animate-pulse" :
+                systemStatus.backend === "offline" ? "bg-red-400" :
+                "bg-yellow-400 animate-pulse"
+              }`}></div>
+              <div className="flex-1">
+                <div className="font-medium text-sm">Backend API</div>
+                <div className="text-xs text-slate-400">
+                  {systemStatus.backend === "online" ? "Running on port 4000" :
+                   systemStatus.backend === "offline" ? "Not responding" :
+                   "Checking..."}
+                </div>
+              </div>
+              <div className={`text-xs font-semibold ${
+                systemStatus.backend === "online" ? "text-emerald-400" :
+                systemStatus.backend === "offline" ? "text-red-400" :
+                "text-yellow-400"
+              }`}>
+                {systemStatus.backend === "online" ? "ONLINE" :
+                 systemStatus.backend === "offline" ? "OFFLINE" :
+                 "CHECKING"}
+              </div>
+            </div>
+
+            {/* Database Status */}
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+              <div className={`w-3 h-3 rounded-full ${
+                systemStatus.database === "online" ? "bg-emerald-400 animate-pulse" :
+                systemStatus.database === "offline" ? "bg-red-400" :
+                "bg-yellow-400 animate-pulse"
+              }`}></div>
+              <div className="flex-1">
+                <div className="font-medium text-sm">Database</div>
+                <div className="text-xs text-slate-400">
+                  {systemStatus.database === "online" ? "Connected" :
+                   systemStatus.database === "offline" ? "Connection failed" :
+                   "Checking..."}
+                </div>
+              </div>
+              <div className={`text-xs font-semibold ${
+                systemStatus.database === "online" ? "text-emerald-400" :
+                systemStatus.database === "offline" ? "text-red-400" :
+                "text-yellow-400"
+              }`}>
+                {systemStatus.database === "online" ? "ONLINE" :
+                 systemStatus.database === "offline" ? "OFFLINE" :
+                 "CHECKING"}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* Sessions Card - Split */}
@@ -296,6 +422,87 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Revenue Calculator */}
+        {(() => {
+          const totalSessions = stats?.database.vaultSessions || 0;
+          const apiCost = parseFloat(stats?.tokens.allTimeCost || "0");
+          const revenue = totalSessions * pricePerSession;
+          const profit = revenue - apiCost;
+          const profitMargin = revenue > 0 ? ((profit / revenue) * 100).toFixed(1) : "0";
+          
+          // Calculate daily averages from timeline for projections
+          const avgSessionsPerDay = timeline.length > 0 
+            ? timeline.reduce((sum, d) => sum + d.sessions, 0) / timeline.length 
+            : 0;
+          const projectedMonthlyRevenue = avgSessionsPerDay * 30 * pricePerSession;
+          const projectedYearlyRevenue = avgSessionsPerDay * 365 * pricePerSession;
+          
+          return (
+            <div className="bg-gradient-to-br from-emerald-900/40 to-slate-900/70 border border-emerald-700/50 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="text-sm font-semibold text-emerald-300">Revenue Calculator</div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="0.10"
+                    max="1.00"
+                    step="0.05"
+                    value={pricePerSession}
+                    onChange={(e) => setPricePerSession(parseFloat(e.target.value))}
+                    className="w-32 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  />
+                  <div className="text-sm font-bold text-emerald-400 bg-slate-800/50 px-3 py-1 rounded min-w-[70px] text-center">
+                    ${pricePerSession.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <div className="text-xs text-slate-500">Total Revenue</div>
+                  <div className="text-2xl font-bold text-emerald-400">${revenue.toFixed(2)}</div>
+                  <div className="text-xs text-slate-500">{formatNumber(totalSessions)} sessions</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">API Costs</div>
+                  <div className="text-2xl font-bold text-red-400">${apiCost.toFixed(4)}</div>
+                  <div className="text-xs text-slate-500">Gemini tokens</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Net Profit</div>
+                  <div className={`text-2xl font-bold ${profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    ${profit.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-slate-500">{profitMargin}% margin</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500">Avg Sessions/Day</div>
+                  <div className="text-2xl font-bold text-blue-400">{avgSessionsPerDay.toFixed(1)}</div>
+                  <div className="text-xs text-slate-500">last 7 days</div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-700/50 pt-4">
+                <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Projected Revenue @ ${pricePerSession.toFixed(2)}/session</div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500">Weekly</div>
+                    <div className="text-lg font-bold text-amber-400">${(avgSessionsPerDay * 7 * pricePerSession).toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500">Monthly</div>
+                    <div className="text-lg font-bold text-amber-400">${projectedMonthlyRevenue.toFixed(2)}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+                    <div className="text-xs text-slate-500">Yearly</div>
+                    <div className="text-lg font-bold text-amber-400">${projectedYearlyRevenue.toFixed(2)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Token & Cost Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

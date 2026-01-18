@@ -11,4 +11,8 @@ r.get("/ai/ping", async (_req, res) => {
   }
 });
 
+r.get("/health", (_req, res) => {
+  res.json({ ok: true, status: "running", timestamp: new Date().toISOString() });
+});
+
 export default r;

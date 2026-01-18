@@ -2,6 +2,7 @@ import { generateText, setMetricsContext, clearMetricsContext } from "../gemini"
 import { prisma } from "../prisma";
 import { buildSessionPrompt, buildSessionQAReviewerPrompt } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
+import { generateRefCode } from "../utils/ref-code";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -190,15 +191,28 @@ export async function generateAndReviewSession(
         ) / Math.max(1, Object.keys(finalQa.scores).length)
       : null;
 
+  // Generate unique reference code for the session
+  const sessionRefCode = await generateRefCode("session");
+  
+  // Add ref codes to embedded drills in the session JSON
+  const drillsWithRefCodes = finalSession.drills ? await Promise.all(
+    finalSession.drills.map(async (drill: any) => ({
+      ...drill,
+      refCode: drill.refCode || await generateRefCode("drill"),
+    }))
+  ) : [];
+
   // JSON we persist to the DB
   const jsonForDb = {
     ...finalSession,
+    drills: drillsWithRefCodes,
     qa: finalQa,
   };
 
   // Persist session with all fields
   const created = await prisma.session.create({
     data: {
+      refCode: sessionRefCode,
       title: jsonForDb.title || "Untitled Session",
       gameModelId: input.gameModelId as any,
       phase: input.phase as any,
@@ -226,6 +240,9 @@ export async function generateAndReviewSession(
       
       spaceConstraint: input.spaceConstraint as any,
       goalsAvailable: input.goalsAvailable ?? 0,
+      
+      // Auto-save to vault
+      savedToVault: true,
       
       json: jsonForDb,
     },
@@ -260,6 +277,8 @@ export async function generateAndReviewSession(
       session: {
         ...finalSession,
         id: created.id,
+        refCode: sessionRefCode,
+        drills: drillsWithRefCodes,
         qaScore: avgScore,
         approved: !!finalQa.pass,
       },
