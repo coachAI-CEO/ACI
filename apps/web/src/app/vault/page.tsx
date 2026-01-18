@@ -140,6 +140,7 @@ export default function VaultPage() {
     zone: "",
     gameFormat: "", // 7v7, 9v9, 11v11
     drillType: "", // WARMUP, TECHNICAL, TACTICAL, CONDITIONED_GAME, COOLDOWN
+    search: "", // Search by name or code
   });
 
   // Helper to determine game format from formation
@@ -160,15 +161,40 @@ export default function VaultPage() {
     return "11v11";
   };
 
-  // Filter sessions by game format (client-side)
-  const filteredSessions = filters.gameFormat
-    ? sessions.filter((s) => getGameFormat(s) === filters.gameFormat)
-    : sessions;
+  // Filter sessions by game format and search (client-side)
+  const filteredSessions = sessions.filter((s) => {
+    if (filters.gameFormat && getGameFormat(s) !== filters.gameFormat) return false;
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const matchesTitle = s.title.toLowerCase().includes(searchLower);
+      const matchesRefCode = s.refCode?.toLowerCase().includes(searchLower);
+      if (!matchesTitle && !matchesRefCode) return false;
+    }
+    return true;
+  });
 
-  // Filter series by game format (based on first session)
-  const filteredSeries = filters.gameFormat
-    ? series.filter((s) => s.sessions[0] && getGameFormat(s.sessions[0]) === filters.gameFormat)
-    : series;
+  // Filter series by game format and search (based on first session)
+  const filteredSeries = series.filter((s) => {
+    if (filters.gameFormat && s.sessions[0] && getGameFormat(s.sessions[0]) !== filters.gameFormat) return false;
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const firstSession = s.sessions[0];
+      if (firstSession) {
+        const matchesTitle = firstSession.title.toLowerCase().includes(searchLower);
+        const matchesRefCode = firstSession.refCode?.toLowerCase().includes(searchLower);
+        // Also check series title (derived from first session)
+        const seriesTitle = firstSession.title
+          .replace(/^(Session \d+:?\s*)/i, "")
+          .replace(/\s*-\s*Part\s*\d+/i, "")
+          .trim();
+        const matchesSeriesTitle = seriesTitle.toLowerCase().includes(searchLower);
+        if (!matchesTitle && !matchesRefCode && !matchesSeriesTitle) return false;
+      } else {
+        return false;
+      }
+    }
+    return true;
+  });
 
   // Extract drills from all sessions
   const allDrills: VaultDrill[] = sessions.flatMap((session) => {
@@ -431,7 +457,7 @@ export default function VaultPage() {
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            Drills ({filteredDrills.length}{filters.drillType || filters.gameFormat ? ` of ${allDrills.length}` : ''})
+            Drills ({filteredDrills.length}{filters.drillType || filters.gameFormat || filters.search ? ` of ${allDrills.length}` : ''})
           </button>
           <button
             onClick={() => setActiveTab("sessions")}
@@ -451,7 +477,7 @@ export default function VaultPage() {
                 : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            Series ({filteredSeries.length}{filters.gameFormat ? ` of ${series.length}` : ''})
+            Series ({filteredSeries.length}{filters.gameFormat || filters.search ? ` of ${series.length}` : ''})
           </button>
         </div>
 
@@ -461,6 +487,19 @@ export default function VaultPage() {
           <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
             Filters
           </h2>
+          {/* Search Bar */}
+          <div className="mb-4">
+            <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+              Search by Name or Code
+            </label>
+            <input
+              type="text"
+              value={filters.search}
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+              placeholder="e.g., S-9M3P, D-AB12, or session name..."
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            />
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="space-y-1">
               <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Game Format</label>

@@ -1,5 +1,10 @@
 import express from "express";
 import { prisma } from "./prisma";
+import { generateAndReviewSession } from "./services/session";
+import { generateProgressiveSessionSeries } from "./services/session-progressive";
+import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
+import { buildSessionQAReviewerPrompt } from "./prompts/session";
+import { fixSessionDecision } from "./services/fixer";
 
 const r = express.Router();
 
@@ -332,11 +337,22 @@ r.get("/admin/metrics/recent", async (req, res) => {
 // Get database breakdown by age group
 r.get("/admin/stats/by-age-group", async (req, res) => {
   try {
-    const sessionsByAge = await prisma.session.groupBy({
-      by: ["ageGroup"],
-      _count: { id: true },
-      where: { savedToVault: true },
-    });
+    // IMPORTANT:
+    // - Vault "Sessions" tab excludes series sessions (isSeries=false)
+    // - Vault "Series" tab shows isSeries=true grouped by seriesId
+    // To avoid mismatched counts between Admin and Vault, return both.
+    const [sessionsByAge, seriesSessionsByAge] = await Promise.all([
+      prisma.session.groupBy({
+        by: ["ageGroup"],
+        _count: { id: true },
+        where: { savedToVault: true, isSeries: false },
+      }),
+      prisma.session.groupBy({
+        by: ["ageGroup"],
+        _count: { id: true },
+        where: { savedToVault: true, isSeries: true },
+      }),
+    ]);
 
     const drillsByAge = await prisma.drill.groupBy({
       by: ["ageGroup"],
@@ -347,6 +363,10 @@ r.get("/admin/stats/by-age-group", async (req, res) => {
     return res.json({
       ok: true,
       sessions: sessionsByAge.map((s) => ({
+        ageGroup: s.ageGroup,
+        count: s._count.id,
+      })),
+      seriesSessions: seriesSessionsByAge.map((s) => ({
         ageGroup: s.ageGroup,
         count: s._count.id,
       })),
@@ -379,6 +399,393 @@ r.get("/admin/stats/by-game-model", async (req, res) => {
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
+});
+
+function parseJsonSafe(text: string) {
+  try {
+    const cleaned = String(text || "")
+      .replace(/```json\n?/gi, "")
+      .replace(/```\n?/g, "")
+      .trim();
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace === -1 || lastBrace === -1) return null;
+    return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+  } catch {
+    return null;
+  }
+}
+
+// -----------------------------
+// Admin: Bulk generate sessions
+// -----------------------------
+type RandomSessionJobStatus = "queued" | "running" | "completed" | "failed";
+
+type RandomSessionJobMode = "session" | "series";
+
+type RandomSessionJob = {
+  id: string;
+  ageGroup: string;
+  mode: RandomSessionJobMode;
+  sessionsPerSeries?: number;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  status: RandomSessionJobStatus;
+  startedAt: string;
+  finishedAt?: string;
+  results: Array<
+    | { kind: "session"; id: string; refCode?: string; title?: string }
+    | { kind: "series"; seriesId: string; totalSessions: number; firstRefCode?: string; title?: string }
+  >;
+  errors: Array<{ index: number; message: string }>;
+};
+
+const randomSessionJobs = new Map<string, RandomSessionJob>();
+
+function randomId(prefix: string) {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let s = "";
+  for (let i = 0; i < 10; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return `${prefix}_${s}`;
+}
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function formationsForAge(ageGroup: string): string[] {
+  // Keep these conservative/compatible with current prompts
+  if (ageGroup === "U8" || ageGroup === "U9") return ["2-3-1", "3-2-1"];
+  if (ageGroup === "U10" || ageGroup === "U11") return ["2-3-1", "3-2-1"];
+  if (ageGroup === "U12" || ageGroup === "U13") return ["3-3-2", "2-3-3"];
+  if (ageGroup === "U14" || ageGroup === "U15") return ["4-3-3", "3-4-3"];
+  if (ageGroup === "U16" || ageGroup === "U17") return ["4-3-3", "4-2-3-1"];
+  if (ageGroup === "U18") return ["4-3-3", "4-2-3-1"];
+  return ["4-3-3", "4-2-3-1"];
+}
+
+function outfieldCountFromFormation(formation: string): number {
+  const parts = formation.split("-").map((n) => Number(n)).filter((n) => Number.isFinite(n));
+  const outfield = parts.reduce((sum, n) => sum + n, 0);
+  return outfield || 10;
+}
+
+async function runRandomSessionJob(jobId: string) {
+  const job = randomSessionJobs.get(jobId);
+  if (!job) return;
+  job.status = "running";
+
+  const gameModels = ["COACHAI", "POSSESSION", "PRESSING", "TRANSITION"] as const;
+  const phases = ["ATTACKING", "DEFENDING", "TRANSITION"] as const;
+  const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"] as const;
+  const playerLevels = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;
+  const coachLevels = ["GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+  const spaceConstraints = ["FULL", "HALF", "THIRD", "QUARTER"] as const;
+
+  for (let i = 0; i < job.total; i++) {
+    try {
+      const formationAttacking = pick(formationsForAge(job.ageGroup));
+      const outfield = outfieldCountFromFormation(formationAttacking);
+
+      // Slightly flexible headcount; include GK implicitly in prompt expectations
+      const numbersMin = Math.max(6, outfield);
+      const numbersMax = Math.max(numbersMin, outfield + 4);
+
+      const input: any = {
+        gameModelId: pick([...gameModels]),
+        ageGroup: job.ageGroup,
+        phase: pick([...phases]),
+        zone: pick([...zones]),
+        formationAttacking,
+        formationDefending: formationAttacking,
+        playerLevel: pick([...playerLevels]),
+        coachLevel: pick([...coachLevels]),
+        numbersMin,
+        numbersMax,
+        goalsAvailable: 2,
+        spaceConstraint: pick([...spaceConstraints]),
+        durationMin: pick([60, 90]),
+      };
+
+      if (job.mode === "series") {
+        const seriesLen = Math.min(10, Math.max(2, Number(job.sessionsPerSeries || 3)));
+        const seriesResult = await generateProgressiveSessionSeries(input, seriesLen);
+        const first = seriesResult.series?.[0]?.session;
+        job.succeeded += 1;
+        job.results.push({
+          kind: "series",
+          seriesId: seriesResult.seriesId,
+          totalSessions: seriesLen,
+          firstRefCode: first?.refCode,
+          title: first?.title,
+        });
+      } else {
+        const result = await generateAndReviewSession(input);
+        job.succeeded += 1;
+        job.results.push({
+          kind: "session",
+          id: result.session?.id,
+          refCode: result.session?.refCode,
+          title: result.session?.title,
+        });
+      }
+    } catch (e: any) {
+      job.failed += 1;
+      job.errors.push({ index: i + 1, message: e?.message || String(e) });
+    } finally {
+      job.completed += 1;
+    }
+  }
+
+  job.status = job.failed > 0 && job.succeeded === 0 ? "failed" : "completed";
+  job.finishedAt = new Date().toISOString();
+}
+
+// Start a random-session generation job
+r.post("/admin/random-sessions/start", async (req, res) => {
+  try {
+    const ageGroup = String(req.body?.ageGroup || "").trim();
+    const count = Number(req.body?.count || 0);
+    const mode = String(req.body?.mode || "session").trim() as RandomSessionJobMode;
+    const sessionsPerSeries = Number(req.body?.sessionsPerSeries || 3);
+
+    if (!ageGroup) {
+      return res.status(400).json({ ok: false, error: "ageGroup is required" });
+    }
+    if (mode !== "session" && mode !== "series") {
+      return res.status(400).json({ ok: false, error: "mode must be 'session' or 'series'" });
+    }
+
+    const maxCount = mode === "series" ? 10 : 25;
+    if (!Number.isFinite(count) || count < 1 || count > maxCount) {
+      return res
+        .status(400)
+        .json({ ok: false, error: `count must be between 1 and ${maxCount} for mode=${mode}` });
+    }
+
+    let finalSessionsPerSeries: number | undefined = undefined;
+    if (mode === "series") {
+      if (!Number.isFinite(sessionsPerSeries) || sessionsPerSeries < 2 || sessionsPerSeries > 10) {
+        return res.status(400).json({ ok: false, error: "sessionsPerSeries must be between 2 and 10" });
+      }
+      finalSessionsPerSeries = sessionsPerSeries;
+    }
+
+    const jobId = randomId("rand_sessions");
+    const job: RandomSessionJob = {
+      id: jobId,
+      ageGroup,
+      mode,
+      sessionsPerSeries: finalSessionsPerSeries,
+      total: count,
+      completed: 0,
+      succeeded: 0,
+      failed: 0,
+      status: "queued",
+      startedAt: new Date().toISOString(),
+      results: [],
+      errors: [],
+    };
+    randomSessionJobs.set(jobId, job);
+
+    // Run asynchronously; respond immediately with jobId
+    setImmediate(() => {
+      runRandomSessionJob(jobId).catch((err) => {
+        const j = randomSessionJobs.get(jobId);
+        if (j) {
+          j.status = "failed";
+          j.finishedAt = new Date().toISOString();
+          j.errors.push({ index: -1, message: err?.message || String(err) });
+        }
+      });
+    });
+
+    return res.json({ ok: true, jobId });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Poll job status
+r.get("/admin/random-sessions/:jobId", async (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  const job = randomSessionJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({ ok: false, error: "Job not found" });
+  }
+  return res.json({ ok: true, job });
+});
+
+// ------------------------------------
+// Admin: Review a session QA + regen
+// ------------------------------------
+r.post("/admin/sessions/review", async (req, res) => {
+  const sessionRef = String(req.body?.sessionRef || "").trim();
+
+  if (!sessionRef) {
+    return res.status(400).json({ ok: false, error: "sessionRef is required (id or refCode)" });
+  }
+
+  const sessionRow = await prisma.session.findFirst({
+    where: {
+      OR: [{ id: sessionRef }, { refCode: sessionRef }],
+    },
+  });
+
+  if (!sessionRow) {
+    return res.status(404).json({ ok: false, error: "Session not found" });
+  }
+
+  // Build QA prompt from stored session JSON
+  const sessionJson = (sessionRow.json as any) || {};
+  const qaPrompt = buildSessionQAReviewerPrompt(sessionJson);
+
+  setMetricsContext({
+    operationType: "qa_review",
+    artifactId: sessionRow.id,
+    ageGroup: sessionRow.ageGroup,
+    gameModelId: String(sessionRow.gameModelId),
+    phase: sessionRow.phase ? String(sessionRow.phase) : undefined,
+  });
+
+  try {
+    const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+    const qaJson: any = parseJsonSafe(qaText);
+    if (!qaJson) {
+      return res.status(500).json({ ok: false, error: "LLM returned non-JSON QA" });
+    }
+
+    const scores = qaJson?.scores || {};
+    const vals = Object.values(scores).map((v: any) => Number(v || 0)).filter((n) => Number.isFinite(n));
+    const avgScore = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    const fixDecision = fixSessionDecision(scores);
+
+    // Persist QA snapshot
+    await prisma.qAReport.create({
+      data: {
+        artifactId: sessionRow.id,
+        artifactType: "SESSION",
+        sessionId: sessionRow.id,
+        pass: !!qaJson.pass,
+        scores: scores || {},
+        summary: qaJson.summary || null,
+      },
+    });
+
+    // Update session metadata
+    await prisma.session.update({
+      where: { id: sessionRow.id },
+      data: {
+        qaScore: avgScore,
+        approved: !!qaJson.pass,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      session: {
+        id: sessionRow.id,
+        refCode: sessionRow.refCode,
+        title: sessionRow.title,
+        ageGroup: sessionRow.ageGroup,
+        gameModelId: sessionRow.gameModelId,
+        phase: sessionRow.phase,
+        zone: sessionRow.zone,
+        qaScore: avgScore,
+        approved: !!qaJson.pass,
+      },
+      qa: {
+        pass: !!qaJson.pass,
+        scores,
+        avgScore,
+        summary: qaJson.summary || null,
+        notes: qaJson.notes || [],
+      },
+      fixDecision,
+    });
+  } finally {
+    clearMetricsContext();
+  }
+});
+
+r.post("/admin/sessions/regenerate", async (req, res) => {
+  const sessionRef = String(req.body?.sessionRef || "").trim();
+
+  if (!sessionRef) {
+    return res.status(400).json({ ok: false, error: "sessionRef is required (id or refCode)" });
+  }
+
+  const sessionRow = await prisma.session.findFirst({
+    where: {
+      OR: [{ id: sessionRef }, { refCode: sessionRef }],
+    },
+  });
+
+  if (!sessionRow) {
+    return res.status(404).json({ ok: false, error: "Session not found" });
+  }
+
+  const sessionJson = (sessionRow.json as any) || {};
+
+  // Build input from original session metadata
+  const formation = (sessionRow.formationUsed as any) || sessionJson.formationAttacking || "4-3-3";
+  const regenInput: any = {
+    gameModelId: String(sessionRow.gameModelId),
+    ageGroup: sessionRow.ageGroup,
+    phase: sessionRow.phase ? String(sessionRow.phase) : undefined,
+    zone: sessionRow.zone ? String(sessionRow.zone) : undefined,
+    formationAttacking: formation,
+    formationDefending: formation,
+    playerLevel: (sessionRow.playerLevel as any) || sessionJson.playerLevel || "INTERMEDIATE",
+    coachLevel: (sessionRow.coachLevel as any) || sessionJson.coachLevel || "GRASSROOTS",
+    numbersMin: (sessionRow.numbersMin as any) ?? sessionJson.numbersMin ?? 8,
+    numbersMax: (sessionRow.numbersMax as any) ?? sessionJson.numbersMax ?? 12,
+    goalsAvailable: (sessionRow.goalsAvailable as any) ?? sessionJson.goalsAvailable ?? 2,
+    spaceConstraint: (sessionRow.spaceConstraint as any) ?? sessionJson.spaceConstraint ?? "HALF",
+    durationMin: (sessionRow.durationMin as any) ?? sessionJson.durationMin ?? 90,
+  };
+
+  // Generate new session (auto-saved to vault, includes QA)
+  const regen = await generateAndReviewSession(regenInput);
+  const replacement = regen?.session || null;
+
+  if (!replacement) {
+    return res.status(500).json({ ok: false, error: "Failed to generate replacement session" });
+  }
+
+  // Mark original session JSON as superseded
+  await prisma.session.update({
+    where: { id: sessionRow.id },
+    data: {
+      approved: false,
+      json: {
+        ...(sessionJson || {}),
+        supersededBy: {
+          id: replacement.id,
+          refCode: replacement.refCode,
+          title: replacement.title,
+        },
+      } as any,
+    },
+  });
+
+  return res.json({
+    ok: true,
+    original: {
+      id: sessionRow.id,
+      refCode: sessionRow.refCode,
+      title: sessionRow.title,
+    },
+    replacement: {
+      id: replacement.id,
+      refCode: replacement.refCode,
+      title: replacement.title,
+      qaScore: replacement.qaScore,
+      approved: replacement.approved,
+    },
+  });
 });
 
 export default r;

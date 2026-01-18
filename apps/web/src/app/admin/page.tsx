@@ -92,12 +92,62 @@ type AgeGroupStats = {
   count: number;
 };
 
+type RandomSessionsJob = {
+  id: string;
+  ageGroup: string;
+  mode: "session" | "series";
+  sessionsPerSeries?: number;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  status: "queued" | "running" | "completed" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  results: Array<
+    | { kind: "session"; id: string; refCode?: string; title?: string }
+    | { kind: "series"; seriesId: string; totalSessions: number; firstRefCode?: string; title?: string }
+  >;
+  errors: Array<{ index: number; message: string }>;
+};
+
+// Keep admin bulk generator aligned with Vault filters
+const VAULT_AGE_GROUPS = ["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"] as const;
+
+type SessionReviewResult = {
+  session: {
+    id: string;
+    refCode?: string | null;
+    title: string;
+    ageGroup: string;
+    gameModelId: string;
+    phase?: string | null;
+    zone?: string | null;
+    qaScore: number | null;
+    approved: boolean;
+  };
+  qa: {
+    pass: boolean;
+    scores: Record<string, number>;
+    avgScore: number | null;
+    summary: string | null;
+    notes: string[];
+  };
+  fixDecision: { code: string; reason: string };
+};
+
+type SessionRegenerateResult = {
+  original: { id: string; refCode?: string | null; title: string };
+  replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
+};
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [timeline, setTimeline] = useState<TimelineDay[]>([]);
   const [recentMetrics, setRecentMetrics] = useState<RecentMetric[]>([]);
   const [operationStats, setOperationStats] = useState<OperationStats[]>([]);
   const [ageGroupStats, setAgeGroupStats] = useState<AgeGroupStats[]>([]);
+  const [seriesAgeGroupStats, setSeriesAgeGroupStats] = useState<AgeGroupStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -113,6 +163,24 @@ export default function AdminDashboard() {
     database: "checking",
     lastChecked: null,
   });
+
+  // Bulk random session generator (admin)
+  const [bulkAgeGroup, setBulkAgeGroup] = useState<string>("U10");
+  const [bulkMode, setBulkMode] = useState<"session" | "series">("session");
+  const [bulkCount, setBulkCount] = useState<number>(5);
+  const [bulkSessionsPerSeries, setBulkSessionsPerSeries] = useState<number>(3);
+  const [bulkJobId, setBulkJobId] = useState<string | null>(null);
+  const [bulkJob, setBulkJob] = useState<RandomSessionsJob | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkJobError, setBulkJobError] = useState<string | null>(null);
+
+  // Review session (admin)
+  const [reviewRef, setReviewRef] = useState<string>("");
+  const [reviewRunning, setReviewRunning] = useState<boolean>(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewResult, setReviewResult] = useState<SessionReviewResult | null>(null);
+  const [regenerateRunning, setRegenerateRunning] = useState<boolean>(false);
+  const [regenerateResult, setRegenerateResult] = useState<SessionRegenerateResult | null>(null);
 
   const checkSystemStatus = useCallback(async () => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -152,6 +220,7 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  // NOTE: keep fetchData defined before callbacks that reference it (TDZ-safe)
   const fetchData = useCallback(async () => {
     try {
       const [statsRes, timelineRes, recentRes, operationsRes, ageRes] = await Promise.all([
@@ -174,13 +243,67 @@ export default function AdminDashboard() {
       if (timelineData.ok) setTimeline(timelineData.timeline);
       if (recentData.ok) setRecentMetrics(recentData.metrics);
       if (operationsData.ok) setOperationStats(operationsData.operations);
-      if (ageData.ok) setAgeGroupStats(ageData.sessions);
+      if (ageData.ok) {
+        setAgeGroupStats(ageData.sessions || []);
+        setSeriesAgeGroupStats(ageData.seriesSessions || []);
+      }
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const startBulkRandomSessions = useCallback(async () => {
+    setBulkJobError(null);
+    setBulkRunning(true);
+    setBulkJob(null);
+    setBulkJobId(null);
+    try {
+      const res = await fetch("/api/admin/random-sessions/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ageGroup: bulkAgeGroup,
+          mode: bulkMode,
+          count: bulkCount,
+          sessionsPerSeries: bulkMode === "series" ? bulkSessionsPerSeries : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Failed to start job (${res.status})`);
+      }
+      setBulkJobId(data.jobId);
+    } catch (e: any) {
+      setBulkJobError(e?.message || String(e));
+      setBulkRunning(false);
+    }
+  }, [bulkAgeGroup, bulkCount]);
+
+  const pollBulkJob = useCallback(async () => {
+    if (!bulkJobId) return;
+    try {
+      const res = await fetch(`/api/admin/random-sessions/${encodeURIComponent(bulkJobId)}`, {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Failed to fetch job status (${res.status})`);
+      }
+      const job: RandomSessionsJob = data.job;
+      setBulkJob(job);
+
+      if (job.status === "completed" || job.status === "failed") {
+        setBulkRunning(false);
+        // Refresh admin stats so Age Group counts update
+        fetchData();
+      }
+    } catch (e: any) {
+      setBulkJobError(e?.message || String(e));
+      setBulkRunning(false);
+    }
+  }, [bulkJobId, fetchData]);
 
   useEffect(() => {
     fetchData();
@@ -190,6 +313,16 @@ export default function AdminDashboard() {
     const statusInterval = setInterval(checkSystemStatus, 30000);
     return () => clearInterval(statusInterval);
   }, [fetchData, checkSystemStatus]);
+
+  // Poll bulk job progress while running
+  useEffect(() => {
+    if (!bulkJobId) return;
+    if (!bulkRunning) return;
+    // initial tick
+    pollBulkJob();
+    const interval = setInterval(pollBulkJob, 1000);
+    return () => clearInterval(interval);
+  }, [bulkJobId, bulkRunning, pollBulkJob]);
 
   useEffect(() => {
     if (!autoRefresh) return;
@@ -208,6 +341,77 @@ export default function AdminDashboard() {
     const cost = (input / 1_000_000) * 0.10 + (output / 1_000_000) * 0.40;
     return cost < 0.0001 ? "<$0.0001" : `$${cost.toFixed(4)}`;
   };
+
+  const bulkMaxCount = bulkMode === "series" ? 10 : 25;
+  const bulkUnitLabel = bulkMode === "series" ? "series" : "sessions";
+
+  const runSessionReview = useCallback(async () => {
+    const ref = reviewRef.trim();
+    if (!ref) {
+      setReviewError("Enter a Session ID or refCode (e.g., S-AB12 or UUID).");
+      return;
+    }
+
+    setReviewRunning(true);
+    setReviewError(null);
+    setReviewResult(null);
+    setRegenerateResult(null);
+
+    try {
+      const res = await fetch("/api/admin/sessions/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionRef: ref }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Review failed (${res.status})`);
+      }
+      setReviewResult({
+        session: data.session,
+        qa: data.qa,
+        fixDecision: data.fixDecision,
+      });
+    } catch (e: any) {
+      setReviewError(e?.message || String(e));
+    } finally {
+      setReviewRunning(false);
+    }
+  }, [reviewRef]);
+
+  const runSessionRegenerate = useCallback(async () => {
+    const ref = reviewRef.trim();
+    if (!ref) {
+      setReviewError("Enter a Session ID or refCode (e.g., S-AB12 or UUID).");
+      return;
+    }
+
+    setRegenerateRunning(true);
+    setReviewError(null);
+    setRegenerateResult(null);
+
+    try {
+      const res = await fetch("/api/admin/sessions/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionRef: ref }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Regeneration failed (${res.status})`);
+      }
+      setRegenerateResult({
+        original: data.original,
+        replacement: data.replacement,
+      });
+      // Refresh stats to show new session in counts
+      fetchData();
+    } catch (e: any) {
+      setReviewError(e?.message || String(e));
+    } finally {
+      setRegenerateRunning(false);
+    }
+  }, [reviewRef, fetchData]);
 
   if (loading) {
     return (
@@ -289,9 +493,9 @@ export default function AdminDashboard() {
               Refresh
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
             {/* Backend API Status */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+            <div className="flex h-full items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
               <div className={`w-3 h-3 rounded-full ${
                 systemStatus.backend === "online" ? "bg-emerald-400 animate-pulse" :
                 systemStatus.backend === "offline" ? "bg-red-400" :
@@ -317,7 +521,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Database Status */}
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+            <div className="flex h-full items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
               <div className={`w-3 h-3 rounded-full ${
                 systemStatus.database === "online" ? "bg-emerald-400 animate-pulse" :
                 systemStatus.database === "offline" ? "bg-red-400" :
@@ -344,11 +548,368 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Bulk Generate Random Sessions */}
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Bulk Generate Random Sessions</h2>
+              <p className="text-xs text-slate-400">
+                Generates sessions for a specific age group and auto-saves them to the Vault.
+              </p>
+            </div>
+            <Link
+              href="/vault"
+              className="text-xs text-emerald-400 hover:text-emerald-300"
+            >
+              View Vault →
+            </Link>
+          </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-slate-400 uppercase tracking-wide">Generate</span>
+            <div className="rounded-xl border border-slate-700 bg-slate-900 p-1 inline-flex">
+              <button
+                type="button"
+                onClick={() => setBulkMode("session")}
+                disabled={bulkRunning}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                  bulkMode === "session"
+                    ? "bg-emerald-500/20 text-emerald-300"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+              >
+                Sessions
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkMode("series")}
+                disabled={bulkRunning}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                  bulkMode === "series"
+                    ? "bg-cyan-500/20 text-cyan-300"
+                    : "text-slate-300 hover:text-slate-100"
+                }`}
+              >
+                Series
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_240px] gap-4 items-end">
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">Age Group</label>
+              <select
+                value={bulkAgeGroup}
+                onChange={(e) => setBulkAgeGroup(e.target.value)}
+                className="w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                disabled={bulkRunning}
+              >
+                {VAULT_AGE_GROUPS.map((ag) => (
+                  <option key={ag} value={ag}>{ag}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                {bulkMode === "series" ? "How many series?" : "How many sessions?"}
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={bulkMaxCount}
+                value={bulkCount}
+                onChange={(e) => setBulkCount(Number(e.target.value))}
+                className="w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                disabled={bulkRunning}
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                Sessions per series
+              </label>
+              <input
+                type="number"
+                min={2}
+                max={10}
+                value={bulkSessionsPerSeries}
+                onChange={(e) => setBulkSessionsPerSeries(Number(e.target.value))}
+                className={`w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200 ${
+                  bulkMode !== "series" ? "opacity-50" : ""
+                }`}
+                disabled={bulkRunning || bulkMode !== "series"}
+              />
+            </div>
+
+            <div>
+              <button
+                onClick={startBulkRandomSessions}
+                disabled={
+                  bulkRunning ||
+                  bulkCount < 1 ||
+                  bulkCount > bulkMaxCount ||
+                  (bulkMode === "series" && (bulkSessionsPerSeries < 2 || bulkSessionsPerSeries > 10))
+                }
+                className={`w-full h-9 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  bulkRunning
+                    ? "bg-slate-700 text-slate-300 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                }`}
+              >
+                {bulkRunning ? "Generating..." : "Start"}
+              </button>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-slate-500">
+            {bulkMode === "series" ? "Max 10 series per run (each series is 2–10 sessions)" : "Max 25 sessions per run"}
+          </div>
+
+          {bulkJobError && (
+            <div className="mt-3 rounded-lg border border-red-700/50 bg-red-900/20 p-3 text-sm text-red-300">
+              {bulkJobError}
+            </div>
+          )}
+
+          {(bulkRunning || bulkJob) && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <div className="font-medium">
+                  {(bulkJob?.status ? bulkJob.status.toUpperCase() : "RUNNING")} •{" "}
+                  {(bulkJob?.completed ?? 0)}/{(bulkJob?.total ?? bulkCount)} {bulkJob?.mode === "series" ? "series" : "sessions"}
+                </div>
+                {bulkJobId && (
+                  <div className="text-slate-500 font-mono truncate max-w-[240px]">
+                    Job: {bulkJobId}
+                  </div>
+                )}
+              </div>
+
+              <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden border border-slate-700/60">
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(
+                        ((bulkJob?.completed ?? 0) / Math.max(1, (bulkJob?.total ?? bulkCount))) * 100
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+
+              {bulkJob && (
+                <div className="text-xs text-slate-400 flex gap-3">
+                  <span className="text-emerald-400">Success: {bulkJob.succeeded}</span>
+                  <span className="text-red-400">Failed: {bulkJob.failed}</span>
+                </div>
+              )}
+
+              {bulkJob?.results?.length ? (
+                <div className="mt-2">
+                  <div className="text-xs font-semibold text-slate-300 mb-1">Latest created</div>
+                  <div className="space-y-1">
+                    {bulkJob.results.slice(-5).reverse().map((s) => (
+                      s.kind === "series" ? (
+                        <div key={s.seriesId} className="flex items-center gap-2 text-xs text-slate-300">
+                          <span className="text-cyan-300 font-semibold">SERIES</span>
+                          <span className="text-slate-500 font-mono">{s.seriesId}</span>
+                          <span className="text-slate-400 truncate">
+                            {s.title || "Series"} {s.firstRefCode ? `• ${s.firstRefCode}` : ""} • {s.totalSessions} sessions
+                          </span>
+                        </div>
+                      ) : (
+                        <div key={s.id} className="flex items-center gap-2 text-xs text-slate-300">
+                          <span className="text-emerald-300 font-semibold">SESSION</span>
+                          <span className="text-slate-500 font-mono">{s.refCode || s.id}</span>
+                          <span className="text-slate-400 truncate">{s.title || "Session"}</span>
+                        </div>
+                      )
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {bulkJob?.errors?.length ? (
+                <details className="mt-2 rounded-lg border border-slate-700/70 bg-slate-950/40 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-300">
+                    Errors ({bulkJob.errors.length})
+                  </summary>
+                  <div className="mt-2 space-y-1 text-xs text-red-300">
+                    {bulkJob.errors.slice(-10).map((er, idx) => (
+                      <div key={`${er.index}-${idx}`} className="opacity-90">
+                        #{er.index}: {er.message}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        {/* Review Session (QA + optional regen) */}
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Review Session</h2>
+              <p className="text-xs text-slate-400">
+                Runs QA on a specific session. Use "Regenerate Session" to create a replacement with new QA scores.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_240px_240px] gap-4 items-end">
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                Session ID or Ref Code
+              </label>
+              <input
+                value={reviewRef}
+                onChange={(e) => setReviewRef(e.target.value)}
+                placeholder="e.g., S-9M3P or 3b2a... (uuid)"
+                className="w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                disabled={reviewRunning || regenerateRunning}
+              />
+            </div>
+
+            <div>
+              <button
+                onClick={runSessionReview}
+                disabled={reviewRunning || regenerateRunning}
+                className={`w-full h-9 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  reviewRunning
+                    ? "bg-slate-700 text-slate-300 cursor-not-allowed"
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                }`}
+              >
+                {reviewRunning ? "Reviewing..." : "Run QA Review"}
+              </button>
+            </div>
+
+            <div>
+              {reviewResult?.session?.id ? (
+                <Link
+                  href={`/demo/session?sessionId=${encodeURIComponent(reviewResult.session.id)}`}
+                  className="w-full inline-flex items-center justify-center h-9 px-4 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
+                >
+                  View Session →
+                </Link>
+              ) : (
+                <div className="h-9" />
+              )}
+            </div>
+          </div>
+
+          {reviewError && (
+            <div className="mt-3 rounded-lg border border-red-700/50 bg-red-900/20 p-3 text-sm text-red-300">
+              {reviewError}
+            </div>
+          )}
+
+          {reviewResult && (
+            <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/30 p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-200 font-semibold">{reviewResult.session.title}</span>
+                {reviewResult.session.refCode && (
+                  <span className="px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[11px] font-mono border border-cyan-700/30">
+                    {reviewResult.session.refCode}
+                  </span>
+                )}
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-300">{reviewResult.session.ageGroup}</span>
+                <span className="text-slate-500">•</span>
+                <span className={reviewResult.qa.pass ? "text-emerald-400" : "text-red-400"}>
+                  {reviewResult.qa.pass ? "PASS" : "FAIL"}
+                </span>
+                {typeof reviewResult.qa.avgScore === "number" && (
+                  <>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-slate-300">Avg: {reviewResult.qa.avgScore.toFixed(2)}</span>
+                  </>
+                )}
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-300">
+                  Decision: <span className="font-semibold">{reviewResult.fixDecision.code}</span>
+                </span>
+              </div>
+
+              {reviewResult.qa.summary && (
+                <div className="text-xs text-slate-300">
+                  <span className="text-slate-400">Summary: </span>
+                  {reviewResult.qa.summary}
+                </div>
+              )}
+
+              <details className="rounded-lg border border-slate-700/70 bg-slate-950/40 p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-300">
+                  QA Scores
+                </summary>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                  {Object.entries(reviewResult.qa.scores || {}).map(([k, v]) => (
+                    <div key={k} className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/60">
+                      <div className="text-slate-400 capitalize">{k}</div>
+                      <div className="text-slate-200 font-semibold">{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 text-[11px] text-slate-500">
+                  {reviewResult.fixDecision.reason}
+                </div>
+              </details>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
+                <button
+                  onClick={runSessionRegenerate}
+                  disabled={regenerateRunning || !reviewResult}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    regenerateRunning
+                      ? "bg-slate-700 text-slate-300 cursor-not-allowed"
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                  }`}
+                >
+                  {regenerateRunning ? "Regenerating..." : "Regenerate Session"}
+                </button>
+                {regenerateResult && (
+                  <div className="flex-1 rounded-lg border border-emerald-700/40 bg-emerald-900/10 p-2">
+                    <div className="text-xs font-semibold text-emerald-300 mb-1">
+                      Replacement session generated
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
+                      <span className="text-slate-500 font-mono">
+                        {regenerateResult.replacement.refCode || regenerateResult.replacement.id}
+                      </span>
+                      <span className="text-slate-400 truncate">
+                        {regenerateResult.replacement.title || "Session"}
+                      </span>
+                      {typeof regenerateResult.replacement.qaScore === "number" && (
+                        <>
+                          <span className="text-slate-500">•</span>
+                          <span className={regenerateResult.replacement.approved ? "text-emerald-400" : "text-red-400"}>
+                            {regenerateResult.replacement.approved ? "PASS" : "FAIL"} ({regenerateResult.replacement.qaScore.toFixed(2)})
+                          </span>
+                        </>
+                      )}
+                      <Link
+                        href={`/demo/session?sessionId=${encodeURIComponent(regenerateResult.replacement.id)}`}
+                        className="text-emerald-400 hover:text-emerald-300 ml-auto"
+                      >
+                        Open replacement →
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-fr items-stretch">
           {/* Sessions Card - Split */}
-          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Sessions</div>
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4 h-full flex flex-col">
+            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Sessions</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-slate-500">Generated</div>
@@ -366,8 +927,8 @@ export default function AdminDashboard() {
           </div>
 
           {/* Drills Card - Split */}
-          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Drills (in Sessions)</div>
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4 h-full flex flex-col">
+            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Drills (in Sessions)</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-slate-500">In Vault</div>
@@ -385,8 +946,8 @@ export default function AdminDashboard() {
           </div>
 
           {/* Series Card */}
-          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">Series</div>
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4 h-full flex flex-col">
+            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Series</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-slate-500">Total</div>
@@ -404,8 +965,8 @@ export default function AdminDashboard() {
           </div>
 
           {/* API Stats Card */}
-          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3">API</div>
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4 h-full flex flex-col">
+            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">API</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-slate-500">Calls</div>
@@ -643,28 +1204,70 @@ export default function AdminDashboard() {
 
         {/* Age Group Distribution */}
         <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-slate-300 mb-4">Sessions by Age Group</h2>
-          {ageGroupStats.length > 0 ? (
-            <div className="flex flex-wrap gap-3">
-              {ageGroupStats
-                .sort((a, b) => {
-                  const aNum = parseInt(a.ageGroup.replace(/\D/g, ""));
-                  const bNum = parseInt(b.ageGroup.replace(/\D/g, ""));
-                  return aNum - bNum;
-                })
-                .map((ag) => (
-                  <div
-                    key={ag.ageGroup}
-                    className="px-3 py-2 bg-slate-800 rounded-lg border border-slate-700"
-                  >
-                    <div className="text-xs text-slate-400">{ag.ageGroup}</div>
-                    <div className="text-lg font-semibold text-emerald-400">{ag.count}</div>
-                  </div>
-                ))}
+          <h2 className="text-sm font-semibold text-slate-300 mb-1">Sessions by Age Group</h2>
+          <p className="text-xs text-slate-500 mb-4">
+            Matches Vault behavior: “Sessions” excludes series sessions; “Series Sessions” are counted separately.
+          </p>
+
+          {(() => {
+            const toMap = (rows: AgeGroupStats[]) =>
+              new Map(rows.map((r) => [r.ageGroup, r.count] as const));
+
+            const sessionsMap = toMap(ageGroupStats);
+            const seriesMap = toMap(seriesAgeGroupStats);
+
+            const normalizedSessions = VAULT_AGE_GROUPS.map((ag) => ({
+              ageGroup: ag,
+              count: sessionsMap.get(ag) ?? 0,
+            }));
+            const normalizedSeries = VAULT_AGE_GROUPS.map((ag) => ({
+              ageGroup: ag,
+              count: seriesMap.get(ag) ?? 0,
+            }));
+
+            const anySessions = normalizedSessions.some((x) => x.count > 0);
+            const anySeries = normalizedSeries.some((x) => x.count > 0);
+
+            return (
+            <div className="space-y-4">
+              <div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">Vault Sessions (non-series)</div>
+                <div className="flex flex-wrap gap-3">
+                  {normalizedSessions.map((ag) => (
+                    <div
+                      key={`sessions-${ag.ageGroup}`}
+                      className="px-3 py-2 bg-slate-800 rounded-lg border border-slate-700"
+                    >
+                      <div className="text-xs text-slate-400">{ag.ageGroup}</div>
+                      <div className="text-lg font-semibold text-emerald-400">{ag.count}</div>
+                    </div>
+                  ))}
+                </div>
+                {!anySessions && (
+                  <div className="mt-2 text-sm text-slate-500">All age groups are 0</div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">Series Sessions</div>
+                <div className="flex flex-wrap gap-3">
+                  {normalizedSeries.map((ag) => (
+                    <div
+                      key={`series-${ag.ageGroup}`}
+                      className="px-3 py-2 bg-slate-800 rounded-lg border border-slate-700"
+                    >
+                      <div className="text-xs text-slate-400">{ag.ageGroup}</div>
+                      <div className="text-lg font-semibold text-cyan-400">{ag.count}</div>
+                    </div>
+                  ))}
+                </div>
+                {!anySeries && (
+                  <div className="mt-2 text-sm text-slate-500">All age groups are 0</div>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="text-sm text-slate-500">No age group data</div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Recent API Calls */}
