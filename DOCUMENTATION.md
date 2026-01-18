@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 15, 2026  
-**Version:** 1.1.0
+**Last Updated:** January 18, 2026  
+**Version:** 1.2.0
 
 ## Table of Contents
 
@@ -88,9 +88,10 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 4. **Vault System**
    - Save and organize generated content
    - Filter by game model, age group, phase, zone
-   - Search by name or reference code (NEW)
+   - Search by name or reference code
    - View sessions, drills, and series
    - Extract individual drills from sessions
+   - Session detail modal with full drill information
 
 5. **Favorites System** (NEW)
    - Save favorite sessions, drills, and series
@@ -228,8 +229,9 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `GET /health` - Health check endpoint
 - `POST /admin/random-sessions/start` - Start bulk session/series generation (NEW)
 - `GET /admin/random-sessions/:jobId` - Get bulk generation job status (NEW)
-- `POST /admin/sessions/review` - Run QA review on a session (NEW)
-- `POST /admin/sessions/regenerate` - Manually regenerate a session with new QA (NEW)
+- `POST /admin/sessions/review` - Run QA review on a session
+- `POST /admin/sessions/regenerate` - Manually regenerate a session with new QA
+- `GET /admin/analytics/qa-status` - Get QA status analytics (OK, PATCHABLE, NEEDS_REGEN breakdown) (NEW)
 
 #### Skill Focus Endpoints
 - `GET /skill-focus/session/:sessionId` - Get skill focus for session
@@ -240,6 +242,7 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 
 All backend endpoints are proxied through Next.js API routes:
 - `/api/vault/*` - Vault operations
+- `/api/vault/sessions/[sessionId]` - Get individual session by ID (NEW)
 - `/api/favorites/*` - Favorites operations
 - `/api/admin/*` - Admin operations
 - `/api/generate-session` - Session generation
@@ -291,8 +294,10 @@ All backend endpoints are proxied through Next.js API routes:
    - Operation breakdowns
    - System status monitoring
    - Revenue calculator
-   - Bulk session/series generation (NEW)
-   - Session QA review and manual regeneration (NEW)
+   - Bulk session/series generation
+   - Session QA review and manual regeneration
+   - QA Status Analytics (NEW) - View breakdown of session quality status
+   - Session view modal for regenerated sessions (NEW)
 
 ### Navigation
 
@@ -531,6 +536,30 @@ pnpm test
 
 ## Recent Changes
 
+### January 18, 2026
+
+#### QA Status Analytics (NEW)
+- ✅ Added QA Status Analytics card to admin dashboard
+- ✅ Shows breakdown of sessions by QA status: OK, PATCHABLE, NEEDS_REGEN, NO_QA_OR_PASS
+- ✅ Displays counts and percentages for each status
+- ✅ Shows sample sessions for PATCHABLE and NEEDS_REGEN statuses
+- ✅ Includes reference codes and QA scores for easy identification
+- ✅ New endpoint: `GET /admin/analytics/qa-status`
+
+#### Session Regeneration Improvements
+- ✅ Added session view modal (similar to vault) for viewing regenerated sessions
+- ✅ Disable regenerate button after completion to prevent duplicate operations
+- ✅ Improved success messages showing old and new session reference codes
+- ✅ Increased timeout for regeneration operations (3 minutes)
+- ✅ Better error handling and logging
+- ✅ Added "Replace session" option to delete old session instead of marking as superseded
+
+#### Vault Search
+- ✅ Added search functionality to vault page
+- ✅ Search by session/drill/series names or reference codes
+- ✅ Case-insensitive matching across all tabs
+- ✅ Works in combination with existing filters
+
 ### January 15, 2026
 
 #### Vault Search (NEW)
@@ -669,4 +698,4 @@ No environment variables required (uses defaults).
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 15, 2026
+**Last Updated:** January 18, 2026
