@@ -5,6 +5,8 @@ import { findSimilarSessions } from "./services/vault";
 import { generateSessionPdf } from "./services/pdf-export";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
+import { authenticate, requireFeature, AuthRequest } from "./middleware/auth";
+import { checkUsageLimit, incrementUsage } from "./services/auth";
 
 const r = express.Router();
 
@@ -102,10 +104,25 @@ Please help the user with their request, using the context of the referenced ite
   }
 });
 
-r.post("/ai/generate-session", async (req, res) => {
+r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
 
   try {
+    // Check usage limit
+    if (req.userId) {
+      const limit = await checkUsageLimit(req.userId, 'session');
+      if (!limit.allowed) {
+        return res.status(403).json({
+          ok: false,
+          error: 'Monthly limit reached',
+          limit: limit.limit,
+          used: limit.used,
+          remaining: limit.remaining,
+          upgrade: true
+        });
+      }
+    }
+
     // -------------------------------
     // Normal pipeline: real generator
     // -------------------------------
@@ -114,6 +131,11 @@ r.post("/ai/generate-session", async (req, res) => {
     const qa = result.qa;
 
     const fixDecision = result.fixDecision;
+
+    // Increment usage after successful generation
+    if (req.userId) {
+      await incrementUsage(req.userId, 'session');
+    }
 
     const payload: any = {
       ok: true,
@@ -135,7 +157,7 @@ r.post("/ai/generate-session", async (req, res) => {
 });
 
 // Generate progressive series
-r.post("/ai/generate-progressive-series", async (req, res) => {
+r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGenerateSeries'), async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
   const skipRecommendation = String(req.query.skipRecommendation || "") === "1";
 
@@ -149,6 +171,22 @@ r.post("/ai/generate-progressive-series", async (req, res) => {
         ok: false,
         error: "numberOfSessions must be between 2 and 10",
       });
+    }
+
+    // Check usage limit (counts as multiple sessions)
+    if (req.userId) {
+      const limit = await checkUsageLimit(req.userId, 'session');
+      if (!limit.allowed || limit.remaining < numberOfSessions) {
+        return res.status(403).json({
+          ok: false,
+          error: 'Insufficient monthly limit for series',
+          limit: limit.limit,
+          used: limit.used,
+          remaining: limit.remaining,
+          required: numberOfSessions,
+          upgrade: true
+        });
+      }
     }
 
     let recommendations: any[] = [];
@@ -172,6 +210,14 @@ r.post("/ai/generate-progressive-series", async (req, res) => {
     }
 
     const result = await generateProgressiveSessionSeries(baseInput, numberOfSessions);
+    
+    // Increment usage (count as number of sessions generated)
+    if (req.userId) {
+      for (let i = 0; i < numberOfSessions; i++) {
+        await incrementUsage(req.userId, 'session');
+      }
+    }
+
     const payload: any = {
       ...result,
       recommendations: recommendations.length > 0 ? recommendations.slice(0, 3) : [],
@@ -190,7 +236,7 @@ r.post("/ai/generate-progressive-series", async (req, res) => {
 });
 
 // Export session as PDF
-r.post("/ai/export-session-pdf", async (req, res) => {
+r.post("/ai/export-session-pdf", authenticate, requireFeature('canExportPDF'), async (req: AuthRequest, res) => {
   try {
     const session = req.body?.session;
     if (!session) {

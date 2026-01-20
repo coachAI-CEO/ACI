@@ -47,6 +47,37 @@ enum CoachLevel {
   USSF_B_PLUS
 }
 
+enum UserRole {
+  FREE
+  COACH
+  CLUB
+  ADMIN
+  TRIAL
+}
+
+enum SubscriptionPlan {
+  FREE
+  COACH_BASIC
+  COACH_PRO
+  CLUB_STANDARD
+  CLUB_PREMIUM
+  TRIAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  TRIAL
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  SUPPORT
+}
+
 enum DrillType {
   WARMUP
   TECHNICAL
@@ -231,6 +262,8 @@ model ApiMetrics {
   // What was generated
   operationType   String   // "session", "drill", "series", "skill_focus", "qa_review"
   artifactId      String?  // Link to session/drill ID if applicable
+  userId          String?  // Link to user who generated this (for usage tracking)
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   
   // LLM metrics
   model           String   // "gemini-3-flash-preview", "gemini-2.5-flash"
@@ -258,6 +291,7 @@ model ApiMetrics {
   @@index([createdAt])
   @@index([model])
   @@index([success])
+  @@index([userId])
 }
 
 // Daily aggregated metrics for fast dashboard queries
@@ -292,13 +326,53 @@ model DailyMetrics {
   @@index([date])
 }
 
-// User model (placeholder for future authentication)
+// User model with authentication and subscription support
 model User {
   id        String     @id @default(uuid())
-  email     String?    @unique  // Optional for now, will be required with auth
+  email     String?    @unique  // Optional for backward compatibility, required for authenticated users
+  passwordHash String? // bcrypt hashed password (null for anonymous users)
   name      String?
+  
+  // User role and subscription
+  role              UserRole          @default(FREE)
+  subscriptionPlan  SubscriptionPlan  @default(FREE)
+  subscriptionStatus SubscriptionStatus @default(ACTIVE)
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  trialEndDate          DateTime? // For trial users
+  
+  // Profile
+  coachLevel        CoachLevel?
+  organizationName String?
+  teamAgeGroups    String[] // Age groups they coach (e.g., ["U10", "U12"])
+  
+  // Usage tracking
+  sessionsGeneratedThisMonth Int @default(0)
+  drillsGeneratedThisMonth   Int @default(0)
+  lastResetDate              DateTime @default(now())
+  
+  // Email verification
+  emailVerified    Boolean  @default(false)
+  emailVerifiedAt  DateTime?
+  
+  // Activity tracking
+  lastLoginAt      DateTime?
+  
+  // Admin fields
+  adminRole        AdminRole?
+  adminNotes       String?
+  lastAdminAction  DateTime?
+  
+  // Timestamps
   createdAt DateTime   @default(now())
-  favorites Favorite[]
+  updatedAt DateTime   @updatedAt
+  
+  // Relations
+  favorites        Favorite[]
+  refreshTokens    RefreshToken[]
+  adminActions     AdminAction[]
+  userSessions     UserSession[]
+  apiMetrics       ApiMetrics[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -322,4 +396,53 @@ model Favorite {
   @@index([sessionId])
   @@index([drillId])
   @@index([seriesId])
+}
+
+// Refresh tokens for JWT authentication
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+}
+
+// Audit log for admin actions
+model AdminAction {
+  id          String   @id @default(uuid())
+  adminId     String
+  admin       User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  
+  action      String   // "user.deleted", "session.approved", "subscription.changed"
+  resourceType String? // "User", "Session", "Drill", etc.
+  resourceId   String? // ID of affected resource
+  details      Json?    // Additional action details
+  
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  @@index([adminId])
+  @@index([action])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+// User sessions for analytics
+model UserSession {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
 }

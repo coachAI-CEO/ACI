@@ -5,6 +5,7 @@ import routes from "./routes";
 import modelsRoute from "./models-route";
 import dbRoutes from "./db-routes";
 
+import authRoutes from "./routes-auth";
 import drillRoutes from "./routes-drill";
 import sessionRoutes from "./routes-session";
 import coachRoutes from "./routes-coach";
@@ -37,6 +38,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(routes);
 app.use(modelsRoute);
 app.use(dbRoutes);
+app.use(authRoutes); // Authentication routes (register, login, etc.)
 app.use(drillRoutes);
 app.use(sessionRoutes);
 app.use(fixerRoutes);

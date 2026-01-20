@@ -6,8 +6,12 @@ import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { buildSessionQAReviewerPrompt } from "./prompts/session";
 import { fixSessionDecision } from "./services/fixer";
 import type { FixDecisionCode } from "./services/fixer";
+import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
 
 const r = express.Router();
+
+// Protect ALL admin routes
+r.use(requireAdmin);
 
 // Gemini 2.0 Flash pricing (per 1M tokens)
 const GEMINI_INPUT_PRICE_PER_1M = 0.10;  // $0.10 per 1M input tokens
@@ -20,7 +24,7 @@ function calculateCost(promptTokens: number, completionTokens: number): number {
 }
 
 // Get overall dashboard stats
-r.get("/admin/stats", async (req, res) => {
+r.get("/admin/stats", requireAdminPermission('canAccessAdminDashboard'), async (req: AdminRequest, res) => {
   try {
     const [
       totalSessions,
@@ -139,7 +143,7 @@ r.get("/admin/stats", async (req, res) => {
 });
 
 // Get metrics over time (for charts)
-r.get("/admin/metrics/timeline", async (req, res) => {
+r.get("/admin/metrics/timeline", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const startDate = new Date();
@@ -238,7 +242,7 @@ r.get("/admin/metrics/timeline", async (req, res) => {
 });
 
 // Get breakdown by operation type
-r.get("/admin/metrics/by-operation", async (req, res) => {
+r.get("/admin/metrics/by-operation", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
     const metrics = await prisma.apiMetrics.groupBy({
       by: ["operationType"],
@@ -276,7 +280,7 @@ r.get("/admin/metrics/by-operation", async (req, res) => {
 });
 
 // Get breakdown by model
-r.get("/admin/metrics/by-model", async (req, res) => {
+r.get("/admin/metrics/by-model", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
     const metrics = await prisma.apiMetrics.groupBy({
       by: ["model"],
@@ -301,7 +305,7 @@ r.get("/admin/metrics/by-model", async (req, res) => {
 });
 
 // Get recent API calls (for live feed)
-r.get("/admin/metrics/recent", async (req, res) => {
+r.get("/admin/metrics/recent", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
 
@@ -336,7 +340,7 @@ r.get("/admin/metrics/recent", async (req, res) => {
 });
 
 // Get database breakdown by age group
-r.get("/admin/stats/by-age-group", async (req, res) => {
+r.get("/admin/stats/by-age-group", requireAdminPermission('canAccessAdminDashboard'), async (req: AdminRequest, res) => {
   try {
     // IMPORTANT:
     // - Vault "Sessions" tab excludes series sessions (isSeries=false)
@@ -382,7 +386,7 @@ r.get("/admin/stats/by-age-group", async (req, res) => {
 });
 
 // Get database breakdown by game model
-r.get("/admin/stats/by-game-model", async (req, res) => {
+r.get("/admin/stats/by-game-model", requireAdminPermission('canAccessAdminDashboard'), async (req: AdminRequest, res) => {
   try {
     const sessionsByModel = await prisma.session.groupBy({
       by: ["gameModelId"],
@@ -545,7 +549,7 @@ async function runRandomSessionJob(jobId: string) {
 }
 
 // Start a random-session generation job
-r.post("/admin/random-sessions/start", async (req, res) => {
+r.post("/admin/random-sessions/start", requireAdminPermission('canGenerateBulkContent'), async (req: AdminRequest, res) => {
   try {
     const ageGroup = String(req.body?.ageGroup || "").trim();
     const count = Number(req.body?.count || 0);
@@ -573,6 +577,17 @@ r.post("/admin/random-sessions/start", async (req, res) => {
       }
       finalSessionsPerSeries = sessionsPerSeries;
     }
+
+    // Log admin action
+    await logAdminAction(
+      req.userId!,
+      'bulk.generate_sessions',
+      {
+        resourceType: 'Session',
+        data: { ageGroup, count, mode, sessionsPerSeries: finalSessionsPerSeries }
+      },
+      req
+    );
 
     const jobId = randomId("rand_sessions");
     const job: RandomSessionJob = {
@@ -610,7 +625,7 @@ r.post("/admin/random-sessions/start", async (req, res) => {
 });
 
 // Poll job status
-r.get("/admin/random-sessions/:jobId", async (req, res) => {
+r.get("/admin/random-sessions/:jobId", requireAdminPermission('canGenerateBulkContent'), async (req: AdminRequest, res) => {
   const jobId = String(req.params.jobId || "");
   const job = randomSessionJobs.get(jobId);
   if (!job) {
@@ -622,12 +637,23 @@ r.get("/admin/random-sessions/:jobId", async (req, res) => {
 // ------------------------------------
 // Admin: Review a session QA + regen
 // ------------------------------------
-r.post("/admin/sessions/review", async (req, res) => {
+r.post("/admin/sessions/review", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
   const sessionRef = String(req.body?.sessionRef || "").trim();
 
   if (!sessionRef) {
     return res.status(400).json({ ok: false, error: "sessionRef is required (id or refCode)" });
   }
+
+  // Log admin action
+  await logAdminAction(
+    req.userId!,
+    'qa.review_session',
+    {
+      resourceType: 'Session',
+      resourceId: sessionRef
+    },
+    req
+  );
 
   const sessionRow = await prisma.session.findFirst({
     where: {
@@ -711,13 +737,25 @@ r.post("/admin/sessions/review", async (req, res) => {
   }
 });
 
-r.post("/admin/sessions/regenerate", async (req, res) => {
+r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
   const sessionRef = String(req.body?.sessionRef || "").trim();
   const replace = req.body?.replace === true; // If true, delete old session instead of marking as superseded
 
   if (!sessionRef) {
     return res.status(400).json({ ok: false, error: "sessionRef is required (id or refCode)" });
   }
+
+  // Log admin action
+  await logAdminAction(
+    req.userId!,
+    'session.regenerate',
+    {
+      resourceType: 'Session',
+      resourceId: sessionRef,
+      data: { replace }
+    },
+    req
+  );
 
   const sessionRow = await prisma.session.findFirst({
     where: {
@@ -809,7 +847,7 @@ r.post("/admin/sessions/regenerate", async (req, res) => {
 // ------------------------------------
 // Admin: QA Status Analytics
 // ------------------------------------
-r.get("/admin/analytics/qa-status", async (_req, res) => {
+r.get("/admin/analytics/qa-status", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
     // Get all sessions with their latest QA reports
     const sessions = await prisma.session.findMany({
@@ -890,6 +928,233 @@ r.get("/admin/analytics/qa-status", async (_req, res) => {
     });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// ------------------------------------
+// Admin: User Management
+// ------------------------------------
+
+// List users with pagination
+r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = (page - 1) * limit;
+    
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        skip: offset,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          subscriptionPlan: true,
+          subscriptionStatus: true,
+          sessionsGeneratedThisMonth: true,
+          drillsGeneratedThisMonth: true,
+          createdAt: true,
+          lastLoginAt: true,
+          adminRole: true,
+        }
+      }),
+      prisma.user.count()
+    ]);
+    
+    return res.json({
+      ok: true,
+      users,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Get user details
+r.get("/admin/users/:userId", requireAdminPermission('canViewAllUserData'), async (req: AdminRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.userId },
+      include: {
+        favorites: {
+          take: 10,
+          orderBy: { createdAt: 'desc' }
+        },
+        _count: {
+          select: {
+            favorites: true,
+          }
+        }
+      }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+    
+    return res.json({ ok: true, user });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Update user subscription
+r.patch("/admin/users/:userId/subscription", requireAdminPermission('canManageSubscriptions'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { subscriptionPlan, subscriptionStatus } = req.body;
+    
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        subscriptionPlan,
+        subscriptionStatus,
+        subscriptionStartDate: subscriptionStatus === 'ACTIVE' ? new Date() : undefined,
+      }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'subscription.changed',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { subscriptionPlan, subscriptionStatus }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Delete user
+r.delete("/admin/users/:userId", requireAdminPermission('canDeleteUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Prevent deleting yourself
+    if (userId === req.userId) {
+      return res.status(400).json({ ok: false, error: 'Cannot delete your own account' });
+    }
+    
+    // Prevent deleting other admins (unless super admin)
+    const targetUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { adminRole: true }
+    });
+    
+    if (targetUser?.adminRole && req.adminRole !== 'SUPER_ADMIN') {
+      return res.status(403).json({ 
+        ok: false, 
+        error: 'Cannot delete admin users' 
+      });
+    }
+    
+    await prisma.user.delete({ where: { id: userId } });
+    
+    await logAdminAction(
+      req.userId!,
+      'user.deleted',
+      {
+        resourceType: 'User',
+        resourceId: userId
+      },
+      req
+    );
+    
+    return res.json({ ok: true });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Promote user to admin
+r.post("/admin/users/:userId/promote", requireAdminPermission('canChangeUserRoles'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { adminRole } = req.body;
+    
+    if (!['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'SUPPORT'].includes(adminRole)) {
+      return res.status(400).json({ ok: false, error: 'Invalid admin role' });
+    }
+    
+    // Only super admin can create other admins
+    if (req.adminRole !== 'SUPER_ADMIN') {
+      return res.status(403).json({ ok: false, error: 'Only super admins can promote users' });
+    }
+    
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { adminRole }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'user.promoted',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { adminRole }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Admin audit log
+r.get("/admin/audit-log", requireAdminPermission('canAccessAdminDashboard'), async (req: AdminRequest, res) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 100;
+    const offset = (page - 1) * limit;
+    
+    const [actions, total] = await Promise.all([
+      prisma.adminAction.findMany({
+        skip: offset,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          admin: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              adminRole: true,
+            }
+          }
+        }
+      }),
+      prisma.adminAction.count()
+    ]);
+    
+    return res.json({
+      ok: true,
+      actions,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 

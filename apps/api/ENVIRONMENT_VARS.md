@@ -12,6 +12,22 @@ DATABASE_URL="postgresql://user:password@localhost:5432/aci_db"
 GEMINI_API_KEY="your-gemini-api-key-here"
 ```
 
+### Authentication (Required for Production)
+```env
+# JWT secret for access tokens (7 day expiry)
+JWT_SECRET="your-secret-key-change-in-production"
+
+# JWT secret for refresh tokens (30 day expiry)
+JWT_REFRESH_SECRET="refresh-secret-key-change-in-production"
+```
+
+**Security Notes:**
+- Use strong, random secrets in production (minimum 32 characters)
+- Never commit secrets to version control
+- Access tokens expire after 7 days
+- Refresh tokens expire after 30 days
+- Tokens are signed with HS256 algorithm
+
 ## Performance Tuning (Optional)
 
 ### Model Selection

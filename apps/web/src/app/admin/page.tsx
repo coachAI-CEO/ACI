@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import DrillDiagram from "@/components/DrillDiagram";
+import { getUserHeaders } from "@/lib/user";
 
 // Label mappings (same as vault)
 const drillTypeLabel: Record<string, string> = {
@@ -49,11 +50,9 @@ const playerLevelLabel: Record<string, string> = {
 };
 
 const coachLevelLabel: Record<string, string> = {
-  ENTRY: "Entry",
   GRASSROOTS: "Grassroots",
-  QUALIFIED: "Qualified",
-  ADVANCED: "Advanced",
-  ELITE: "Elite",
+  USSF_C: "USSF C",
+  USSF_B_PLUS: "USSF B+",
 };
 
 type Stats = {
@@ -195,6 +194,23 @@ type SessionRegenerateResult = {
   replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
 };
 
+// Base URL for backend API (used for admin-only endpoints that require JWT)
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+function getAuthHeaders(): HeadersInit {
+  if (typeof window === "undefined") return {};
+  try {
+    const token = localStorage.getItem("accessToken");
+    const headers: HeadersInit = {};
+    if (token) {
+      (headers as any).Authorization = `Bearer ${token}`;
+    }
+    return headers;
+  } catch {
+    return {};
+  }
+}
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [timeline, setTimeline] = useState<TimelineDay[]>([]);
@@ -238,6 +254,8 @@ export default function AdminDashboard() {
   const [regenerateReplace, setRegenerateReplace] = useState<boolean>(false);
   const [viewingSession, setViewingSession] = useState<any | null>(null);
   const [loadingSession, setLoadingSession] = useState<boolean>(false);
+  const [viewingSessionIsFavorited, setViewingSessionIsFavorited] = useState<boolean>(false);
+  const [checkingFavorite, setCheckingFavorite] = useState<boolean>(false);
   
   // QA Status Analytics
   const [qaAnalytics, setQaAnalytics] = useState<{
@@ -250,7 +268,7 @@ export default function AdminDashboard() {
   const [loadingQaAnalytics, setLoadingQaAnalytics] = useState<boolean>(false);
 
   const checkSystemStatus = useCallback(async () => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const apiUrl = API_BASE_URL;
     
     // Check backend API
     try {
@@ -266,10 +284,17 @@ export default function AdminDashboard() {
       if (res.ok) {
         setSystemStatus(prev => ({ ...prev, backend: "online" }));
         
-        // Check database via admin stats endpoint
+        // Check database via admin stats endpoint (requires admin auth)
         try {
-          const statsRes = await fetch("/api/admin/stats", { cache: "no-store" });
+          const statsRes = await fetch(`${apiUrl}/admin/stats`, {
+            cache: "no-store",
+            headers: getAuthHeaders(),
+          });
           if (statsRes.ok) {
+            setSystemStatus(prev => ({ ...prev, database: "online" }));
+          } else if (statsRes.status === 401) {
+            // Auth issue: backend is up, but user is not authorized
+            // Treat DB as online but indicate need for login via UI metrics (not system status)
             setSystemStatus(prev => ({ ...prev, database: "online" }));
           } else {
             setSystemStatus(prev => ({ ...prev, database: "offline" }));
@@ -291,7 +316,9 @@ export default function AdminDashboard() {
   const fetchQaAnalytics = useCallback(async () => {
     setLoadingQaAnalytics(true);
     try {
-      const res = await fetch("/api/admin/analytics/qa-status");
+      const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (res.ok && data?.ok) {
         setQaAnalytics(data);
@@ -303,14 +330,56 @@ export default function AdminDashboard() {
     }
   }, []);
 
+  const checkSessionFavoriteStatus = useCallback(async (sessionId: string) => {
+    if (!sessionId) return;
+    setCheckingFavorite(true);
+    try {
+      const res = await fetch("/api/favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getUserHeaders(),
+        },
+        body: JSON.stringify({ sessionIds: [sessionId] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setViewingSessionIsFavorited(data?.sessions?.[sessionId] || false);
+      }
+    } catch (e) {
+      console.error("Error checking favorite status:", e);
+    } finally {
+      setCheckingFavorite(false);
+    }
+  }, []);
+
+  const toggleViewingSessionFavorite = useCallback(async () => {
+    if (!viewingSession?.id) return;
+    const isFavorited = viewingSessionIsFavorited;
+    
+    try {
+      const res = await fetch(`/api/favorites/session/${viewingSession.id}`, {
+        method: isFavorited ? "DELETE" : "POST",
+        headers: getUserHeaders(),
+      });
+      
+      if (res.ok) {
+        setViewingSessionIsFavorited(!isFavorited);
+      }
+    } catch (e) {
+      console.error("Error toggling favorite:", e);
+    }
+  }, [viewingSession?.id, viewingSessionIsFavorited]);
+
   const fetchData = useCallback(async () => {
     try {
+      const authHeaders = getAuthHeaders();
       const [statsRes, timelineRes, recentRes, operationsRes, ageRes] = await Promise.all([
-        fetch("/api/admin/stats"),
-        fetch("/api/admin/metrics/timeline?days=7"),
-        fetch("/api/admin/metrics/recent?limit=20"),
-        fetch("/api/admin/metrics/by-operation"),
-        fetch("/api/admin/stats/by-age-group"),
+        fetch(`${API_BASE_URL}/admin/stats`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/metrics/timeline?days=7`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/metrics/recent?limit=20`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/metrics/by-operation`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/stats/by-age-group`, { headers: authHeaders }),
       ]);
 
       const [statsData, timelineData, recentData, operationsData, ageData] = await Promise.all([
@@ -342,9 +411,12 @@ export default function AdminDashboard() {
     setBulkJob(null);
     setBulkJobId(null);
     try {
-      const res = await fetch("/api/admin/random-sessions/start", {
+      const res = await fetch(`${API_BASE_URL}/admin/random-sessions/start`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({
           ageGroup: bulkAgeGroup,
           mode: bulkMode,
@@ -366,9 +438,13 @@ export default function AdminDashboard() {
   const pollBulkJob = useCallback(async () => {
     if (!bulkJobId) return;
     try {
-      const res = await fetch(`/api/admin/random-sessions/${encodeURIComponent(bulkJobId)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `${API_BASE_URL}/admin/random-sessions/${encodeURIComponent(bulkJobId)}`,
+        {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        }
+      );
       const data = await res.json();
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error || `Failed to fetch job status (${res.status})`);
@@ -443,7 +519,10 @@ export default function AdminDashboard() {
     try {
       const res = await fetch("/api/admin/sessions/review", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ sessionRef: ref }),
       });
       const data = await res.json();
@@ -475,9 +554,12 @@ export default function AdminDashboard() {
 
     try {
       console.log("[ADMIN] Starting session regeneration:", { ref, replace: regenerateReplace });
-      const res = await fetch("/api/admin/sessions/regenerate", {
+      const res = await fetch(`${API_BASE_URL}/admin/sessions/regenerate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify({ sessionRef: ref, replace: regenerateReplace }),
       });
       
@@ -1056,6 +1138,8 @@ export default function AdminDashboard() {
                         const data = await res.json();
                         if (res.ok && data && !data.error) {
                           setViewingSession(data);
+                          // Check if session is favorited
+                          checkSessionFavoriteStatus(data.id).catch(() => {});
                         } else {
                           alert(data?.error || "Session not found");
                         }
@@ -1629,6 +1713,18 @@ export default function AdminDashboard() {
                       {viewingSession.refCode}
                     </button>
                   )}
+                  <button
+                    onClick={toggleViewingSessionFavorite}
+                    disabled={checkingFavorite}
+                    className={`w-7 h-7 flex items-center justify-center rounded border transition-colors disabled:opacity-50 ${
+                      viewingSessionIsFavorited
+                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                        : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
+                    }`}
+                    title={viewingSessionIsFavorited ? "Remove from favorites" : "Add to favorites"}
+                  >
+                    <span className="text-sm font-bold">■</span>
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-4 text-sm">
                   <div className="flex items-center gap-2">

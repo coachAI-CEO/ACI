@@ -1,5 +1,6 @@
 import express from "express";
 import { prisma } from "./prisma";
+import { optionalAuth, AuthRequest } from "./middleware/auth";
 
 const r = express.Router();
 
@@ -16,23 +17,12 @@ async function getOrCreateUser(userId: string) {
   return user;
 }
 
-/**
- * Extract userId from request header
- */
-function getUserId(req: express.Request): string | null {
-  const userId = req.headers["x-user-id"];
-  if (typeof userId === "string" && userId.length > 0) {
-    return userId;
-  }
-  return null;
-}
-
 // Get user's favorites with optional filters
-r.get("/favorites", async (req, res) => {
+r.get("/favorites", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const type = req.query.type as string | undefined; // "session" | "drill" | "series" | undefined
@@ -139,11 +129,11 @@ r.get("/favorites", async (req, res) => {
 });
 
 // Add session to favorites
-r.post("/favorites/session/:id", async (req, res) => {
+r.post("/favorites/session/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: sessionId } = req.params;
@@ -185,11 +175,11 @@ r.post("/favorites/session/:id", async (req, res) => {
 });
 
 // Remove session from favorites
-r.delete("/favorites/session/:id", async (req, res) => {
+r.delete("/favorites/session/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: sessionId } = req.params;
@@ -227,27 +217,104 @@ r.delete("/favorites/session/:id", async (req, res) => {
 });
 
 // Add drill to favorites
-r.post("/favorites/drill/:id", async (req, res) => {
+// Helper function to find and create a drill from session JSON if it doesn't exist
+async function findOrCreateDrillFromSessions(refCode: string): Promise<any | null> {
+  // First check if drill already exists
+  let drill = await prisma.drill.findFirst({ where: { refCode } });
+  if (drill) return drill;
+
+  // Search for drill in session JSON
+  const sessions = await prisma.session.findMany({
+    where: { savedToVault: true },
+    select: { id: true, json: true, gameModelId: true, phase: true, zone: true, ageGroup: true, formationUsed: true, playerLevel: true, coachLevel: true, numbersMin: true, numbersMax: true, spaceConstraint: true },
+  });
+
+  for (const session of sessions) {
+    const sessionJson = session.json as any;
+    const drills = sessionJson?.drills || [];
+    
+    for (const drillJson of drills) {
+      if (drillJson.refCode === refCode) {
+        // Found the drill in session JSON, create standalone record
+        try {
+          const drillData: any = {
+            refCode: refCode,
+            title: drillJson.title || "Untitled Drill",
+            gameModelId: session.gameModelId as any,
+            phase: (session.phase || drillJson.phase || "ATTACKING") as any,
+            zone: (session.zone || drillJson.zone || "ATTACKING_THIRD") as any,
+            ageGroup: session.ageGroup,
+            durationMin: drillJson.durationMin ?? 25,
+            drillType: drillJson.drillType || "TECHNICAL",
+            
+            // Map from session or drill JSON
+            numbersMin: drillJson.numbersMin ?? session.numbersMin,
+            numbersMax: drillJson.numbersMax ?? session.numbersMax,
+            spaceConstraint: drillJson.spaceConstraint ?? session.spaceConstraint,
+            formationUsed: drillJson.formationUsed ?? session.formationUsed,
+            playerLevel: session.playerLevel as any,
+            coachLevel: session.coachLevel as any,
+            principleIds: drillJson.principleIds || sessionJson.principleIds || [],
+            psychThemeIds: drillJson.psychThemeIds || sessionJson.psychThemeIds || [],
+            
+            // Store full drill JSON
+            json: drillJson,
+            savedToVault: true,
+          };
+
+          drill = await prisma.drill.upsert({
+            where: { refCode },
+            update: { ...drillData, updatedAt: new Date() },
+            create: drillData,
+          });
+          
+          console.log(`[FAVORITES] Created missing drill ${refCode} from session ${session.id}`);
+          return drill;
+        } catch (err: any) {
+          console.error(`[FAVORITES] Failed to create drill ${refCode}:`, err?.message);
+          return null;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+r.post("/favorites/drill/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: drillId } = req.params;
 
-    // Verify drill exists
-    const drill = await prisma.drill.findUnique({ where: { id: drillId } });
+    // Verify drill exists - check by ID first, then by refCode if ID lookup fails
+    let drill = await prisma.drill.findUnique({ where: { id: drillId } });
+    
+    // If not found by ID, try looking up by refCode (in case drillId is actually a refCode)
     if (!drill) {
-      return res.status(404).json({ ok: false, error: "Drill not found" });
+      drill = await prisma.drill.findFirst({ where: { refCode: drillId } });
     }
+    
+    // If still not found, try to find and create from session JSON
+    if (!drill) {
+      drill = await findOrCreateDrillFromSessions(drillId);
+    }
+    
+    if (!drill) {
+      return res.status(404).json({ ok: false, error: `Drill not found with ID or refCode: ${drillId}` });
+    }
+
+    const actualDrillId = drill.id;
 
     // Get or create user
     await getOrCreateUser(userId);
 
     // Check if already favorited
     const existing = await prisma.favorite.findUnique({
-      where: { userId_drillId: { userId, drillId } },
+      where: { userId_drillId: { userId, drillId: actualDrillId } },
     });
 
     if (existing) {
@@ -257,15 +324,15 @@ r.post("/favorites/drill/:id", async (req, res) => {
     // Create favorite and increment count
     await prisma.$transaction([
       prisma.favorite.create({
-        data: { userId, drillId },
+        data: { userId, drillId: actualDrillId },
       }),
       prisma.drill.update({
-        where: { id: drillId },
+        where: { id: actualDrillId },
         data: { favoriteCount: { increment: 1 } },
       }),
     ]);
 
-    return res.json({ ok: true, favoriteCount: drill.favoriteCount + 1 });
+    return res.json({ ok: true, favoriteCount: drill.favoriteCount + 1, drillId: actualDrillId });
   } catch (e: any) {
     console.error("[FAVORITES] Error adding drill:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
@@ -273,18 +340,30 @@ r.post("/favorites/drill/:id", async (req, res) => {
 });
 
 // Remove drill from favorites
-r.delete("/favorites/drill/:id", async (req, res) => {
+r.delete("/favorites/drill/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: drillId } = req.params;
 
+    // Find drill by ID or refCode
+    let drill = await prisma.drill.findUnique({ where: { id: drillId } });
+    if (!drill) {
+      drill = await prisma.drill.findFirst({ where: { refCode: drillId } });
+    }
+    
+    if (!drill) {
+      return res.status(404).json({ ok: false, error: `Drill not found with ID or refCode: ${drillId}` });
+    }
+
+    const actualDrillId = drill.id;
+
     // Check if favorited
     const existing = await prisma.favorite.findUnique({
-      where: { userId_drillId: { userId, drillId } },
+      where: { userId_drillId: { userId, drillId: actualDrillId } },
     });
 
     if (!existing) {
@@ -294,20 +373,20 @@ r.delete("/favorites/drill/:id", async (req, res) => {
     // Delete favorite and decrement count
     await prisma.$transaction([
       prisma.favorite.delete({
-        where: { userId_drillId: { userId, drillId } },
+        where: { userId_drillId: { userId, drillId: actualDrillId } },
       }),
       prisma.drill.update({
-        where: { id: drillId },
+        where: { id: actualDrillId },
         data: { favoriteCount: { decrement: 1 } },
       }),
     ]);
 
-    const drill = await prisma.drill.findUnique({
-      where: { id: drillId },
+    const updatedDrill = await prisma.drill.findUnique({
+      where: { id: actualDrillId },
       select: { favoriteCount: true },
     });
 
-    return res.json({ ok: true, favoriteCount: drill?.favoriteCount || 0 });
+    return res.json({ ok: true, favoriteCount: updatedDrill?.favoriteCount || 0 });
   } catch (e: any) {
     console.error("[FAVORITES] Error removing drill:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
@@ -315,11 +394,11 @@ r.delete("/favorites/drill/:id", async (req, res) => {
 });
 
 // Add series to favorites
-r.post("/favorites/series/:id", async (req, res) => {
+r.post("/favorites/series/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: seriesId } = req.params;
@@ -365,11 +444,11 @@ r.post("/favorites/series/:id", async (req, res) => {
 });
 
 // Remove series from favorites
-r.delete("/favorites/series/:id", async (req, res) => {
+r.delete("/favorites/series/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "x-user-id header required" });
+      return res.status(400).json({ ok: false, error: "User ID required" });
     }
 
     const { id: seriesId } = req.params;
@@ -402,9 +481,9 @@ r.delete("/favorites/series/:id", async (req, res) => {
 });
 
 // Check if items are favorited (batch)
-r.post("/favorites/check", async (req, res) => {
+r.post("/favorites/check", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = req.userId;
     if (!userId) {
       // Return empty results instead of error for anonymous users
       return res.json({

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import AuthButton from "@/components/AuthButton";
 
 export const metadata: Metadata = {
   title: "ACI Drill Diagrams",
@@ -24,8 +25,8 @@ export default function RootLayout({
               <Link href="/demo/drill" className="hover:text-emerald-300">🧩 Drill Generator</Link>
               <Link href="/demo/session" className="hover:text-emerald-300">📋 Session Generator</Link>
               <Link href="/vault" className="hover:text-emerald-300">🗂️ Vault</Link>
-              <Link href="/vault/favorites" className="hover:text-pink-300">♥ Favorites</Link>
-              <Link href="/admin" className="hover:text-amber-300">⚙️ Admin</Link>
+              <Link href="/vault/favorites" className="hover:text-emerald-300">■ Favorites</Link>
+              <AuthButton />
             </nav>
           </div>
         </header>

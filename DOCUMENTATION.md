@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 18, 2026  
-**Version:** 1.2.0
+**Last Updated:** January 19, 2026  
+**Version:** 1.3.0
 
 ## Table of Contents
 
@@ -99,26 +99,44 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
    - Favorites page with filtering
    - Favorite count tracking
 
-6. **Reference Codes** (NEW)
+6. **Reference Codes**
    - Unique identifiers for all artifacts (D-XXXX, S-XXXX, SR-XXXX)
    - Click-to-copy functionality
    - Reference in AI chat for improvements
 
-7. **AI Coach Assistant**
+7. **Authentication & User Management** (NEW)
+   - User registration and login
+   - JWT-based authentication
+   - Subscription plans (FREE, COACH_BASIC, COACH_PRO, CLUB_STANDARD, CLUB_PREMIUM, TRIAL)
+   - Usage limits and tracking
+   - Trial accounts (7 days, auto-downgrade to FREE)
+   - Anonymous user support (backward compatible)
+
+8. **Admin System** (NEW)
+   - Role-based access control (SUPER_ADMIN, ADMIN, MODERATOR, SUPPORT)
+   - Granular permissions per role
+   - Admin user management
+   - Audit logging for all admin actions
+   - User subscription management
+   - Protected admin routes
+
+9. **AI Coach Assistant**
    - Chat interface for session recommendations
    - Context-aware suggestions
    - Reference existing sessions/drills by code
 
-8. **Admin Dashboard**
+10. **Admin Dashboard**
    - System metrics and analytics
    - Token usage tracking
    - Cost calculations
-   - System status monitoring (NEW)
+   - System status monitoring
    - Operation statistics
+   - User management interface
 
-9. **PDF Export**
+11. **PDF Export**
    - Export sessions as PDFs
    - Include diagrams and coaching points
+   - Subscription feature (requires plan with canExportPDF)
 
 ---
 
@@ -145,12 +163,38 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - Visual: `visualThumbSvg`, `visualHash`
 - QA: `qaScore`, `approved`
 
-#### User (NEW)
+#### User
 - `id` (UUID)
-- `email` (optional, for future auth)
+- `email` (optional, required for authenticated users)
+- `passwordHash` (bcrypt hashed, null for anonymous users)
 - `name` (optional)
-- `createdAt`
-- `favorites` (relation to Favorite)
+- **Authentication:**
+  - `role` (UserRole: FREE, COACH, CLUB, ADMIN, TRIAL)
+  - `subscriptionPlan` (SubscriptionPlan: FREE, COACH_BASIC, COACH_PRO, CLUB_STANDARD, CLUB_PREMIUM, TRIAL)
+  - `subscriptionStatus` (SubscriptionStatus: ACTIVE, CANCELLED, EXPIRED, TRIAL)
+  - `subscriptionStartDate`, `subscriptionEndDate`, `trialEndDate`
+- **Profile:**
+  - `coachLevel` (CoachLevel)
+  - `organizationName` (for club accounts)
+  - `teamAgeGroups` (String[])
+- **Usage Tracking:**
+  - `sessionsGeneratedThisMonth` (Int, auto-reset monthly)
+  - `drillsGeneratedThisMonth` (Int, auto-reset monthly)
+  - `lastResetDate` (DateTime)
+- **Email Verification:**
+  - `emailVerified` (Boolean)
+  - `emailVerifiedAt` (DateTime)
+  - `lastLoginAt` (DateTime)
+- **Admin Fields:**
+  - `adminRole` (AdminRole: SUPER_ADMIN, ADMIN, MODERATOR, SUPPORT)
+  - `adminNotes` (String)
+  - `lastAdminAction` (DateTime)
+- **Relations:**
+  - `favorites` (Favorite[])
+  - `refreshTokens` (RefreshToken[])
+  - `adminActions` (AdminAction[])
+  - `userSessions` (UserSession[])
+  - `apiMetrics` (ApiMetrics[])
 
 #### Favorite (NEW)
 - `id` (UUID)
@@ -184,6 +228,30 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - Token totals
 - Average durations
 
+#### RefreshToken (NEW)
+- `id` (UUID)
+- `token` (String, unique)
+- `userId` (relation to User)
+- `expiresAt` (DateTime)
+- `ipAddress`, `userAgent`
+- `createdAt`
+
+#### AdminAction (NEW)
+- `id` (UUID)
+- `adminId` (relation to User)
+- `action` (String, e.g., "user.deleted", "subscription.changed")
+- `resourceType` (String, e.g., "User", "Session")
+- `resourceId` (String)
+- `details` (JSON)
+- `ipAddress`, `userAgent`
+- `createdAt`
+
+#### UserSession (NEW)
+- `id` (UUID)
+- `userId` (relation to User)
+- `ipAddress`, `userAgent`
+- `createdAt`
+
 ---
 
 ## API Endpoints
@@ -210,7 +278,15 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `POST /vault/lookup` - Batch lookup by reference codes
 - `POST /vault/extract-refs` - Extract ref codes from text
 
-#### Favorites Endpoints (NEW)
+#### Authentication Endpoints (NEW)
+- `POST /auth/register` - Register new user (creates TRIAL account)
+- `POST /auth/login` - Login with email/password
+- `POST /auth/refresh` - Refresh access token
+- `GET /auth/me` - Get current user info and usage limits
+- `GET /auth/usage` - Get usage limits for current user
+- `POST /auth/logout` - Revoke refresh token
+
+#### Favorites Endpoints
 - `GET /favorites` - Get user's favorites (with filters)
 - `POST /favorites/session/:id` - Add session to favorites
 - `DELETE /favorites/session/:id` - Remove session from favorites
@@ -220,18 +296,25 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `DELETE /favorites/series/:id` - Remove series from favorites
 - `POST /favorites/check` - Batch check favorite status
 
-#### Admin Endpoints
-- `GET /admin/stats` - Overall statistics
-- `GET /admin/metrics/timeline` - Timeline metrics
-- `GET /admin/metrics/recent` - Recent metrics
-- `GET /admin/metrics/by-operation` - Operation statistics
-- `GET /admin/stats/by-age-group` - Age group statistics
+#### Admin Endpoints (All require admin authentication)
+- `GET /admin/stats` - Overall statistics (requires `canAccessAdminDashboard`)
+- `GET /admin/metrics/timeline` - Timeline metrics (requires `canViewAnalytics`)
+- `GET /admin/metrics/recent` - Recent metrics (requires `canViewAnalytics`)
+- `GET /admin/metrics/by-operation` - Operation statistics (requires `canViewAnalytics`)
+- `GET /admin/stats/by-age-group` - Age group statistics (requires `canAccessAdminDashboard`)
 - `GET /health` - Health check endpoint
-- `POST /admin/random-sessions/start` - Start bulk session/series generation (NEW)
-- `GET /admin/random-sessions/:jobId` - Get bulk generation job status (NEW)
-- `POST /admin/sessions/review` - Run QA review on a session
-- `POST /admin/sessions/regenerate` - Manually regenerate a session with new QA
-- `GET /admin/analytics/qa-status` - Get QA status analytics (OK, PATCHABLE, NEEDS_REGEN breakdown) (NEW)
+- `POST /admin/random-sessions/start` - Start bulk session/series generation (requires `canGenerateBulkContent`)
+- `GET /admin/random-sessions/:jobId` - Get bulk generation job status (requires `canGenerateBulkContent`)
+- `POST /admin/sessions/review` - Run QA review on a session (requires `canReviewQA`)
+- `POST /admin/sessions/regenerate` - Manually regenerate a session with new QA (requires `canReviewQA`)
+- `GET /admin/analytics/qa-status` - Get QA status analytics (requires `canViewAnalytics`)
+- **User Management (NEW):**
+  - `GET /admin/users` - List users with pagination (requires `canManageUsers`)
+  - `GET /admin/users/:userId` - Get user details (requires `canViewAllUserData`)
+  - `PATCH /admin/users/:userId/subscription` - Update subscription (requires `canManageSubscriptions`)
+  - `DELETE /admin/users/:userId` - Delete user (requires `canDeleteUsers`)
+  - `POST /admin/users/:userId/promote` - Promote to admin (requires `canChangeUserRoles`, SUPER_ADMIN only)
+  - `GET /admin/audit-log` - Get admin action log (requires `canAccessAdminDashboard`)
 
 #### Skill Focus Endpoints
 - `GET /skill-focus/session/:sessionId` - Get skill focus for session
@@ -261,34 +344,51 @@ All backend endpoints are proxied through Next.js API routes:
    - AI Coach Chat box
    - Quick access to generators
 
-2. **Drill Generator** (`/demo/drill`)
+2. **Login** (`/login`) (NEW)
+   - User login form
+   - Email and password authentication
+   - Link to registration
+   - Error handling and loading states
+
+3. **Register** (`/register`) (NEW)
+   - User registration form
+   - Optional name and coach level
+   - Password confirmation
+   - Creates TRIAL account (7 days)
+   - Auto-login after registration
+
+4. **Drill Generator** (`/demo/drill`)
    - Form to configure drill parameters
    - Generate and display drills
    - Visual diagram rendering
+   - Usage limits enforced for authenticated users
 
-3. **Session Generator** (`/demo/session`)
+5. **Session Generator** (`/demo/session`)
    - Generate single sessions or progressive series
    - Session preview with drills
    - Skill focus display
-   - PDF export
-   - Favorite toggle (NEW)
-   - Reference codes display (NEW)
+   - PDF export (requires subscription)
+   - Progressive series (requires subscription)
+   - Favorite toggle
+   - Reference codes display
+   - Usage limits enforced
 
-4. **Vault** (`/vault`)
+6. **Vault** (`/vault`)
    - Browse saved sessions, drills, and series
    - Filter by game model, age group, phase, zone
    - Tab navigation (Drills, Sessions, Series)
-   - Favorite buttons on cards (NEW)
-   - Reference codes with click-to-copy (NEW)
+   - Favorite buttons on cards
+   - Reference codes with click-to-copy
    - Session detail modals
 
-5. **Favorites** (`/vault/favorites`) (NEW)
+7. **Favorites** (`/vault/favorites`)
    - View all favorited items
    - Tab navigation (All, Sessions, Drills, Series)
    - Same filtering as vault
    - Remove from favorites
+   - View drill and session modals
 
-6. **Admin Dashboard** (`/admin`)
+8. **Admin Dashboard** (`/admin`)
    - System metrics and statistics
    - Token usage and costs
    - Operation breakdowns
@@ -296,8 +396,9 @@ All backend endpoints are proxied through Next.js API routes:
    - Revenue calculator
    - Bulk session/series generation
    - Session QA review and manual regeneration
-   - QA Status Analytics (NEW) - View breakdown of session quality status
-   - Session view modal for regenerated sessions (NEW)
+   - QA Status Analytics - View breakdown of session quality status
+   - User management interface (NEW)
+   - Audit log viewer (NEW)
 
 ### Navigation
 
@@ -306,8 +407,9 @@ Persistent header bar with links:
 - 🧩 Drill Generator
 - 📋 Session Generator
 - 🗂️ Vault
-- ♥ Favorites
+- ■ Favorites
 - ⚙️ Admin
+- **Auth Button** (NEW) - Shows "Login" or user name with "Logout" option
 
 ---
 
@@ -333,7 +435,8 @@ Persistent header bar with links:
 4. **vault.ts** - Vault operations
 5. **skill-focus.ts** - Skill focus analysis
 6. **pdf-export.ts** - PDF generation
-7. **ref-code.ts** (NEW) - Reference code utilities
+7. **ref-code.ts** - Reference code utilities
+8. **auth.ts** (NEW) - Authentication service (password hashing, JWT, usage tracking)
 
 ### Utilities
 
@@ -343,10 +446,25 @@ Persistent header bar with links:
    - `extractRefCodes()` - Extract codes from text
    - `parseRefCode()` - Parse code format
 
-2. **user.ts** (NEW)
-   - `getUserId()` - Get or create anonymous user ID
-   - `getUserHeaders()` - Get headers for API requests
-   - `clearUserId()` - Clear user ID (testing)
+2. **auth.ts** (NEW)
+   - `hashPassword()` - bcrypt password hashing
+   - `verifyPassword()` - Password verification
+   - `generateAccessToken()` - JWT access token (7 days)
+   - `generateRefreshToken()` - JWT refresh token (30 days)
+   - `registerUser()` - User registration
+   - `loginUser()` - User authentication
+   - `refreshAccessToken()` - Token refresh
+   - `checkUsageLimit()` - Check monthly usage limits
+   - `incrementUsage()` - Increment usage counters
+
+3. **Middleware** (NEW)
+   - `authenticate` - Verify JWT token, load user
+   - `optionalAuth` - Allow anonymous or authenticated users
+   - `requireRole()` - Require specific user role
+   - `requireFeature()` - Require subscription feature
+   - `requireAdmin` - Require admin authentication
+   - `requireAdminPermission()` - Require specific admin permission
+   - `logAdminAction()` - Log admin actions to audit trail
 
 ---
 
@@ -375,13 +493,76 @@ Persistent header bar with links:
 
 ---
 
+## Authentication System
+
+### User Roles
+
+- **FREE** - Free tier (5 sessions/month, 10 drills/month)
+- **COACH** - Coach role (subscription-based)
+- **CLUB** - Club/organization role
+- **ADMIN** - Administrator role
+- **TRIAL** - Trial users (7 days, auto-downgrade to FREE)
+
+### Subscription Plans
+
+- **FREE** - 5 sessions/month, 10 drills/month, limited features
+- **COACH_BASIC** - 30 sessions/month, 100 drills/month, full features
+- **COACH_PRO** - 100 sessions/month, 500 drills/month
+- **CLUB_STANDARD** - 200 sessions/month, 1000 drills/month, 5 coaches
+- **CLUB_PREMIUM** - Unlimited sessions and drills
+- **TRIAL** - 10 sessions/month, 20 drills/month, 7 days
+
+### Features by Plan
+
+- **canExportPDF** - PDF export feature
+- **canGenerateSeries** - Progressive series generation
+- **canUseAdvancedFilters** - Advanced filtering options
+- **maxFavorites** - Maximum favorite items
+
+### Authentication Flow
+
+1. **Registration:**
+   - User registers with email/password
+   - Automatically assigned TRIAL role
+   - 7-day trial period
+   - Auto-downgrade to FREE after trial
+
+2. **Login:**
+   - JWT access token (7 days)
+   - JWT refresh token (30 days)
+   - Tokens stored in localStorage
+   - User session tracking
+
+3. **Token Refresh:**
+   - Use refresh token to get new access token
+   - Refresh tokens stored in database
+   - Automatic token rotation
+
+4. **Usage Limits:**
+   - Monthly counters auto-reset after 30 days
+   - Limits checked before generation
+   - Usage incremented after successful generation
+
+### Anonymous Users (Backward Compatible)
+
+- Still supported via `x-user-id` header
+- Automatically get FREE tier
+- Can upgrade to authenticated account
+
+### Admin Roles
+
+- **SUPER_ADMIN** - Full access, can manage other admins
+- **ADMIN** - Most permissions, cannot change roles
+- **MODERATOR** - Content moderation only
+- **SUPPORT** - User management and billing
+
 ## Favorites System
 
 ### User Management
 
+- **Authenticated Users:** JWT-based authentication
 - **Anonymous Users:** localStorage-based user IDs (`anon-xxxxx`)
-- **Future:** Ready for real authentication (User model exists)
-- **User ID:** Passed via `x-user-id` header
+- **User ID:** Passed via `x-user-id` header (anonymous) or JWT token (authenticated)
 
 ### Features
 
@@ -390,6 +571,7 @@ Persistent header bar with links:
 - Favorites page with filtering
 - Remove from favorites
 - Batch check favorite status
+- Works for both authenticated and anonymous users
 
 ### Database
 
@@ -404,6 +586,7 @@ Persistent header bar with links:
 - Batch check endpoint
 - Filtered favorites list
 - Auto-increment/decrement favorite counts
+- Uses `optionalAuth` middleware for backward compatibility
 
 ---
 
@@ -430,6 +613,8 @@ pnpm install
 # Create apps/api/.env with:
 GEMINI_API_KEY=your_key_here
 DATABASE_URL=postgresql://user:password@localhost:5432/aci_db
+JWT_SECRET=your-strong-secret-key-minimum-32-characters
+JWT_REFRESH_SECRET=your-strong-refresh-secret-minimum-32-characters
 
 # Run database migrations
 cd apps/api
@@ -536,6 +721,43 @@ pnpm test
 
 ## Recent Changes
 
+### January 19, 2026
+
+#### Authentication & User Management System (NEW)
+- ✅ Complete authentication system with JWT tokens
+- ✅ User registration and login pages
+- ✅ Subscription plans with feature limits
+- ✅ Usage tracking and monthly limits
+- ✅ Trial accounts (7 days, auto-downgrade)
+- ✅ Anonymous user backward compatibility
+- ✅ Token refresh mechanism
+- ✅ Auth button in navigation header
+
+#### Admin System (NEW)
+- ✅ Role-based access control (SUPER_ADMIN, ADMIN, MODERATOR, SUPPORT)
+- ✅ Granular permissions per role
+- ✅ Admin user management endpoints
+- ✅ Audit logging for all admin actions
+- ✅ User subscription management
+- ✅ Protected admin routes with permission checks
+- ✅ Admin user creation script
+
+#### API Enhancements
+- ✅ Authentication middleware (`authenticate`, `optionalAuth`)
+- ✅ Feature-based access control (`requireFeature`)
+- ✅ Usage limit enforcement
+- ✅ Session/drill generation requires authentication
+- ✅ PDF export and series generation require subscription features
+- ✅ All admin routes protected with role-based permissions
+
+#### UI Improvements
+- ✅ AuthButton component with real-time state updates
+- ✅ Custom event system for login state synchronization
+- ✅ Dynamic admin link visibility (SUPER_ADMIN only)
+- ✅ Logout redirects to login page
+- ✅ User info display in header (name/email)
+- ✅ Admin dashboard authentication headers integration
+
 ### January 18, 2026
 
 #### QA Status Analytics (NEW)
@@ -624,6 +846,8 @@ pnpm test
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
 DATABASE_URL=postgresql://user:password@localhost:5432/aci_db
+JWT_SECRET=your-strong-secret-key-minimum-32-characters
+JWT_REFRESH_SECRET=your-strong-refresh-secret-minimum-32-characters
 
 # Optional
 PORT=4000
@@ -635,7 +859,8 @@ PERSIST_DRILLS=1
 
 ### Web Server
 
-No environment variables required (uses defaults).
+No environment variables required (uses defaults).  
+API calls are made directly to `http://localhost:4000` in development.
 
 ---
 
@@ -674,8 +899,12 @@ No environment variables required (uses defaults).
 
 ### Planned Features
 
-- [ ] Real user authentication (replace anonymous IDs)
+- [x] Real user authentication (✅ Completed)
+- [ ] Email verification
+- [ ] Password reset flow
 - [ ] User profiles and preferences
+- [ ] Subscription management UI
+- [ ] Payment integration
 - [ ] Sharing and collaboration features
 - [ ] Advanced search and filtering
 - [ ] Export to other formats (Excel, CSV)
@@ -698,4 +927,4 @@ No environment variables required (uses defaults).
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 18, 2026
+**Last Updated:** January 19, 2026
