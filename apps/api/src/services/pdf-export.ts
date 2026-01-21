@@ -742,3 +742,148 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
     });
   });
 }
+
+export async function generateDrillPdf(drill: any): Promise<Buffer> {
+  console.log("[PDF] Generating PDF for drill:", {
+    title: drill.title,
+    hasDiagram: !!(drill.diagram || drill.diagramV1 || drill.json?.diagram || drill.json?.diagramV1),
+    drillKeys: Object.keys(drill || {}),
+  });
+  
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const chunks: Buffer[] = [];
+
+  doc.on("data", (chunk) => chunks.push(chunk));
+
+  return new Promise((resolve, reject) => {
+    doc.on("error", reject);
+
+    // Title
+    doc.fontSize(20).fillColor("black").text(drill.title || drill.json?.title || "Training Drill", {
+      align: "left",
+    });
+    doc.moveDown(0.5);
+    
+    // Metadata
+    const meta = drill.json || drill;
+    const gameModel = drill.gameModelId || meta.gameModelId || "";
+    const ageGroup = drill.ageGroup || meta.ageGroup || "";
+    const phase = drill.phase || meta.phase || "";
+    const zone = drill.zone || meta.zone || "";
+    
+    doc
+      .fontSize(10)
+      .fillColor("gray")
+      .text(
+        `${gameModel}${ageGroup ? " • " + ageGroup : ""}${phase ? " • " + phase : ""}${zone ? " • " + zone : ""}`,
+        { align: "left" }
+      );
+    doc.moveDown();
+
+    // Description
+    if (meta.description) {
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Description", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(meta.description, { align: "left" });
+      doc.moveDown();
+    }
+
+    // Diagram
+    const rawDiagram = drill.diagram || drill.diagramV1 || meta.diagram || meta.diagramV1;
+    if (rawDiagram) {
+      // Check if we need a new page for diagram
+      if (doc.y > doc.page.height - 250) {
+        doc.addPage();
+      }
+      
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Diagram", { underline: true });
+      doc.moveDown(0.5);
+      
+      const diagramInfo = drawDiagram(doc, rawDiagram, { 
+        width: 200, 
+        position: 'center',
+      });
+      
+      if (diagramInfo) {
+        doc.moveDown(1);
+      }
+    }
+
+    // Organisation
+    let organizationText = "";
+    const org = meta.organization;
+    
+    if (typeof org === "string") {
+      organizationText = org;
+    } else if (typeof org === "object" && org !== null) {
+      const parts: string[] = [];
+      if (Array.isArray(org.setupSteps) && org.setupSteps.length > 0) {
+        parts.push(...org.setupSteps);
+      }
+      if (org.area) {
+        const areaParts: string[] = [];
+        if (org.area.lengthYards && org.area.widthYards) {
+          areaParts.push(`${org.area.lengthYards} x ${org.area.widthYards} yards`);
+        }
+        if (org.area.notes) areaParts.push(org.area.notes);
+        if (areaParts.length > 0) parts.push(`Area: ${areaParts.join(", ")}`);
+      }
+      if (org.rotation) parts.push(`Rotation: ${org.rotation}`);
+      if (org.restarts) parts.push(`Restarts: ${org.restarts}`);
+      if (org.scoring) parts.push(`Scoring: ${org.scoring}`);
+      organizationText = parts.join(". ") + (parts.length > 0 ? "." : "");
+    }
+    
+    if (organizationText) {
+      if (doc.y > doc.page.height - 150) {
+        doc.addPage();
+      }
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Organisation", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(organizationText, {
+        align: "left",
+        lineGap: 2
+      });
+      doc.moveDown();
+    }
+
+    // Coaching Points
+    const coachingPoints = meta.coachingPoints || [];
+    if (Array.isArray(coachingPoints) && coachingPoints.length > 0) {
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+      }
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Key Coaching Points", { underline: true });
+      doc.moveDown(0.5);
+      coachingPoints.forEach((point: string, i: number) => {
+        doc.fontSize(10).fillColor("black").font("Helvetica").text(`${i + 1}. ${point}`, {
+          align: "left",
+          lineGap: 2
+        });
+      });
+      doc.moveDown();
+    }
+
+    // Progressions
+    const progressions = meta.progressions || [];
+    if (Array.isArray(progressions) && progressions.length > 0) {
+      if (doc.y > doc.page.height - 100) {
+        doc.addPage();
+      }
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Progressions", { underline: true });
+      doc.moveDown(0.5);
+      progressions.forEach((progression: string, i: number) => {
+        doc.fontSize(10).fillColor("black").font("Helvetica").text(`${i + 1}. ${progression}`, {
+          align: "left",
+          lineGap: 2
+        });
+      });
+    }
+
+    doc.end();
+
+    doc.on("end", () => {
+      resolve(Buffer.concat(chunks));
+    });
+  });
+}

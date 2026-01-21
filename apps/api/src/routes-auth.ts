@@ -4,7 +4,9 @@ import {
   registerUser, 
   loginUser, 
   refreshAccessToken,
-  checkUsageLimit 
+  checkUsageLimit,
+  verifyEmail,
+  resendVerificationEmail
 } from './services/auth';
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
@@ -90,6 +92,8 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         sessionsGeneratedThisMonth: true,
         drillsGeneratedThisMonth: true,
         trialEndDate: true,
+        emailVerified: true,
+        emailVerifiedAt: true,
         createdAt: true,
       }
     });
@@ -146,6 +150,36 @@ r.post('/auth/logout', authenticate, async (req: any, res) => {
     }
     return res.json({ ok: true });
   } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Verify email
+r.post('/auth/verify-email', async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) {
+      return res.status(400).json({ ok: false, error: 'Verification token required' });
+    }
+    const result = await verifyEmail(token);
+    if (!result.success) {
+      return res.status(400).json({ ok: false, error: result.message });
+    }
+    return res.json({ ok: true, message: result.message });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Resend verification email
+r.post('/auth/resend-verification', authenticate, async (req: any, res) => {
+  try {
+    await resendVerificationEmail(req.userId);
+    return res.json({ ok: true, message: 'Verification email sent' });
+  } catch (error: any) {
+    if (error.message === 'Email is already verified') {
+      return res.status(400).json({ ok: false, error: error.message });
+    }
     return res.status(500).json({ ok: false, error: error.message });
   }
 });

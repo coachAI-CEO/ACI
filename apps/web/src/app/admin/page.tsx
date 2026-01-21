@@ -188,7 +188,38 @@ type SessionReviewResult = {
   fixDecision: { code: string; reason: string };
 };
 
+type DrillReviewResult = {
+  drill: {
+    id: string;
+    refCode: string | null;
+    title: string;
+    ageGroup: string;
+    gameModelId: string;
+    phase: string | null;
+    zone: string | null;
+    qaScore: number | null;
+    approved: boolean;
+  };
+  qa: {
+    pass: boolean;
+    scores: Record<string, number>;
+    avgScore: number | null;
+    summary: string | null;
+    notes: string[];
+  };
+  fixDecision: {
+    code: string;
+    reason: string;
+  };
+};
+
 type SessionRegenerateResult = {
+  replaced: boolean;
+  original: { id: string; refCode?: string | null; title: string } | null;
+  replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
+};
+
+type DrillRegenerateResult = {
   replaced: boolean;
   original: { id: string; refCode?: string | null; title: string } | null;
   replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
@@ -257,15 +288,44 @@ export default function AdminDashboard() {
   const [viewingSessionIsFavorited, setViewingSessionIsFavorited] = useState<boolean>(false);
   const [checkingFavorite, setCheckingFavorite] = useState<boolean>(false);
   
+  // Review drill (admin)
+  const [reviewDrillRef, setReviewDrillRef] = useState<string>("");
+  const [reviewDrillRunning, setReviewDrillRunning] = useState<boolean>(false);
+  const [reviewDrillError, setReviewDrillError] = useState<string | null>(null);
+  const [reviewDrillResult, setReviewDrillResult] = useState<DrillReviewResult | null>(null);
+  const [regenerateDrillRunning, setRegenerateDrillRunning] = useState<boolean>(false);
+  const [regenerateDrillResult, setRegenerateDrillResult] = useState<DrillRegenerateResult | null>(null);
+  const [regenerateDrillReplace, setRegenerateDrillReplace] = useState<boolean>(false);
+  const [viewingDrill, setViewingDrill] = useState<any | null>(null);
+  const [loadingDrill, setLoadingDrill] = useState<boolean>(false);
+  
   // QA Status Analytics
   const [qaAnalytics, setQaAnalytics] = useState<{
     total: number;
     withQA: number;
     withoutQA: number;
-    statusCounts: Record<string, number>;
-    sessionsByStatus: Record<string, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>>;
+    statusCounts: {
+      OK: number;
+      PATCHABLE: number;
+      NEEDS_REGEN: number;
+      NO_QA_OR_PASS: number;
+    };
+    sessionsByStatus: {
+      OK: Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>;
+      PATCHABLE: Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>;
+      NEEDS_REGEN: Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>;
+      NO_QA_OR_PASS: Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>;
+    };
   } | null>(null);
   const [loadingQaAnalytics, setLoadingQaAnalytics] = useState<boolean>(false);
+  const [qaAnalyticsDrills, setQaAnalyticsDrills] = useState<{
+    total: number;
+    withQA: number;
+    withoutQA: number;
+    statusCounts: Record<string, number>;
+    drillsByStatus: Record<string, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>>;
+  } | null>(null);
+  const [loadingQaAnalyticsDrills, setLoadingQaAnalyticsDrills] = useState<boolean>(false);
 
   const checkSystemStatus = useCallback(async () => {
     const apiUrl = API_BASE_URL;
@@ -312,19 +372,97 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  // NOTE: keep fetchData defined before callbacks that reference it (TDZ-safe)
-  const fetchQaAnalytics = useCallback(async () => {
-    setLoadingQaAnalytics(true);
+  // Fetch QA Analytics for Drills
+  const fetchQaAnalyticsDrills = useCallback(async () => {
+    // Check if user is authenticated
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token) {
+      console.warn("Cannot fetch QA analytics for drills: not authenticated");
+      return;
+    }
+
+    setLoadingQaAnalyticsDrills(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status`, {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status-drills`, {
         headers: getAuthHeaders(),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "Could not read error response");
+        console.error(`QA analytics drills fetch failed: ${res.status} ${res.statusText}`, errorText);
+        return;
+      }
+      
       const data = await res.json();
-      if (res.ok && data?.ok) {
-        setQaAnalytics(data);
+      if (data?.ok) {
+        setQaAnalyticsDrills(data);
+      } else {
+        console.error("QA analytics drills response not ok:", data);
       }
     } catch (e: any) {
-      console.error("Error fetching QA analytics:", e);
+      if (e.name === "AbortError") {
+        console.error("QA analytics drills fetch timed out after 30 seconds");
+      } else {
+        console.error("Error fetching QA analytics for drills:", e);
+        // Check if it's a network error
+        if (e.message === "Failed to fetch" || e.name === "TypeError") {
+          console.error("Network error - is the API server running on", API_BASE_URL, "?");
+        }
+      }
+    } finally {
+      setLoadingQaAnalyticsDrills(false);
+    }
+  }, []);
+
+  // NOTE: keep fetchData defined before callbacks that reference it (TDZ-safe)
+  const fetchQaAnalytics = useCallback(async () => {
+    // Check if user is authenticated
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token) {
+      console.warn("Cannot fetch QA analytics: not authenticated");
+      return;
+    }
+
+    setLoadingQaAnalytics(true);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status`, {
+        headers: getAuthHeaders(),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "Could not read error response");
+        console.error(`QA analytics fetch failed: ${res.status} ${res.statusText}`, errorText);
+        return;
+      }
+      
+      const data = await res.json();
+      if (data?.ok) {
+        setQaAnalytics(data);
+      } else {
+        console.error("QA analytics response not ok:", data);
+      }
+    } catch (e: any) {
+      if (e.name === "AbortError") {
+        console.error("QA analytics fetch timed out after 30 seconds");
+      } else {
+        console.error("Error fetching QA analytics:", e);
+        // Check if it's a network error
+        if (e.message === "Failed to fetch" || e.name === "TypeError") {
+          console.error("Network error - is the API server running on", API_BASE_URL, "?");
+        }
+      }
     } finally {
       setLoadingQaAnalytics(false);
     }
@@ -467,11 +605,12 @@ export default function AdminDashboard() {
     fetchData();
     checkSystemStatus();
     fetchQaAnalytics();
+    fetchQaAnalyticsDrills();
     
     // Check system status every 30 seconds
     const statusInterval = setInterval(checkSystemStatus, 30000);
     return () => clearInterval(statusInterval);
-  }, [fetchData, checkSystemStatus, fetchQaAnalytics]);
+  }, [fetchData, checkSystemStatus, fetchQaAnalytics, fetchQaAnalyticsDrills]);
 
   // Poll bulk job progress while running
   useEffect(() => {
@@ -517,7 +656,7 @@ export default function AdminDashboard() {
     setRegenerateResult(null); // Clear previous regeneration result
 
     try {
-      const res = await fetch("/api/admin/sessions/review", {
+      const res = await fetch(`${API_BASE_URL}/admin/sessions/review`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -540,6 +679,96 @@ export default function AdminDashboard() {
       setReviewRunning(false);
     }
   }, [reviewRef]);
+
+  const runDrillReview = useCallback(async () => {
+    const ref = reviewDrillRef.trim();
+    if (!ref) {
+      setReviewDrillError("Enter a Drill ID or refCode (e.g., D-AB12 or UUID).");
+      return;
+    }
+
+    setReviewDrillRunning(true);
+    setReviewDrillError(null);
+    setReviewDrillResult(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/drills/review`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ drillRef: ref }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to review drill");
+      }
+
+      setReviewDrillResult(data);
+    } catch (err: any) {
+      setReviewDrillError(err.message || "Failed to review drill");
+    } finally {
+      setReviewDrillRunning(false);
+    }
+  }, [reviewDrillRef]);
+
+  const runDrillRegenerate = useCallback(async () => {
+    const ref = reviewDrillRef.trim();
+    if (!ref) {
+      setReviewDrillError("Enter a Drill ID or refCode (e.g., D-AB12 or UUID).");
+      return;
+    }
+
+    setRegenerateDrillRunning(true);
+    setReviewDrillError(null);
+    setRegenerateDrillResult(null);
+
+    try {
+      console.log("[ADMIN] Starting drill regeneration:", { ref, replace: regenerateDrillReplace });
+      const res = await fetch(`${API_BASE_URL}/admin/drills/regenerate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ drillRef: ref, replace: regenerateDrillReplace }),
+      });
+      
+      const data = await res.json();
+      console.log("[ADMIN] Drill regeneration response:", { ok: data?.ok, status: res.status, data });
+      
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Regeneration failed (${res.status})`);
+      }
+      
+      if (!data?.replacement) {
+        throw new Error("No replacement drill returned from server");
+      }
+      
+      setRegenerateDrillResult({
+        replaced: data.replaced || false,
+        original: data.original || null,
+        replacement: data.replacement,
+      });
+      // Clear any previous errors
+      setReviewDrillError(null);
+      console.log("[ADMIN] Drill regeneration successful:", {
+        replaced: data.replaced,
+        original: data.original?.refCode || data.original?.id,
+        replacement: data.replacement?.refCode || data.replacement?.id,
+      });
+      // Refresh stats to show new drill in counts
+      fetchData();
+    } catch (e: any) {
+      console.error("[ADMIN] Drill regeneration error:", e);
+      setReviewDrillError(e?.message || String(e));
+      setRegenerateDrillResult(null);
+    } finally {
+      setRegenerateDrillRunning(false);
+    }
+  }, [reviewDrillRef, regenerateDrillReplace, fetchData]);
 
   const runSessionRegenerate = useCallback(async () => {
     const ref = reviewRef.trim();
@@ -1160,6 +1389,249 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {/* Review Drill (QA) */}
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Review Drill</h2>
+              <p className="text-xs text-slate-400">
+                Runs QA on a specific drill. Reviews standalone drills not contained in sessions.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-4 items-end">
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                Drill ID or Ref Code
+              </label>
+              <input
+                value={reviewDrillRef}
+                onChange={(e) => setReviewDrillRef(e.target.value)}
+                placeholder="e.g., D-9M3P or 3b2a... (uuid)"
+                className="w-full h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-xs text-slate-200"
+                disabled={reviewDrillRunning || regenerateDrillRunning}
+              />
+            </div>
+
+            <div>
+              <button
+                onClick={runDrillReview}
+                disabled={reviewDrillRunning}
+                className={`w-full h-9 px-4 rounded-lg text-sm font-semibold transition-colors ${
+                  reviewDrillRunning
+                    ? "bg-slate-700 text-slate-300 cursor-not-allowed"
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                }`}
+              >
+                {reviewDrillRunning ? "Reviewing..." : "Run QA Review"}
+              </button>
+            </div>
+          </div>
+
+          {reviewDrillError && (
+            <div className="mt-3 rounded-lg border border-red-700/50 bg-red-900/20 p-3 text-sm text-red-300">
+              {reviewDrillError}
+            </div>
+          )}
+
+          {reviewDrillResult && (
+            <div className="mt-4 rounded-xl border border-slate-700/70 bg-slate-950/30 p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-200 font-semibold">{reviewDrillResult.drill.title}</span>
+                {reviewDrillResult.drill.refCode && (
+                  <span className="px-2 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[11px] font-mono border border-cyan-700/30">
+                    {reviewDrillResult.drill.refCode}
+                  </span>
+                )}
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-300">{reviewDrillResult.drill.ageGroup}</span>
+                <span className="text-slate-500">•</span>
+                <span className={reviewDrillResult.qa.pass ? "text-emerald-400" : "text-red-400"}>
+                  {reviewDrillResult.qa.pass ? "PASS" : "FAIL"}
+                </span>
+                {typeof reviewDrillResult.qa.avgScore === "number" && (
+                  <>
+                    <span className="text-slate-500">•</span>
+                    <span className="text-slate-300">Avg: {reviewDrillResult.qa.avgScore.toFixed(2)}</span>
+                  </>
+                )}
+                <span className="text-slate-500">•</span>
+                <span className="text-slate-300">
+                  Decision: <span className="font-semibold">{reviewDrillResult.fixDecision.code}</span>
+                </span>
+              </div>
+
+              {reviewDrillResult.qa.summary && (
+                <div className="text-xs text-slate-300">
+                  <span className="text-slate-400">Summary: </span>
+                  {reviewDrillResult.qa.summary}
+                </div>
+              )}
+
+              {Object.keys(reviewDrillResult.qa.scores || {}).length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {Object.entries(reviewDrillResult.qa.scores || {}).map(([k, v]) => (
+                    <div key={k} className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/60">
+                      <div className="text-slate-400 capitalize">{k}</div>
+                      <div className="text-slate-200 font-semibold">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {reviewDrillResult.fixDecision.reason && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-slate-400 hover:text-slate-300">
+                    Decision Reason
+                  </summary>
+                  <div className="mt-2 text-slate-300">
+                    {reviewDrillResult.fixDecision.reason}
+                  </div>
+                </details>
+              )}
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-700/50">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="regenerateDrillReplace"
+                    type="checkbox"
+                    checked={regenerateDrillReplace}
+                    onChange={(e) => setRegenerateDrillReplace(e.target.checked)}
+                    disabled={regenerateDrillRunning || !reviewDrillResult}
+                    className="rounded bg-slate-800 border-slate-600"
+                  />
+                  <label htmlFor="regenerateDrillReplace" className="text-xs text-slate-400 cursor-pointer">
+                    Replace drill (delete old)
+                  </label>
+                </div>
+                <button
+                  onClick={runDrillRegenerate}
+                  disabled={regenerateDrillRunning || !reviewDrillResult || !!regenerateDrillResult}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    regenerateDrillRunning || regenerateDrillResult
+                      ? "bg-slate-700 text-slate-300 cursor-not-allowed"
+                      : "bg-cyan-600 hover:bg-cyan-500 text-white"
+                  }`}
+                >
+                  {regenerateDrillRunning ? "Regenerating..." : regenerateDrillResult ? "Regeneration Complete" : "Regenerate Drill"}
+                </button>
+                {regenerateDrillResult && (
+                  <button
+                    onClick={async () => {
+                      setLoadingDrill(true);
+                      try {
+                        const drillId = regenerateDrillResult.replacement.id;
+                        const drillRefCode = regenerateDrillResult.replacement.refCode;
+                        
+                        // Try admin endpoint first (by ID or refCode)
+                        const identifier = drillId || drillRefCode;
+                        if (!identifier) {
+                          alert("No drill identifier available");
+                          return;
+                        }
+                        
+                        const res = await fetch(`${API_BASE_URL}/admin/drills/${encodeURIComponent(identifier)}`, {
+                          headers: {
+                            ...getAuthHeaders(),
+                          },
+                        });
+                        
+                        const data = await res.json();
+                        if (res.ok && data && data.ok && data.drill) {
+                          setViewingDrill(data.drill);
+                        } else {
+                          // Fallback to vault lookup if admin endpoint fails
+                          if (drillRefCode) {
+                            const lookupRes = await fetch(`${API_BASE_URL}/vault/lookup/${encodeURIComponent(drillRefCode)}`);
+                            const lookupData = await lookupRes.json();
+                            if (lookupRes.ok && lookupData && lookupData.ok && lookupData.data) {
+                              setViewingDrill(lookupData.data);
+                            } else {
+                              alert(lookupData?.error || data?.error || "Drill not found");
+                            }
+                          } else {
+                            alert(data?.error || "Drill not found");
+                          }
+                        }
+                      } catch (e: any) {
+                        console.error("Error loading drill:", e);
+                        alert("Error loading drill: " + e.message);
+                      } finally {
+                        setLoadingDrill(false);
+                      }
+                    }}
+                    disabled={loadingDrill}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold border border-cyan-500/50 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {loadingDrill ? "Loading..." : `View ${regenerateDrillResult.replaced ? "New" : "Replacement"} Drill`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {regenerateDrillResult && (
+            <div className="mt-3 rounded-lg border border-cyan-700/50 bg-cyan-900/20 p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-cyan-400 text-xl">✓</div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-cyan-300 mb-2">
+                    {regenerateDrillResult.replaced 
+                      ? "Drill Successfully Replaced" 
+                      : "Replacement Drill Generated"}
+                  </div>
+                  <div className="text-xs text-cyan-200/80 space-y-1">
+                    {regenerateDrillResult.replaced && regenerateDrillResult.original ? (
+                      <div>
+                        <span className="text-slate-400">Replaced </span>
+                        <span className="font-mono font-semibold text-cyan-300">
+                          {regenerateDrillResult.original.refCode || regenerateDrillResult.original.id}
+                        </span>
+                        <span className="text-slate-400"> with </span>
+                        <span className="font-mono font-semibold text-cyan-300">
+                          {regenerateDrillResult.replacement.refCode || regenerateDrillResult.replacement.id}
+                        </span>
+                      </div>
+                    ) : regenerateDrillResult.original ? (
+                      <div>
+                        <span className="text-slate-400">Original: </span>
+                        <span className="font-mono text-cyan-300">
+                          {regenerateDrillResult.original.refCode || regenerateDrillResult.original.id}
+                        </span>
+                        <span className="text-slate-400"> → Replacement: </span>
+                        <span className="font-mono text-cyan-300">
+                          {regenerateDrillResult.replacement.refCode || regenerateDrillResult.replacement.id}
+                        </span>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-slate-400">New drill: </span>
+                        <span className="font-mono font-semibold text-cyan-300">
+                          {regenerateDrillResult.replacement.refCode || regenerateDrillResult.replacement.id}
+                        </span>
+                      </div>
+                    )}
+                    {regenerateDrillResult.replacement.title && (
+                      <div className="text-slate-300 mt-1">
+                        {regenerateDrillResult.replacement.title}
+                      </div>
+                    )}
+                    {typeof regenerateDrillResult.replacement.qaScore === "number" && (
+                      <div className="mt-1">
+                        <span className="text-slate-400">QA Score: </span>
+                        <span className={regenerateDrillResult.replacement.approved ? "text-emerald-400 font-semibold" : "text-red-400 font-semibold"}>
+                          {regenerateDrillResult.replacement.qaScore.toFixed(2)} ({regenerateDrillResult.replacement.approved ? "PASS" : "FAIL"})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-fr items-stretch">
           {/* Sessions Card - Split */}
@@ -1571,6 +2043,120 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {/* QA Status Analytics for Drills */}
+        <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300">QA Status Analytics - Drills</h2>
+            <button
+              onClick={fetchQaAnalyticsDrills}
+              disabled={loadingQaAnalyticsDrills}
+              className="px-3 py-1 text-xs rounded-lg border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {loadingQaAnalyticsDrills ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+          
+          {qaAnalyticsDrills ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="px-3 py-2 bg-emerald-900/30 rounded-lg border border-emerald-700/30">
+                  <div className="text-xs text-emerald-300/70 mb-1">OK</div>
+                  <div className="text-2xl font-bold text-emerald-400">{qaAnalyticsDrills.statusCounts.OK || 0}</div>
+                  <div className="text-[10px] text-emerald-300/50 mt-1">
+                    {qaAnalyticsDrills.total > 0 ? ((qaAnalyticsDrills.statusCounts.OK / qaAnalyticsDrills.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-yellow-900/30 rounded-lg border border-yellow-700/30">
+                  <div className="text-xs text-yellow-300/70 mb-1">PATCHABLE</div>
+                  <div className="text-2xl font-bold text-yellow-400">{qaAnalyticsDrills.statusCounts.PATCHABLE || 0}</div>
+                  <div className="text-[10px] text-yellow-300/50 mt-1">
+                    {qaAnalyticsDrills.total > 0 ? ((qaAnalyticsDrills.statusCounts.PATCHABLE / qaAnalyticsDrills.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-red-900/30 rounded-lg border border-red-700/30">
+                  <div className="text-xs text-red-300/70 mb-1">NEEDS_REGEN</div>
+                  <div className="text-2xl font-bold text-red-400">{qaAnalyticsDrills.statusCounts.NEEDS_REGEN || 0}</div>
+                  <div className="text-[10px] text-red-300/50 mt-1">
+                    {qaAnalyticsDrills.total > 0 ? ((qaAnalyticsDrills.statusCounts.NEEDS_REGEN / qaAnalyticsDrills.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+                <div className="px-3 py-2 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                  <div className="text-xs text-slate-400 mb-1">NO_QA</div>
+                  <div className="text-2xl font-bold text-slate-300">{qaAnalyticsDrills.statusCounts.NO_QA_OR_PASS || 0}</div>
+                  <div className="text-[10px] text-slate-400/50 mt-1">
+                    {qaAnalyticsDrills.total > 0 ? ((qaAnalyticsDrills.statusCounts.NO_QA_OR_PASS / qaAnalyticsDrills.total) * 100).toFixed(1) : 0}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-400 space-y-1">
+                <div>Total Vault Drills: <span className="text-slate-200 font-semibold">{qaAnalyticsDrills.total}</span></div>
+                <div>Drills with QA: <span className="text-slate-200 font-semibold">{qaAnalyticsDrills.withQA}</span></div>
+                <div>Drills without QA: <span className="text-slate-200 font-semibold">{qaAnalyticsDrills.withoutQA}</span></div>
+              </div>
+
+              {/* Show sample drills for each status */}
+              {(qaAnalyticsDrills.statusCounts.PATCHABLE > 0 || qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0) && (
+                <details className="mt-4">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-300 mb-2">
+                    View Sample Drills by Status
+                  </summary>
+                  <div className="mt-2 space-y-3">
+                    {qaAnalyticsDrills.statusCounts.PATCHABLE > 0 && qaAnalyticsDrills.drillsByStatus.PATCHABLE.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-yellow-400 mb-2">
+                          PATCHABLE Drills ({qaAnalyticsDrills.statusCounts.PATCHABLE} total)
+                        </div>
+                        <div className="space-y-1">
+                          {qaAnalyticsDrills.drillsByStatus.PATCHABLE.slice(0, 5).map((d) => (
+                            <div key={d.id} className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {d.refCode && (
+                                <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                  {d.refCode}
+                                </span>
+                              )}
+                              <span className="truncate">{d.title}</span>
+                              {d.qaScore !== null && (
+                                <span className="text-yellow-400 ml-auto">QA: {d.qaScore.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0 && qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.length > 0 && (
+                      <div>
+                        <div className="text-xs font-semibold text-red-400 mb-2">
+                          NEEDS_REGEN Drills ({qaAnalyticsDrills.statusCounts.NEEDS_REGEN} total)
+                        </div>
+                        <div className="space-y-1">
+                          {qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.slice(0, 5).map((d) => (
+                            <div key={d.id} className="text-[10px] text-slate-400 flex items-center gap-2">
+                              {d.refCode && (
+                                <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                  {d.refCode}
+                                </span>
+                              )}
+                              <span className="truncate">{d.title}</span>
+                              {d.qaScore !== null && (
+                                <span className="text-red-400 ml-auto">QA: {d.qaScore.toFixed(2)}</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+          ) : loadingQaAnalyticsDrills ? (
+            <div className="text-center py-4 text-sm text-slate-400">Loading QA analytics for drills...</div>
+          ) : (
+            <div className="text-center py-4 text-sm text-slate-500">Click Refresh to load QA analytics for drills</div>
+          )}
+        </div>
+
         {/* Age Group Distribution */}
         <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
           <h2 className="text-sm font-semibold text-slate-300 mb-1">Sessions by Age Group</h2>
@@ -1859,6 +2445,203 @@ export default function AdminDashboard() {
                 </Link>
                 <button
                   onClick={() => setViewingSession(null)}
+                  className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Drill View Modal */}
+      {viewingDrill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-700/70 bg-slate-900/90 p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-lg font-semibold text-slate-200">
+                    {viewingDrill.title || viewingDrill.json?.title || "Untitled Drill"}
+                  </h2>
+                  {viewingDrill.refCode && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(viewingDrill.refCode)}
+                      className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                      title="Click to copy reference code"
+                    >
+                      {viewingDrill.refCode}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {viewingDrill.gameModelId && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Game Model:</span>
+                      <span className="text-emerald-400">{gameModelLabel[viewingDrill.gameModelId] || viewingDrill.gameModelId}</span>
+                    </div>
+                  )}
+                  {viewingDrill.ageGroup && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Age:</span>
+                      <span className="text-slate-200">{viewingDrill.ageGroup}</span>
+                    </div>
+                  )}
+                  {viewingDrill.phase && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Phase:</span>
+                      <span className="text-slate-200">{phaseLabel[viewingDrill.phase] || viewingDrill.phase}</span>
+                    </div>
+                  )}
+                  {viewingDrill.zone && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Zone:</span>
+                      <span className="text-slate-200">{zoneLabel[viewingDrill.zone] || viewingDrill.zone}</span>
+                    </div>
+                  )}
+                  {(viewingDrill.numbersMin || viewingDrill.numbersMax) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Players:</span>
+                      <span className="text-cyan-300">
+                        {viewingDrill.numbersMin === viewingDrill.numbersMax 
+                          ? `${viewingDrill.numbersMin}`
+                          : `${viewingDrill.numbersMin || '?'}-${viewingDrill.numbersMax || '?'}`}
+                      </span>
+                    </div>
+                  )}
+                  {viewingDrill.durationMin && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs uppercase tracking-wide">Duration:</span>
+                      <span className="text-amber-300">{viewingDrill.durationMin} min</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingDrill(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500"
+                aria-label="Close preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-6">
+              {/* Drill Diagram */}
+              {(viewingDrill.json?.diagram || viewingDrill.json?.diagramV1) && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-3">Diagram</h3>
+                  <div className="flex items-center justify-center">
+                    <DrillDiagram
+                      diagram={viewingDrill.json.diagram || viewingDrill.json.diagramV1}
+                      width={400}
+                      height={250}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Description */}
+              {viewingDrill.json?.description && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Description</h3>
+                  <p className="text-sm text-slate-300 leading-relaxed">
+                    {viewingDrill.json.description}
+                  </p>
+                </div>
+              )}
+
+              {/* Organization */}
+              {viewingDrill.json?.organization && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Organization</h3>
+                  {typeof viewingDrill.json.organization === 'string' ? (
+                    <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {viewingDrill.json.organization}
+                    </p>
+                  ) : viewingDrill.json.organization.setupSteps ? (
+                    <div className="space-y-2">
+                      {viewingDrill.json.organization.setupSteps && (
+                        <div>
+                          <span className="text-[10px] text-slate-500 uppercase">Setup Steps:</span>
+                          <ol className="text-sm text-slate-300 mt-1 list-decimal list-inside space-y-1">
+                            {viewingDrill.json.organization.setupSteps.map((step: string, i: number) => (
+                              <li key={i}>{step}</li>
+                            ))}
+                          </ol>
+                        </div>
+                      )}
+                      {viewingDrill.json.organization.area && (
+                        <div className="text-sm text-slate-300">
+                          <span className="text-[10px] text-slate-500 uppercase">Area: </span>
+                          {viewingDrill.json.organization.area.lengthYards && viewingDrill.json.organization.area.widthYards
+                            ? `${viewingDrill.json.organization.area.lengthYards} x ${viewingDrill.json.organization.area.widthYards} yards`
+                            : JSON.stringify(viewingDrill.json.organization.area)}
+                        </div>
+                      )}
+                      {viewingDrill.json.organization.rotation && (
+                        <div className="text-sm text-slate-300">
+                          <span className="text-[10px] text-slate-500 uppercase">Rotation: </span>
+                          {viewingDrill.json.organization.rotation}
+                        </div>
+                      )}
+                      {viewingDrill.json.organization.restarts && (
+                        <div className="text-sm text-slate-300">
+                          <span className="text-[10px] text-slate-500 uppercase">Restarts: </span>
+                          {viewingDrill.json.organization.restarts}
+                        </div>
+                      )}
+                      {viewingDrill.json.organization.scoring && (
+                        <div className="text-sm text-slate-300">
+                          <span className="text-[10px] text-slate-500 uppercase">Scoring: </span>
+                          {viewingDrill.json.organization.scoring}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Coaching Points */}
+              {viewingDrill.json?.coachingPoints && viewingDrill.json.coachingPoints.length > 0 && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Coaching Points</h3>
+                  <ul className="text-sm text-slate-300 space-y-1">
+                    {viewingDrill.json.coachingPoints.map((point: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-emerald-400 mt-1">•</span>
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Progressions */}
+              {viewingDrill.json?.progressions && viewingDrill.json.progressions.length > 0 && (
+                <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                  <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Progressions</h3>
+                  <ul className="text-sm text-slate-300 space-y-1">
+                    {viewingDrill.json.progressions.map((progression: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-cyan-400 mt-1">{i + 1}.</span>
+                        <span>{progression}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4 border-t border-slate-700/50">
+                <Link
+                  href={`/demo/drill?drillId=${viewingDrill.id || viewingDrill.refCode}`}
+                  className="inline-flex items-center rounded-full border border-cyan-500/50 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                >
+                  View Full Drill
+                </Link>
+                <button
+                  onClick={() => setViewingDrill(null)}
                   className="inline-flex items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
                 >
                   Close

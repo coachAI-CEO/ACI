@@ -22,15 +22,26 @@ async function createAdmin() {
     if (existing) {
       // Update to admin
       const passwordHash = await hashPassword(password);
+      const updateData: any = {
+        passwordHash,
+        adminRole: adminRole as any,
+        role: 'ADMIN', // Also set regular role
+      };
+      
+      // Auto-verify email for SUPER_ADMIN
+      if (adminRole === 'SUPER_ADMIN' && !existing.emailVerified) {
+        updateData.emailVerified = true;
+        updateData.emailVerifiedAt = new Date();
+      }
+      
       const user = await prisma.user.update({
         where: { id: existing.id },
-        data: {
-          passwordHash,
-          adminRole: adminRole as any,
-          role: 'ADMIN', // Also set regular role
-        }
+        data: updateData
       });
       console.log(`✅ Updated user ${email} to ${adminRole}`);
+      if (adminRole === 'SUPER_ADMIN') {
+        console.log(`   Email automatically verified for SUPER_ADMIN`);
+      }
       console.log(`   User ID: ${user.id}`);
       return user;
     }
@@ -46,6 +57,8 @@ async function createAdmin() {
         adminRole: adminRole as any,
         subscriptionPlan: 'FREE', // Admins don't need subscription
         subscriptionStatus: 'ACTIVE',
+        emailVerified: adminRole === 'SUPER_ADMIN', // Auto-verify SUPER_ADMIN emails
+        emailVerifiedAt: adminRole === 'SUPER_ADMIN' ? new Date() : null,
       }
     });
     

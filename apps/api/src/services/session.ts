@@ -194,12 +194,53 @@ export async function generateAndReviewSession(
   // Generate unique reference code for the session
   const sessionRefCode = await generateRefCode("session");
   
-  // Add ref codes to embedded drills in the session JSON
+  // Add ref codes to embedded drills in the session JSON and persist as standalone records
   const drillsWithRefCodes = finalSession.drills ? await Promise.all(
-    finalSession.drills.map(async (drill: any) => ({
-      ...drill,
-      refCode: drill.refCode || await generateRefCode("drill"),
-    }))
+    finalSession.drills.map(async (drill: any) => {
+      const drillRefCode = drill.refCode || await generateRefCode("drill");
+      
+      // Persist drill as standalone record (upsert by refCode)
+      try {
+        const drillData: any = {
+          refCode: drillRefCode,
+          title: drill.title || "Untitled Drill",
+          gameModelId: input.gameModelId as any,
+          phase: input.phase as any,
+          zone: input.zone as any,
+          ageGroup: input.ageGroup,
+          durationMin: drill.durationMin ?? input.durationMin ?? 25,
+          drillType: drill.drillType || "TECHNICAL",
+          
+          // Map from input or drill JSON
+          numbersMin: drill.numbersMin ?? input.numbersMin,
+          numbersMax: drill.numbersMax ?? input.numbersMax,
+          spaceConstraint: drill.spaceConstraint ?? input.spaceConstraint,
+          formationUsed: drill.formationUsed ?? input.formationAttacking,
+          playerLevel: input.playerLevel as any,
+          coachLevel: input.coachLevel as any,
+          principleIds: drill.principleIds || finalSession.principleIds || [],
+          psychThemeIds: drill.psychThemeIds || finalSession.psychThemeIds || [],
+          
+          // Store full drill JSON
+          json: drill,
+          savedToVault: true,
+        };
+
+        await prisma.drill.upsert({
+          where: { refCode: drillRefCode },
+          update: { ...drillData, updatedAt: new Date() },
+          create: drillData,
+        });
+      } catch (err: any) {
+        console.error(`[SESSION] Failed to save drill ${drillRefCode}:`, err?.message);
+        // Continue - don't fail session save if drill save fails
+      }
+      
+      return {
+        ...drill,
+        refCode: drillRefCode,
+      };
+    })
   ) : [];
 
   // JSON we persist to the DB

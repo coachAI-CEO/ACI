@@ -216,12 +216,53 @@ export async function generateProgressiveSessionSeries(
     // Generate unique reference code for series sessions
     const sessionRefCode = await generateRefCode("series");
     
-    // Add ref codes to embedded drills in the session JSON
+    // Add ref codes to embedded drills in the session JSON and persist as standalone records
     const drillsWithRefCodes = result.session.drills ? await Promise.all(
-      result.session.drills.map(async (drill: any) => ({
-        ...drill,
-        refCode: drill.refCode || await generateRefCode("drill"),
-      }))
+      result.session.drills.map(async (drill: any) => {
+        const drillRefCode = drill.refCode || await generateRefCode("drill");
+        
+        // Persist drill as standalone record (upsert by refCode)
+        try {
+          const drillData: any = {
+            refCode: drillRefCode,
+            title: drill.title || "Untitled Drill",
+            gameModelId: baseInput.gameModelId as any,
+            phase: baseInput.phase as any,
+            zone: baseInput.zone as any,
+            ageGroup: baseInput.ageGroup,
+            durationMin: drill.durationMin ?? baseInput.durationMin ?? 25,
+            drillType: drill.drillType || "TECHNICAL",
+            
+            // Map from input or drill JSON
+            numbersMin: drill.numbersMin ?? baseInput.numbersMin,
+            numbersMax: drill.numbersMax ?? baseInput.numbersMax,
+            spaceConstraint: drill.spaceConstraint ?? baseInput.spaceConstraint,
+            formationUsed: drill.formationUsed ?? baseInput.formationAttacking,
+            playerLevel: baseInput.playerLevel as any,
+            coachLevel: baseInput.coachLevel as any,
+            principleIds: drill.principleIds || result.session.principleIds || [],
+            psychThemeIds: drill.psychThemeIds || result.session.psychThemeIds || [],
+            
+            // Store full drill JSON
+            json: drill,
+            savedToVault: true,
+          };
+
+          await prisma.drill.upsert({
+            where: { refCode: drillRefCode },
+            update: { ...drillData, updatedAt: new Date() },
+            create: drillData,
+          });
+        } catch (err: any) {
+          console.error(`[PROGRESSIVE] Failed to save drill ${drillRefCode}:`, err?.message);
+          // Continue - don't fail session save if drill save fails
+        }
+        
+        return {
+          ...drill,
+          refCode: drillRefCode,
+        };
+      })
     ) : [];
 
     // Persist to database

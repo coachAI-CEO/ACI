@@ -3,6 +3,7 @@ import DrillFormWithLoading from "@/components/DrillFormWithLoading";
 import FormationSelect from "@/components/FormationSelect";
 import PlayerCountInputs from "@/components/PlayerCountInputs";
 import QAScoresDisplay from "@/components/QAScoresDisplay";
+import DrillActions from "@/components/DrillActions";
 import type { DiagramV1 } from "@/types/diagram";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ type OrganizationObject = {
 type DrillApiResponse = {
   ok: boolean;
   drill: {
+    id?: string;
+    refCode?: string | null;
     title: string;
     gameModelId: string;
     phase: string;
@@ -675,9 +678,18 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
           </div>
 
           <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">
-            <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
-              Drill Details
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+                Drill Details
+              </h2>
+            </div>
+            
+            {/* Action buttons: Identifier, Save to Vault, Print PDF */}
+            <DrillActions
+              drillId={drill.id}
+              refCode={drill.refCode}
+              drill={drill}
+            />
 
             {/* Game model / phase / where row */}
             <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-100">

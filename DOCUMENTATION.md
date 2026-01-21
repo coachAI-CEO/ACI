@@ -279,12 +279,14 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `POST /vault/extract-refs` - Extract ref codes from text
 
 #### Authentication Endpoints (NEW)
-- `POST /auth/register` - Register new user (creates TRIAL account)
+- `POST /auth/register` - Register new user (creates TRIAL account, sends verification email)
 - `POST /auth/login` - Login with email/password
 - `POST /auth/refresh` - Refresh access token
 - `GET /auth/me` - Get current user info and usage limits
 - `GET /auth/usage` - Get usage limits for current user
 - `POST /auth/logout` - Revoke refresh token
+- `POST /auth/verify-email` - Verify email with token (from verification link)
+- `POST /auth/resend-verification` - Resend verification email (requires authentication)
 
 #### Favorites Endpoints
 - `GET /favorites` - Get user's favorites (with filters)
@@ -356,6 +358,14 @@ All backend endpoints are proxied through Next.js API routes:
    - Password confirmation
    - Creates TRIAL account (7 days)
    - Auto-login after registration
+   - Sends verification email automatically
+
+4. **Verify Email** (`/verify-email`) (NEW)
+   - Email verification page
+   - Accepts token from verification link
+   - Shows success/error status
+   - Updates user verification status
+   - Redirects to home on success
 
 4. **Drill Generator** (`/demo/drill`)
    - Form to configure drill parameters
@@ -721,6 +731,18 @@ pnpm test
 
 ## Recent Changes
 
+### January 20, 2026
+
+#### Email Verification System (NEW)
+- ✅ Email verification token system
+- ✅ Automated verification emails on registration
+- ✅ Email verification page with token validation
+- ✅ Resend verification email functionality
+- ✅ Verification status display in AuthButton
+- ✅ Email service using nodemailer (SMTP support)
+- ✅ Development mode with console email logging
+- ✅ 24-hour token expiry
+
 ### January 19, 2026
 
 #### Authentication & User Management System (NEW)
@@ -900,11 +922,16 @@ API calls are made directly to `http://localhost:4000` in development.
 ### Planned Features
 
 - [x] Real user authentication (✅ Completed)
-- [ ] Email verification
+- [x] Email verification (✅ Completed)
 - [ ] Password reset flow
 - [ ] User profiles and preferences
 - [ ] Subscription management UI
 - [ ] Payment integration
+- [ ] Admin dashboard: user counts, access level overview, and quick user add
+- [ ] Attach creator user name to every drill/session/series
+- [ ] Calendar integration to schedule sessions into individual training calendars
+- [ ] Player-only training plans derived from sessions/series for individual work
+- [ ] Parent communication summaries from scheduled calendar sessions for weekly sharing
 - [ ] Sharing and collaboration features
 - [ ] Advanced search and filtering
 - [ ] Export to other formats (Excel, CSV)

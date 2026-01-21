@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
+import { generateVerificationToken, sendVerificationEmail } from './email';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key-change-in-production';
@@ -91,8 +92,35 @@ export async function registerUser(data: {
       subscriptionStartDate: new Date(),
       trialEndDate,
       lastResetDate: new Date(),
+      // Note: SUPER_ADMIN users should be created via create-admin script, not registration
+      // But if somehow they are, we'll skip email verification
+      emailVerified: false, // Will be set to true if adminRole is SUPER_ADMIN (via script)
     }
   });
+  
+  // Only send verification email if user is not a SUPER_ADMIN
+  // (SUPER_ADMIN users are created via create-admin script which auto-verifies)
+  if (!user.adminRole || user.adminRole !== 'SUPER_ADMIN') {
+    // Generate verification token
+    const verificationToken = generateVerificationToken();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24); // 24 hours expiry
+    
+    await prisma.emailVerificationToken.create({
+      data: {
+        token: verificationToken,
+        userId: user.id,
+        email: user.email!,
+        expiresAt,
+      }
+    });
+    
+    // Send verification email (don't await - send in background)
+    sendVerificationEmail(user.email!, user.name, verificationToken).catch(err => {
+      console.error('[AUTH] Failed to send verification email:', err);
+      // Don't throw - registration should succeed even if email fails
+    });
+  }
   
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.role);
@@ -106,6 +134,7 @@ export async function registerUser(data: {
       role: user.role,
       subscriptionPlan: user.subscriptionPlan,
       adminRole: (user as any).adminRole ?? null,
+      emailVerified: user.emailVerified,
     },
     tokens: {
       accessToken,
@@ -129,10 +158,22 @@ export async function loginUser(email: string, password: string, ipAddress?: str
     throw new Error('Invalid credentials');
   }
   
-  // Update last login
+  // Auto-verify email for SUPER_ADMIN if not already verified
+  const updateData: any = { lastLoginAt: new Date() };
+  if (user.adminRole === 'SUPER_ADMIN' && !user.emailVerified) {
+    updateData.emailVerified = true;
+    updateData.emailVerifiedAt = new Date();
+  }
+  
+  // Update last login (and email verification if SUPER_ADMIN)
   await prisma.user.update({
     where: { id: user.id },
-    data: { lastLoginAt: new Date() }
+    data: updateData
+  });
+  
+  // Refresh user data to get updated emailVerified status
+  const updatedUser = await prisma.user.findUnique({
+    where: { id: user.id }
   });
   
   // Create user session
@@ -150,12 +191,13 @@ export async function loginUser(email: string, password: string, ipAddress?: str
   
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      subscriptionPlan: user.subscriptionPlan,
-      adminRole: (user as any).adminRole ?? null,
+      id: updatedUser!.id,
+      email: updatedUser!.email,
+      name: updatedUser!.name,
+      role: updatedUser!.role,
+      subscriptionPlan: updatedUser!.subscriptionPlan,
+      adminRole: (updatedUser as any).adminRole ?? null,
+      emailVerified: updatedUser!.emailVerified,
     },
     tokens: {
       accessToken,
@@ -252,4 +294,84 @@ export async function incrementUsage(userId: string, operation: 'session' | 'dri
     where: { id: userId },
     data: updateData
   });
+}
+
+export async function verifyEmail(token: string): Promise<{ success: boolean; message: string }> {
+  const tokenRecord = await prisma.emailVerificationToken.findUnique({
+    where: { token },
+    include: { user: true }
+  });
+  
+  if (!tokenRecord) {
+    return { success: false, message: 'Invalid verification token' };
+  }
+  
+  if (tokenRecord.used) {
+    return { success: false, message: 'This verification link has already been used' };
+  }
+  
+  if (tokenRecord.expiresAt < new Date()) {
+    return { success: false, message: 'This verification link has expired' };
+  }
+  
+  // Mark token as used
+  await prisma.emailVerificationToken.update({
+    where: { id: tokenRecord.id },
+    data: { used: true }
+  });
+  
+  // Verify user's email
+  await prisma.user.update({
+    where: { id: tokenRecord.userId },
+    data: {
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+    }
+  });
+  
+  // Delete all other verification tokens for this user
+  await prisma.emailVerificationToken.deleteMany({
+    where: {
+      userId: tokenRecord.userId,
+      id: { not: tokenRecord.id }
+    }
+  });
+  
+  return { success: true, message: 'Email verified successfully' };
+}
+
+export async function resendVerificationEmail(userId: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId }
+  });
+  
+  if (!user || !user.email) {
+    throw new Error('User not found or email not set');
+  }
+  
+  if (user.emailVerified) {
+    throw new Error('Email is already verified');
+  }
+  
+  // Invalidate old tokens
+  await prisma.emailVerificationToken.deleteMany({
+    where: { userId, used: false }
+  });
+  
+  // Generate new verification token
+  const verificationToken = generateVerificationToken();
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 24);
+  
+  await prisma.emailVerificationToken.create({
+    data: {
+      token: verificationToken,
+      userId: user.id,
+      email: user.email,
+      expiresAt,
+    }
+  });
+  
+  // Send verification email
+  await sendVerificationEmail(user.email, user.name, verificationToken);
 }

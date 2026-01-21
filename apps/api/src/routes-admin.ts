@@ -4,7 +4,9 @@ import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { buildSessionQAReviewerPrompt } from "./prompts/session";
-import { fixSessionDecision } from "./services/fixer";
+import { fixSessionDecision, fixDrillDecision } from "./services/fixer";
+import { buildQAReviewerPrompt } from "./prompts/drill-optimized-v2";
+import { generateAndReviewDrill } from "./services/drill";
 import type { FixDecisionCode } from "./services/fixer";
 import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
 
@@ -737,6 +739,246 @@ r.post("/admin/sessions/review", requireAdminPermission('canReviewQA'), async (r
   }
 });
 
+// Review Drill (QA)
+r.post("/admin/drills/review", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  const drillRef = String(req.body?.drillRef || "").trim();
+
+  if (!drillRef) {
+    return res.status(400).json({ ok: false, error: "drillRef is required (id or refCode)" });
+  }
+
+  // Log admin action
+  await logAdminAction(
+    req.userId!,
+    'qa.review_drill',
+    {
+      resourceType: 'Drill',
+      resourceId: drillRef
+    },
+    req
+  );
+
+  const drillRow = await prisma.drill.findFirst({
+    where: {
+      OR: [{ id: drillRef }, { refCode: drillRef }],
+    },
+  });
+
+  if (!drillRow) {
+    return res.status(404).json({ ok: false, error: "Drill not found" });
+  }
+
+  // Build QA prompt from stored drill JSON
+  const drillJson = (drillRow.json as any) || {};
+  const qaPrompt = buildQAReviewerPrompt(drillJson);
+
+  setMetricsContext({
+    operationType: "qa_review",
+    artifactId: drillRow.id,
+    ageGroup: drillRow.ageGroup,
+    gameModelId: String(drillRow.gameModelId),
+    phase: drillRow.phase ? String(drillRow.phase) : undefined,
+  });
+
+  try {
+    const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+    const qaJson: any = parseJsonSafe(qaText);
+    if (!qaJson) {
+      return res.status(500).json({ ok: false, error: "LLM returned non-JSON QA" });
+    }
+
+    const scores = qaJson?.scores || {};
+    const vals = Object.values(scores).map((v: any) => Number(v || 0)).filter((n) => Number.isFinite(n));
+    const avgScore = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    const fixDecision = fixDrillDecision(scores);
+
+    // Persist QA snapshot
+    await prisma.qAReport.create({
+      data: {
+        artifactId: drillRow.id,
+        artifactType: "DRILL",
+        drillId: drillRow.id,
+        pass: !!qaJson.pass,
+        scores: scores || {},
+        summary: qaJson.summary || null,
+      },
+    });
+
+    // Update drill metadata
+    await prisma.drill.update({
+      where: { id: drillRow.id },
+      data: {
+        qaScore: avgScore,
+        approved: !!qaJson.pass,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      drill: {
+        id: drillRow.id,
+        refCode: drillRow.refCode,
+        title: drillRow.title,
+        ageGroup: drillRow.ageGroup,
+        gameModelId: drillRow.gameModelId,
+        phase: drillRow.phase,
+        zone: drillRow.zone,
+        qaScore: avgScore,
+        approved: !!qaJson.pass,
+      },
+      qa: {
+        pass: !!qaJson.pass,
+        scores,
+        avgScore,
+        summary: qaJson.summary || null,
+        notes: qaJson.notes || [],
+      },
+      fixDecision,
+    });
+  } finally {
+    clearMetricsContext();
+  }
+});
+
+// Get Drill by ID
+r.get("/admin/drills/:drillId", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  const drillId = req.params.drillId;
+  
+  try {
+    const drill = await prisma.drill.findFirst({
+      where: {
+        OR: [{ id: drillId }, { refCode: drillId }],
+      },
+    });
+    
+    if (!drill) {
+      return res.status(404).json({ ok: false, error: "Drill not found" });
+    }
+    
+    return res.json({
+      ok: true,
+      drill,
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Regenerate Drill
+r.post("/admin/drills/regenerate", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  const drillRef = String(req.body?.drillRef || "").trim();
+  const replace = req.body?.replace === true; // If true, delete old drill instead of marking as superseded
+
+  if (!drillRef) {
+    return res.status(400).json({ ok: false, error: "drillRef is required (id or refCode)" });
+  }
+
+  // Log admin action
+  await logAdminAction(
+    req.userId!,
+    'drill.regenerate',
+    {
+      resourceType: 'Drill',
+      resourceId: drillRef,
+      data: { replace }
+    },
+    req
+  );
+
+  const drillRow = await prisma.drill.findFirst({
+    where: {
+      OR: [{ id: drillRef }, { refCode: drillRef }],
+    },
+  });
+
+  if (!drillRow) {
+    return res.status(404).json({ ok: false, error: "Drill not found" });
+  }
+
+  const drillJson = (drillRow.json as any) || {};
+
+  // Build input from original drill metadata
+  const regenInput: any = {
+    gameModelId: String(drillRow.gameModelId),
+    ageGroup: drillRow.ageGroup,
+    phase: drillRow.phase ? String(drillRow.phase) : undefined,
+    zone: drillRow.zone ? String(drillRow.zone) : undefined,
+    drillType: drillJson.drillType || "TACTICAL",
+    formationAttacking: drillJson.formationAttacking || "4-3-3",
+    formationDefending: drillJson.formationDefending || drillJson.formationAttacking || "4-3-3",
+    playerLevel: drillJson.playerLevel || "INTERMEDIATE",
+    coachLevel: drillJson.coachLevel || "GRASSROOTS",
+    numbersMin: drillRow.numbersMin ?? drillJson.numbersMin ?? 8,
+    numbersMax: drillRow.numbersMax ?? drillJson.numbersMax ?? 12,
+    goalsAvailable: drillJson.goalsAvailable ?? 2,
+    spaceConstraint: drillRow.spaceConstraint ? String(drillRow.spaceConstraint) : drillJson.spaceConstraint ?? "HALF",
+    durationMin: drillRow.durationMin ?? drillJson.durationMin ?? 25,
+    gkOptional: drillJson.gkOptional ?? false,
+  };
+
+  // Generate new drill (auto-saved to vault, includes QA)
+  const regen = await generateAndReviewDrill(regenInput);
+  const replacement = regen?.drill || null;
+
+  if (!replacement || !(replacement as any).id) {
+    return res.status(500).json({ ok: false, error: "Failed to generate replacement drill" });
+  }
+
+  const replacementId = (replacement as any).id;
+  const replacementRefCode = (replacement as any).refCode;
+  const replacementTitle = (replacement as any).title;
+  const replacementQaScore = (replacement as any).qaScore;
+  const replacementApproved = (replacement as any).approved;
+
+  if (replace) {
+    // Delete old drill
+    // Note: QAReports will cascade delete automatically (via onDelete: Cascade in schema)
+    // Favorites must be deleted explicitly (no cascade delete in schema)
+    await prisma.favorite.deleteMany({
+      where: { drillId: drillRow.id },
+    });
+    
+    await prisma.drill.delete({
+      where: { id: drillRow.id },
+    });
+  } else {
+    // Mark original drill JSON as superseded (keep both)
+    await prisma.drill.update({
+      where: { id: drillRow.id },
+      data: {
+        approved: false,
+        json: {
+          ...(drillJson || {}),
+          supersededBy: {
+            id: replacementId,
+            refCode: replacementRefCode,
+            title: replacementTitle,
+          },
+        } as any,
+      },
+    });
+  }
+
+  return res.json({
+    ok: true,
+    replaced: replace,
+    original: replace
+      ? null
+      : {
+          id: drillRow.id,
+          refCode: drillRow.refCode,
+          title: drillRow.title,
+        },
+    replacement: {
+      id: replacementId,
+      refCode: replacementRefCode,
+      title: replacementTitle,
+      qaScore: replacementQaScore,
+      approved: replacementApproved,
+    },
+  });
+});
+
 r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
   const sessionRef = String(req.body?.sessionRef || "").trim();
   const replace = req.body?.replace === true; // If true, delete old session instead of marking as superseded
@@ -849,6 +1091,7 @@ r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), asyn
 // ------------------------------------
 r.get("/admin/analytics/qa-status", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
   try {
+    console.log('[QA-STATUS] Starting QA status analytics query...');
     // Get all sessions with their latest QA reports
     const sessions = await prisma.session.findMany({
       where: {
@@ -861,6 +1104,7 @@ r.get("/admin/analytics/qa-status", requireAdminPermission('canViewAnalytics'), 
         },
       },
     });
+    console.log(`[QA-STATUS] Found ${sessions.length} sessions`);
 
     // Compute fixDecision for each session based on latest QA scores
     const statusCounts: Record<FixDecisionCode, number> = {
@@ -913,7 +1157,7 @@ r.get("/admin/analytics/qa-status", requireAdminPermission('canViewAnalytics'), 
     const withQA = sessions.filter((s) => s.qaReports.length > 0).length;
     const withoutQA = total - withQA;
 
-    return res.json({
+    const response = {
       ok: true,
       total,
       withQA,
@@ -925,8 +1169,136 @@ r.get("/admin/analytics/qa-status", requireAdminPermission('canViewAnalytics'), 
         NEEDS_REGEN: sessionsByStatus.NEEDS_REGEN.slice(0, 10),
         NO_QA_OR_PASS: sessionsByStatus.NO_QA_OR_PASS.slice(0, 10),
       },
-    });
+    };
+    console.log('[QA-STATUS] Query completed successfully');
+    return res.json(response);
   } catch (e: any) {
+    console.error('[QA-STATUS] Error:', e);
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// QA Status Analytics for Drills (standalone only, not contained in sessions)
+r.get("/admin/analytics/qa-status-drills", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    console.log('[QA-STATUS-DRILLS] Starting QA status analytics query for standalone drills...');
+    
+    // First, get all sessions and extract drill refCodes from their JSON
+    const sessions = await prisma.session.findMany({
+      where: {
+        savedToVault: true,
+      },
+      select: {
+        json: true,
+      },
+    });
+    
+    // Collect all drill refCodes that appear in sessions
+    const drillRefCodesInSessions = new Set<string>();
+    for (const session of sessions) {
+      const sessionJson = session.json as any;
+      if (sessionJson?.drills && Array.isArray(sessionJson.drills)) {
+        for (const drill of sessionJson.drills) {
+          if (drill.refCode) {
+            drillRefCodesInSessions.add(drill.refCode);
+          }
+        }
+      }
+    }
+    
+    console.log(`[QA-STATUS-DRILLS] Found ${drillRefCodesInSessions.size} drill refCodes in sessions`);
+    
+    // Get all standalone drills (not in sessions) with their latest QA reports
+    const allDrills = await prisma.drill.findMany({
+      where: {
+        savedToVault: true, // Only count vault drills
+      },
+      include: {
+        qaReports: {
+          orderBy: { createdAt: "desc" },
+          take: 1, // Get only the latest QA report
+        },
+      },
+    });
+    
+    // Filter out drills that are contained in sessions
+    const drills = allDrills.filter(drill => {
+      // If drill has no refCode, include it (standalone)
+      if (!drill.refCode) return true;
+      // Exclude if refCode appears in any session
+      return !drillRefCodesInSessions.has(drill.refCode);
+    });
+    
+    console.log(`[QA-STATUS-DRILLS] Found ${allDrills.length} total vault drills, ${drills.length} standalone drills (not in sessions)`);
+
+    // Compute fixDecision for each drill based on latest QA scores
+    const statusCounts: Record<FixDecisionCode, number> = {
+      OK: 0,
+      PATCHABLE: 0,
+      NEEDS_REGEN: 0,
+      NO_QA_OR_PASS: 0,
+    };
+
+    const drillsByStatus: Record<FixDecisionCode, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>> = {
+      OK: [],
+      PATCHABLE: [],
+      NEEDS_REGEN: [],
+      NO_QA_OR_PASS: [],
+    };
+
+    for (const drill of drills) {
+      const latestQA = drill.qaReports[0];
+      let fixDecisionCode: FixDecisionCode = "NO_QA_OR_PASS";
+
+      if (latestQA && latestQA.scores) {
+        const scores = latestQA.scores as any;
+        const fixDecision = fixDrillDecision(scores);
+        fixDecisionCode = fixDecision.code;
+      } else if (drill.qaScore !== null) {
+        // If no QA report but has qaScore, try to infer from approved status
+        fixDecisionCode = drill.approved ? "OK" : "NO_QA_OR_PASS";
+      }
+
+      statusCounts[fixDecisionCode]++;
+      drillsByStatus[fixDecisionCode].push({
+        id: drill.id,
+        refCode: drill.refCode,
+        title: drill.title,
+        qaScore: drill.qaScore,
+      });
+    }
+
+    // Sort drills by QA score (highest first) for each status
+    Object.keys(drillsByStatus).forEach((key) => {
+      drillsByStatus[key as FixDecisionCode].sort((a, b) => {
+        if (a.qaScore === null && b.qaScore === null) return 0;
+        if (a.qaScore === null) return 1;
+        if (b.qaScore === null) return -1;
+        return b.qaScore - a.qaScore;
+      });
+    });
+
+    const total = drills.length;
+    const withQA = drills.filter((d) => d.qaReports.length > 0).length;
+    const withoutQA = total - withQA;
+
+    const response = {
+      ok: true,
+      total,
+      withQA,
+      withoutQA,
+      statusCounts,
+      drillsByStatus: {
+        OK: drillsByStatus.OK.slice(0, 10), // Top 10 for each status
+        PATCHABLE: drillsByStatus.PATCHABLE.slice(0, 10),
+        NEEDS_REGEN: drillsByStatus.NEEDS_REGEN.slice(0, 10),
+        NO_QA_OR_PASS: drillsByStatus.NO_QA_OR_PASS.slice(0, 10),
+      },
+    };
+    console.log('[QA-STATUS-DRILLS] Query completed successfully');
+    return res.json(response);
+  } catch (e: any) {
+    console.error('[QA-STATUS-DRILLS] Error:', e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
@@ -1095,9 +1467,16 @@ r.post("/admin/users/:userId/promote", requireAdminPermission('canChangeUserRole
       return res.status(403).json({ ok: false, error: 'Only super admins can promote users' });
     }
     
+    // Auto-verify email for SUPER_ADMIN
+    const updateData: any = { adminRole };
+    if (adminRole === 'SUPER_ADMIN') {
+      updateData.emailVerified = true;
+      updateData.emailVerifiedAt = new Date();
+    }
+    
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { adminRole }
+      data: updateData
     });
     
     await logAdminAction(
@@ -1106,7 +1485,7 @@ r.post("/admin/users/:userId/promote", requireAdminPermission('canChangeUserRole
       {
         resourceType: 'User',
         resourceId: userId,
-        data: { adminRole }
+        data: { adminRole, emailAutoVerified: adminRole === 'SUPER_ADMIN' }
       },
       req
     );

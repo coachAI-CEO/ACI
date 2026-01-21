@@ -9,6 +9,7 @@ import {
   getVaultSessions,
   getVaultSeries,
   saveSeriesToVault,
+  saveDrillToVault,
 } from "./services/vault";
 
 const r = express.Router();
@@ -47,6 +48,16 @@ r.post("/vault/sessions/:sessionId/save", async (req, res) => {
   try {
     const { sessionId } = req.params;
     const result = await saveSessionToVault(sessionId);
+    return res.json({ ok: true, ...result });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+r.post("/vault/drills/:drillId/save", async (req, res) => {
+  try {
+    const { drillId } = req.params;
+    const result = await saveDrillToVault(drillId);
     return res.json({ ok: true, ...result });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
@@ -313,7 +324,67 @@ r.get("/vault/lookup/:refCode", async (req, res) => {
       });
     }
     
-    const result = await lookupByRefCode(refCode);
+    let result = await lookupByRefCode(refCode);
+    
+    // If drill not found, try to find and create from session JSON
+    if (!result && parsed.type === "drill") {
+      const sessions = await prisma.session.findMany({
+        where: { savedToVault: true },
+        select: { id: true, json: true, gameModelId: true, phase: true, zone: true, ageGroup: true, formationUsed: true, playerLevel: true, coachLevel: true, numbersMin: true, numbersMax: true, spaceConstraint: true },
+      });
+
+      for (const session of sessions) {
+        const sessionJson = session.json as any;
+        const drills = sessionJson?.drills || [];
+        
+        for (const drillJson of drills) {
+          if (drillJson.refCode === refCode.toUpperCase()) {
+            // Found the drill in session JSON, create standalone record
+            try {
+              const drillData: any = {
+                refCode: refCode.toUpperCase(),
+                title: drillJson.title || "Untitled Drill",
+                gameModelId: session.gameModelId as any,
+                phase: (session.phase || drillJson.phase || "ATTACKING") as any,
+                zone: (session.zone || drillJson.zone || "ATTACKING_THIRD") as any,
+                ageGroup: session.ageGroup,
+                durationMin: drillJson.durationMin ?? 25,
+                drillType: drillJson.drillType || "TECHNICAL",
+                
+                // Map from session or drill JSON
+                numbersMin: drillJson.numbersMin ?? session.numbersMin,
+                numbersMax: drillJson.numbersMax ?? session.numbersMax,
+                spaceConstraint: drillJson.spaceConstraint ?? session.spaceConstraint,
+                formationUsed: drillJson.formationUsed ?? session.formationUsed,
+                playerLevel: session.playerLevel as any,
+                coachLevel: session.coachLevel as any,
+                principleIds: drillJson.principleIds || sessionJson.principleIds || [],
+                psychThemeIds: drillJson.psychThemeIds || sessionJson.psychThemeIds || [],
+                
+                // Store full drill JSON
+                json: drillJson,
+                savedToVault: true,
+              };
+
+              const createdDrill = await prisma.drill.upsert({
+                where: { refCode: refCode.toUpperCase() },
+                update: { ...drillData, updatedAt: new Date() },
+                create: drillData,
+              });
+              
+              console.log(`[VAULT_LOOKUP] Created missing drill ${refCode.toUpperCase()} from session ${session.id}`);
+              
+              // Now lookup again
+              result = await lookupByRefCode(refCode);
+              break;
+            } catch (err: any) {
+              console.error(`[VAULT_LOOKUP] Failed to create drill ${refCode.toUpperCase()}:`, err?.message);
+            }
+          }
+        }
+        if (result) break;
+      }
+    }
     
     if (!result) {
       return res.status(404).json({
@@ -324,6 +395,7 @@ r.get("/vault/lookup/:refCode", async (req, res) => {
     
     return res.json({
       ok: true,
+      found: true,
       type: result.type,
       refCode: refCode.toUpperCase(),
       data: result.data,
@@ -353,8 +425,68 @@ r.post("/vault/lookup", async (req, res) => {
       found: boolean;
     }> = [];
     
-    for (const code of refCodes.slice(0, 20)) { // Limit to 20 lookups
-      const result = await lookupByRefCode(code);
+    for (const code of refCodes.slice(0, 50)) { // Limit to 50 lookups
+      const parsed = parseRefCode(code);
+      let result = await lookupByRefCode(code);
+      
+      // If drill not found, try to find and create from session JSON
+      if (!result && parsed && parsed.type === "drill") {
+        const sessions = await prisma.session.findMany({
+          where: { savedToVault: true },
+          select: { id: true, json: true, gameModelId: true, phase: true, zone: true, ageGroup: true, formationUsed: true, playerLevel: true, coachLevel: true, numbersMin: true, numbersMax: true, spaceConstraint: true },
+        });
+
+        for (const session of sessions) {
+          const sessionJson = session.json as any;
+          const drills = sessionJson?.drills || [];
+          
+          for (const drillJson of drills) {
+            if (drillJson.refCode === code.toUpperCase()) {
+              // Found the drill in session JSON, create standalone record
+              try {
+                const drillData: any = {
+                  refCode: code.toUpperCase(),
+                  title: drillJson.title || "Untitled Drill",
+                  gameModelId: session.gameModelId as any,
+                  phase: (session.phase || drillJson.phase || "ATTACKING") as any,
+                  zone: (session.zone || drillJson.zone || "ATTACKING_THIRD") as any,
+                  ageGroup: session.ageGroup,
+                  durationMin: drillJson.durationMin ?? 25,
+                  drillType: drillJson.drillType || "TECHNICAL",
+                  
+                  // Map from session or drill JSON
+                  numbersMin: drillJson.numbersMin ?? session.numbersMin,
+                  numbersMax: drillJson.numbersMax ?? session.numbersMax,
+                  spaceConstraint: drillJson.spaceConstraint ?? session.spaceConstraint,
+                  formationUsed: drillJson.formationUsed ?? session.formationUsed,
+                  playerLevel: session.playerLevel as any,
+                  coachLevel: session.coachLevel as any,
+                  principleIds: drillJson.principleIds || sessionJson.principleIds || [],
+                  psychThemeIds: drillJson.psychThemeIds || sessionJson.psychThemeIds || [],
+                  
+                  // Store full drill JSON
+                  json: drillJson,
+                  savedToVault: true,
+                };
+
+                await prisma.drill.upsert({
+                  where: { refCode: code.toUpperCase() },
+                  update: { ...drillData, updatedAt: new Date() },
+                  create: drillData,
+                });
+                
+                // Now lookup again
+                result = await lookupByRefCode(code);
+                break;
+              } catch (err: any) {
+                console.error(`[VAULT_LOOKUP_BATCH] Failed to create drill ${code.toUpperCase()}:`, err?.message);
+              }
+            }
+          }
+          if (result) break;
+        }
+      }
+      
       results.push({
         refCode: code.toUpperCase(),
         type: result?.type || null,

@@ -604,21 +604,27 @@ function SessionDemoPageContent() {
               scores: qaFromJson.scores || {},
             };
             
+            // Validate required fields
+            if (!vaultData.session.id || !vaultData.session.title || !vaultData.session.gameModelId) {
+              throw new Error("Session data is missing required fields");
+            }
+
             setData({
               ok: true,
               session: {
                 id: vaultData.session.id,
+                refCode: vaultData.session.refCode || undefined,
                 title: vaultData.session.title,
                 gameModelId: vaultData.session.gameModelId,
-                phase: vaultData.session.phase,
-                zone: vaultData.session.zone,
-                ageGroup: vaultData.session.ageGroup,
-                durationMin: vaultData.session.durationMin,
-                summary: sessionData.summary,
-                drills: sessionData.drills || [],
-                sessionPlan: sessionData.sessionPlan,
-                equipment: sessionData.equipment,
-                coachingNotes: sessionData.coachingNotes,
+                phase: vaultData.session.phase || undefined,
+                zone: vaultData.session.zone || undefined,
+                ageGroup: vaultData.session.ageGroup || "U12",
+                durationMin: vaultData.session.durationMin || undefined,
+                summary: sessionData.summary || undefined,
+                drills: Array.isArray(sessionData.drills) ? sessionData.drills : [],
+                sessionPlan: sessionData.sessionPlan || undefined,
+                equipment: Array.isArray(sessionData.equipment) ? sessionData.equipment : undefined,
+                coachingNotes: sessionData.coachingNotes || undefined,
                 principleIds: Array.isArray(vaultData.session.principleIds) ? vaultData.session.principleIds : [],
                 psychThemeIds: Array.isArray(vaultData.session.psychThemeIds) ? vaultData.session.psychThemeIds : [],
               },
@@ -629,7 +635,8 @@ function SessionDemoPageContent() {
             setShowRecommendations(false);
             setRecommendations([]);
           } else {
-            throw new Error("Invalid session data");
+            console.error("[SESSION_LOAD] Invalid session data format:", vaultData);
+            throw new Error(`Invalid session data: ${vaultData.error || "Missing required fields"}`);
           }
         })
         .catch((e) => {
@@ -1943,12 +1950,12 @@ function SessionDemoPageContent() {
                     onClick={toggleFavorite}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                       isFavorited
-                        ? "bg-pink-500/20 text-pink-400 border border-pink-500/50"
-                        : "bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-pink-500/10 hover:text-pink-400"
+                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
+                        : "bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-emerald-500/10 hover:text-emerald-400"
                     }`}
                     title={isFavorited ? "Remove from favorites" : "Add to favorites"}
                   >
-                    <span>{isFavorited ? "♥" : "♡"}</span>
+                    <span className="text-xs font-bold">■</span>
                     <span>{isFavorited ? "Favorited" : "Favorite"}</span>
                   </button>
                 </div>

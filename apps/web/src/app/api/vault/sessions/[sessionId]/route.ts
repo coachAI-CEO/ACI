@@ -25,8 +25,8 @@ export async function GET(
     }
     
     const data = await res.json();
-    // Return the session directly (not wrapped in ok/session)
-    return NextResponse.json(data.session || data);
+    // Return the backend response format (ok: true, session: {...})
+    return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || String(e) },

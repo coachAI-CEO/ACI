@@ -11,6 +11,7 @@ interface User {
   role: string;
   subscriptionPlan: string;
   adminRole?: string | null;
+  emailVerified?: boolean;
 }
 
 export default function AuthButton() {
@@ -74,6 +75,28 @@ export default function AuthButton() {
     return null;
   }
 
+  const handleResendVerification = async () => {
+    try {
+      const accessToken = localStorage.getItem("accessToken");
+      const res = await fetch("http://localhost:4000/auth/resend-verification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        alert("Verification email sent! Please check your inbox.");
+      } else {
+        alert(data.error || "Failed to send verification email");
+      }
+    } catch (error: any) {
+      alert("Failed to send verification email");
+    }
+  };
+
   if (user) {
     return (
       <div className="flex items-center gap-3">
@@ -81,6 +104,17 @@ export default function AuthButton() {
         <span className="text-xs text-slate-400 hidden sm:inline">
           {user.name || user.email}
         </span>
+
+        {/* Email verification status */}
+        {user.emailVerified === false && (
+          <button
+            onClick={handleResendVerification}
+            className="text-xs text-amber-400 hover:text-amber-300 transition"
+            title="Email not verified - click to resend verification email"
+          >
+            ⚠️ Verify Email
+          </button>
+        )}
 
         {/* Admin link only for SUPER_ADMIN users */}
         {user.adminRole === "SUPER_ADMIN" && (

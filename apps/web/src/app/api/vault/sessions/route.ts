@@ -28,16 +28,32 @@ export async function GET(request: NextRequest) {
   } catch (e: any) {
     const errorMessage = e?.message || String(e);
     const errorName = e?.name || 'UnknownError';
+    
+    // Check if it's a fetch failure (backend not running)
+    const isFetchFailed = errorName === 'TypeError' && errorMessage.includes('fetch failed');
+    const isAbortError = errorName === 'AbortError';
+    
     console.error('[VAULT_API] Fetch error:', {
       name: errorName,
       message: errorMessage,
+      isFetchFailed,
+      isAbortError,
       stack: e?.stack,
       cause: e?.cause,
     });
+    
+    // Provide more helpful error messages
+    let userFriendlyError = errorMessage;
+    if (isFetchFailed) {
+      userFriendlyError = 'Backend server is not running. Please start the API server on port 4000.';
+    } else if (isAbortError) {
+      userFriendlyError = 'Request timeout. The server took too long to respond.';
+    }
+    
     return NextResponse.json(
       { 
         ok: false, 
-        error: errorMessage,
+        error: userFriendlyError,
         details: process.env.NODE_ENV === 'development' ? {
           name: errorName,
           message: errorMessage,

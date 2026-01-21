@@ -66,7 +66,13 @@ export default function RegisterPage() {
       // Store user info
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user));
+        // Dispatch custom event to notify AuthButton
+        window.dispatchEvent(new Event("userLogin"));
       }
+
+      // Show success message with verification notice
+      setError(""); // Clear any errors
+      alert("Registration successful! Please check your email to verify your account. You can continue using the platform.");
 
       // Redirect to home
       router.push("/");

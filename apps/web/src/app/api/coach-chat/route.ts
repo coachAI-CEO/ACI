@@ -187,20 +187,61 @@ Analyze this request and respond in the JSON format specified above.`;
       responseMessage += "\n\nI didn't find exact matches in your vault. Would you like me to generate a new session?";
     }
     
+    // Helper functions to format enum values
+    const formatGameModel = (value: string) => {
+      const labels: Record<string, string> = {
+        POSSESSION: "Possession",
+        PRESSING: "Pressing",
+        TRANSITION: "Transition",
+        COACHAI: "Balanced",
+      };
+      return labels[value] || value;
+    };
+
+    const formatPhase = (value: string) => {
+      const labels: Record<string, string> = {
+        ATTACKING: "Attacking",
+        DEFENDING: "Defending",
+        TRANSITION: "Transition",
+        TRANSITION_TO_ATTACK: "Transition to Attack",
+        TRANSITION_TO_DEFEND: "Transition to Defend",
+      };
+      return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+    };
+
+    const formatZone = (value: string) => {
+      const labels: Record<string, string> = {
+        DEFENSIVE_THIRD: "Defensive Third",
+        MIDDLE_THIRD: "Middle Third",
+        ATTACKING_THIRD: "Attacking Third",
+      };
+      return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+    };
+
+    const formatCoachLevel = (value: string) => {
+      const labels: Record<string, string> = {
+        GRASSROOTS: "Grassroots",
+        USSF_C: "USSF C",
+        USSF_B_PLUS: "USSF B+",
+        USSF_D: "USSF D",
+      };
+      return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
+    };
+
     // Show extracted parameters if we have some
     if (parsed.extractedParams && (parsed.intent === "search" || parsed.intent === "generate" || parsed.readyToGenerate)) {
       const params = parsed.extractedParams;
       const paramSummary = [];
       if (params.ageGroup) paramSummary.push(`• Age Group: ${params.ageGroup}`);
-      if (params.gameModelId) paramSummary.push(`• Style: ${params.gameModelId}`);
-      if (params.phase) paramSummary.push(`• Phase: ${params.phase}`);
-      if (params.zone) paramSummary.push(`• Zone: ${params.zone}`);
+      if (params.gameModelId) paramSummary.push(`• Style: ${formatGameModel(params.gameModelId)}`);
+      if (params.phase) paramSummary.push(`• Phase: ${formatPhase(params.phase)}`);
+      if (params.zone) paramSummary.push(`• Zone: ${formatZone(params.zone)}`);
       if (params.topic) paramSummary.push(`• Topic: ${params.topic}`);
       if (params.numberOfSessions && params.numberOfSessions > 1) paramSummary.push(`• Sessions: ${params.numberOfSessions} (series)`);
       if (params.durationMin) paramSummary.push(`• Duration: ${params.durationMin} min`);
       if (params.numbersMin && params.numbersMax) paramSummary.push(`• Players: ${params.numbersMin}-${params.numbersMax}`);
       if (params.formationAttacking) paramSummary.push(`• Formation: ${params.formationAttacking}${params.formationDefending && params.formationDefending !== params.formationAttacking ? ` / ${params.formationDefending}` : ""}`);
-      if (params.coachLevel) paramSummary.push(`• Coach Level: ${params.coachLevel}`);
+      if (params.coachLevel) paramSummary.push(`• Coach Level: ${formatCoachLevel(params.coachLevel)}`);
       if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) paramSummary.push(`• Goals: ${params.goalsAvailable}`);
       if (params.hasGKs !== null && params.hasGKs !== undefined) paramSummary.push(`• GKs: ${params.hasGKs ? "Yes" : "No"}`);
       

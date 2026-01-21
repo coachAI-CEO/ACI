@@ -368,11 +368,12 @@ model User {
   updatedAt DateTime   @updatedAt
   
   // Relations
-  favorites        Favorite[]
-  refreshTokens    RefreshToken[]
-  adminActions     AdminAction[]
-  userSessions     UserSession[]
-  apiMetrics       ApiMetrics[]
+  favorites              Favorite[]
+  refreshTokens          RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  adminActions           AdminAction[]
+  userSessions           UserSession[]
+  apiMetrics             ApiMetrics[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -411,6 +412,22 @@ model RefreshToken {
   
   @@index([userId])
   @@index([token])
+}
+
+// Email verification tokens
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String   // Store email at time of token creation
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([token])
+  @@index([email])
 }
 
 // Audit log for admin actions

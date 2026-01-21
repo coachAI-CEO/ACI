@@ -25,9 +25,39 @@ export async function GET(request: NextRequest) {
     console.log('[VAULT_API] Series success, count:', data.series?.length || 0);
     return NextResponse.json(data);
   } catch (e: any) {
-    console.error('[VAULT_API] Series fetch error:', e.message);
+    const errorMessage = e?.message || String(e);
+    const errorName = e?.name || 'UnknownError';
+    
+    // Check if it's a fetch failure (backend not running)
+    const isFetchFailed = errorName === 'TypeError' && errorMessage.includes('fetch failed');
+    const isAbortError = errorName === 'AbortError';
+    
+    console.error('[VAULT_API] Series fetch error:', {
+      name: errorName,
+      message: errorMessage,
+      isFetchFailed,
+      isAbortError,
+      stack: e?.stack,
+      cause: e?.cause,
+    });
+    
+    // Provide more helpful error messages
+    let userFriendlyError = errorMessage;
+    if (isFetchFailed) {
+      userFriendlyError = 'Backend server is not running. Please start the API server on port 4000.';
+    } else if (isAbortError) {
+      userFriendlyError = 'Request timeout. The server took too long to respond.';
+    }
+    
     return NextResponse.json(
-      { ok: false, error: e?.message || String(e) },
+      { 
+        ok: false, 
+        error: userFriendlyError,
+        details: process.env.NODE_ENV === 'development' ? {
+          name: errorName,
+          message: errorMessage,
+        } : undefined,
+      },
       { status: 500 }
     );
   }

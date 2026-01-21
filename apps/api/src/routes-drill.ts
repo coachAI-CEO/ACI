@@ -2,6 +2,9 @@ import { Router } from "express";
 import { generateAndReviewDrill } from "./services/drill";
 import { fixDrillDecision } from "./services/fixer";
 import { postProcessDrill } from "./services/postprocess";
+import { generateDrillPdf } from "./services/pdf-export";
+import { authenticate } from "./middleware/auth";
+import { requireFeature } from "./middleware/auth";
 const r = Router();
 
 r.post("/ai/generate-drill", async (req, res) => {
@@ -118,6 +121,26 @@ r.post("/ai/generate-drill", async (req, res) => {
     return res
       .status(500)
       .json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Export drill as PDF (available to all authenticated users)
+r.post("/ai/export-drill-pdf", authenticate, async (req: any, res) => {
+  try {
+    const drill = req.body?.drill;
+    if (!drill) {
+      return res.status(400).json({ ok: false, error: "drill is required" });
+    }
+    console.log("[PDF_ROUTE] Received drill for PDF export:", {
+      title: drill.title,
+      hasDiagram: !!(drill.diagram || drill.diagramV1 || drill.json?.diagram || drill.json?.diagramV1),
+    });
+    const pdfBuffer = await generateDrillPdf(drill);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${(drill.title || 'drill').replace(/[^a-z0-9]/gi, '_')}.pdf"`);
+    return res.send(pdfBuffer);
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 

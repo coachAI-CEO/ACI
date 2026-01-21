@@ -162,6 +162,29 @@ export async function saveSessionToVault(sessionId: string): Promise<{ success: 
   return { success: true, id: trimmedId };
 }
 
+export async function saveDrillToVault(drillId: string): Promise<{ success: boolean; id: string }> {
+  const trimmedId = drillId.trim();
+  if (!trimmedId) throw new Error("Drill ID is required");
+
+  const existingDrill = await prisma.drill.findUnique({
+    where: { id: trimmedId },
+    select: { id: true, savedToVault: true },
+  });
+  if (!existingDrill) {
+    throw new Error(`Drill with id ${trimmedId} not found`);
+  }
+  if (existingDrill.savedToVault) {
+    return { success: true, id: trimmedId };
+  }
+
+  await prisma.drill.updateMany({
+    where: { id: trimmedId },
+    data: { savedToVault: true },
+  });
+
+  return { success: true, id: trimmedId };
+}
+
 export async function removeSessionFromVault(sessionId: string): Promise<{ success: boolean }> {
   await prisma.session.update({
     where: { id: sessionId },

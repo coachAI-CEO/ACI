@@ -40,11 +40,19 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
         // Dispatch custom event to notify AuthButton
         window.dispatchEvent(new Event("userLogin"));
+        
+        // Show verification notice if email not verified
+        if (data.user.emailVerified === false) {
+          // Don't redirect immediately - show notice
+          setError("Please check your email to verify your account. You can still use the platform, but some features may be limited.");
+        }
       }
 
-      // Redirect to home
-      router.push("/");
-      router.refresh();
+      // Redirect to home (unless showing verification notice)
+      if (data.user?.emailVerified !== false) {
+        router.push("/");
+        router.refresh();
+      }
     } catch (err: any) {
       setError(err.message || "Failed to login");
     } finally {
@@ -64,8 +72,22 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-300">
+            <div className={`rounded-lg border p-3 text-sm ${
+              error.includes("verify") 
+                ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                : "border-red-500/50 bg-red-500/10 text-red-300"
+            }`}>
               {error}
+              {error.includes("verify") && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => router.push("/")}
+                    className="text-xs underline hover:text-amber-200"
+                  >
+                    Continue anyway →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

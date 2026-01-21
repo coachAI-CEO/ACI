@@ -105,11 +105,9 @@ const playerLevelLabel: Record<string, string> = {
 };
 
 const coachLevelLabel: Record<string, string> = {
-  ENTRY: "Entry",
   GRASSROOTS: "Grassroots",
-  QUALIFIED: "Qualified",
-  ADVANCED: "Advanced",
-  ELITE: "Elite",
+  USSF_C: "USSF C",
+  USSF_B_PLUS: "USSF B+",
 };
 
 export default function VaultPage() {
@@ -132,6 +130,8 @@ export default function VaultPage() {
   // Favorites state
   const [favoritedSessions, setFavoritedSessions] = useState<Set<string>>(new Set());
   const [favoritedSeries, setFavoritedSeries] = useState<Set<string>>(new Set());
+  const [favoritedDrills, setFavoritedDrills] = useState<Set<string>>(new Set()); // Stores drill DB IDs
+  const [drillRefCodeToDbId, setDrillRefCodeToDbId] = useState<Map<string, string>>(new Map()); // Maps refCode -> dbId
   
   const [filters, setFilters] = useState({
     gameModelId: "",
@@ -304,8 +304,35 @@ export default function VaultPage() {
           // Silently fail - favorites are optional
         });
       }
+
+      // Extract drills and check drill favorites (by refCode lookup)
+      // Note: allDrills is computed from sessions, so we compute it here
+      const currentSessions = sessionsData.sessions || [];
+      const currentAllDrills: VaultDrill[] = currentSessions.flatMap((session: any) => {
+        const sessionDrills = session.json?.drills || [];
+        return sessionDrills.map((drill: any, index: number) => ({
+          id: `${session.id}-${index}`,
+          refCode: drill.refCode,
+        }));
+      });
+      const drillRefCodes = currentAllDrills.map(d => d.refCode).filter(Boolean) as string[];
+      if (drillRefCodes.length > 0) {
+        checkDrillFavorites(drillRefCodes).catch(() => {
+          // Silently fail - favorites are optional
+        });
+      }
     } catch (e: any) {
-      setError(e?.message || String(e));
+      const errorMsg = e?.message || String(e);
+      console.error('[VAULT] Error loading vault data:', errorMsg);
+      
+      // Provide user-friendly error message
+      if (errorMsg.includes('Backend server is not running')) {
+        setError('Backend server is not running. Please start the API server on port 4000.');
+      } else if (errorMsg.includes('timeout')) {
+        setError('Request timeout. The server took too long to respond. Please try again.');
+      } else {
+        setError(errorMsg);
+      }
     } finally {
       setLoading(false);
     }
@@ -364,6 +391,71 @@ export default function VaultPage() {
     }
   }
 
+  // Check drill favorites by looking up refCodes (using bulk lookup)
+  async function checkDrillFavorites(drillRefCodes: string[]) {
+    if (drillRefCodes.length === 0) return;
+    
+    try {
+      // Use bulk lookup endpoint instead of individual requests
+      const res = await fetch("/api/vault/lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refCodes: drillRefCodes }),
+      });
+
+      if (!res.ok) {
+        console.debug("Bulk drill lookup failed (non-critical):", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      const results = data.results || [];
+
+      // Build refCode -> dbId map from successful lookups
+      const refCodeMap = new Map<string, string>();
+      const drillDbIds: string[] = [];
+
+      results.forEach((result: any) => {
+        if (result.found && result.type === "drill" && result.data?.id) {
+          refCodeMap.set(result.refCode, result.data.id);
+          drillDbIds.push(result.data.id);
+        }
+      });
+
+      if (refCodeMap.size === 0) return;
+
+      setDrillRefCodeToDbId(refCodeMap);
+
+      // Check favorite status for these drill IDs
+      const favRes = await fetch("/api/favorites", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getUserHeaders(),
+        },
+        body: JSON.stringify({ drillIds: drillDbIds }),
+      });
+
+      if (favRes.ok) {
+        const favData = await favRes.json();
+        const favDrills = new Set<string>();
+        
+        if (favData.drills) {
+          Object.entries(favData.drills).forEach(([id, isFav]) => {
+            if (isFav) favDrills.add(id);
+          });
+        }
+        
+        setFavoritedDrills(favDrills);
+      }
+    } catch (e) {
+      // Silently fail - favorites are optional
+      console.debug("Drill favorites check failed (non-critical):", e);
+    }
+  }
+
   // Toggle favorite for a session
   async function toggleSessionFavorite(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation();
@@ -418,6 +510,83 @@ export default function VaultPage() {
     }
   }
 
+  // Toggle favorite for a drill (lookup by refCode first)
+  async function toggleDrillFavorite(drill: VaultDrill, e: React.MouseEvent) {
+    e.stopPropagation();
+    
+    if (!drill.refCode) {
+      // Silently fail - drill has no refCode
+      return;
+    }
+
+    // Check if we already have the DB ID mapped
+    let drillDbId = drillRefCodeToDbId.get(drill.refCode);
+    
+    // If not, look it up
+    if (!drillDbId) {
+      try {
+        const lookupRes = await fetch(`/api/vault/lookup/${encodeURIComponent(drill.refCode)}`);
+        if (!lookupRes.ok) {
+          const errorData = await lookupRes.json().catch(() => ({}));
+          console.error(`[DRILL_FAVORITE] Drill lookup failed for ${drill.refCode}:`, errorData.error || lookupRes.status);
+          // Try using refCode directly - the API now supports looking up by refCode
+          drillDbId = drill.refCode; // Use refCode as fallback
+        } else {
+          const lookupData = await lookupRes.json();
+          if (lookupData.found && lookupData.type === "drill" && lookupData.data?.id) {
+            drillDbId = lookupData.data.id;
+            // Cache the mapping
+            setDrillRefCodeToDbId(prev => new Map(prev).set(drill.refCode!, drillDbId!));
+          } else {
+            // Use refCode as fallback - API will try to find by refCode
+            drillDbId = drill.refCode;
+          }
+        }
+      } catch (e: any) {
+        console.error(`[DRILL_FAVORITE] Error looking up drill ${drill.refCode}:`, e);
+        // Use refCode as fallback
+        drillDbId = drill.refCode;
+      }
+    }
+
+    // Use refCode if we don't have a DB ID
+    const identifierToUse = drillDbId || drill.refCode;
+    const isFavorited = drillDbId && drillDbId !== drill.refCode ? favoritedDrills.has(drillDbId) : false;
+    
+    try {
+      const res = await fetch(`/api/favorites/drill/${identifierToUse}`, {
+        method: isFavorited ? "DELETE" : "POST",
+        headers: getUserHeaders(),
+      });
+      
+      if (res.ok) {
+        const result = await res.json();
+        // If we used refCode and got a result, update our mapping
+        if (identifierToUse === drill.refCode && result.drillId) {
+          setDrillRefCodeToDbId(prev => new Map(prev).set(drill.refCode!, result.drillId));
+          drillDbId = result.drillId;
+        }
+        
+        if (drillDbId) {
+          setFavoritedDrills(prev => {
+            const next = new Set(prev);
+            if (isFavorited) {
+              next.delete(drillDbId);
+            } else {
+              next.add(drillDbId);
+            }
+            return next;
+          });
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error(`[DRILL_FAVORITE] Failed to update favorite for ${identifierToUse}:`, errorData.error || res.status);
+      }
+    } catch (e: any) {
+      console.error(`[DRILL_FAVORITE] Error toggling drill favorite for ${identifierToUse}:`, e);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -433,9 +602,9 @@ export default function VaultPage() {
             <div className="flex gap-3">
               <Link
                 href="/vault/favorites"
-                className="inline-flex items-center rounded-full border border-pink-500/50 bg-pink-500/10 px-4 py-2 text-sm font-semibold text-pink-400 hover:bg-pink-500/20 transition-colors"
+                className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
               >
-                ♥ My Favorites
+                ■ My Favorites
               </Link>
               <Link
                 href="/demo/session"
@@ -651,18 +820,17 @@ export default function VaultPage() {
                             </div>
                           )}
                         </div>
-                        {/* TEMPORARILY DISABLED: Favorite button */}
-                        {/* <button
+                        <button
                           onClick={(e) => toggleSessionFavorite(session.id, e)}
-                          className={`text-lg transition-colors ${
+                          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
                             favoritedSessions.has(session.id)
-                              ? "text-pink-400 hover:text-pink-300"
-                              : "text-slate-600 hover:text-pink-400"
+                              ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                              : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
                           }`}
                           title={favoritedSessions.has(session.id) ? "Remove from favorites" : "Add to favorites"}
                         >
-                          {favoritedSessions.has(session.id) ? "♥" : "♡"}
-                        </button> */}
+                          <span className="text-xs font-bold">■</span>
+                        </button>
                       </div>
                       <div className="text-[10px] text-slate-400 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -757,9 +925,28 @@ export default function VaultPage() {
                           <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${typeColors.bg} ${typeColors.text} border ${typeColors.border}`}>
                             {drillTypeLabel[drill.drillType] || drill.drillType}
                           </span>
-                          {drill.durationMin > 0 && (
-                            <span className="text-[9px] text-slate-500">{drill.durationMin} min</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {drill.durationMin > 0 && (
+                              <span className="text-[9px] text-slate-500">{drill.durationMin} min</span>
+                            )}
+                            {drill.refCode && (() => {
+                              const drillDbId = drillRefCodeToDbId.get(drill.refCode);
+                              const isFavorited = drillDbId ? favoritedDrills.has(drillDbId) : false;
+                              return (
+                                <button
+                                  onClick={(e) => toggleDrillFavorite(drill, e)}
+                                  className={`w-5 h-5 flex items-center justify-center rounded border transition-colors ${
+                                    isFavorited
+                                      ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                                      : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
+                                  }`}
+                                  title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                                >
+                                  <span className="text-[10px] font-bold">■</span>
+                                </button>
+                              );
+                            })()}
+                          </div>
                         </div>
                         
                         {/* Drill Title with Ref Code */}
@@ -899,14 +1086,14 @@ export default function VaultPage() {
                         </div>
                         <button
                           onClick={(e) => toggleSeriesFavorite(s.seriesId, e)}
-                          className={`text-lg transition-colors ${
+                          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
                             favoritedSeries.has(s.seriesId)
-                              ? "text-pink-400 hover:text-pink-300"
-                              : "text-slate-600 hover:text-pink-400"
+                              ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                              : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
                           }`}
                           title={favoritedSeries.has(s.seriesId) ? "Remove from favorites" : "Add to favorites"}
                         >
-                          {favoritedSeries.has(s.seriesId) ? "♥" : "♡"}
+                          <span className="text-xs font-bold">■</span>
                         </button>
                       </div>
                       <p className="text-[9px] text-slate-500 mb-2">
@@ -1015,6 +1202,17 @@ export default function VaultPage() {
                         {selectedSession.refCode}
                       </button>
                     )}
+                    <button
+                      onClick={(e) => toggleSessionFavorite(selectedSession.id, e)}
+                      className={`w-7 h-7 flex items-center justify-center rounded border transition-colors ${
+                        favoritedSessions.has(selectedSession.id)
+                          ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                          : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
+                      }`}
+                      title={favoritedSessions.has(selectedSession.id) ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <span className="text-sm font-bold">■</span>
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm">
                     <div className="flex items-center gap-2">

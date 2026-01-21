@@ -28,6 +28,34 @@ JWT_REFRESH_SECRET="refresh-secret-key-change-in-production"
 - Refresh tokens expire after 30 days
 - Tokens are signed with HS256 algorithm
 
+### Email Configuration (Required for Email Verification)
+```env
+# SMTP server settings
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT="587"
+SMTP_SECURE="false"
+SMTP_USER="your-email@gmail.com"
+SMTP_PASS="your-app-password"
+
+# Email sender information
+FROM_EMAIL="noreply@acitraining.com"
+FROM_NAME="ACI Training Platform"
+
+# Frontend URL for verification links
+FRONTEND_URL="http://localhost:3000"
+```
+
+**Email Service Notes:**
+- **Development**: If `SMTP_USER` and `SMTP_PASS` are not set, emails will be logged to console instead of being sent
+- **Gmail Setup**: Use an "App Password" (not your regular password) for `SMTP_PASS`
+  - Go to Google Account → Security → 2-Step Verification → App passwords
+- **Other Providers**: Adjust `SMTP_HOST`, `SMTP_PORT`, and `SMTP_SECURE` accordingly
+  - Gmail: `smtp.gmail.com:587` (secure: false)
+  - SendGrid: `smtp.sendgrid.net:587` (secure: false)
+  - AWS SES: `email-smtp.region.amazonaws.com:587` (secure: false)
+- **Verification Links**: Expire after 24 hours
+- **Frontend URL**: Should match your web application URL (e.g., `https://acitraining.com` in production)
+
 ## Performance Tuning (Optional)
 
 ### Model Selection
