@@ -507,6 +507,7 @@ Persistent header bar with links:
 12. **DatePicker** - Custom dark-themed date picker component
 13. **TimePicker** - Custom dark-themed time picker component
 14. **ConfirmModal** - Custom themed confirmation dialog
+15. **WeeklySummaryModal** - Modal for viewing and exporting weekly training summaries
 
 ### Backend Services
 
@@ -857,6 +858,12 @@ pnpm test
 - ✅ Local date parsing (fixes timezone issues)
 - ✅ Next.js API proxy routes for calendar operations
 - ✅ Increased timeout for vault API requests (30 seconds)
+- ✅ **Weekly parent communication summaries** (NEW)
+  - Generate weekly summaries from scheduled calendar events
+  - View summary with statistics and grouped events
+  - Copy text format for email sharing
+  - Export as PDF for distribution
+  - Parent-friendly format with all session details
 
 #### Bug Fixes
 - ✅ Fixed date picker selecting previous date (timezone issue)
@@ -1063,8 +1070,8 @@ API calls are made directly to `http://localhost:4000` in development.
 - [ ] Admin dashboard: user counts, access level overview, and quick user add
 - [ ] Attach creator user name to every drill/session/series
 - [x] Calendar integration to schedule sessions into individual training calendars (✅ Completed)
+- [x] Parent communication summaries from scheduled calendar sessions for weekly sharing (✅ Completed)
 - [x] Player-only training plans derived from sessions/series for individual work (✅ Completed)
-- [ ] Parent communication summaries from scheduled calendar sessions for weekly sharing
 - [ ] Sharing and collaboration features
 - [ ] Advanced search and filtering
 - [ ] Export to other formats (Excel, CSV)

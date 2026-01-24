@@ -11,6 +11,11 @@ import {
   CreateCalendarEventInput,
   UpdateCalendarEventInput,
 } from "./services/calendar";
+import {
+  generateWeeklySummary,
+  formatWeeklySummaryAsText,
+} from "./services/weekly-summary";
+import { generateWeeklySummaryPdf } from "./services/pdf-export";
 
 const r = express.Router();
 
@@ -255,6 +260,68 @@ r.delete("/calendar/events/:eventId", async (req: AuthRequest, res) => {
     return res.status(500).json({
       ok: false,
       error: error.message || "Failed to delete calendar event",
+    });
+  }
+});
+
+/**
+ * GET /calendar/weekly-summary
+ * Generate a weekly summary of scheduled sessions for parent communication
+ * Query params: weekStart (ISO date string), weekEnd (ISO date string)
+ */
+r.get("/calendar/weekly-summary", async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ ok: false, error: "Authentication required" });
+    }
+
+    const { weekStart, weekEnd, format } = req.query;
+
+    if (!weekStart || !weekEnd) {
+      return res.status(400).json({
+        ok: false,
+        error: "weekStart and weekEnd query parameters are required (ISO date strings)",
+      });
+    }
+
+    const startDate = new Date(weekStart as string);
+    const endDate = new Date(weekEnd as string);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid date format. Use ISO date strings (YYYY-MM-DD)",
+      });
+    }
+
+    const summary = await generateWeeklySummary({
+      userId: req.userId,
+      weekStart: startDate,
+      weekEnd: endDate,
+    });
+
+    // If PDF format requested
+    if (format === "pdf") {
+      const pdfBuffer = await generateWeeklySummaryPdf(summary);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="weekly-summary-${weekStart}-${weekEnd}.pdf"`
+      );
+      return res.send(pdfBuffer);
+    }
+
+    // Return JSON summary
+    return res.json({
+      ok: true,
+      summary,
+      text: formatWeeklySummaryAsText(summary),
+    });
+  } catch (error: any) {
+    console.error("[CALENDAR] Error generating weekly summary:", error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || "Failed to generate weekly summary",
     });
   }
 });

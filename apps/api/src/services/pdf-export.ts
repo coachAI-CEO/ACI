@@ -1049,3 +1049,145 @@ export async function generatePlayerPlanPdf(plan: any): Promise<Buffer> {
     });
   });
 }
+
+/**
+ * Generate a PDF for a weekly summary (parent communication)
+ */
+export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50, size: "LETTER" });
+    const chunks: Buffer[] = [];
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("error", reject);
+
+    const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels } = summary;
+
+    const formatDate = (date: Date) => {
+      return date.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+    };
+
+    const formatTime = (date: Date) => {
+      return date.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+    };
+
+    // Header
+    doc.fontSize(20).fillColor("black").font("Helvetica-Bold").text("Weekly Training Schedule", { align: "center" });
+    doc.moveDown(0.5);
+    doc.fontSize(14).fillColor("gray").font("Helvetica").text(`Week of ${formatDate(weekStart)} - ${formatDate(weekEnd)}`, { align: "center" });
+    doc.moveDown(1);
+
+    // Summary Statistics
+    doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Summary", { align: "left" });
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor("black").font("Helvetica").text(`Total Sessions: ${totalSessions}`, { align: "left" });
+    doc.moveDown(0.2);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    doc.fontSize(10).fillColor("black").font("Helvetica").text(`Total Training Time: ${hours} hours ${minutes} minutes`, { align: "left" });
+    
+    if (ageGroups.length > 0) {
+      doc.moveDown(0.2);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(`Age Groups: ${ageGroups.join(", ")}`, { align: "left" });
+    }
+    
+    if (gameModels.length > 0) {
+      const gameModelLabels: Record<string, string> = {
+        POSSESSION: "Possession",
+        PRESSING: "Pressing",
+        TRANSITION: "Transition",
+        COACHAI: "Balanced",
+      };
+      doc.moveDown(0.2);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(`Focus Areas: ${gameModels.map((gm: string) => gameModelLabels[gm] || gm).join(", ")}`, { align: "left" });
+    }
+
+    doc.moveDown(1);
+
+    // Group events by date
+    const eventsByDate: Record<string, any[]> = {};
+    events.forEach((event: any) => {
+      const dateKey = new Date(event.scheduledDate).toISOString().split("T")[0];
+      if (!eventsByDate[dateKey]) {
+        eventsByDate[dateKey] = [];
+      }
+      eventsByDate[dateKey].push(event);
+    });
+
+    // Format each day
+    Object.keys(eventsByDate)
+      .sort()
+      .forEach((dateKey) => {
+        const dayEvents = eventsByDate[dateKey];
+        const date = new Date(dateKey);
+
+        // Check if we need a new page
+        if (doc.y > 700) {
+          doc.addPage();
+        }
+
+        // Day header
+        doc.fontSize(14).fillColor("black").font("Helvetica-Bold").text(formatDate(date), { align: "left" });
+        doc.moveDown(0.3);
+        doc.moveTo(50, doc.y).lineTo(562, doc.y).strokeColor("gray").lineWidth(0.5).stroke();
+        doc.moveDown(0.5);
+
+        dayEvents.forEach((event) => {
+          // Check if we need a new page
+          if (doc.y > 700) {
+            doc.addPage();
+          }
+
+          // Session title
+          doc.fontSize(11).fillColor("black").font("Helvetica-Bold").text(event.session?.title || "Untitled Session", { align: "left" });
+          doc.moveDown(0.2);
+
+          // Time and duration
+          doc.fontSize(9).fillColor("black").font("Helvetica").text(`Time: ${formatTime(new Date(event.scheduledDate))}`, { align: "left" });
+          doc.moveDown(0.1);
+          doc.fontSize(9).fillColor("black").font("Helvetica").text(`Duration: ${event.durationMin} minutes`, { align: "left" });
+
+          // Optional fields
+          if (event.location) {
+            doc.moveDown(0.1);
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Location: ${event.location}`, { align: "left" });
+          }
+          if (event.teamName) {
+            doc.moveDown(0.1);
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Team: ${event.teamName}`, { align: "left" });
+          }
+          if (event.session?.ageGroup) {
+            doc.moveDown(0.1);
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Age Group: ${event.session.ageGroup}`, { align: "left" });
+          }
+          if (event.notes) {
+            doc.moveDown(0.1);
+            doc.fontSize(9).fillColor("gray").font("Helvetica").text(`Notes: ${event.notes}`, { align: "left" });
+          }
+          if (event.sessionRefCode) {
+            doc.moveDown(0.1);
+            doc.fontSize(8).fillColor("gray").font("Helvetica").text(`Reference: ${event.sessionRefCode}`, { align: "left" });
+          }
+
+          doc.moveDown(0.5);
+        });
+
+        doc.moveDown(0.5);
+      });
+
+    doc.end();
+
+    doc.on("end", () => {
+      resolve(Buffer.concat(chunks));
+    });
+  });
+}

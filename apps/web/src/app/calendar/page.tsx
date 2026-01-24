@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import ConfirmModal from "@/components/ConfirmModal";
+import WeeklySummaryModal from "@/components/WeeklySummaryModal";
 
 type CalendarEvent = {
   id: string;
@@ -39,6 +40,7 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showWeeklySummary, setShowWeeklySummary] = useState(false);
 
   // Get start and end of current month/week
   const getDateRange = useCallback(() => {
@@ -288,6 +290,24 @@ export default function CalendarPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                // Calculate current week range (always use week view for summaries)
+                const today = new Date(currentDate);
+                const day = today.getDay();
+                const weekStart = new Date(today);
+                weekStart.setDate(today.getDate() - day);
+                weekStart.setHours(0, 0, 0, 0);
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
+                setShowWeeklySummary(true);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center gap-2"
+              title="Generate weekly summary for parent communication"
+            >
+              📧 Weekly Summary
+            </button>
             <button
               onClick={() => setViewMode("month")}
               className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
@@ -548,6 +568,27 @@ export default function CalendarPage() {
           onCancel={() => setShowDeleteConfirm(false)}
           variant="danger"
         />
+
+        {/* Weekly Summary Modal */}
+        {showWeeklySummary && (() => {
+          // Calculate current week range (Sunday to Saturday)
+          const today = new Date(currentDate);
+          const day = today.getDay(); // 0 = Sunday, 6 = Saturday
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - day); // Go back to Sunday
+          weekStart.setHours(0, 0, 0, 0);
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6); // Go forward to Saturday
+          weekEnd.setHours(23, 59, 59, 999);
+          
+          return (
+            <WeeklySummaryModal
+              weekStart={weekStart}
+              weekEnd={weekEnd}
+              onClose={() => setShowWeeklySummary(false)}
+            />
+          );
+        })()}
       </div>
     </main>
   );
