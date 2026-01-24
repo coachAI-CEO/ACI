@@ -16,11 +16,24 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const queryString = url.searchParams.toString();
 
-    const res = await fetch(`${API_BASE}/calendar/events?${queryString}`, {
-      headers: {
-        Authorization: authHeader,
-      },
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}/calendar/events?${queryString}`, {
+        headers: {
+          Authorization: authHeader,
+        },
+      });
+    } catch (fetchError: any) {
+      console.error(`[CALENDAR_PROXY] GET: Fetch failed:`, fetchError);
+      return NextResponse.json(
+        { 
+          ok: false, 
+          error: "Backend server is not running. Please start the API server on port 4000.",
+          details: fetchError.message 
+        },
+        { status: 503 }
+      );
+    }
 
     let data: any;
     try {

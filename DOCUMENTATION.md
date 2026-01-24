@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
 **Last Updated:** January 15, 2026  
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 ## Table of Contents
 
@@ -335,6 +335,18 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `DELETE /player-plans/:planId` - Delete player plan
 - **Authentication:** All endpoints require JWT token
 
+#### Calendar Endpoints (NEW)
+- `POST /calendar/events` - Create calendar event (schedule a session)
+- `GET /calendar/events` - Get calendar events (with date range filters)
+- `GET /calendar/events/:eventId` - Get specific calendar event
+- `PUT /calendar/events/:eventId` - Update calendar event
+- `DELETE /calendar/events/:eventId` - Delete calendar event (soft delete)
+- `GET /calendar/weekly-summary` - Generate weekly summary with AI-generated parent communication
+  - Query params: `weekStart` (ISO date), `weekEnd` (ISO date), `format` (optional: "pdf")
+  - Returns JSON summary with `aiSummary` field containing AI-generated parent communication
+  - Returns PDF if `format=pdf` is specified
+- **Authentication:** All endpoints require JWT token
+
 #### Admin Endpoints (All require admin authentication)
 - `GET /admin/stats` - Overall statistics (requires `canAccessAdminDashboard`)
 - `GET /admin/metrics/timeline` - Timeline metrics (requires `canViewAnalytics`)
@@ -450,12 +462,19 @@ All backend endpoints are proxied through Next.js API routes:
      - Schedule from session detail modal
 
 8. **Calendar** (`/calendar`) (NEW)
-   - Month and week view toggle
-   - Navigate between months/weeks
-   - View scheduled training sessions
-   - Event detail modal
-   - Remove events from calendar
-   - Custom themed confirmation dialogs
+  - Month and week view toggle
+  - Navigate between months/weeks
+  - View scheduled training sessions
+  - Event detail modal
+  - Remove events from calendar
+  - Custom themed confirmation dialogs
+  - **Weekly Summary Modal** (NEW)
+    - AI-generated parent communication summaries
+    - Select any week to generate summary
+    - View what parents should look for during training
+    - Age-appropriate explanations linked to sessions
+    - Copy text or export as PDF
+    - Sticky header with week selector always visible
 
 8. **Player Plans** (`/player-plans`) (NEW)
    - List all generated player plans
@@ -508,6 +527,10 @@ Persistent header bar with links:
 13. **TimePicker** - Custom dark-themed time picker component
 14. **ConfirmModal** - Custom themed confirmation dialog
 15. **WeeklySummaryModal** - Modal for viewing and exporting weekly training summaries
+    - AI-generated parent communication summaries
+    - Week selector with DatePicker
+    - Sticky header for easy navigation
+    - Copy text and PDF export functionality
 
 ### Backend Services
 
@@ -859,11 +882,17 @@ pnpm test
 - ✅ Next.js API proxy routes for calendar operations
 - ✅ Increased timeout for vault API requests (30 seconds)
 - ✅ **Weekly parent communication summaries** (NEW)
+  - AI-generated summaries using Google Gemini
   - Generate weekly summaries from scheduled calendar events
+  - Age-appropriate explanations of what the team is working on
+  - Detailed guidance on what parents should look for during training
+  - Session-by-session breakdown linked to actual calendar events
   - View summary with statistics and grouped events
   - Copy text format for email sharing
   - Export as PDF for distribution
   - Parent-friendly format with all session details
+  - Week selector to choose any week for summary generation
+  - Sticky header for easy navigation while scrolling
 
 #### Bug Fixes
 - ✅ Fixed date picker selecting previous date (timezone issue)
@@ -1095,4 +1124,4 @@ API calls are made directly to `http://localhost:4000` in development.
 For issues, questions, or contributions, please refer to the project repository.
 
 **Last Updated:** January 15, 2026  
-**Version:** 1.5.0
+**Version:** 1.6.0

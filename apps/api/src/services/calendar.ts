@@ -104,41 +104,55 @@ export async function getCalendarEvents(
     where.cancelled = false;
   }
 
-  const events = await prisma.calendarEvent.findMany({
-    where,
-    orderBy: { scheduledDate: "asc" },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
+  try {
+    const events = await prisma.calendarEvent.findMany({
+      where,
+      orderBy: { scheduledDate: "asc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
         },
       },
-    },
-  });
+    });
 
-  // Fetch session details for each event
-  const eventsWithSessions = await Promise.all(
-    events.map(async (event) => {
-      const session = await prisma.session.findUnique({
-        where: { id: event.sessionId },
-        select: {
-          id: true,
-          title: true,
-          ageGroup: true,
-          durationMin: true,
-          gameModelId: true,
-          refCode: true,
-        },
-      });
-      return {
-        ...event,
-        session: session || null,
-      };
-    })
-  );
+    // Fetch session details for each event
+    const eventsWithSessions = await Promise.all(
+      events.map(async (event) => {
+        try {
+          const session = await prisma.session.findUnique({
+            where: { id: event.sessionId },
+            select: {
+              id: true,
+              title: true,
+              ageGroup: true,
+              durationMin: true,
+              gameModelId: true,
+              refCode: true,
+            },
+          });
+          return {
+            ...event,
+            session: session || null,
+          };
+        } catch (err: any) {
+          console.error(`[CALENDAR] Error fetching session ${event.sessionId}:`, err);
+          // Return event without session if session fetch fails
+          return {
+            ...event,
+            session: null,
+          };
+        }
+      })
+    );
 
-  return eventsWithSessions;
+    return eventsWithSessions;
+  } catch (error: any) {
+    console.error("[CALENDAR] Error in getCalendarEvents:", error);
+    throw error;
+  }
 }
 
 /**

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DatePicker from "./DatePicker";
 
 interface WeeklySummaryModalProps {
-  weekStart: Date;
-  weekEnd: Date;
+  initialWeekStart?: Date;
+  initialWeekEnd?: Date;
   onClose: () => void;
 }
 
@@ -32,6 +33,7 @@ interface WeeklySummary {
   totalMinutes: number;
   ageGroups: string[];
   gameModels: string[];
+  aiSummary?: string; // AI-generated parent communication summary
 }
 
 const gameModelLabel: Record<string, string> = {
@@ -42,18 +44,52 @@ const gameModelLabel: Record<string, string> = {
 };
 
 export default function WeeklySummaryModal({
-  weekStart,
-  weekEnd,
+  initialWeekStart,
+  initialWeekEnd,
   onClose,
 }: WeeklySummaryModalProps) {
+  // Calculate initial week (Sunday to Saturday)
+  const getWeekRange = (date: Date) => {
+    const day = date.getDay(); // 0 = Sunday, 6 = Saturday
+    const weekStart = new Date(date);
+    weekStart.setDate(date.getDate() - day); // Go back to Sunday
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6); // Go forward to Saturday
+    weekEnd.setHours(23, 59, 59, 999);
+    return { weekStart, weekEnd };
+  };
+
+  const initialDate = initialWeekStart || new Date();
+  const initialRange = getWeekRange(initialDate);
+  
+  const [selectedDate, setSelectedDate] = useState<string>(
+    initialRange.weekStart.toISOString().split("T")[0]
+  );
+  const [weekStart, setWeekStart] = useState<Date>(initialRange.weekStart);
+  const [weekEnd, setWeekEnd] = useState<Date>(initialRange.weekEnd);
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
   const [text, setText] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
 
+  // Update week range when selected date changes
   useEffect(() => {
-    loadSummary();
+    if (selectedDate) {
+      const date = new Date(selectedDate);
+      const range = getWeekRange(date);
+      setWeekStart(range.weekStart);
+      setWeekEnd(range.weekEnd);
+    }
+  }, [selectedDate]);
+
+  // Load summary when week range changes
+  useEffect(() => {
+    if (weekStart && weekEnd) {
+      loadSummary();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart, weekEnd]);
 
   const loadSummary = async () => {
@@ -71,14 +107,33 @@ export default function WeeklySummaryModal({
       const weekStartStr = weekStart.toISOString().split("T")[0];
       const weekEndStr = weekEnd.toISOString().split("T")[0];
 
-      const res = await fetch(
-        `/api/calendar/weekly-summary?weekStart=${weekStartStr}&weekEnd=${weekEndStr}`,
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+      // Add timeout for AI generation (can take up to 90s)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 95000); // 95 second timeout
+
+      let res: Response;
+      try {
+        res = await fetch(
+          `/api/calendar/weekly-summary?weekStart=${weekStartStr}&weekEnd=${weekEndStr}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+            signal: controller.signal,
+          }
+        );
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === "AbortError") {
+          throw new Error("Request timeout. AI generation is taking longer than expected. Please try again.");
         }
-      );
+        // Check for network/connection errors
+        if (fetchError.message?.includes("fetch failed") || fetchError.message?.includes("Failed to fetch")) {
+          throw new Error("Unable to connect to the backend server. Please ensure the API server is running on port 4000.");
+        }
+        throw new Error(fetchError.message || "Failed to connect to server");
+      }
 
       const data = await res.json();
 
@@ -142,7 +197,9 @@ export default function WeeklySummaryModal({
   };
 
   const handleCopyText = () => {
-    navigator.clipboard.writeText(text);
+    // Include AI summary if available, otherwise use the formatted text
+    const textToCopy = summary?.aiSummary || text;
+    navigator.clipboard.writeText(textToCopy);
     // You could add a toast notification here
   };
 
@@ -175,40 +232,77 @@ export default function WeeklySummaryModal({
       }}
     >
       <div
-        className="relative max-w-4xl w-full rounded-2xl border border-slate-700/70 bg-slate-900/95 p-6 shadow-2xl my-8"
+        className="relative max-w-4xl w-full rounded-2xl border border-slate-700/70 bg-slate-900/95 shadow-2xl my-8 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-100 mb-1">Weekly Training Summary</h2>
-            <p className="text-sm text-slate-400">
-              {formatDate(weekStart.toISOString())} - {formatDate(weekEnd.toISOString())}
-            </p>
+        {/* Fixed Header */}
+        <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm border-b border-slate-700/50 p-6 pb-4">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-slate-100 mb-1">Weekly Training Summary</h2>
+              <p className="text-sm text-slate-400 mb-3">
+                {formatDate(weekStart.toISOString())} - {formatDate(weekEnd.toISOString())}
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-xs text-slate-400 uppercase tracking-wide whitespace-nowrap">
+                  Select Week:
+                </label>
+                <DatePicker
+                  value={selectedDate}
+                  onChange={(value) => {
+                    setSelectedDate(value);
+                    setLoading(true); // Show loading when week changes
+                  }}
+                  className="h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
+                />
+                <span className="text-xs text-slate-500">
+                  (Select any date in the week)
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500 flex-shrink-0"
+              aria-label="Close"
+            >
+              ✕
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-slate-500"
-            aria-label="Close"
-          >
-            ✕
-          </button>
         </div>
 
-        {loading && (
-          <div className="py-12 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-            <p className="mt-4 text-slate-400">Generating summary...</p>
-          </div>
-        )}
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-6 pt-4">
+          {loading && (
+            <div className="py-12 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
+              <p className="mt-4 text-slate-400">Generating AI summary...</p>
+              <p className="mt-2 text-xs text-slate-500">This may take a moment</p>
+            </div>
+          )}
 
-        {error && (
-          <div className="rounded-lg border border-red-700/50 bg-red-900/20 p-4 text-sm text-red-300 mb-4">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="rounded-lg border border-red-700/50 bg-red-900/20 p-4 text-sm text-red-300 mb-4">
+              {error}
+            </div>
+          )}
 
         {!loading && !error && summary && (
           <>
+            {/* AI-Generated Summary */}
+            {summary.aiSummary && (
+              <div className="rounded-lg border border-emerald-700/50 bg-emerald-900/20 p-5 mb-4">
+                <h3 className="text-sm font-semibold text-emerald-300 mb-3 flex items-center gap-2">
+                  <span>✨</span>
+                  <span>Parent Communication Summary</span>
+                </h3>
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <div className="text-slate-200 whitespace-pre-wrap leading-relaxed">
+                    {summary.aiSummary}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Summary Statistics */}
             <div className="rounded-lg border border-slate-700/50 bg-slate-800/50 p-4 mb-4">
               <h3 className="text-sm font-semibold text-slate-200 mb-3">Summary</h3>
@@ -322,6 +416,7 @@ export default function WeeklySummaryModal({
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

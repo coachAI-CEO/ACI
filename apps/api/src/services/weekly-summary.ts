@@ -1,4 +1,6 @@
 import { prisma } from "../prisma";
+import { generateText } from "../gemini";
+import { buildWeeklySummaryPrompt } from "../prompts/weekly-summary";
 
 export interface WeeklySummaryInput {
   userId: string;
@@ -11,7 +13,7 @@ export interface WeeklySummaryEvent {
   sessionId: string;
   sessionRefCode: string | null;
   scheduledDate: Date;
-  durationMin: number;
+  durationMin: number | null;
   location: string | null;
   teamName: string | null;
   notes: string | null;
@@ -32,6 +34,7 @@ export interface WeeklySummary {
   totalMinutes: number;
   ageGroups: string[];
   gameModels: string[];
+  aiSummary?: string; // AI-generated parent communication summary
 }
 
 /**
@@ -85,7 +88,7 @@ export async function generateWeeklySummary(
         sessionId: event.sessionId,
         sessionRefCode: event.sessionRefCode,
         scheduledDate: event.scheduledDate,
-        durationMin: event.durationMin,
+        durationMin: event.durationMin ?? null,
         location: event.location,
         teamName: event.teamName,
         notes: event.notes,
@@ -113,9 +116,81 @@ export async function generateWeeklySummary(
     new Set(
       eventsWithSessions
         .map((e) => e.session?.gameModelId)
-        .filter((gm): gm is string => !!gm)
+        .filter((gm) => !!gm) // Filter out undefined/null
+        .map((gm) => String(gm!)) // Convert enum to string (non-null assertion safe after filter)
     )
   ).sort();
+
+  // Fetch full session JSON for AI summary generation (to get drill details)
+  const sessionsWithJson = await Promise.all(
+    eventsWithSessions.map(async (event) => {
+      if (!event.session) return null;
+      try {
+        const fullSession = await prisma.session.findUnique({
+          where: { id: event.sessionId },
+          select: {
+            json: true,
+            title: true,
+            ageGroup: true,
+            gameModelId: true,
+            durationMin: true,
+          },
+        });
+        return fullSession ? { event, sessionJson: fullSession.json, sessionMeta: fullSession } : null;
+      } catch (err) {
+        console.error(`[WEEKLY_SUMMARY] Error fetching session JSON ${event.sessionId}:`, err);
+        return null;
+      }
+    })
+  );
+
+  const validSessions = sessionsWithJson.filter((s): s is NonNullable<typeof s> => s !== null);
+
+  // Generate AI summary if there are sessions
+  let aiSummary: string | undefined;
+  if (validSessions.length > 0) {
+    try {
+      const summaryData: WeeklySummary = {
+        weekStart,
+        weekEnd,
+        events: eventsWithSessions,
+        totalSessions,
+        totalMinutes,
+        ageGroups,
+        gameModels,
+      };
+
+      // Get user info for personalization
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true },
+      });
+
+      // Get team name from events if available
+      const teamName = eventsWithSessions.find((e) => e.teamName)?.teamName || undefined;
+
+      const prompt = buildWeeklySummaryPrompt({
+        summary: summaryData,
+        coachName: user?.name || undefined,
+        teamName,
+        sessionsWithDetails: validSessions.map((s) => ({
+          event: s.event,
+          sessionJson: s.sessionJson,
+          sessionMeta: s.sessionMeta,
+        })),
+      });
+
+      console.log(`[WEEKLY_SUMMARY] Generating AI summary with ${prompt.length} char prompt...`);
+      aiSummary = await generateText(prompt, { timeout: 60000, retries: 1 });
+      if (aiSummary) {
+        console.log(`[WEEKLY_SUMMARY] AI summary generated (${aiSummary.length} chars)`);
+      }
+    } catch (error: any) {
+      console.error("[WEEKLY_SUMMARY] Error generating AI summary:", error);
+      // Don't fail the whole request if AI generation fails
+      aiSummary = undefined;
+    }
+  }
 
   return {
     weekStart,
@@ -125,6 +200,7 @@ export async function generateWeeklySummary(
     totalMinutes,
     ageGroups,
     gameModels,
+    aiSummary,
   };
 }
 
@@ -132,7 +208,7 @@ export async function generateWeeklySummary(
  * Format weekly summary as a parent-friendly text summary
  */
 export function formatWeeklySummaryAsText(summary: WeeklySummary): string {
-  const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels } = summary;
+  const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels, aiSummary } = summary;
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("en-US", {
@@ -153,6 +229,15 @@ export function formatWeeklySummaryAsText(summary: WeeklySummary): string {
 
   let text = `Weekly Training Schedule Summary\n`;
   text += `Week of ${formatDate(weekStart)} - ${formatDate(weekEnd)}\n\n`;
+
+  // Include AI summary if available
+  if (aiSummary) {
+    text += `PARENT COMMUNICATION SUMMARY\n`;
+    text += `${"=".repeat(50)}\n\n`;
+    text += `${aiSummary}\n\n`;
+    text += `${"=".repeat(50)}\n\n`;
+  }
+
   text += `Total Sessions: ${totalSessions}\n`;
   text += `Total Training Time: ${Math.round(totalMinutes / 60)} hours ${totalMinutes % 60} minutes\n\n`;
 
@@ -193,7 +278,7 @@ export function formatWeeklySummaryAsText(summary: WeeklySummary): string {
       dayEvents.forEach((event) => {
         text += `Session: ${event.session?.title || "Untitled Session"}\n`;
         text += `Time: ${formatTime(event.scheduledDate)}\n`;
-        text += `Duration: ${event.durationMin} minutes\n`;
+        text += `Duration: ${event.durationMin || 0} minutes\n`;
 
         if (event.location) {
           text += `Location: ${event.location}\n`;

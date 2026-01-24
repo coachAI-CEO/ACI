@@ -90,8 +90,18 @@ export default function CalendarPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to load calendar events");
+        let errorMessage = "Failed to load calendar events";
+        try {
+          const data = await res.json();
+          errorMessage = data.error || errorMessage;
+          if (data.details && process.env.NODE_ENV === "development") {
+            console.error("[CALENDAR] Error details:", data.details);
+          }
+        } catch (parseError) {
+          // If response isn't JSON, use status text
+          errorMessage = `${res.status} ${res.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
@@ -570,25 +580,12 @@ export default function CalendarPage() {
         />
 
         {/* Weekly Summary Modal */}
-        {showWeeklySummary && (() => {
-          // Calculate current week range (Sunday to Saturday)
-          const today = new Date(currentDate);
-          const day = today.getDay(); // 0 = Sunday, 6 = Saturday
-          const weekStart = new Date(today);
-          weekStart.setDate(today.getDate() - day); // Go back to Sunday
-          weekStart.setHours(0, 0, 0, 0);
-          const weekEnd = new Date(weekStart);
-          weekEnd.setDate(weekStart.getDate() + 6); // Go forward to Saturday
-          weekEnd.setHours(23, 59, 59, 999);
-          
-          return (
-            <WeeklySummaryModal
-              weekStart={weekStart}
-              weekEnd={weekEnd}
-              onClose={() => setShowWeeklySummary(false)}
-            />
-          );
-        })()}
+        {showWeeklySummary && (
+          <WeeklySummaryModal
+            initialWeekStart={currentDate}
+            onClose={() => setShowWeeklySummary(false)}
+          />
+        )}
       </div>
     </main>
   );

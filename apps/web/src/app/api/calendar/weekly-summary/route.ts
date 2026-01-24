@@ -28,10 +28,33 @@ export async function GET(request: NextRequest) {
       headers.Authorization = authHeader;
     }
 
-    const res = await fetch(url, {
-      method: "GET",
-      headers,
-    });
+    // Add timeout for AI generation (can take up to 60s + processing time)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout for AI generation
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === "AbortError") {
+        return NextResponse.json(
+          { ok: false, error: "Request timeout. AI generation is taking longer than expected. Please try again." },
+          { status: 504 }
+        );
+      }
+      // Network error (backend not running, connection refused, etc.)
+      console.error("[WEEKLY_SUMMARY_PROXY] Fetch error:", fetchError);
+      return NextResponse.json(
+        { ok: false, error: "Unable to connect to the backend server. Please ensure the API server is running." },
+        { status: 503 }
+      );
+    }
 
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
@@ -57,6 +80,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
   } catch (e: any) {
     console.error("[WEEKLY_SUMMARY_PROXY] Error:", e);
+    // Check if it's a network/connection error
+    if (e.message?.includes("fetch failed") || e.message?.includes("ECONNREFUSED") || e.code === "ECONNREFUSED") {
+      return NextResponse.json(
+        { ok: false, error: "Unable to connect to the backend server. Please ensure the API server is running on port 4000." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { ok: false, error: e.message || "Failed to fetch weekly summary" },
       { status: 500 }

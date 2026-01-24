@@ -99,10 +99,24 @@ r.get("/calendar/events", async (req: AuthRequest, res) => {
     } = {};
 
     if (startDate) {
-      options.startDate = new Date(startDate as string);
+      const parsedStart = new Date(startDate as string);
+      if (isNaN(parsedStart.getTime())) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid startDate format: ${startDate}`,
+        });
+      }
+      options.startDate = parsedStart;
     }
     if (endDate) {
-      options.endDate = new Date(endDate as string);
+      const parsedEnd = new Date(endDate as string);
+      if (isNaN(parsedEnd.getTime())) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid endDate format: ${endDate}`,
+        });
+      }
+      options.endDate = parsedEnd;
     }
     if (includeCompleted !== undefined) {
       options.includeCompleted = includeCompleted === "true";
@@ -132,9 +146,11 @@ r.get("/calendar/events", async (req: AuthRequest, res) => {
     });
   } catch (error: any) {
     console.error("[CALENDAR] Error fetching events:", error);
+    console.error("[CALENDAR] Error stack:", error.stack);
     return res.status(500).json({
       ok: false,
       error: error.message || "Failed to fetch calendar events",
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 });

@@ -1061,7 +1061,7 @@ export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("error", reject);
 
-    const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels } = summary;
+    const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels, aiSummary } = summary;
 
     const formatDate = (date: Date) => {
       return date.toLocaleDateString("en-US", {
@@ -1112,6 +1112,17 @@ export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
     }
 
     doc.moveDown(1);
+
+    // AI-Generated Summary (if available)
+    if (aiSummary) {
+      doc.fontSize(14).fillColor("black").font("Helvetica-Bold").text("Parent Communication Summary", { align: "left" });
+      doc.moveDown(0.3);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(aiSummary, {
+        align: "left",
+        lineGap: 2,
+      });
+      doc.moveDown(1);
+    }
 
     // Group events by date
     const eventsByDate: Record<string, any[]> = {};
