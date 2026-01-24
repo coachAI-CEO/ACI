@@ -14,6 +14,8 @@ import vaultRoutes from "./routes-vault";
 import skillFocusRoutes from "./routes-skill-focus";
 import adminRoutes from "./routes-admin";
 import favoritesRoutes from "./routes-favorites";
+import playerPlanRoutes from "./routes-player-plan";
+import calendarRoutes from "./routes-calendar";
 
 const app = express();
 
@@ -47,5 +49,7 @@ app.use(vaultRoutes);  // Vault system routes
 app.use(skillFocusRoutes); // Skill focus routes
 app.use(adminRoutes); // Admin dashboard routes
 app.use(favoritesRoutes); // Favorites routes
+app.use(playerPlanRoutes); // Player plan routes
+app.use(calendarRoutes); // Calendar routes
 
 export default app;

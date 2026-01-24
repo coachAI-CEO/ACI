@@ -5,6 +5,8 @@ import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
 import DrillDiagram from "@/components/DrillDiagram";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
+import ScheduleSessionModal from "@/components/ScheduleSessionModal";
+import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 
 type FavoriteSession = {
   id: string;
@@ -104,6 +106,16 @@ export default function FavoritesPage() {
   const [activeTab, setActiveTab] = useState<"all" | "sessions" | "drills" | "series">("all");
   const [selectedDrill, setSelectedDrill] = useState<FavoriteDrill | null>(null);
   const [selectedSession, setSelectedSession] = useState<FavoriteSession | null>(null);
+  const [scheduleModal, setScheduleModal] = useState<{
+    sessionId: string;
+    sessionTitle: string;
+    sessionRefCode?: string | null;
+  } | null>(null);
+  const [scheduleSeriesModal, setScheduleSeriesModal] = useState<{
+    seriesId: string;
+    seriesTitle: string;
+    sessions: Array<{ id: string; title: string; refCode?: string | null }>;
+  } | null>(null);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -122,8 +134,19 @@ export default function FavoritesPage() {
       if (filters.ageGroup) params.set("ageGroup", filters.ageGroup);
       if (filters.phase) params.set("phase", filters.phase);
 
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch(`/api/favorites?${params.toString()}`, {
-        headers: getUserHeaders(),
+        headers,
       });
 
       if (!res.ok) {
@@ -147,9 +170,20 @@ export default function FavoritesPage() {
 
   const removeFavorite = async (type: "session" | "drill" | "series", id: string) => {
     try {
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch(`/api/favorites/${type}/${id}`, {
         method: "DELETE",
-        headers: getUserHeaders(),
+        headers,
       });
 
       if (res.ok) {
@@ -438,6 +472,27 @@ export default function FavoritesPage() {
                     </div>
                     <div className="flex items-center gap-2 pt-1">
                       <span className="text-emerald-400">■ {s.favoriteCount}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // For series, open series scheduling modal
+                          setScheduleSeriesModal({
+                            seriesId: s.seriesId,
+                            seriesTitle: s.sessions[0]?.title 
+                              ? s.sessions[0].title.replace(/^(Session \d+:?\s*)/i, "").replace(/\s*-\s*Part\s*\d+/i, "").trim()
+                              : `${s.totalSessions}-Session Series`,
+                            sessions: s.sessions.map((sess) => ({
+                              id: sess.id,
+                              title: sess.title || `Session ${s.sessions.indexOf(sess) + 1}`,
+                              refCode: sess.refCode || undefined,
+                            })),
+                          });
+                        }}
+                        className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 transition-colors"
+                        title="Schedule Series"
+                      >
+                        📅
+                      </button>
                       <Link
                         href={`/demo/session?seriesId=${s.seriesId}`}
                         className="text-emerald-400 hover:text-emerald-300 ml-auto"
@@ -590,6 +645,20 @@ export default function FavoritesPage() {
                 )}
 
                 <div className="flex gap-3 pt-4 border-t border-slate-700/50">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedSession(null);
+                      setScheduleModal({
+                        sessionId: selectedSession.id,
+                        sessionTitle: selectedSession.title,
+                        sessionRefCode: selectedSession.refCode || undefined,
+                      });
+                    }}
+                    className="inline-flex items-center rounded-full border border-blue-500/50 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-400 hover:bg-blue-500/20 transition-colors"
+                  >
+                    📅 Schedule Session
+                  </button>
                   <Link
                     href={`/demo/session?sessionId=${selectedSession.id}`}
                     className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
@@ -783,6 +852,31 @@ export default function FavoritesPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Schedule Session Modal */}
+        {scheduleModal && (
+          <ScheduleSessionModal
+            sessionId={scheduleModal.sessionId}
+            sessionTitle={scheduleModal.sessionTitle}
+            sessionRefCode={scheduleModal.sessionRefCode}
+            onClose={() => setScheduleModal(null)}
+            onScheduled={() => {
+              console.log("[FAVORITES] Session scheduled successfully");
+            }}
+          />
+        )}
+        {/* Schedule Series Modal */}
+        {scheduleSeriesModal && (
+          <ScheduleSeriesModal
+            seriesId={scheduleSeriesModal.seriesId}
+            seriesTitle={scheduleSeriesModal.seriesTitle}
+            sessions={scheduleSeriesModal.sessions}
+            onClose={() => setScheduleSeriesModal(null)}
+            onScheduled={() => {
+              console.log("[FAVORITES] Series scheduled successfully");
+            }}
+          />
         )}
       </div>
     </main>

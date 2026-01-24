@@ -94,22 +94,30 @@ export const optionalAuth = async (
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.userId },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          subscriptionPlan: true,
-          subscriptionStatus: true,
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; role: string };
+        const user = await prisma.user.findUnique({
+          where: { id: decoded.userId },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true,
+          }
+        });
+        if (user) {
+          req.userId = user.id;
+          req.user = user;
+          req.userRole = user.role;
+          console.log(`[AUTH] optionalAuth: Authenticated user ${user.id}`);
+        } else {
+          console.log(`[AUTH] optionalAuth: User ${decoded.userId} not found in database`);
         }
-      });
-      if (user) {
-        req.userId = user.id;
-        req.user = user;
-        req.userRole = user.role;
+      } catch (tokenError: any) {
+        // Token is invalid/expired, continue as anonymous
+        console.log(`[AUTH] optionalAuth: Invalid token, continuing as anonymous:`, tokenError?.message);
       }
     } else {
       // Anonymous user
@@ -117,11 +125,15 @@ export const optionalAuth = async (
       if (userId) {
         req.userId = userId;
         req.userRole = 'FREE';
+        console.log(`[AUTH] optionalAuth: Using x-user-id for anonymous user ${userId}`);
+      } else {
+        console.log(`[AUTH] optionalAuth: No auth headers, continuing as anonymous`);
       }
     }
     next();
-  } catch (error) {
-    // Continue as anonymous
+  } catch (error: any) {
+    // Continue as anonymous on any unexpected error
+    console.log(`[AUTH] optionalAuth: Unexpected error, continuing as anonymous:`, error?.message);
     next();
   }
 };

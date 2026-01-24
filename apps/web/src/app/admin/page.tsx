@@ -326,6 +326,13 @@ export default function AdminDashboard() {
     drillsByStatus: Record<string, Array<{ id: string; refCode: string | null; title: string; qaScore: number | null }>>;
   } | null>(null);
   const [loadingQaAnalyticsDrills, setLoadingQaAnalyticsDrills] = useState<boolean>(false);
+  const [userSummary, setUserSummary] = useState<{
+    totalUsers: number;
+    byRole: Record<string, number>;
+    byAdminRole: Record<string, number>;
+    bySubscriptionPlan: Record<string, number>;
+    bySubscriptionStatus: Record<string, number>;
+  } | null>(null);
 
   const checkSystemStatus = useCallback(async () => {
     const apiUrl = API_BASE_URL;
@@ -384,7 +391,7 @@ export default function AdminDashboard() {
     setLoadingQaAnalyticsDrills(true);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout (increased from 30s)
 
       const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status-drills`, {
         headers: getAuthHeaders(),
@@ -407,7 +414,8 @@ export default function AdminDashboard() {
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
-        console.error("QA analytics drills fetch timed out after 30 seconds");
+        console.warn("QA analytics drills fetch timed out after 60 seconds - this query may be slow with large datasets");
+        // Don't show error to user, just log it - analytics are non-critical
       } else {
         console.error("Error fetching QA analytics for drills:", e);
         // Check if it's a network error
@@ -432,7 +440,7 @@ export default function AdminDashboard() {
     setLoadingQaAnalytics(true);
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout (increased from 30s)
 
       const res = await fetch(`${API_BASE_URL}/admin/analytics/qa-status`, {
         headers: getAuthHeaders(),
@@ -455,7 +463,8 @@ export default function AdminDashboard() {
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
-        console.error("QA analytics fetch timed out after 30 seconds");
+        console.warn("QA analytics fetch timed out after 60 seconds - this query may be slow with large datasets");
+        // Don't show error to user, just log it - analytics are non-critical
       } else {
         console.error("Error fetching QA analytics:", e);
         // Check if it's a network error
@@ -512,20 +521,22 @@ export default function AdminDashboard() {
   const fetchData = useCallback(async () => {
     try {
       const authHeaders = getAuthHeaders();
-      const [statsRes, timelineRes, recentRes, operationsRes, ageRes] = await Promise.all([
+      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/timeline?days=7`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/recent?limit=20`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/by-operation`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/stats/by-age-group`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/users/summary`, { headers: authHeaders }),
       ]);
 
-      const [statsData, timelineData, recentData, operationsData, ageData] = await Promise.all([
+      const [statsData, timelineData, recentData, operationsData, ageData, userSummaryData] = await Promise.all([
         statsRes.json(),
         timelineRes.json(),
         recentRes.json(),
         operationsRes.json(),
         ageRes.json(),
+        userSummaryRes.json(),
       ]);
 
       if (statsData.ok) setStats(statsData.stats);
@@ -535,6 +546,9 @@ export default function AdminDashboard() {
       if (ageData.ok) {
         setAgeGroupStats(ageData.sessions || []);
         setSeriesAgeGroupStats(ageData.seriesSessions || []);
+      }
+      if (userSummaryData.ok && userSummaryData.summary) {
+        setUserSummary(userSummaryData.summary);
       }
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -1162,8 +1176,10 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {/* Review Session & Drill (QA) - Side by Side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Review Session (QA + optional regen) */}
-        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold">Review Session</h2>
@@ -1388,9 +1404,7 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
-
-        {/* Review Drill (QA) */}
-        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="text-lg font-semibold">Review Drill</h2>
@@ -1400,7 +1414,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_240px] gap-4 items-end">
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_240px_240px] gap-4 items-end">
             <div>
               <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
                 Drill ID or Ref Code
@@ -1426,6 +1440,11 @@ export default function AdminDashboard() {
               >
                 {reviewDrillRunning ? "Reviewing..." : "Run QA Review"}
               </button>
+            </div>
+
+            <div>
+              {/* Empty column to match Review Session layout */}
+              <div className="h-9" />
             </div>
           </div>
 
@@ -1631,6 +1650,7 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 auto-rows-fr items-stretch">
@@ -1708,6 +1728,131 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Users & Access Breakdown - Combined Section */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
+          {/* Users Overview Card - Spans 2 columns */}
+          <div className="lg:col-span-2 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <div className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">
+              Users
+            </div>
+            {userSummary ? (
+              <div className="space-y-3 text-xs">
+                <div className="flex items-baseline justify-between mb-3">
+                  <span className="text-slate-400">Total</span>
+                  <span className="text-lg font-bold text-slate-100">
+                    {formatNumber(userSummary.totalUsers || 0)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase mb-2">Roles</div>
+                    <div className="space-y-1.5">
+                      {["FREE", "COACH", "CLUB", "TRIAL"].map((role) => (
+                        <div key={role} className="flex items-center justify-between">
+                          <span className="text-slate-400">{role}</span>
+                          <span className="text-slate-100 font-medium">
+                            {formatNumber(userSummary.byRole?.[role] || 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] text-slate-500 uppercase mb-2">Admins</div>
+                    <div className="space-y-1.5">
+                      {["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"].map((role) => (
+                        <div key={role} className="flex items-center justify-between">
+                          <span className="text-slate-400 text-[11px]">{role}</span>
+                          <span className="text-slate-100 font-medium">
+                            {formatNumber(userSummary.byAdminRole?.[role] || 0)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">User stats unavailable</div>
+            )}
+          </div>
+
+          {/* Access Levels Breakdown - Combined with Users section */}
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Access Levels</h2>
+            {userSummary ? (
+              <div className="space-y-2 text-xs text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Free</span>
+                  <span className="font-semibold">
+                    {formatNumber(userSummary.byRole?.FREE || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Coach</span>
+                  <span className="font-semibold">
+                    {formatNumber(userSummary.byRole?.COACH || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Club</span>
+                  <span className="font-semibold">
+                    {formatNumber(userSummary.byRole?.CLUB || 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Trial</span>
+                  <span className="font-semibold">
+                    {formatNumber(userSummary.byRole?.TRIAL || 0)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">No user data available.</div>
+            )}
+          </div>
+
+          {/* Subscriptions Card */}
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Subscriptions</h2>
+            {userSummary ? (
+              <div className="space-y-2 text-xs text-slate-300">
+                {Object.entries(userSummary.bySubscriptionPlan || {}).map(([plan, count]) => (
+                  <div key={plan} className="flex items-center justify-between">
+                    <span className="text-slate-400 text-[11px]">{plan}</span>
+                    <span className="font-semibold">
+                      {formatNumber(count || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">No subscription data available.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Admin Roles - Separate row */}
+        <div className="mt-6">
+          <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-3 min-h-[32px] flex items-center">Admin Roles</h2>
+            {userSummary ? (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-slate-300">
+                {["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"].map((role) => (
+                  <div key={role} className="flex items-center justify-between">
+                    <span className="text-slate-400">{role}</span>
+                    <span className="font-semibold">
+                      {formatNumber(userSummary.byAdminRole?.[role] || 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500">No admin data available.</div>
+            )}
           </div>
         </div>
 

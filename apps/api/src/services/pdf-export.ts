@@ -887,3 +887,165 @@ export async function generateDrillPdf(drill: any): Promise<Buffer> {
     });
   });
 }
+
+export async function generatePlayerPlanPdf(plan: any): Promise<Buffer> {
+  console.log("[PDF] Generating PDF for player plan:", {
+    title: plan.title,
+    drillsCount: plan.json?.drills?.length,
+  });
+  
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const chunks: Buffer[] = [];
+
+  doc.on("data", (chunk) => chunks.push(chunk));
+
+  return new Promise((resolve, reject) => {
+    doc.on("error", reject);
+
+    // Title
+    doc.fontSize(20).fillColor("black").text(plan.title || "Player Training Plan", {
+      align: "left",
+    });
+    doc.moveDown(0.5);
+    
+    // Metadata
+    const metadata: string[] = [];
+    if (plan.ageGroup) metadata.push(plan.ageGroup);
+    if (plan.playerLevel) metadata.push(plan.playerLevel);
+    if (plan.durationMin) metadata.push(`${plan.durationMin} min`);
+    if (plan.refCode) metadata.push(plan.refCode);
+    
+    if (metadata.length > 0) {
+      doc
+        .fontSize(10)
+        .fillColor("gray")
+        .text(metadata.join(" • "), { align: "left" });
+      doc.moveDown();
+    }
+
+    // Objectives
+    if (plan.objectives) {
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Objectives", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(plan.objectives, { align: "left" });
+      doc.moveDown();
+    }
+
+    // Equipment
+    if (plan.equipment && Array.isArray(plan.equipment) && plan.equipment.length > 0) {
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Equipment Needed", { underline: true });
+      doc.moveDown(0.5);
+      doc.fontSize(10).fillColor("black").font("Helvetica").text(plan.equipment.join(", "), { align: "left" });
+      doc.moveDown();
+    }
+
+    // Exercises
+    const drills = plan.json?.drills || [];
+    if (drills.length > 0) {
+      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Exercises", { underline: true });
+      doc.moveDown(0.5);
+      
+      drills.forEach((drill: any, idx: number) => {
+        // Check if we need a new page
+        if (doc.y > doc.page.height - 200) {
+          doc.addPage();
+        }
+
+        // Drill title and type
+        const drillType = drill.drillType || "TECHNICAL";
+        doc.fontSize(11).fillColor("black").font("Helvetica-Bold").text(`${idx + 1}. ${drill.title || `Exercise ${idx + 1}`}`, {
+          align: "left",
+        });
+        doc.fontSize(9).fillColor("gray").text(`Type: ${drillType}`, { align: "left" });
+        if (drill.durationMin) {
+          doc.fontSize(9).fillColor("gray").text(`Duration: ${drill.durationMin} min`, { align: "left" });
+        }
+        doc.moveDown(0.3);
+
+        // Description
+        if (drill.description) {
+          doc.fontSize(10).fillColor("black").font("Helvetica").text(drill.description, {
+            align: "left",
+            lineGap: 2,
+          });
+          doc.moveDown(0.3);
+        }
+
+        // Setup Steps
+        if (drill.organization?.setupSteps && Array.isArray(drill.organization.setupSteps)) {
+          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Setup & Instructions:", { align: "left" });
+          drill.organization.setupSteps.forEach((step: string, i: number) => {
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${step}`, {
+              align: "left",
+              indent: 10,
+              lineGap: 1,
+            });
+          });
+          doc.moveDown(0.3);
+        }
+
+        // Area & Equipment
+        const areaInfo: string[] = [];
+        if (drill.organization?.area) {
+          if (drill.organization.area.lengthYards && drill.organization.area.widthYards) {
+            areaInfo.push(`Area: ${drill.organization.area.lengthYards} x ${drill.organization.area.widthYards} yards`);
+          }
+          if (drill.organization.area.notes) {
+            areaInfo.push(drill.organization.area.notes);
+          }
+        }
+        if (drill.organization?.equipment && Array.isArray(drill.organization.equipment) && drill.organization.equipment.length > 0) {
+          areaInfo.push(`Equipment: ${drill.organization.equipment.join(", ")}`);
+        }
+        if (areaInfo.length > 0) {
+          doc.fontSize(9).fillColor("gray").text(areaInfo.join(" • "), { align: "left" });
+          doc.moveDown(0.3);
+        }
+
+        // Reps & Rest
+        if (drill.organization?.reps || drill.organization?.rest) {
+          const repsInfo: string[] = [];
+          if (drill.organization.reps) repsInfo.push(`Reps: ${drill.organization.reps}`);
+          if (drill.organization.rest) repsInfo.push(`Rest: ${drill.organization.rest}`);
+          if (repsInfo.length > 0) {
+            doc.fontSize(9).fillColor("black").font("Helvetica-Bold").text(repsInfo.join(" • "), { align: "left" });
+            doc.moveDown(0.3);
+          }
+        }
+
+        // Coaching Points
+        if (drill.coachingPoints && Array.isArray(drill.coachingPoints) && drill.coachingPoints.length > 0) {
+          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Self-Coaching Points:", { align: "left" });
+          drill.coachingPoints.forEach((point: string) => {
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`• ${point}`, {
+              align: "left",
+              indent: 10,
+              lineGap: 1,
+            });
+          });
+          doc.moveDown(0.3);
+        }
+
+        // Progressions
+        if (drill.progressions && Array.isArray(drill.progressions) && drill.progressions.length > 0) {
+          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Progressions:", { align: "left" });
+          drill.progressions.forEach((prog: string, i: number) => {
+            doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${prog}`, {
+              align: "left",
+              indent: 10,
+              lineGap: 1,
+            });
+          });
+        }
+
+        doc.moveDown(0.8);
+      });
+    }
+
+    doc.end();
+
+    doc.on("end", () => {
+      resolve(Buffer.concat(chunks));
+    });
+  });
+}

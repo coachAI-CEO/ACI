@@ -5,6 +5,10 @@ import Link from "next/link";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import DrillDiagram from "@/components/DrillDiagram";
 import { getUserHeaders } from "@/lib/user";
+import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
+import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
+import ScheduleSessionModal from "@/components/ScheduleSessionModal";
+import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 
 type VaultSession = {
   id: string;
@@ -115,6 +119,11 @@ export default function VaultPage() {
   
   const [sessions, setSessions] = useState<VaultSession[]>([]);
   const [series, setSeries] = useState<VaultSeries[]>([]);
+  
+  // Helper to get series by seriesId
+  const getSeriesById = (seriesId: string) => {
+    return series.find((s) => s.seriesId === seriesId);
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"sessions" | "series" | "drills">("drills");
@@ -126,12 +135,32 @@ export default function VaultPage() {
   const [selectedDrill, setSelectedDrill] = useState<VaultDrill | null>(null);
   const [skillFocus, setSkillFocus] = useState<any | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
+  const [createPlayerPlanModal, setCreatePlayerPlanModal] = useState<{
+    sourceType: "SESSION" | "SERIES";
+    sourceId: string;
+    sourceRefCode?: string | null;
+  } | null>(null);
+  const [viewPlayerPlanModal, setViewPlayerPlanModal] = useState<any | null>(null);
+  const [scheduleModal, setScheduleModal] = useState<{
+    sessionId: string;
+    sessionTitle: string;
+    sessionRefCode?: string | null;
+  } | null>(null);
+  const [scheduleSeriesModal, setScheduleSeriesModal] = useState<{
+    seriesId: string;
+    seriesTitle: string;
+    sessions: Array<{ id: string; title: string; refCode?: string | null }>;
+  } | null>(null);
   
   // Favorites state
   const [favoritedSessions, setFavoritedSessions] = useState<Set<string>>(new Set());
   const [favoritedSeries, setFavoritedSeries] = useState<Set<string>>(new Set());
   const [favoritedDrills, setFavoritedDrills] = useState<Set<string>>(new Set()); // Stores drill DB IDs
   const [drillRefCodeToDbId, setDrillRefCodeToDbId] = useState<Map<string, string>>(new Map()); // Maps refCode -> dbId
+  const [sessionPlayerPlans, setSessionPlayerPlans] = useState<Map<string, { id: string; refCode: string | null }>>(new Map()); // Maps sessionId -> playerPlan info
+  const [seriesPlayerPlans, setSeriesPlayerPlans] = useState<Map<string, { id: string; refCode: string | null }>>(new Map()); // Maps seriesId -> playerPlan info
+  const [sessionCalendarCounts, setSessionCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps sessionId -> number of scheduled events
+  const [seriesCalendarCounts, setSeriesCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps seriesId -> number of scheduled events
   
   const [filters, setFilters] = useState({
     gameModelId: "",
@@ -254,8 +283,8 @@ export default function VaultPage() {
       console.log('[VAULT] Sessions URL:', sessionsUrl);
       console.log('[VAULT] Series URL:', seriesUrl);
 
-      // Add timeout to fetch calls
-      const fetchWithTimeout = (url: string, timeout = 10000) => {
+      // Add timeout to fetch calls (increased to 30 seconds for large datasets)
+      const fetchWithTimeout = (url: string, timeout = 30000) => {
         return Promise.race([
           fetch(url),
           new Promise<Response>((_, reject) =>
@@ -321,6 +350,20 @@ export default function VaultPage() {
           // Silently fail - favorites are optional
         });
       }
+
+      // Check which sessions have player plans (non-blocking)
+      if (sessionIds.length > 0) {
+        checkSessionPlayerPlans(sessionIds).catch(() => {
+          // Silently fail - player plan check is optional
+        });
+      }
+
+      // Check which series have player plans (non-blocking)
+      if (seriesIds.length > 0) {
+        checkSeriesPlayerPlans(seriesIds).catch(() => {
+          // Silently fail - player plan check is optional
+        });
+      }
     } catch (e: any) {
       const errorMsg = e?.message || String(e);
       console.error('[VAULT] Error loading vault data:', errorMsg);
@@ -357,12 +400,22 @@ export default function VaultPage() {
   // Check favorites status for loaded items (non-blocking)
   async function checkFavorites(sessionIds: string[], seriesIds: string[]) {
     try {
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch("/api/favorites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getUserHeaders(),
-        },
+        headers,
         body: JSON.stringify({ sessionIds, seriesIds }),
       });
       
@@ -429,12 +482,21 @@ export default function VaultPage() {
       setDrillRefCodeToDbId(refCodeMap);
 
       // Check favorite status for these drill IDs
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const favRes = await fetch("/api/favorites", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getUserHeaders(),
-        },
+        headers,
         body: JSON.stringify({ drillIds: drillDbIds }),
       });
 
@@ -456,15 +518,216 @@ export default function VaultPage() {
     }
   }
 
+  // Check which sessions have player plans (bulk lookup)
+  async function checkSessionPlayerPlans(sessionIds: string[]) {
+    if (sessionIds.length === 0) return;
+
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        // Not authenticated, skip check
+        return;
+      }
+
+      // Bulk lookup all sessions at once
+      const res = await fetch("/api/player-plans/bulk-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ sessions: sessionIds }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.sessions) {
+          // Convert response object to Map
+          const plansMap = new Map<string, { id: string; refCode: string | null }>();
+          Object.entries(data.sessions).forEach(([sessionId, planInfo]: [string, any]) => {
+            plansMap.set(sessionId, {
+              id: planInfo.id,
+              refCode: planInfo.refCode,
+            });
+          });
+          setSessionPlayerPlans(plansMap);
+        }
+      }
+    } catch (e) {
+      // Silently fail - player plan check is optional
+      console.debug("Player plan check failed (non-critical):", e);
+    }
+  }
+
+  // Check which series have player plans (bulk lookup)
+  async function checkSeriesPlayerPlans(seriesIds: string[]) {
+    if (seriesIds.length === 0) return;
+
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        // Not authenticated, skip check
+        return;
+      }
+
+      // Bulk lookup all series at once
+      const res = await fetch("/api/player-plans/bulk-lookup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ series: seriesIds }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.series) {
+          // Convert response object to Map
+          const plansMap = new Map<string, { id: string; refCode: string | null }>();
+          Object.entries(data.series).forEach(([seriesId, planInfo]: [string, any]) => {
+            plansMap.set(seriesId, {
+              id: planInfo.id,
+              refCode: planInfo.refCode,
+            });
+          });
+          setSeriesPlayerPlans(plansMap);
+        }
+      }
+    } catch (e) {
+      // Silently fail - player plan check is optional
+      console.debug("Series player plan check failed (non-critical):", e);
+    }
+  }
+
+  // Check calendar event counts for sessions
+  async function checkSessionCalendarCounts(sessionIds: string[]) {
+    if (sessionIds.length === 0) return;
+
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        return;
+      }
+
+      // Fetch all calendar events and count by sessionId
+      const res = await fetch("/api/calendar/events?includeCancelled=false", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.events) {
+          const countsMap = new Map<string, number>();
+          sessionIds.forEach((sessionId) => {
+            const count = data.events.filter((e: any) => e.sessionId === sessionId && !e.cancelled).length;
+            if (count > 0) {
+              countsMap.set(sessionId, count);
+            }
+          });
+          setSessionCalendarCounts(countsMap);
+        }
+      }
+    } catch (e) {
+      console.debug("Calendar count check failed (non-critical):", e);
+    }
+  }
+
+  // Check calendar event counts for series (count sessions in series that are scheduled)
+  async function checkSeriesCalendarCounts(seriesIds: string[]) {
+    if (seriesIds.length === 0) return;
+
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        return;
+      }
+
+      // Fetch calendar events
+      const res = await fetch("/api/calendar/events?includeCancelled=false", {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.events) {
+          const countsMap = new Map<string, number>();
+          seriesIds.forEach((seriesId) => {
+            const s = getSeriesById(seriesId);
+            if (s) {
+              const seriesSessionIds = s.sessions.map((sess) => sess.id);
+              const count = data.events.filter((e: any) => 
+                seriesSessionIds.includes(e.sessionId) && !e.cancelled
+              ).length;
+              if (count > 0) {
+                countsMap.set(seriesId, count);
+              }
+            }
+          });
+          setSeriesCalendarCounts(countsMap);
+        }
+      }
+    } catch (e) {
+      console.debug("Series calendar count check failed (non-critical):", e);
+    }
+  }
+
+  // Fetch and display a player plan in a modal
+  async function viewPlayerPlan(planId: string) {
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        alert("You must be logged in to view player plans");
+        return;
+      }
+
+      const res = await fetch(`/api/player-plans/${planId}`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.plan) {
+          setViewPlayerPlanModal(data.plan);
+        } else {
+          alert("Failed to load player plan");
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || "Failed to load player plan");
+      }
+    } catch (e: any) {
+      console.error("Error loading player plan:", e);
+      alert(e.message || "Failed to load player plan");
+    }
+  }
+
   // Toggle favorite for a session
   async function toggleSessionFavorite(sessionId: string, e: React.MouseEvent) {
     e.stopPropagation();
     const isFavorited = favoritedSessions.has(sessionId);
     
     try {
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch(`/api/favorites/session/${sessionId}`, {
         method: isFavorited ? "DELETE" : "POST",
-        headers: getUserHeaders(),
+        headers,
       });
       
       if (res.ok) {
@@ -489,9 +752,20 @@ export default function VaultPage() {
     const isFavorited = favoritedSeries.has(seriesId);
     
     try {
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch(`/api/favorites/series/${seriesId}`, {
         method: isFavorited ? "DELETE" : "POST",
-        headers: getUserHeaders(),
+        headers,
       });
       
       if (res.ok) {
@@ -554,9 +828,20 @@ export default function VaultPage() {
     const isFavorited = drillDbId && drillDbId !== drill.refCode ? favoritedDrills.has(drillDbId) : false;
     
     try {
+      // Get access token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      } else {
+        // Fallback to x-user-id for anonymous users
+        Object.assign(headers, getUserHeaders());
+      }
+
       const res = await fetch(`/api/favorites/drill/${identifierToUse}`, {
         method: isFavorited ? "DELETE" : "POST",
-        headers: getUserHeaders(),
+        headers,
       });
       
       if (res.ok) {
@@ -820,17 +1105,77 @@ export default function VaultPage() {
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => toggleSessionFavorite(session.id, e)}
-                          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
-                            favoritedSessions.has(session.id)
-                              ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
-                              : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
-                          }`}
-                          title={favoritedSessions.has(session.id) ? "Remove from favorites" : "Add to favorites"}
-                        >
-                          <span className="text-xs font-bold">■</span>
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setScheduleModal({
+                                sessionId: session.id,
+                                sessionTitle: session.title,
+                                sessionRefCode: session.refCode || undefined,
+                              });
+                            }}
+                            className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 transition-colors"
+                            title="Schedule Session"
+                          >
+                            📅
+                          </button>
+                          {sessionPlayerPlans.has(session.id) ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const planId = sessionPlayerPlans.get(session.id)!.id;
+                                viewPlayerPlan(planId);
+                              }}
+                              className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
+                              title="View Player Plan"
+                            >
+                              <span>✓</span>
+                              <span>View Player</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCreatePlayerPlanModal({
+                                  sourceType: "SESSION",
+                                  sourceId: session.id,
+                                  sourceRefCode: session.refCode || undefined,
+                                });
+                              }}
+                              className="px-2 py-1 rounded text-[10px] font-semibold bg-cyan-600/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-600/30 transition-colors"
+                              title="Create Player Version"
+                            >
+                              Player
+                            </button>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => toggleSessionFavorite(session.id, e)}
+                              className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+                                favoritedSessions.has(session.id)
+                                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                                  : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
+                              }`}
+                              title={favoritedSessions.has(session.id) ? "Remove from favorites" : "Add to favorites"}
+                            >
+                              <span className="text-xs font-bold">■</span>
+                            </button>
+                            {sessionCalendarCounts.has(session.id) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.href = "/calendar";
+                                }}
+                                className="w-6 h-6 flex items-center justify-center rounded border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                                title={`${sessionCalendarCounts.get(session.id)} scheduled session(s) - Click to view calendar`}
+                              >
+                                <span className="text-xs">📅</span>
+                                <span className="text-[8px] font-bold ml-0.5">{sessionCalendarCounts.get(session.id)}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                       <div className="text-[10px] text-slate-400 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1084,17 +1429,84 @@ export default function VaultPage() {
                             </button>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => toggleSeriesFavorite(s.seriesId, e)}
-                          className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
-                            favoritedSeries.has(s.seriesId)
-                              ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
-                              : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
-                          }`}
-                          title={favoritedSeries.has(s.seriesId) ? "Remove from favorites" : "Add to favorites"}
-                        >
-                          <span className="text-xs font-bold">■</span>
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // For series, open series scheduling modal
+                              setScheduleSeriesModal({
+                                seriesId: s.seriesId,
+                                seriesTitle: s.sessions[0]?.title 
+                                  ? s.sessions[0].title.replace(/^(Session \d+:?\s*)/i, "").replace(/\s*-\s*Part\s*\d+/i, "").trim()
+                                  : `${s.totalSessions}-Session Series`,
+                                sessions: s.sessions.map((sess) => ({
+                                  id: sess.id,
+                                  title: sess.title || `Session ${s.sessions.indexOf(sess) + 1}`,
+                                  refCode: sess.refCode || undefined,
+                                })),
+                              });
+                            }}
+                            className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:bg-blue-600/30 transition-colors"
+                            title="Schedule Series"
+                          >
+                            📅
+                          </button>
+                          {seriesPlayerPlans.has(s.seriesId) ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const planId = seriesPlayerPlans.get(s.seriesId)!.id;
+                                viewPlayerPlan(planId);
+                              }}
+                              className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600/20 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-600/30 transition-colors flex items-center gap-1"
+                              title="View Player Plan"
+                            >
+                              <span>✓</span>
+                              <span>View Player</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCreatePlayerPlanModal({
+                                  sourceType: "SERIES",
+                                  sourceId: s.seriesId,
+                                  sourceRefCode: seriesRefCode || undefined,
+                                });
+                              }}
+                              className="px-2 py-1 rounded text-[10px] font-semibold bg-cyan-600/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-600/30 transition-colors"
+                              title="Create Player Version"
+                            >
+                              Player
+                            </button>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => toggleSeriesFavorite(s.seriesId, e)}
+                              className={`w-6 h-6 flex items-center justify-center rounded border transition-colors ${
+                                favoritedSeries.has(s.seriesId)
+                                  ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/30"
+                                  : "bg-slate-800/50 border-slate-600/50 text-slate-500 hover:border-emerald-500/50 hover:text-emerald-400"
+                              }`}
+                              title={favoritedSeries.has(s.seriesId) ? "Remove from favorites" : "Add to favorites"}
+                            >
+                              <span className="text-xs font-bold">■</span>
+                            </button>
+                            {seriesCalendarCounts.has(s.seriesId) && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.location.href = "/calendar";
+                                }}
+                                className="w-6 h-6 flex items-center justify-center rounded border bg-blue-500/20 border-blue-500/50 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                                title={`${seriesCalendarCounts.get(s.seriesId)} scheduled session(s) - Click to view calendar`}
+                              >
+                                <span className="text-xs">📅</span>
+                                <span className="text-[8px] font-bold ml-0.5">{seriesCalendarCounts.get(s.seriesId)}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                       <p className="text-[9px] text-slate-500 mb-2">
                         {s.totalSessions} Sessions {seriesPhase ? `• ${seriesPhase}` : ""} {seriesZone ? `• ${seriesZone}` : ""}
@@ -1718,6 +2130,108 @@ export default function VaultPage() {
           </div>
         )}
       </div>
+
+      {/* Create Player Plan Modal */}
+      {viewPlayerPlanModal && (
+        <div className="fixed inset-0 z-50">
+          <PlayerPlanViewModal
+            plan={viewPlayerPlanModal}
+            onClose={() => setViewPlayerPlanModal(null)}
+          />
+        </div>
+      )}
+      {scheduleModal && (
+        <ScheduleSessionModal
+          sessionId={scheduleModal.sessionId}
+          sessionTitle={scheduleModal.sessionTitle}
+          sessionRefCode={scheduleModal.sessionRefCode}
+          onClose={() => setScheduleModal(null)}
+          onScheduled={() => {
+            // Optionally refresh calendar or show success message
+            console.log("[VAULT] Session scheduled successfully");
+            // Refresh calendar counts
+            const sessionIds = sessions.map((s) => s.id);
+            if (sessionIds.length > 0) {
+              checkSessionCalendarCounts(sessionIds).catch(() => {});
+            }
+            const seriesIds = series.map((s) => s.seriesId);
+            if (seriesIds.length > 0) {
+              checkSeriesCalendarCounts(seriesIds).catch(() => {});
+            }
+          }}
+        />
+      )}
+      {scheduleSeriesModal && (
+        <ScheduleSeriesModal
+          seriesId={scheduleSeriesModal.seriesId}
+          seriesTitle={scheduleSeriesModal.seriesTitle}
+          sessions={scheduleSeriesModal.sessions}
+          onClose={() => setScheduleSeriesModal(null)}
+          onScheduled={() => {
+            // Optionally refresh calendar or show success message
+            console.log("[VAULT] Series scheduled successfully");
+            // Refresh calendar counts
+            const sessionIds = sessions.map((s) => s.id);
+            if (sessionIds.length > 0) {
+              checkSessionCalendarCounts(sessionIds).catch(() => {});
+            }
+            const seriesIds = series.map((s) => s.seriesId);
+            if (seriesIds.length > 0) {
+              checkSeriesCalendarCounts(seriesIds).catch(() => {});
+            }
+          }}
+        />
+      )}
+      {createPlayerPlanModal && (
+        <CreatePlayerPlanModal
+          sourceType={createPlayerPlanModal.sourceType}
+          sourceId={createPlayerPlanModal.sourceId}
+          sourceRefCode={createPlayerPlanModal.sourceRefCode}
+          onClose={() => {
+            console.log("[VAULT] Closing player plan modal");
+            setCreatePlayerPlanModal(null);
+          }}
+          onPlanCreated={(planId, sourceId, sourceType) => {
+            console.log("[VAULT] Plan created callback:", { planId, sourceId, sourceType });
+            // Update the player plan status when a new plan is created
+            // This should NOT close the modal - the modal will show the plan
+            const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+            if (accessToken) {
+              // Fetch the plan details to get refCode (async, non-blocking)
+              fetch(`/api/player-plans/${planId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              })
+                .then((res) => res.json())
+                .then((data) => {
+                  if (data.ok && data.plan) {
+                    if (sourceType === "SESSION") {
+                      setSessionPlayerPlans((prev) => {
+                        const next = new Map(prev);
+                        next.set(sourceId, {
+                          id: data.plan.id,
+                          refCode: data.plan.refCode,
+                        });
+                        return next;
+                      });
+                    } else {
+                      setSeriesPlayerPlans((prev) => {
+                        const next = new Map(prev);
+                        next.set(sourceId, {
+                          id: data.plan.id,
+                          refCode: data.plan.refCode,
+                        });
+                        return next;
+                      });
+                    }
+                  }
+                })
+                .catch((err) => {
+                  console.error("[VAULT] Error updating player plan status:", err);
+                });
+            }
+          }}
+        />
+      )}
     </main>
   );
 }

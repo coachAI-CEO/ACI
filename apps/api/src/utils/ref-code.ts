@@ -17,7 +17,7 @@ function generateRandomCode(length: number = 4): string {
 /**
  * Reference code types
  */
-export type RefCodeType = "drill" | "session" | "series";
+export type RefCodeType = "drill" | "session" | "series" | "player-plan";
 
 /**
  * Get the prefix for a reference code type
@@ -30,12 +30,14 @@ function getPrefix(type: RefCodeType): string {
       return "S";
     case "series":
       return "SR";
+    case "player-plan":
+      return "P";
   }
 }
 
 /**
- * Generate a unique reference code for a drill, session, or series
- * Format: D-XXXX, S-XXXX, SR-XXXX
+ * Generate a unique reference code for a drill, session, series, or player plan
+ * Format: D-XXXX, S-XXXX, SR-XXXX, P-XXXX
  */
 export async function generateRefCode(type: RefCodeType): Promise<string> {
   const prefix = getPrefix(type);
@@ -44,13 +46,14 @@ export async function generateRefCode(type: RefCodeType): Promise<string> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const code = `${prefix}-${generateRandomCode()}`;
     
-    // Check uniqueness in both tables
-    const [existingDrill, existingSession] = await Promise.all([
+    // Check uniqueness across all tables
+    const [existingDrill, existingSession, existingPlayerPlan] = await Promise.all([
       prisma.drill.findFirst({ where: { refCode: code } }),
       prisma.session.findFirst({ where: { refCode: code } }),
+      type === "player-plan" ? prisma.playerPlan.findFirst({ where: { refCode: code } }) : Promise.resolve(null),
     ]);
     
-    if (!existingDrill && !existingSession) {
+    if (!existingDrill && !existingSession && !existingPlayerPlan) {
       return code;
     }
   }
@@ -88,7 +91,7 @@ export async function generateRefCodes(
  * Returns null if invalid format
  */
 export function parseRefCode(refCode: string): { type: RefCodeType; code: string } | null {
-  const match = refCode.toUpperCase().match(/^(D|S|SR)-([A-Z0-9]{4,6})$/);
+  const match = refCode.toUpperCase().match(/^(D|S|SR|P)-([A-Z0-9]{4,6})$/);
   if (!match) return null;
   
   const prefix = match[1];
@@ -105,6 +108,9 @@ export function parseRefCode(refCode: string): { type: RefCodeType; code: string
     case "SR":
       type = "series";
       break;
+    case "P":
+      type = "player-plan";
+      break;
     default:
       return null;
   }
@@ -116,7 +122,7 @@ export function parseRefCode(refCode: string): { type: RefCodeType; code: string
  * Extract all reference codes from a text string
  */
 export function extractRefCodes(text: string): string[] {
-  const regex = /\b(D|S|SR)-[A-Z0-9]{4,6}\b/gi;
+  const regex = /\b(D|S|SR|P)-[A-Z0-9]{4,6}\b/gi;
   const matches = text.match(regex) || [];
   return [...new Set(matches.map((m) => m.toUpperCase()))];
 }
@@ -125,13 +131,24 @@ export function extractRefCodes(text: string): string[] {
  * Lookup an artifact by reference code
  */
 export async function lookupByRefCode(refCode: string): Promise<{
-  type: "drill" | "session";
+  type: "drill" | "session" | "player-plan";
   data: any;
 } | null> {
   const parsed = parseRefCode(refCode);
   if (!parsed) return null;
   
-  // Check sessions first (includes series)
+  // Check player plans first (if P- prefix)
+  if (parsed.type === "player-plan") {
+    const playerPlan = await prisma.playerPlan.findFirst({
+      where: { refCode: refCode.toUpperCase() },
+    });
+    if (playerPlan) {
+      return { type: "player-plan", data: playerPlan };
+    }
+    return null;
+  }
+  
+  // Check sessions (includes series)
   const session = await prisma.session.findFirst({
     where: { refCode: refCode.toUpperCase() },
   });

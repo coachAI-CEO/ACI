@@ -18,15 +18,22 @@ async function handleRequest(
   const fullUrl = `${API_BASE}/favorites/${pathStr}${queryString ? `?${queryString}` : ""}`;
 
   try {
-    // Get user ID from request headers
+    // Get authentication from request headers
     const userId = request.headers.get("x-user-id");
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
 
     const headers: HeadersInit = {
       "Content-Type": "application/json",
     };
 
-    if (userId) {
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+      console.log(`[FAVORITES_PROXY] ${method} ${pathStr}: Forwarding Authorization header`);
+    } else if (userId) {
       headers["x-user-id"] = userId;
+      console.log(`[FAVORITES_PROXY] ${method} ${pathStr}: Using x-user-id header`);
+    } else {
+      console.log(`[FAVORITES_PROXY] ${method} ${pathStr}: No auth headers found`);
     }
 
     let body: string | undefined;
@@ -44,7 +51,23 @@ async function handleRequest(
       body: body || undefined,
     });
 
-    const data = await res.json();
+    let data: any;
+    try {
+      data = await res.json();
+    } catch (parseError: any) {
+      // If JSON parsing fails, try to get text
+      const text = await res.text().catch(() => "Unknown error");
+      console.error(`[FAVORITES_PROXY] ${method} ${pathStr}: Failed to parse response as JSON:`, text);
+      return NextResponse.json(
+        { ok: false, error: "Invalid response from backend", details: text },
+        { status: res.status || 500 }
+      );
+    }
+    
+    if (!res.ok) {
+      console.error(`[FAVORITES_PROXY] ${method} ${pathStr} failed: ${res.status} ${res.statusText}`, data);
+    }
+
     return NextResponse.json(data, { status: res.status });
   } catch (e: any) {
     console.error("[FAVORITES_PROXY] Error:", e);

@@ -9,6 +9,9 @@ import { buildQAReviewerPrompt } from "./prompts/drill-optimized-v2";
 import { generateAndReviewDrill } from "./services/drill";
 import type { FixDecisionCode } from "./services/fixer";
 import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
+import { hashPassword } from "./services/auth";
+import { generateVerificationToken, sendVerificationEmail } from "./services/email";
+import { z } from "zod";
 
 const r = express.Router();
 
@@ -1304,8 +1307,235 @@ r.get("/admin/analytics/qa-status-drills", requireAdminPermission('canViewAnalyt
 });
 
 // ------------------------------------
+// Admin: User Summary (counts by role/access)
+// ------------------------------------
+
+r.get("/admin/users/summary", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const [totalUsers, byRoleRaw, byAdminRoleRaw, byPlanRaw, byStatusRaw] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.groupBy({
+        by: ["role"],
+        _count: { id: true },
+      }),
+      prisma.user.groupBy({
+        by: ["adminRole"],
+        _count: { id: true },
+        where: { adminRole: { not: null } },
+      }),
+      prisma.user.groupBy({
+        by: ["subscriptionPlan"],
+        _count: { id: true },
+      }),
+      prisma.user.groupBy({
+        by: ["subscriptionStatus"],
+        _count: { id: true },
+      }),
+    ]);
+
+    const initRecord = (keys: string[]) =>
+      keys.reduce<Record<string, number>>((acc, key) => {
+        acc[key] = 0;
+        return acc;
+      }, {});
+
+    const roleKeys = ["FREE", "COACH", "CLUB", "ADMIN", "TRIAL"];
+    const adminRoleKeys = ["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"];
+    const planKeys = ["FREE", "COACH_BASIC", "COACH_PRO", "CLUB_STANDARD", "CLUB_PREMIUM", "TRIAL"];
+    const statusKeys = ["ACTIVE", "CANCELLED", "EXPIRED", "TRIAL"];
+
+    const byRole = initRecord(roleKeys);
+    for (const row of byRoleRaw) {
+      byRole[row.role] = row._count.id;
+    }
+
+    const byAdminRole = initRecord(adminRoleKeys);
+    for (const row of byAdminRoleRaw) {
+      if (row.adminRole) {
+        byAdminRole[row.adminRole] = row._count.id;
+      }
+    }
+
+    const bySubscriptionPlan = initRecord(planKeys);
+    for (const row of byPlanRaw) {
+      bySubscriptionPlan[row.subscriptionPlan] = row._count.id;
+    }
+
+    const bySubscriptionStatus = initRecord(statusKeys);
+    for (const row of byStatusRaw) {
+      bySubscriptionStatus[row.subscriptionStatus] = row._count.id;
+    }
+
+    return res.json({
+      ok: true,
+      summary: {
+        totalUsers,
+        byRole,
+        byAdminRole,
+        bySubscriptionPlan,
+        bySubscriptionStatus,
+      },
+    });
+  } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// ------------------------------------
 // Admin: User Management
 // ------------------------------------
+
+// Quick-create user (minimal admin flow)
+r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  const schema = z.object({
+    email: z.string().email(),
+    name: z.string().min(1).optional(),
+    role: z.enum(["FREE", "COACH", "CLUB", "ADMIN", "TRIAL"]).optional(),
+    subscriptionPlan: z.enum(["FREE", "COACH_BASIC", "COACH_PRO", "CLUB_STANDARD", "CLUB_PREMIUM", "TRIAL"]).optional(),
+    subscriptionStatus: z.enum(["ACTIVE", "CANCELLED", "EXPIRED", "TRIAL"]).optional(),
+    adminRole: z.enum(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"]).optional(),
+    password: z.string().min(8).optional(),
+    autoVerifyEmail: z.boolean().optional(),
+  });
+
+  try {
+    const body = schema.parse(req.body || {});
+
+    // Prevent non-super admins from assigning admin roles
+    if (body.adminRole && req.adminRole !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        ok: false,
+        error: "Only SUPER_ADMIN can assign admin roles",
+      });
+    }
+
+    // Check for existing user
+    const existing = await prisma.user.findUnique({
+      where: { email: body.email },
+      select: { id: true },
+    });
+
+    if (existing) {
+      return res.status(400).json({ ok: false, error: "User with this email already exists" });
+    }
+
+    const role = body.role || "FREE";
+
+    // Map role to default subscription plan if not explicitly provided
+    const defaultPlanByRole: Record<string, string> = {
+      FREE: "FREE",
+      COACH: "COACH_BASIC",
+      CLUB: "CLUB_STANDARD",
+      ADMIN: "FREE",
+      TRIAL: "TRIAL",
+    };
+
+    const subscriptionPlan = body.subscriptionPlan || (defaultPlanByRole[role] as any);
+
+    // Default status: TRIAL for trial plan, ACTIVE otherwise
+    const subscriptionStatus = body.subscriptionStatus || (subscriptionPlan === "TRIAL" ? "TRIAL" : "ACTIVE");
+
+    const autoPassword = !body.password;
+    const plainPassword =
+      body.password ||
+      // 12-char random password using URL-safe base64
+      require("crypto").randomBytes(9).toString("base64url").slice(0, 12);
+
+    const passwordHash = await hashPassword(plainPassword);
+
+    const now = new Date();
+    let trialEndDate: Date | null = null;
+    if (subscriptionPlan === "TRIAL" || role === "TRIAL") {
+      trialEndDate = new Date();
+      trialEndDate.setDate(trialEndDate.getDate() + 7);
+    }
+
+    const shouldAutoVerify = !!body.autoVerifyEmail || body.adminRole === "SUPER_ADMIN";
+
+    const user = await prisma.user.create({
+      data: {
+        email: body.email,
+        passwordHash,
+        name: body.name,
+        role: role as any,
+        subscriptionPlan: subscriptionPlan as any,
+        subscriptionStatus: subscriptionStatus as any,
+        subscriptionStartDate: subscriptionStatus === "ACTIVE" || subscriptionStatus === "TRIAL" ? now : null,
+        trialEndDate: trialEndDate,
+        lastResetDate: now,
+        adminRole: body.adminRole as any,
+        emailVerified: shouldAutoVerify,
+        emailVerifiedAt: shouldAutoVerify ? now : null,
+      },
+    });
+
+    // If not auto-verified, create verification token & send email
+    if (!shouldAutoVerify && user.email) {
+      const verificationToken = generateVerificationToken();
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+
+      await prisma.emailVerificationToken.create({
+        data: {
+          token: verificationToken,
+          userId: user.id,
+          email: user.email,
+          expiresAt,
+        },
+      });
+
+      sendVerificationEmail(user.email, user.name, verificationToken).catch((err) => {
+        console.error("[ADMIN] Failed to send verification email for quick-create user:", err);
+      });
+    }
+
+    await logAdminAction(
+      req.userId!,
+      "user.quick_create",
+      {
+        resourceType: "User",
+        resourceId: user.id,
+        data: {
+          role,
+          subscriptionPlan,
+          subscriptionStatus,
+          adminRole: body.adminRole ?? null,
+          autoPassword,
+        },
+      },
+      req
+    );
+
+    return res.json({
+      ok: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        subscriptionPlan: user.subscriptionPlan,
+        subscriptionStatus: user.subscriptionStatus,
+        adminRole: user.adminRole,
+        emailVerified: user.emailVerified,
+      },
+      initialPassword: autoPassword ? plainPassword : undefined,
+      autoPassword,
+    });
+  } catch (error: any) {
+    console.error("[ADMIN] quick-create user error:", error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid input",
+        details: error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        })),
+      });
+    }
+    return res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
+});
 
 // List users with pagination
 r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {

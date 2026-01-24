@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     console.log('[VAULT_API] Fetching series from:', url);
     
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for large datasets
     
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);

@@ -374,6 +374,8 @@ model User {
   adminActions           AdminAction[]
   userSessions           UserSession[]
   apiMetrics             ApiMetrics[]
+  playerPlans            PlayerPlan[]
+  calendarEvents         CalendarEvent[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -462,4 +464,69 @@ model UserSession {
   
   @@index([userId])
   @@index([createdAt])
+}
+
+// Player-only training plans (adapted from sessions/series)
+model PlayerPlan {
+  id          String      @id @default(uuid())
+  refCode     String?     @unique // P-XXXX format
+  userId      String      // Who created/owns this plan
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Source reference
+  sourceType  String      // "SESSION" | "SERIES"
+  sourceId    String      // sessionId or seriesId
+  sourceRefCode String?   // For easy lookup
+  
+  // Plan metadata
+  title       String
+  ageGroup    String
+  playerLevel PlayerLevel? // Inherited from source session/series
+  objectives  String?      // Short summary of what player will work on
+  durationMin Int          // Total plan duration
+  
+  // Adapted content
+  json        Json        // Array of solo drills with simplified instructions
+  equipment   Json?       // Minimal equipment list (e.g., ["ball", "cones", "wall"])
+  
+  // Metadata
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@index([userId])
+  @@index([sourceType, sourceId])
+  @@index([refCode])
+}
+
+// Calendar events - scheduled training sessions
+model CalendarEvent {
+  id            String   @id @default(uuid())
+  userId        String   // Who owns this calendar event
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // What session is scheduled
+  sessionId     String   // References Session.id
+  sessionRefCode String? // For easy reference
+  
+  // When it's scheduled
+  scheduledDate DateTime // Date and time of the training session
+  durationMin   Int?     // Override session duration if needed
+  
+  // Additional context
+  notes         String?  // Coach notes for this specific session
+  location      String?  // Training location (field, facility, etc.)
+  teamName      String?  // Which team/group this is for
+  
+  // Status
+  completed     Boolean  @default(false) // Mark as completed after session
+  cancelled     Boolean  @default(false) // Mark as cancelled
+  
+  // Metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([sessionId])
+  @@index([scheduledDate])
+  @@index([userId, scheduledDate])
 }

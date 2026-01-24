@@ -420,7 +420,7 @@ r.post("/vault/lookup", async (req, res) => {
     
     const results: Array<{
       refCode: string;
-      type: "drill" | "session" | null;
+      type: "drill" | "session" | "player-plan" | null;
       data: any;
       found: boolean;
     }> = [];

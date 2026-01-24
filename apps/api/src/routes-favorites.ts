@@ -21,8 +21,21 @@ async function getOrCreateUser(userId: string) {
 r.get("/favorites", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId;
+    console.log(`[FAVORITES] GET /favorites: userId=${userId || 'none'}, hasAuth=${!!req.headers.authorization}`);
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      // Return empty results for anonymous users instead of error
+      return res.json({
+        ok: true,
+        sessions: [],
+        drills: [],
+        series: [],
+        counts: {
+          sessions: 0,
+          drills: 0,
+          series: 0,
+          total: 0,
+        },
+      });
     }
 
     const type = req.query.type as string | undefined; // "session" | "drill" | "series" | undefined

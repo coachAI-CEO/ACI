@@ -26,6 +26,7 @@ export default function RootLayout({
               <Link href="/demo/session" className="hover:text-emerald-300">📋 Session Generator</Link>
               <Link href="/vault" className="hover:text-emerald-300">🗂️ Vault</Link>
               <Link href="/vault/favorites" className="hover:text-emerald-300">■ Favorites</Link>
+              <Link href="/calendar" className="hover:text-emerald-300">📅 Calendar</Link>
               <AuthButton />
             </nav>
           </div>

@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 19, 2026  
-**Version:** 1.3.0
+**Last Updated:** January 15, 2026  
+**Version:** 1.5.0
 
 ## Table of Contents
 
@@ -138,6 +138,16 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
    - Include diagrams and coaching points
    - Subscription feature (requires plan with canExportPDF)
 
+12. **Player-Only Training Plans** (NEW)
+   - Convert team sessions/series into solo player exercises
+   - AI-adapted drills for individual practice
+   - Player level-based complexity (BEGINNER, INTERMEDIATE, ADVANCED)
+   - Minimal equipment requirements
+   - Modal viewing (no page redirect)
+   - PDF export for player plans
+   - Bulk lookup for efficient loading
+   - Checkmark indicators on vault items with existing plans
+
 ---
 
 ## Database Schema
@@ -252,6 +262,21 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `ipAddress`, `userAgent`
 - `createdAt`
 
+#### PlayerPlan (NEW)
+- `id` (UUID)
+- `refCode` (String, unique, P-XXXX format)
+- `userId` (relation to User)
+- `sourceType` (SESSION | SERIES)
+- `sourceId` (sessionId or seriesId)
+- `sourceRefCode` (for easy lookup)
+- `title`, `ageGroup`, `playerLevel` (BEGINNER | INTERMEDIATE | ADVANCED | null)
+- `objectives` (String, summary of what player will work on)
+- `durationMin` (Int, total plan duration)
+- `json` (JSON, array of solo drills with simplified instructions)
+- `equipment` (JSON, minimal equipment list)
+- `createdAt`, `updatedAt`
+- Indexes on `userId`, `[sourceType, sourceId]`, `refCode`
+
 ---
 
 ## API Endpoints
@@ -297,6 +322,18 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `POST /favorites/series/:id` - Add series to favorites
 - `DELETE /favorites/series/:id` - Remove series from favorites
 - `POST /favorites/check` - Batch check favorite status
+- **Authentication:** All endpoints support both JWT tokens (authenticated) and `x-user-id` header (anonymous)
+
+#### Player Plan Endpoints (NEW)
+- `POST /player-plans/from-session/:sessionId` - Create player plan from session
+- `POST /player-plans/from-series/:seriesId` - Create player plan from series
+- `GET /player-plans` - List user's player plans (with pagination)
+- `GET /player-plans/:planId` - Get plan details
+- `GET /player-plans/by-source/:sourceType/:sourceId` - Check if plan exists for source
+- `POST /player-plans/bulk-lookup` - Bulk lookup plans for multiple sources (NEW)
+- `POST /player-plans/:planId/export-pdf` - Export player plan as PDF
+- `DELETE /player-plans/:planId` - Delete player plan
+- **Authentication:** All endpoints require JWT token
 
 #### Admin Endpoints (All require admin authentication)
 - `GET /admin/stats` - Overall statistics (requires `canAccessAdminDashboard`)
@@ -327,8 +364,10 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 
 All backend endpoints are proxied through Next.js API routes:
 - `/api/vault/*` - Vault operations
-- `/api/vault/sessions/[sessionId]` - Get individual session by ID (NEW)
-- `/api/favorites/*` - Favorites operations
+- `/api/vault/sessions/[sessionId]` - Get individual session by ID
+- `/api/favorites/*` - Favorites operations (supports JWT and x-user-id)
+- `/api/player-plans/*` - Player plan operations (NEW)
+- `/api/player-plans/bulk-lookup` - Bulk lookup player plans (NEW)
 - `/api/admin/*` - Admin operations
 - `/api/generate-session` - Session generation
 - `/api/generate-progressive-series` - Series generation
@@ -390,6 +429,15 @@ All backend endpoints are proxied through Next.js API routes:
    - Favorite buttons on cards
    - Reference codes with click-to-copy
    - Session detail modals
+   - **Player Plan Integration:**
+     - "Create Player Version" button on sessions/series
+     - Checkmark indicator for existing player plans
+     - "View Player" button opens plan in modal (no redirect)
+     - Bulk lookup for efficient loading
+   - **Calendar Integration:**
+     - "Schedule" button (📅) on session and series cards
+     - Calendar count indicators showing scheduled event counts
+     - Click indicator to navigate to calendar
 
 7. **Favorites** (`/vault/favorites`)
    - View all favorited items
@@ -397,8 +445,26 @@ All backend endpoints are proxied through Next.js API routes:
    - Same filtering as vault
    - Remove from favorites
    - View drill and session modals
+   - **Calendar Integration:**
+     - "Schedule" button on session and series cards
+     - Schedule from session detail modal
 
-8. **Admin Dashboard** (`/admin`)
+8. **Calendar** (`/calendar`) (NEW)
+   - Month and week view toggle
+   - Navigate between months/weeks
+   - View scheduled training sessions
+   - Event detail modal
+   - Remove events from calendar
+   - Custom themed confirmation dialogs
+
+8. **Player Plans** (`/player-plans`) (NEW)
+   - List all generated player plans
+   - Filter by source type (SESSION, SERIES)
+   - View plan details
+   - Delete plans
+   - PDF export
+
+10. **Admin Dashboard** (`/admin`)
    - System metrics and statistics
    - Token usage and costs
    - Operation breakdowns
@@ -436,6 +502,11 @@ Persistent header bar with links:
 7. **PlayerCountInputs** - Player count inputs
 8. **QAScoresDisplay** - QA score visualization
 9. **SessionProgress** - Progress indicator for series
+10. **ScheduleSessionModal** - Single session scheduling modal
+11. **ScheduleSeriesModal** - Series scheduling modal with multiple date/time pickers
+12. **DatePicker** - Custom dark-themed date picker component
+13. **TimePicker** - Custom dark-themed time picker component
+14. **ConfirmModal** - Custom themed confirmation dialog
 
 ### Backend Services
 
@@ -444,9 +515,10 @@ Persistent header bar with links:
 3. **drill.ts** - Drill generation
 4. **vault.ts** - Vault operations
 5. **skill-focus.ts** - Skill focus analysis
-6. **pdf-export.ts** - PDF generation
-7. **ref-code.ts** - Reference code utilities
-8. **auth.ts** (NEW) - Authentication service (password hashing, JWT, usage tracking)
+6. **pdf-export.ts** - PDF generation (includes `generatePlayerPlanPdf`)
+7. **ref-code.ts** - Reference code utilities (supports P-XXXX for player plans)
+8. **auth.ts** - Authentication service (password hashing, JWT, usage tracking)
+9. **player-plan.ts** (NEW) - Player plan generation and adaptation service
 
 ### Utilities
 
@@ -498,8 +570,9 @@ Persistent header bar with links:
 
 - Codes stored in `refCode` field (unique, indexed)
 - Generated using `generateRefCode()` utility
-- Ensures uniqueness across Drill and Session tables
+- Ensures uniqueness across Drill, Session, and PlayerPlan tables
 - Backfilled for existing records
+- `lookupByRefCode()` supports all types including player plans
 
 ---
 
@@ -597,6 +670,10 @@ Persistent header bar with links:
 - Filtered favorites list
 - Auto-increment/decrement favorite counts
 - Uses `optionalAuth` middleware for backward compatibility
+- **Authentication:** Frontend uses JWT tokens (Bearer) for authenticated users, falls back to `x-user-id` for anonymous
+- Next.js API proxy routes forward both `Authorization` and `x-user-id` headers
+- **Authentication:** Frontend uses JWT tokens (Bearer) for authenticated users, falls back to `x-user-id` for anonymous
+- Next.js API proxy routes forward both `Authorization` and `x-user-id` headers
 
 ---
 
@@ -730,6 +807,62 @@ pnpm test
 ---
 
 ## Recent Changes
+
+### January 15, 2026
+
+#### Player-Only Training Plans (NEW)
+- ✅ Complete player plan system for converting team sessions/series into solo exercises
+- ✅ AI-adapted drills with player level-based complexity (BEGINNER, INTERMEDIATE, ADVANCED)
+- ✅ Minimal equipment requirements
+- ✅ Player plan database model with reference codes (P-XXXX format)
+- ✅ Backend service for generating plans from sessions and series
+- ✅ API endpoints for CRUD operations and PDF export
+- ✅ Bulk lookup endpoint for efficient loading (replaces individual requests)
+- ✅ Frontend integration in vault:
+  - "Create Player Version" button on sessions/series
+  - Checkmark indicator for existing player plans
+  - "View Player" button opens plan in modal (no page redirect)
+  - Modal viewing with PDF export capability
+- ✅ Player plan list page (`/player-plans`)
+- ✅ Next.js API proxy routes for all player plan operations
+- ✅ Reference code system extended to support player plans
+
+#### Favorites Authentication Fixes
+- ✅ Updated favorites page to use JWT tokens for authenticated users
+- ✅ Fallback to `x-user-id` for anonymous users
+- ✅ Next.js API proxy routes forward both `Authorization` and `x-user-id` headers
+- ✅ Improved error handling for authentication failures
+- ✅ Fixed 401 errors on favorites page
+
+#### Performance Improvements
+- ✅ Bulk lookup for player plans (single request instead of N requests)
+- ✅ Optimized vault loading with bulk player plan checks
+- ✅ Reduced server load and improved page load times
+
+### January 15, 2026
+
+#### Calendar Integration (NEW)
+- ✅ Calendar event model and database schema
+- ✅ Backend API routes for calendar CRUD operations
+- ✅ Calendar page with month/week views
+- ✅ Schedule individual sessions
+- ✅ Schedule series with individual dates for each session
+- ✅ Custom DatePicker component (dark-themed, fixed positioning)
+- ✅ Custom TimePicker component (dark-themed, compact grid layout)
+- ✅ Calendar count indicators on vault cards
+- ✅ Schedule buttons on vault and favorites pages
+- ✅ Event management (view, update, delete)
+- ✅ Custom confirmation modal (replaces browser confirm)
+- ✅ Fixed positioning for pickers (prevents clipping in scrollable containers)
+- ✅ Local date parsing (fixes timezone issues)
+- ✅ Next.js API proxy routes for calendar operations
+- ✅ Increased timeout for vault API requests (30 seconds)
+
+#### Bug Fixes
+- ✅ Fixed date picker selecting previous date (timezone issue)
+- ✅ Fixed infinite loop in ScheduleSeriesModal (memoized callbacks)
+- ✅ Fixed date picker click events (proper event handling)
+- ✅ Fixed API timeout issues (increased to 30 seconds)
 
 ### January 20, 2026
 
@@ -929,8 +1062,8 @@ API calls are made directly to `http://localhost:4000` in development.
 - [ ] Payment integration
 - [ ] Admin dashboard: user counts, access level overview, and quick user add
 - [ ] Attach creator user name to every drill/session/series
-- [ ] Calendar integration to schedule sessions into individual training calendars
-- [ ] Player-only training plans derived from sessions/series for individual work
+- [x] Calendar integration to schedule sessions into individual training calendars (✅ Completed)
+- [x] Player-only training plans derived from sessions/series for individual work (✅ Completed)
 - [ ] Parent communication summaries from scheduled calendar sessions for weekly sharing
 - [ ] Sharing and collaboration features
 - [ ] Advanced search and filtering
@@ -954,4 +1087,5 @@ API calls are made directly to `http://localhost:4000` in development.
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 19, 2026
+**Last Updated:** January 15, 2026  
+**Version:** 1.5.0
