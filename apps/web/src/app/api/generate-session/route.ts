@@ -1,16 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Helper to get auth headers from request
+function getAuthHeaders(request: NextRequest): HeadersInit {
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (authHeader) {
+    headers["Authorization"] = authHeader;
+  }
+  return headers;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { searchParams } = new URL(request.url);
     const skipRecommendation = searchParams.get("skipRecommendation") === "1";
+    const authHeaders = getAuthHeaders(request);
 
     if (!skipRecommendation) {
       try {
         const recRes = await fetch("http://localhost:4000/vault/sessions/similar", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({
             ...body,
             threshold: 0.85,
@@ -33,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const res = await fetch("http://localhost:4000/ai/generate-session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify(body),
     });
     if (!res.ok) {

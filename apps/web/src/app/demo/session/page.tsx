@@ -15,6 +15,7 @@ import CoachChat from "@/components/CoachChat";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
 import type { DiagramV1 } from "@/types/diagram";
+import { fetchUserFeatures, UserFeatures } from "@/lib/features";
 
 type OrganizationObject = {
   setupSteps?: string[];
@@ -71,6 +72,11 @@ type SessionApiResponse = {
     principleIds?: string[];
     psychThemeIds?: string[];
     skillFocus?: SkillFocus;
+    creator?: {
+      id: string;
+      name: string | null;
+      email: string;
+    } | null;
   };
   qa?: {
     pass: boolean;
@@ -288,9 +294,19 @@ async function fetchSession(
   const apiStart = Date.now();
   
   const url = `/api/generate-session${skipRecommendation ? "?skipRecommendation=1" : ""}`;
+  
+  // Get auth token from localStorage for authenticated requests
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+  
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     cache: "no-store",
     body: JSON.stringify(config),
   });
@@ -496,6 +512,7 @@ function SessionDemoPageContent() {
   const [selectedSeriesTab, setSelectedSeriesTab] = useState(0);
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [userFeatures, setUserFeatures] = useState<UserFeatures | null>(null);
   const [savedToVault, setSavedToVault] = useState<boolean>(false);
   const [checkingVaultStatus, setCheckingVaultStatus] = useState(false);
   const [justSaved, setJustSaved] = useState<boolean>(false);
@@ -518,6 +535,11 @@ function SessionDemoPageContent() {
   const config = getConfigFromSearchParams(searchParams);
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
+
+  useEffect(() => {
+    // Fetch user features
+    fetchUserFeatures().then(setUserFeatures).catch(() => setUserFeatures(null));
+  }, []);
 
   useEffect(() => {
     const sessionId = searchParams.get("sessionId");
@@ -627,6 +649,7 @@ function SessionDemoPageContent() {
                 coachingNotes: sessionData.coachingNotes || undefined,
                 principleIds: Array.isArray(vaultData.session.principleIds) ? vaultData.session.principleIds : [],
                 psychThemeIds: Array.isArray(vaultData.session.psychThemeIds) ? vaultData.session.psychThemeIds : [],
+                creator: vaultData.session.user || vaultData.session.creator || null,
               },
               qa: qaData,
             });
@@ -1942,6 +1965,11 @@ function SessionDemoPageContent() {
                       {session.refCode}
                     </button>
                   )}
+                  {session.creator && (
+                    <div className="text-xs text-slate-400 mt-2">
+                      Created by: <span className="text-slate-300">{session.creator.name || session.creator.email || 'Unknown'}</span>
+                    </div>
+                  )}
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-xs font-medium">
                     <span>✓</span>
                     <span>In Vault</span>
@@ -2024,62 +2052,74 @@ function SessionDemoPageContent() {
                     ? "✓ Skill Focus Ready"
                     : "🎯 Generate Skill Focus"}
                 </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      // Ensure we're sending the full session with all drill data including diagrams
-                      // Preserve both diagram and diagramV1 if they exist
-                      // Include skill focus if it's been generated
-                      const sessionForExport = {
-                        ...session,
-                        skillFocus: skillFocus || session.skillFocus || null, // Include skill focus from state or session
-                        drills: session.drills?.map((drill: any) => {
-                          const drillCopy = { ...drill };
-                          // Ensure at least one diagram field exists if either exists
-                          if (drill.diagramV1 && !drill.diagram) {
-                            drillCopy.diagram = drill.diagramV1;
-                          }
-                          return drillCopy;
-                        }) || [],
-                      };
-                      console.log("[PDF_EXPORT] Sending session to PDF export:", {
-                        title: sessionForExport.title,
-                        drillsCount: sessionForExport.drills?.length,
-                        drillsWithDiagrams: sessionForExport.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
-                        firstDrillHasDiagram: !!(sessionForExport.drills?.[0]?.diagram || sessionForExport.drills?.[0]?.diagramV1),
-                        firstDrillDiagramSample: sessionForExport.drills?.[0] ? {
-                          hasDiagram: !!sessionForExport.drills[0].diagram,
-                          hasDiagramV1: !!sessionForExport.drills[0].diagramV1,
-                          diagramPlayers: sessionForExport.drills[0].diagram?.players?.length || sessionForExport.drills[0].diagramV1?.players?.length || 0,
-                        } : null,
-                      });
-                      const response = await fetch("/api/export-session-pdf", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ session: sessionForExport }),
-                      });
-                      if (!response.ok) {
-                        const error = await response.json();
-                        alert("Error exporting PDF: " + (error.error || "Unknown error"));
-                        return;
+                {userFeatures?.canExportPDF && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        // Ensure we're sending the full session with all drill data including diagrams
+                        // Preserve both diagram and diagramV1 if they exist
+                        // Include skill focus if it's been generated
+                        const sessionForExport = {
+                          ...session,
+                          skillFocus: skillFocus || session.skillFocus || null, // Include skill focus from state or session
+                          drills: session.drills?.map((drill: any) => {
+                            const drillCopy = { ...drill };
+                            // Ensure at least one diagram field exists if either exists
+                            if (drill.diagramV1 && !drill.diagram) {
+                              drillCopy.diagram = drill.diagramV1;
+                            }
+                            return drillCopy;
+                          }) || [],
+                        };
+                        console.log("[PDF_EXPORT] Sending session to PDF export:", {
+                          title: sessionForExport.title,
+                          drillsCount: sessionForExport.drills?.length,
+                          drillsWithDiagrams: sessionForExport.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
+                          firstDrillHasDiagram: !!(sessionForExport.drills?.[0]?.diagram || sessionForExport.drills?.[0]?.diagramV1),
+                          firstDrillDiagramSample: sessionForExport.drills?.[0] ? {
+                            hasDiagram: !!sessionForExport.drills[0].diagram,
+                            hasDiagramV1: !!sessionForExport.drills[0].diagramV1,
+                            diagramPlayers: sessionForExport.drills[0].diagram?.players?.length || sessionForExport.drills[0].diagramV1?.players?.length || 0,
+                          } : null,
+                        });
+                        
+                        // Get auth token for authenticated requests
+                        const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                        const headers: HeadersInit = {
+                          "Content-Type": "application/json",
+                        };
+                        if (accessToken) {
+                          headers["Authorization"] = `Bearer ${accessToken}`;
+                        }
+                        
+                        const response = await fetch("/api/export-session-pdf", {
+                          method: "POST",
+                          headers,
+                          body: JSON.stringify({ session: sessionForExport }),
+                        });
+                        if (!response.ok) {
+                          const error = await response.json();
+                          alert("Error exporting PDF: " + (error.error || "Unknown error"));
+                          return;
+                        }
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}.pdf`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } catch (e: any) {
+                        alert("Error exporting PDF: " + e.message);
                       }
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}.pdf`;
-                      document.body.appendChild(a);
-                      a.click();
-                      window.URL.revokeObjectURL(url);
-                      document.body.removeChild(a);
-                    } catch (e: any) {
-                      alert("Error exporting PDF: " + e.message);
-                    }
-                  }}
-                  className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
-                >
-                  📄 Export PDF
-                </button>
+                    }}
+                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
+                  >
+                    📄 Export PDF
+                  </button>
+                )}
               </div>
 
               {/* Session Plan Breakdown */}

@@ -31,7 +31,8 @@ function parseJsonSafe(text: string) {
  * 4) Persist final session + QA into DB.
  */
 export async function generateAndReviewSession(
-  input: Parameters<typeof buildSessionPrompt>[0]
+  input: Parameters<typeof buildSessionPrompt>[0],
+  userId?: string
 ) {
   // Set metrics context for tracking
   setMetricsContext({
@@ -285,11 +286,30 @@ export async function generateAndReviewSession(
       // Auto-save to vault
       savedToVault: true,
       
+      // Track who generated this session
+      generatedBy: userId || null,
+      
       json: jsonForDb,
     },
   });
   
   console.log("✅ [SESSION CREATED] ID:", created.id);
+
+  // Fetch creator info if userId was provided
+  let creator = null;
+  if (userId) {
+    const creatorUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (creatorUser) {
+      creator = {
+        id: creatorUser.id,
+        name: creatorUser.name,
+        email: creatorUser.email,
+      };
+    }
+  }
 
   // Persist QA snapshot
   await prisma.qAReport.create({
@@ -322,6 +342,8 @@ export async function generateAndReviewSession(
         drills: drillsWithRefCodes,
         qaScore: avgScore,
         approved: !!finalQa.pass,
+        // Include creator information
+        creator,
       },
       qa: finalQa,
       fixDecision,

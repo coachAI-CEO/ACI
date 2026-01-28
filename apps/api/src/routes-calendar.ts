@@ -1,6 +1,9 @@
 import express from "express";
 import { prisma } from "./prisma";
-import { authenticate, AuthRequest } from "./middleware/auth";
+import { authenticate, AuthRequest, requireFeature } from "./middleware/auth";
+
+// IMPORTANT: Calendar routes are accessible to ALL authenticated users (COACH, ADMIN, CLUB, etc.)
+// They do NOT require admin privileges - any authenticated user can schedule sessions
 import {
   createCalendarEvent,
   getCalendarEvents,
@@ -19,15 +22,22 @@ import { generateWeeklySummaryPdf } from "./services/pdf-export";
 
 const r = express.Router();
 
-// All routes require authentication
+// All routes require authentication (accessible to all authenticated users: COACH, ADMIN, CLUB, etc.)
+// Note: Calendar is NOT restricted to admin users - any authenticated user can schedule sessions
+r.use((req, res, next) => {
+  console.log(`[CALENDAR_ROUTER] ${req.method} ${req.path} - Using authenticate middleware (NOT requireAdmin)`);
+  next();
+});
 r.use(authenticate);
 
 /**
  * POST /calendar/events
  * Create a new calendar event (schedule a session)
  */
-r.post("/calendar/events", async (req: AuthRequest, res) => {
+r.post("/calendar/events", requireFeature('canAccessCalendar'), async (req: AuthRequest, res) => {
   try {
+    console.log(`[CALENDAR] POST /calendar/events - User ID: ${req.userId}, Role: ${req.userRole}, Admin Role: ${req.user?.adminRole || 'none'}`);
+    
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
@@ -77,7 +87,7 @@ r.post("/calendar/events", async (req: AuthRequest, res) => {
  * Get calendar events for the authenticated user
  * Query params: startDate, endDate, includeCompleted, includeCancelled
  */
-r.get("/calendar/events", async (req: AuthRequest, res) => {
+r.get("/calendar/events", requireFeature('canAccessCalendar'), async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
@@ -198,7 +208,7 @@ r.get("/calendar/events/:eventId", async (req: AuthRequest, res) => {
  * PATCH /calendar/events/:eventId
  * Update a calendar event
  */
-r.patch("/calendar/events/:eventId", async (req: AuthRequest, res) => {
+r.patch("/calendar/events/:eventId", requireFeature('canAccessCalendar'), async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
@@ -258,7 +268,7 @@ r.patch("/calendar/events/:eventId", async (req: AuthRequest, res) => {
  * DELETE /calendar/events/:eventId
  * Delete a calendar event
  */
-r.delete("/calendar/events/:eventId", async (req: AuthRequest, res) => {
+r.delete("/calendar/events/:eventId", requireFeature('canAccessCalendar'), async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
@@ -285,7 +295,7 @@ r.delete("/calendar/events/:eventId", async (req: AuthRequest, res) => {
  * Generate a weekly summary of scheduled sessions for parent communication
  * Query params: weekStart (ISO date string), weekEnd (ISO date string)
  */
-r.get("/calendar/weekly-summary", async (req: AuthRequest, res) => {
+r.get("/calendar/weekly-summary", requireFeature('canGenerateWeeklySummaries'), async (req: AuthRequest, res) => {
   try {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });

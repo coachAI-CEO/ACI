@@ -217,6 +217,15 @@ export async function getVaultSessions(filters?: {
       orderBy: { createdAt: "desc" },
       take: filters?.limit || 500,
       skip: filters?.offset || 0,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
     }),
     prisma.session.count({ where }),
   ]);
@@ -244,6 +253,15 @@ export async function getVaultSeries() {
   const seriesSessions = await prisma.session.findMany({
     where: { savedToVault: true, isSeries: true },
     orderBy: [{ seriesId: "asc" }, { seriesNumber: "asc" }],
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
   });
 
   const seriesMap = new Map<string, any[]>();

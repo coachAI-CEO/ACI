@@ -7,6 +7,7 @@ import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, requireFeature, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
+import { canGenerateSessions } from "./services/access-permissions";
 
 const r = express.Router();
 
@@ -108,8 +109,24 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
 
   try {
-    // Check usage limit
+    // Check access permissions
     if (req.userId) {
+      const body = req.body || {};
+      const ageGroup = body.ageGroup;
+      
+      if (ageGroup) {
+        const hasPermission = await canGenerateSessions(req.userId, ageGroup);
+        if (!hasPermission) {
+          return res.status(403).json({
+            ok: false,
+            error: `You do not have permission to generate sessions for age group ${ageGroup}. Please contact an administrator.`,
+            ageGroup,
+            upgrade: true
+          });
+        }
+      }
+      
+      // Check usage limit
       const limit = await checkUsageLimit(req.userId, 'session');
       if (!limit.allowed) {
         return res.status(403).json({
@@ -126,7 +143,7 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
     // -------------------------------
     // Normal pipeline: real generator
     // -------------------------------
-    const result = await generateAndReviewSession(req.body || {});
+    const result = await generateAndReviewSession(req.body || {}, req.userId);
     const session = result.session;
     const qa = result.qa;
 
@@ -209,7 +226,7 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
       }
     }
 
-    const result = await generateProgressiveSessionSeries(baseInput, numberOfSessions);
+    const result = await generateProgressiveSessionSeries(baseInput, numberOfSessions, req.userId);
     
     // Increment usage (count as number of sessions generated)
     if (req.userId) {

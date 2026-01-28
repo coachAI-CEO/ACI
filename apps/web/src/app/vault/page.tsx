@@ -9,6 +9,7 @@ import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
+import { fetchUserFeatures, UserFeatures } from "@/lib/features";
 
 type VaultSession = {
   id: string;
@@ -31,6 +32,28 @@ type VaultSession = {
   numbersMin?: number;
   numbersMax?: number;
   favoriteCount?: number;
+  // Optional creator info from backend (user who generated the session)
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+  // Normalized creator field we may add in the future
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
 };
 
 type VaultSeries = {
@@ -63,6 +86,11 @@ type VaultDrill = {
   sessionZone?: string;
   sessionFormation?: string;
   sessionCreatedAt: string;
+  sessionCreator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
 };
 
 const drillTypeLabel: Record<string, string> = {
@@ -130,6 +158,8 @@ export default function VaultPage() {
   
   useEffect(() => {
     console.log('[VAULT] Component mounted');
+    // Fetch user features
+    fetchUserFeatures().then(setUserFeatures).catch(() => setUserFeatures(null));
   }, []);
   const [selectedSession, setSelectedSession] = useState<VaultSession | null>(null);
   const [selectedDrill, setSelectedDrill] = useState<VaultDrill | null>(null);
@@ -151,6 +181,7 @@ export default function VaultPage() {
     seriesTitle: string;
     sessions: Array<{ id: string; title: string; refCode?: string | null }>;
   } | null>(null);
+  const [userFeatures, setUserFeatures] = useState<UserFeatures | null>(null);
   
   // Favorites state
   const [favoritedSessions, setFavoritedSessions] = useState<Set<string>>(new Set());
@@ -169,7 +200,9 @@ export default function VaultPage() {
     zone: "",
     gameFormat: "", // 7v7, 9v9, 11v11
     drillType: "", // WARMUP, TECHNICAL, TACTICAL, CONDITIONED_GAME, COOLDOWN
-    search: "", // Search by name or code
+    search: "", // Search by name, code, summary, or drill text
+    creator: "", // Filter by creator name/email
+    favoritesOnly: false, // Show only favorited items (per active tab)
   });
 
   // Helper to determine game format from formation
@@ -190,14 +223,49 @@ export default function VaultPage() {
     return "11v11";
   };
 
-  // Filter sessions by game format and search (client-side)
+  // Filter sessions by game format, text search, creator, and favorites (client-side)
   const filteredSessions = sessions.filter((s) => {
     if (filters.gameFormat && getGameFormat(s) !== filters.gameFormat) return false;
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
-      const matchesTitle = s.title.toLowerCase().includes(searchLower);
-      const matchesRefCode = s.refCode?.toLowerCase().includes(searchLower);
-      if (!matchesTitle && !matchesRefCode) return false;
+      const title = (s.title || "").toLowerCase();
+      const ref = (s.refCode || "").toLowerCase();
+      const summary = ((s.json as any)?.summary || "").toLowerCase();
+      const drills = Array.isArray((s.json as any)?.drills) ? (s.json as any).drills : [];
+
+      const matchesTitle = title.includes(searchLower);
+      const matchesRefCode = ref.includes(searchLower);
+      const matchesSummary = summary.includes(searchLower);
+      const matchesDrill = drills.some((d: any) => {
+        const dt = (d?.title || "").toLowerCase();
+        const dd = (d?.description || "").toLowerCase();
+        const dcp = Array.isArray(d?.coachingPoints)
+          ? (d.coachingPoints as string[]).join(" ").toLowerCase()
+          : "";
+        const dprog = Array.isArray(d?.progressions)
+          ? (d.progressions as string[]).join(" ").toLowerCase()
+          : "";
+        return (
+          dt.includes(searchLower) ||
+          dd.includes(searchLower) ||
+          dcp.includes(searchLower) ||
+          dprog.includes(searchLower)
+        );
+      });
+
+      if (!matchesTitle && !matchesRefCode && !matchesSummary && !matchesDrill) return false;
+    }
+
+    if (filters.creator) {
+      const creator = (s.user || s.creator) as { name?: string | null; email?: string } | null;
+      const needle = filters.creator.toLowerCase();
+      const name = (creator?.name || "").toLowerCase();
+      const email = (creator?.email || "").toLowerCase();
+      if (!name.includes(needle) && !email.includes(needle)) return false;
+    }
+
+    if (filters.favoritesOnly && !favoritedSessions.has(s.id)) {
+      return false;
     }
     return true;
   });
@@ -243,6 +311,7 @@ export default function VaultPage() {
       sessionRefCode: session.refCode, // Parent session reference code
       sessionTitle: session.title,
       sessionAgeGroup: session.ageGroup,
+      sessionCreator: session.user || session.creator || null,
       sessionGameModelId: session.gameModelId,
       sessionPhase: session.phase,
       sessionZone: session.zone,
@@ -251,7 +320,7 @@ export default function VaultPage() {
     }));
   });
 
-  // Filter drills
+  // Filter drills (respecting global filters, creator, favorites, and search)
   const filteredDrills = allDrills.filter((drill) => {
     if (filters.gameFormat) {
       const session = sessions.find(s => s.id === drill.sessionId);
@@ -262,6 +331,51 @@ export default function VaultPage() {
     if (filters.ageGroup && drill.sessionAgeGroup !== filters.ageGroup) return false;
     if (filters.phase && drill.sessionPhase !== filters.phase) return false;
     if (filters.zone && drill.sessionZone !== filters.zone) return false;
+
+    if (filters.creator) {
+      const creator = drill.sessionCreator as { name?: string | null; email?: string } | null;
+      const needle = filters.creator.toLowerCase();
+      const name = (creator?.name || "").toLowerCase();
+      const email = (creator?.email || "").toLowerCase();
+      if (!name.includes(needle) && !email.includes(needle)) return false;
+    }
+
+    if (filters.favoritesOnly && !favoritedDrills.has(drill.id)) {
+      return false;
+    }
+
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      const title = (drill.title || "").toLowerCase();
+      const ref = (drill.refCode || "").toLowerCase();
+      const desc = (drill.description || "").toLowerCase();
+      const orgText =
+        typeof drill.organization === "string"
+          ? (drill.organization as string).toLowerCase()
+          : JSON.stringify(drill.organization || "").toLowerCase();
+      const cp =
+        Array.isArray(drill.coachingPoints) && drill.coachingPoints.length
+          ? drill.coachingPoints.join(" ").toLowerCase()
+          : "";
+      const prog =
+        Array.isArray(drill.progressions) && drill.progressions.length
+          ? drill.progressions.join(" ").toLowerCase()
+          : "";
+      const sessionTitle = (drill.sessionTitle || "").toLowerCase();
+      const sessionRef = (drill.sessionRefCode || "").toLowerCase();
+
+      const matches =
+        title.includes(searchLower) ||
+        ref.includes(searchLower) ||
+        desc.includes(searchLower) ||
+        orgText.includes(searchLower) ||
+        cp.includes(searchLower) ||
+        prog.includes(searchLower) ||
+        sessionTitle.includes(searchLower) ||
+        sessionRef.includes(searchLower);
+
+      if (!matches) return false;
+    }
     return true;
   });
 
@@ -283,10 +397,17 @@ export default function VaultPage() {
       console.log('[VAULT] Sessions URL:', sessionsUrl);
       console.log('[VAULT] Series URL:', seriesUrl);
 
+      // Get auth token for authenticated requests
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      if (accessToken) {
+        headers["Authorization"] = `Bearer ${accessToken}`;
+      }
+
       // Add timeout to fetch calls (increased to 30 seconds for large datasets)
       const fetchWithTimeout = (url: string, timeout = 30000) => {
         return Promise.race([
-          fetch(url),
+          fetch(url, { headers }),
           new Promise<Response>((_, reject) =>
             setTimeout(() => reject(new Error('Request timeout')), timeout)
           ),
@@ -941,18 +1062,32 @@ export default function VaultPage() {
           <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
             Filters
           </h2>
-          {/* Search Bar */}
-          <div className="mb-4">
-            <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
-              Search by Name or Code
-            </label>
-            <input
-              type="text"
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              placeholder="e.g., S-9M3P, D-AB12, or session name..."
-              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-            />
+          {/* Search & Creator */}
+          <div className="grid gap-4 md:grid-cols-2 mb-2">
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                Search (Name, Code, Summary, Drills)
+              </label>
+              <input
+                type="text"
+                value={filters.search}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                placeholder='e.g., "pressing trap", "3v2 overload", S-9M3P, D-AB12...'
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                Creator (Name or Email)
+              </label>
+              <input
+                type="text"
+                value={filters.creator}
+                onChange={(e) => setFilters({ ...filters, creator: e.target.value })}
+                placeholder="e.g., Alex, coach@club.com"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="space-y-1">
@@ -1039,6 +1174,39 @@ export default function VaultPage() {
               </select>
             </div>
           </div>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/70 mt-2">
+            <div className="flex items-center gap-2">
+              <input
+                id="favoritesOnly"
+                type="checkbox"
+                checked={filters.favoritesOnly}
+                onChange={(e) => setFilters({ ...filters, favoritesOnly: e.target.checked })}
+                className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+              />
+              <label htmlFor="favoritesOnly" className="text-[11px] text-slate-300">
+                Show <span className="font-semibold">favorites only</span> (applies to the active tab)
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setFilters({
+                  gameModelId: "",
+                  ageGroup: "",
+                  phase: "",
+                  zone: "",
+                  gameFormat: "",
+                  drillType: "",
+                  search: "",
+                  creator: "",
+                  favoritesOnly: false,
+                })
+              }
+              className="text-[11px] text-slate-400 hover:text-emerald-400 underline"
+            >
+              Clear all filters
+            </button>
+          </div>
         </section>
 
         {/* Loading */}
@@ -1102,6 +1270,11 @@ export default function VaultPage() {
                           {session.durationMin && (
                             <div className="text-[9px] text-slate-500">
                               {session.durationMin} min session
+                            </div>
+                          )}
+                          {(session.user || session.creator) && (
+                            <div className="text-[9px] text-slate-500 mt-1">
+                              Created by: <span className="text-slate-400">{(session.user || session.creator)?.name || (session.user || session.creator)?.email || 'Unknown'}</span>
                             </div>
                           )}
                         </div>
@@ -1334,6 +1507,12 @@ export default function VaultPage() {
                               </>
                             )}
                           </div>
+                          
+                          {drill.sessionCreator && (
+                            <div className="text-[9px] text-slate-500 mt-1">
+                              Created by: <span className="text-slate-400">{drill.sessionCreator.name || drill.sessionCreator.email || 'Unknown'}</span>
+                            </div>
+                          )}
                           
                           {/* Quick Stats */}
                           <div className="flex items-center gap-2 flex-wrap">
@@ -1613,6 +1792,11 @@ export default function VaultPage() {
                       >
                         {selectedSession.refCode}
                       </button>
+                    )}
+                    {(selectedSession.user || selectedSession.creator) && (
+                      <div className="text-xs text-slate-400">
+                        Created by: <span className="text-slate-300">{(selectedSession.user || selectedSession.creator)?.name || (selectedSession.user || selectedSession.creator)?.email || 'Unknown'}</span>
+                      </div>
                     )}
                     <button
                       onClick={(e) => toggleSessionFavorite(selectedSession.id, e)}
@@ -1907,41 +2091,52 @@ export default function VaultPage() {
                   >
                     View Full Session
                   </Link>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const response = await fetch("/api/export-session-pdf", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            session: {
-                              ...selectedSession.json,
-                              id: selectedSession.id,
-                            },
-                          }),
-                        });
-                        if (!response.ok) {
-                          const error = await response.json();
-                          alert("Error exporting PDF: " + (error.error || "Unknown error"));
-                          return;
+                  {userFeatures?.canExportPDF && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          // Get auth token for authenticated requests
+                          const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                          const headers: HeadersInit = {
+                            "Content-Type": "application/json",
+                          };
+                          if (accessToken) {
+                            headers["Authorization"] = `Bearer ${accessToken}`;
+                          }
+                          
+                          const response = await fetch("/api/export-session-pdf", {
+                            method: "POST",
+                            headers,
+                            body: JSON.stringify({
+                              session: {
+                                ...selectedSession.json,
+                                id: selectedSession.id,
+                              },
+                            }),
+                          });
+                          if (!response.ok) {
+                            const error = await response.json();
+                            alert("Error exporting PDF: " + (error.error || "Unknown error"));
+                            return;
+                          }
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `session-${selectedSession.title.replace(/[^a-z0-9]/gi, "-")}.pdf`;
+                          document.body.appendChild(a);
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          document.body.removeChild(a);
+                        } catch (e: any) {
+                          alert("Error exporting PDF: " + e.message);
                         }
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `session-${selectedSession.title.replace(/[^a-z0-9]/gi, "-")}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                      } catch (e: any) {
-                        alert("Error exporting PDF: " + e.message);
-                      }
-                    }}
-                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition-colors"
-                  >
-                    📄 Export PDF
-                  </button>
+                      }}
+                      className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 transition-colors"
+                    >
+                      📄 Export PDF
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1969,6 +2164,12 @@ export default function VaultPage() {
                   </div>
 
                   <h2 className="text-lg font-semibold mb-3 text-slate-200">{selectedDrill.title}</h2>
+                  
+                  {selectedDrill.sessionCreator && (
+                    <div className="text-xs text-slate-400 mb-3">
+                      Created by: <span className="text-slate-300">{selectedDrill.sessionCreator.name || selectedDrill.sessionCreator.email || 'Unknown'}</span>
+                    </div>
+                  )}
 
                   {/* Session Info */}
                   <div className="flex flex-wrap gap-3 text-sm mb-4 pb-4 border-b border-slate-700/50">

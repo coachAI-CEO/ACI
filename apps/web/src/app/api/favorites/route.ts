@@ -43,6 +43,19 @@ export async function GET(request: NextRequest) {
     
     if (!res.ok) {
       console.error(`[FAVORITES_PROXY] GET failed: ${res.status} ${res.statusText}`, data);
+      // If backend returns an error, forward it but ensure it has the error structure
+      if (!data.ok && data.error) {
+        return NextResponse.json(data, { status: res.status });
+      }
+      // If backend error doesn't have proper structure, wrap it
+      return NextResponse.json(
+        { 
+          ok: false, 
+          error: data.error || data.message || `Backend error: ${res.status} ${res.statusText}`,
+          details: data
+        },
+        { status: res.status }
+      );
     }
 
     return NextResponse.json(data, { status: res.status });

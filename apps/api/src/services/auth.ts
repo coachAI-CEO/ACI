@@ -247,7 +247,7 @@ export async function checkUsageLimit(
   }
   
   const limits = SUBSCRIPTION_LIMITS[user.subscriptionPlan];
-  const limit = operation === 'session' 
+  const limit: number = operation === 'session' 
     ? limits.sessionsPerMonth 
     : limits.drillsPerMonth;
   
@@ -274,13 +274,19 @@ export async function checkUsageLimit(
     ? user.sessionsGeneratedThisMonth 
     : user.drillsGeneratedThisMonth;
   
-  // Unlimited plans
+  // Unlimited plans (limit is -1)
   if (limit === -1) {
     return { allowed: true, limit: -1, used, remaining: -1 };
   }
   
   const remaining = limit - used;
   const allowed = remaining > 0;
+  
+  // Log limit hit for analytics
+  if (!allowed) {
+    console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit ${operation} limit: ${used}/${limit}`);
+    // Could also store this in database for analytics, but for now we'll use ApiMetrics or user data
+  }
   
   return { allowed, limit, used, remaining };
 }

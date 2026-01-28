@@ -1096,13 +1096,14 @@ API calls are made directly to `http://localhost:4000` in development.
 - [ ] User profiles and preferences
 - [ ] Subscription management UI
 - [ ] Payment integration
-- [ ] Admin dashboard: user counts, access level overview, and quick user add
-- [ ] Attach creator user name to every drill/session/series
+- [x] Admin dashboard: user counts, access level overview, and quick user add (✅ Completed)
+- [x] Admin API endpoints for usage analytics (usage-by-plan, vault-usage, favorites-usage, feature-access, trial-accounts, limit-enforcement, club-accounts) (✅ Completed)
+- [x] Attach creator user name to every drill/session/series (✅ Completed)
 - [x] Calendar integration to schedule sessions into individual training calendars (✅ Completed)
 - [x] Parent communication summaries from scheduled calendar sessions for weekly sharing (✅ Completed)
 - [x] Player-only training plans derived from sessions/series for individual work (✅ Completed)
 - [ ] Sharing and collaboration features
-- [ ] Advanced search and filtering
+- [x] Advanced search and filtering (✅ Completed)
 - [ ] Export to other formats (Excel, CSV)
 - [ ] Mobile app
 - [ ] Offline mode
@@ -1123,5 +1124,5 @@ API calls are made directly to `http://localhost:4000` in development.
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 15, 2026  
-**Version:** 1.6.0
+**Last Updated:** January 24, 2026  
+**Version:** 1.7.0

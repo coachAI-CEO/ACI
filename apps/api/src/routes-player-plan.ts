@@ -1,6 +1,6 @@
 import express from "express";
 import { prisma } from "./prisma";
-import { authenticate, AuthRequest } from "./middleware/auth";
+import { authenticate, AuthRequest, requireFeature } from "./middleware/auth";
 import { generatePlayerPlanFromSession, generatePlayerPlanFromSeries } from "./services/player-plan";
 import { generatePlayerPlanPdf } from "./services/pdf-export";
 
@@ -13,18 +13,27 @@ r.use(authenticate);
  * POST /player-plans/from-session/:sessionId
  * Create a player-only training plan from a session
  */
-r.post("/player-plans/from-session/:sessionId", async (req: AuthRequest, res) => {
+r.post("/player-plans/from-session/:sessionId", requireFeature('canCreatePlayerPlans'), async (req: AuthRequest, res) => {
   try {
     const { sessionId } = req.params;
-    const { durationMin, focus } = req.body || {};
+    const { durationMin, focus, sourceRefCode } = req.body || {};
 
-    console.log(`[PLAYER_PLAN] Creating plan from session: ${sessionId}, userId: ${req.userId}`);
+    // Normalise the session identifier. Some frontends have been sending the
+    // literal string "undefined" in the path segment; treat that as missing.
+    const pathId = sessionId && sessionId !== "undefined" && sessionId !== "null" ? sessionId : undefined;
+    const sessionIdentifier = pathId || sourceRefCode; // Prefer valid path param, fall back to refCode from body
+
+    console.log(`[PLAYER_PLAN] Creating plan from session: ${sessionIdentifier}, userId: ${req.userId}`);
 
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
     }
 
-    const result = await generatePlayerPlanFromSession(sessionId, req.userId, {
+    if (!sessionIdentifier) {
+      return res.status(400).json({ ok: false, error: "Missing session identifier (id or refCode)" });
+    }
+
+    const result = await generatePlayerPlanFromSession(sessionIdentifier, req.userId, {
       durationMin: durationMin ? Number(durationMin) : undefined,
       focus: focus ? String(focus) : undefined,
     });
@@ -48,7 +57,7 @@ r.post("/player-plans/from-session/:sessionId", async (req: AuthRequest, res) =>
  * POST /player-plans/from-series/:seriesId
  * Create a player-only training plan from a series
  */
-r.post("/player-plans/from-series/:seriesId", async (req: AuthRequest, res) => {
+r.post("/player-plans/from-series/:seriesId", requireFeature('canCreatePlayerPlans'), async (req: AuthRequest, res) => {
   try {
     const { seriesId } = req.params;
     const { sessionNumbers, durationMin, focus } = req.body || {};

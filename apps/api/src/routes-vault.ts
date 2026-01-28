@@ -11,8 +11,67 @@ import {
   saveSeriesToVault,
   saveDrillToVault,
 } from "./services/vault";
+import { authenticate, AuthRequest } from "./middleware/auth";
+import { canAccessVault, getAllowedFormatsAndAgeGroups, getFormatFromFormation, getFormatFromAgeGroupForSession } from "./services/access-permissions";
+import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
 
 const r = express.Router();
+
+/**
+ * Helper function to check vault limits and apply them to results
+ */
+async function applyVaultLimits(
+  userId: string | undefined,
+  sessions: any[],
+  drills: any[] = []
+): Promise<{ sessions: any[]; drills: any[]; limitExceeded: boolean }> {
+  if (!userId) {
+    // Anonymous users - no limits
+    return { sessions, drills, limitExceeded: false };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { 
+      subscriptionPlan: true,
+      role: true,
+      adminRole: true,
+    },
+  });
+
+  if (!user) {
+    return { sessions, drills, limitExceeded: false };
+  }
+
+  // Admins bypass all vault limits
+  if (user.role === 'ADMIN' || user.adminRole) {
+    return { sessions, drills, limitExceeded: false };
+  }
+
+  const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+  const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+
+  const vaultSessionsLimit = limits.vaultSessions;
+  const vaultDrillsLimit = limits.vaultDrills;
+
+  let limitedSessions = sessions;
+  let limitedDrills = drills;
+  let limitExceeded = false;
+
+  // Apply sessions limit (-1 means unlimited)
+  if (vaultSessionsLimit !== -1 && sessions.length > vaultSessionsLimit) {
+    limitedSessions = sessions.slice(0, vaultSessionsLimit);
+    limitExceeded = true;
+  }
+
+  // Apply drills limit (-1 means unlimited)
+  if (vaultDrillsLimit !== -1 && drills.length > vaultDrillsLimit) {
+    limitedDrills = drills.slice(0, vaultDrillsLimit);
+    limitExceeded = true;
+  }
+
+  return { sessions: limitedSessions, drills: limitedDrills, limitExceeded };
+}
 
 // Find sessions not saved to vault (orphaned sessions)
 r.get("/vault/orphaned-sessions", async (req, res) => {
@@ -44,8 +103,28 @@ r.get("/vault/orphaned-sessions", async (req, res) => {
   }
 });
 
-r.post("/vault/sessions/:sessionId/save", async (req, res) => {
+r.post("/vault/sessions/:sessionId/save", authenticate, async (req: AuthRequest, res) => {
   try {
+    // Check vault access permission
+    if (req.userId) {
+      // Get session to check age group
+      const session = await prisma.session.findUnique({
+        where: { id: req.params.sessionId },
+        select: { ageGroup: true }
+      });
+      
+      if (session) {
+        const hasPermission = await canAccessVault(req.userId, session.ageGroup);
+        if (!hasPermission) {
+          return res.status(403).json({
+            ok: false,
+            error: `You do not have permission to save sessions for age group ${session.ageGroup} to vault. Please contact an administrator.`,
+            ageGroup: session.ageGroup,
+          });
+        }
+      }
+    }
+    
     const { sessionId } = req.params;
     const result = await saveSessionToVault(sessionId);
     return res.json({ ok: true, ...result });
@@ -74,9 +153,24 @@ r.post("/vault/sessions/:sessionId/remove", async (req, res) => {
   }
 });
 
-r.get("/vault/sessions", async (req, res) => {
+r.get("/vault/sessions", authenticate, async (req: AuthRequest, res) => {
   console.log("[VAULT] GET /vault/sessions - Request received");
   try {
+    // Check vault access permission
+    if (req.userId) {
+      const ageGroup = req.query.ageGroup as string | undefined;
+      const hasPermission = await canAccessVault(req.userId, ageGroup);
+      if (!hasPermission) {
+        return res.status(403).json({
+          ok: false,
+          error: ageGroup 
+            ? `You do not have permission to access vault for age group ${ageGroup}. Please contact an administrator.`
+            : 'You do not have permission to access the vault. Please contact an administrator.',
+          ageGroup,
+        });
+      }
+    }
+    
     const filters = {
       gameModelId: req.query.gameModelId as string | undefined,
       ageGroup: req.query.ageGroup as string | undefined,
@@ -87,20 +181,161 @@ r.get("/vault/sessions", async (req, res) => {
     };
     console.log("[VAULT] Filters:", filters);
     console.log("[VAULT] Calling getVaultSessions...");
-    const result = await getVaultSessions(filters);
-    console.log("[VAULT] Result - Sessions count:", result.sessions?.length || 0);
-    return res.json({ ok: true, ...result });
+    let result = await getVaultSessions(filters);
+    
+    // Filter sessions by format and age group permissions if user has restrictions
+    if (req.userId) {
+      const restrictions = await getAllowedFormatsAndAgeGroups(req.userId);
+      const allowedFormats = restrictions.formats;
+      const allowedAgeGroups = restrictions.ageGroups;
+      
+      if ((allowedFormats && allowedFormats.length > 0) || (allowedAgeGroups && allowedAgeGroups.length > 0)) {
+        console.log(`[VAULT] Filtering sessions by restrictions:`, {
+          formats: allowedFormats || "all",
+          ageGroups: allowedAgeGroups || "all"
+        });
+        const originalCount = result.sessions.length;
+        result.sessions = result.sessions.filter((session: any) => {
+          // Check age group restriction
+          if (allowedAgeGroups && allowedAgeGroups.length > 0) {
+            if (!session.ageGroup || !allowedAgeGroups.includes(session.ageGroup)) {
+              console.log(`[VAULT] Filtering out session ${session.id} (ageGroup: ${session.ageGroup}, allowed: ${allowedAgeGroups.join(", ")})`);
+              return false;
+            }
+          }
+          
+          // Check format restriction
+          if (allowedFormats && allowedFormats.length > 0) {
+            // Get format from session's formation first
+            const sessionJson = session.json as any || {};
+            const formation = session.formationUsed || sessionJson.formationAttacking || sessionJson.formation;
+            let finalFormat = getFormatFromFormation(formation);
+            
+            // If format is unknown from formation, derive from age group
+            if (finalFormat === "unknown" && session.ageGroup) {
+              finalFormat = getFormatFromAgeGroupForSession(session.ageGroup);
+            }
+            
+            // If still unknown, skip format filtering for this session (allow it to be safe)
+            if (finalFormat === "unknown") {
+              console.log(`[VAULT] Session ${session.id} has unknown format (formation: ${formation}, ageGroup: ${session.ageGroup}), allowing it`);
+              return true;
+            }
+            
+            if (!allowedFormats.includes(finalFormat)) {
+              console.log(`[VAULT] Filtering out session ${session.id} (format: ${finalFormat}, allowed: ${allowedFormats.join(", ")})`);
+              return false;
+            }
+          }
+          
+          return true;
+        });
+        result.total = result.sessions.length; // Update total count
+        console.log(`[VAULT] Filtered ${originalCount} sessions to ${result.sessions.length} based on format and age group permissions`);
+      }
+    }
+    
+    // Apply vault limits based on subscription plan
+    const { sessions: limitedSessions, limitExceeded } = await applyVaultLimits(
+      req.userId,
+      result.sessions,
+      []
+    );
+
+    console.log("[VAULT] Result - Sessions count:", limitedSessions?.length || 0, limitExceeded ? "(limited)" : "");
+    
+    return res.json({ 
+      ok: true, 
+      sessions: limitedSessions,
+      total: limitedSessions.length,
+      limitExceeded,
+      ...(limitExceeded && req.userId ? {
+        warning: `You have reached your vault limit. Showing first ${limitedSessions.length} sessions.`
+      } : {})
+    });
   } catch (e: any) {
     console.error("[VAULT] Error in /vault/sessions:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
-r.get("/vault/series", async (req, res) => {
+r.get("/vault/series", authenticate, async (req: AuthRequest, res) => {
   console.log("[VAULT] GET /vault/series - Request received");
   try {
+    // Check vault access permission
+    if (req.userId) {
+      const hasPermission = await canAccessVault(req.userId);
+      if (!hasPermission) {
+        return res.status(403).json({
+          ok: false,
+          error: 'You do not have permission to access the vault. Please contact an administrator.',
+        });
+      }
+    }
+    
     console.log("[VAULT] Calling getVaultSeries...");
-    const series = await getVaultSeries();
+    let series = await getVaultSeries();
+    
+    // Filter series by format and age group permissions if user has restrictions
+    if (req.userId) {
+      const restrictions = await getAllowedFormatsAndAgeGroups(req.userId);
+      const allowedFormats = restrictions.formats;
+      const allowedAgeGroups = restrictions.ageGroups;
+      
+      if ((allowedFormats && allowedFormats.length > 0) || (allowedAgeGroups && allowedAgeGroups.length > 0)) {
+        console.log(`[VAULT] Filtering series by restrictions:`, {
+          formats: allowedFormats || "all",
+          ageGroups: allowedAgeGroups || "all"
+        });
+        const originalCount = series.length;
+        series = series.filter((s: any) => {
+          // Check if any session in the series matches restrictions
+          const matchingSessions = s.sessions.filter((session: any) => {
+            // Check age group restriction
+            if (allowedAgeGroups && allowedAgeGroups.length > 0) {
+              if (!session.ageGroup || !allowedAgeGroups.includes(session.ageGroup)) {
+                return false;
+              }
+            }
+            
+            // Check format restriction
+            if (allowedFormats && allowedFormats.length > 0) {
+              const sessionJson = session.json as any || {};
+              const formation = session.formationUsed || sessionJson.formationAttacking || sessionJson.formation;
+              let finalFormat = getFormatFromFormation(formation);
+              
+              // If format is unknown from formation, derive from age group
+              if (finalFormat === "unknown" && session.ageGroup) {
+                finalFormat = getFormatFromAgeGroupForSession(session.ageGroup);
+              }
+              
+              // If still unknown, allow it
+              if (finalFormat === "unknown") {
+                return true;
+              }
+              
+              if (!allowedFormats.includes(finalFormat)) {
+                return false;
+              }
+            }
+            
+            return true;
+          });
+          
+          // Only include series if it has at least one matching session
+          if (matchingSessions.length > 0) {
+            // Update the series to only include matching sessions
+            s.sessions = matchingSessions;
+            s.totalSessions = matchingSessions.length;
+            return true;
+          }
+          
+          return false;
+        });
+        console.log(`[VAULT] Filtered ${originalCount} series to ${series.length} based on format and age group permissions`);
+      }
+    }
+    
     console.log("[VAULT] Result - Series count:", series?.length || 0);
     return res.json({ ok: true, series });
   } catch (e: any) {
@@ -206,7 +441,18 @@ r.post("/vault/sessions/similar", async (req, res) => {
 r.get("/vault/sessions/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const session = await prisma.session.findUnique({ where: { id: sessionId } });
+    const session = await prisma.session.findUnique({ 
+      where: { id: sessionId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
     if (!session) {
       return res.status(404).json({ ok: false, error: "Session not found" });
     }

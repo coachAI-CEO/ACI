@@ -82,7 +82,9 @@ r.post("/ai/generate-drill", async (req, res) => {
     // -------------------------------
     // Normal pipeline: real generator
     // -------------------------------
-    const result = await generateAndReviewDrill(req.body || {});
+    // Note: This route doesn't require auth, so userId may be undefined
+    const userId = (req as any).userId || undefined;
+    const result = await generateAndReviewDrill(req.body || {}, userId);
     const drill = result.drill;
     const qa = result.qa;
 

@@ -1,6 +1,7 @@
 import express from "express";
 import { prisma } from "./prisma";
 import { optionalAuth, AuthRequest } from "./middleware/auth";
+import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
 
 const r = express.Router();
 
@@ -17,11 +18,68 @@ async function getOrCreateUser(userId: string) {
   return user;
 }
 
+/**
+ * Check if user has reached favorites limit
+ */
+async function checkFavoritesLimit(userId: string): Promise<{ allowed: boolean; currentCount: number; limit: number }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { subscriptionPlan: true },
+  });
+
+  if (!user) {
+    return { allowed: true, currentCount: 0, limit: -1 };
+  }
+
+  const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+  const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+  const maxFavorites = limits.maxFavorites;
+
+  // -1 means unlimited
+  if (maxFavorites === -1) {
+    return { allowed: true, currentCount: 0, limit: -1 };
+  }
+
+  // Count total favorites (sessions + drills + series)
+  const [sessionFavorites, drillFavorites, seriesFavorites] = await Promise.all([
+    prisma.favorite.count({
+      where: {
+        userId,
+        sessionId: { not: null },
+        seriesId: null, // Exclude series (counted separately)
+      },
+    }),
+    prisma.favorite.count({
+      where: {
+        userId,
+        drillId: { not: null },
+      },
+    }),
+    prisma.favorite.count({
+      where: {
+        userId,
+        seriesId: { not: null },
+      },
+    }),
+  ]);
+
+  const currentCount = sessionFavorites + drillFavorites + seriesFavorites;
+  const allowed = currentCount < maxFavorites;
+
+  return { allowed, currentCount, limit: maxFavorites };
+}
+
 // Get user's favorites with optional filters
 r.get("/favorites", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId;
-    console.log(`[FAVORITES] GET /favorites: userId=${userId || 'none'}, hasAuth=${!!req.headers.authorization}`);
+    console.log(`[FAVORITES] GET /favorites: userId=${userId || 'none'}, hasAuth=${!!req.headers.authorization}, path=${req.path}, originalUrl=${req.originalUrl}`);
+    
+    // Ensure this is not hitting admin middleware
+    if (req.path.includes('/admin') || req.originalUrl.includes('/admin')) {
+      console.error(`[FAVORITES] ERROR: Request path includes /admin! path=${req.path}, originalUrl=${req.originalUrl}`);
+      return res.status(500).json({ ok: false, error: "Internal routing error" });
+    }
     if (!userId) {
       // Return empty results for anonymous users instead of error
       return res.json({
@@ -146,7 +204,12 @@ r.post("/favorites/session/:id", optionalAuth, async (req: AuthRequest, res) => 
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to add favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot add favorites." });
     }
 
     const { id: sessionId } = req.params;
@@ -167,6 +230,18 @@ r.post("/favorites/session/:id", optionalAuth, async (req: AuthRequest, res) => 
 
     if (existing) {
       return res.json({ ok: true, message: "Already favorited", favoriteCount: session.favoriteCount });
+    }
+
+    // Check favorites limit
+    const limitCheck = await checkFavoritesLimit(userId);
+    if (!limitCheck.allowed) {
+      console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit favorites limit: ${limitCheck.currentCount}/${limitCheck.limit}`);
+      return res.status(403).json({
+        ok: false,
+        error: `Favorites limit reached. You have ${limitCheck.currentCount} favorites (limit: ${limitCheck.limit}). Please remove some favorites before adding new ones.`,
+        currentCount: limitCheck.currentCount,
+        limit: limitCheck.limit,
+      });
     }
 
     // Create favorite and increment count
@@ -192,7 +267,12 @@ r.delete("/favorites/session/:id", optionalAuth, async (req: AuthRequest, res) =
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to remove favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot remove favorites." });
     }
 
     const { id: sessionId } = req.params;
@@ -298,7 +378,12 @@ r.post("/favorites/drill/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to add favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot add favorites." });
     }
 
     const { id: drillId } = req.params;
@@ -334,6 +419,18 @@ r.post("/favorites/drill/:id", optionalAuth, async (req: AuthRequest, res) => {
       return res.json({ ok: true, message: "Already favorited", favoriteCount: drill.favoriteCount });
     }
 
+    // Check favorites limit
+    const limitCheck = await checkFavoritesLimit(userId);
+    if (!limitCheck.allowed) {
+      console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit favorites limit: ${limitCheck.currentCount}/${limitCheck.limit}`);
+      return res.status(403).json({
+        ok: false,
+        error: `Favorites limit reached. You have ${limitCheck.currentCount} favorites (limit: ${limitCheck.limit}). Please remove some favorites before adding new ones.`,
+        currentCount: limitCheck.currentCount,
+        limit: limitCheck.limit,
+      });
+    }
+
     // Create favorite and increment count
     await prisma.$transaction([
       prisma.favorite.create({
@@ -357,7 +454,12 @@ r.delete("/favorites/drill/:id", optionalAuth, async (req: AuthRequest, res) => 
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to remove favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot remove favorites." });
     }
 
     const { id: drillId } = req.params;
@@ -411,7 +513,12 @@ r.post("/favorites/series/:id", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to add favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot add favorites." });
     }
 
     const { id: seriesId } = req.params;
@@ -438,6 +545,18 @@ r.post("/favorites/series/:id", optionalAuth, async (req: AuthRequest, res) => {
       return res.json({ ok: true, message: "Already favorited" });
     }
 
+    // Check favorites limit
+    const limitCheck = await checkFavoritesLimit(userId);
+    if (!limitCheck.allowed) {
+      console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit favorites limit: ${limitCheck.currentCount}/${limitCheck.limit}`);
+      return res.status(403).json({
+        ok: false,
+        error: `Favorites limit reached. You have ${limitCheck.currentCount} favorites (limit: ${limitCheck.limit}). Please remove some favorites before adding new ones.`,
+        currentCount: limitCheck.currentCount,
+        limit: limitCheck.limit,
+      });
+    }
+
     // Create favorite and increment count on all series sessions
     await prisma.$transaction([
       prisma.favorite.create({
@@ -461,7 +580,12 @@ r.delete("/favorites/series/:id", optionalAuth, async (req: AuthRequest, res) =>
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "User ID required" });
+      return res.status(401).json({ ok: false, error: "Authentication required. Please log in to remove favorites." });
+    }
+
+    // Check if user is blocked
+    if (req.user?.blocked) {
+      return res.status(403).json({ ok: false, error: "Account access is blocked. Cannot remove favorites." });
     }
 
     const { id: seriesId } = req.params;

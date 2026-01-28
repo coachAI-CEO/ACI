@@ -4,10 +4,10 @@ const API_BASE = process.env.API_URL || "http://localhost:4000";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ sessionId: string }> }
+  { params }: { params: { sessionId: string } }
 ) {
   try {
-    const { sessionId } = await params;
+    const { sessionId } = params;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
     const body = await request.text();
 
@@ -27,18 +27,29 @@ export async function POST(
       console.warn("[PLAYER_PLANS_PROXY] No authorization header found");
     }
 
-    const res = await fetch(
-      `${API_BASE}/player-plans/from-session/${sessionId}`,
-      {
-        method: "POST",
-        headers,
-        body,
-      }
-    );
+    const res = await fetch(`${API_BASE}/player-plans/from-session/${sessionId}`, {
+      method: "POST",
+      headers,
+      body,
+    });
 
-    const data = await res.json();
-    
-    if (!res.ok) {
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      // Non-JSON response from backend
+      const text = await res.text();
+      console.error("[PLAYER_PLANS_PROXY] Non-JSON backend response:", {
+        status: res.status,
+        text,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Unexpected response from backend when creating player plan" },
+        { status: res.status }
+      );
+    }
+
+    if (!res.ok || !data?.ok) {
       console.error("[PLAYER_PLANS_PROXY] Backend error:", {
         status: res.status,
         data,

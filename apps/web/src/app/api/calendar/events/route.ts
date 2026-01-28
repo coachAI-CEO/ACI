@@ -74,6 +74,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    // Log the request for debugging
+    console.log(`[CALENDAR_PROXY] POST to ${API_BASE}/calendar/events`);
+
     const res = await fetch(`${API_BASE}/calendar/events`, {
       method: "POST",
       headers: {
@@ -97,6 +100,12 @@ export async function POST(request: NextRequest) {
 
     if (!res.ok) {
       console.error(`[CALENDAR_PROXY] POST failed: ${res.status} ${res.statusText}`, data);
+      console.error(`[CALENDAR_PROXY] Error details:`, JSON.stringify(data, null, 2));
+      // If we get "Admin access required", this is wrong - calendar should be accessible to all authenticated users
+      if (data.error === "Admin access required") {
+        console.error(`[CALENDAR_PROXY] ERROR: Calendar endpoint returned "Admin access required" - this should not happen!`);
+        console.error(`[CALENDAR_PROXY] This suggests the request is being routed to an admin endpoint instead of calendar endpoint.`);
+      }
     }
 
     return NextResponse.json(data, { status: res.status });

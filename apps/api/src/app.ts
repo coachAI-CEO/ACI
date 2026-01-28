@@ -16,15 +16,21 @@ import adminRoutes from "./routes-admin";
 import favoritesRoutes from "./routes-favorites";
 import playerPlanRoutes from "./routes-player-plan";
 import calendarRoutes from "./routes-calendar";
+import organizationRoutes from "./routes-organization";
 
 const app = express();
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`[REQUEST] ${req.method} ${req.path}`, {
-    query: req.query,
-    timestamp: new Date().toISOString(),
-  });
+  // Log favorites requests specifically to debug routing issues
+  if (req.path.includes('favorites')) {
+    console.log(`[REQUEST] ${req.method} ${req.path} - FAVORITES REQUEST`, {
+      query: req.query,
+      originalUrl: req.originalUrl,
+      baseUrl: req.baseUrl,
+      timestamp: new Date().toISOString(),
+    });
+  }
   next();
 });
 
@@ -47,9 +53,10 @@ app.use(fixerRoutes);
 app.use(coachRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
 app.use(vaultRoutes);  // Vault system routes
 app.use(skillFocusRoutes); // Skill focus routes
+app.use(calendarRoutes); // Calendar routes (BEFORE admin routes to avoid conflicts)
+app.use(favoritesRoutes); // Favorites routes (BEFORE admin routes to avoid conflicts)
 app.use(adminRoutes); // Admin dashboard routes
-app.use(favoritesRoutes); // Favorites routes
 app.use(playerPlanRoutes); // Player plan routes
-app.use(calendarRoutes); // Calendar routes
+app.use(organizationRoutes); // Organization management routes (CLUB accounts)
 
 export default app;

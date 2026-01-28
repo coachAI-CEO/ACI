@@ -4,8 +4,13 @@ import { generateAndReviewDrill } from "./services/drill";
 import { fixDrillDecision, fixDrill } from "./services/fixer";
 import { runDrillQA } from "./services/qa";
 import { normalizeDiagramLegacyToV1 } from "./services/diagram";
+import { authenticate, AuthRequest } from "./middleware/auth";
+import { checkUsageLimit, incrementUsage } from "./services/auth";
 
 const r = Router();
+
+// All routes require authentication
+r.use(authenticate);
 
 // --- REQUEST VALIDATION SCHEMAS ---
 
@@ -119,12 +124,27 @@ const ErrorResponseSchema = z.object({
  * - For PATCHABLE, runs the LLM fixer internally (fixDrill),
  *   then re-runs QA so we have before/after scores.
  */
-r.post("/coach/generate-drill-vetted", async (req, res) => {
+r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
   const maxAttemptsEnv = process.env.COACH_MAX_DRILL_ATTEMPTS || "3";
   const maxAttempts = Number.isNaN(Number(maxAttemptsEnv))
     ? 3
     : Number(maxAttemptsEnv);
+
+  // Check usage limit for drill generation
+  if (req.userId) {
+    const limit = await checkUsageLimit(req.userId, 'drill');
+    if (!limit.allowed) {
+      return res.status(429).json({
+        ok: false,
+        error: 'Monthly limit reached',
+        limit: limit.limit,
+        used: limit.used,
+        remaining: limit.remaining,
+        upgrade: true
+      });
+    }
+  }
 
   // --- REQUEST VALIDATION ---
   // Debug: log the incoming request body
@@ -159,7 +179,7 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const result = await generateAndReviewDrill(input);
+      const result = await generateAndReviewDrill(input, req.userId);
       const drill = result.drill;
       let qa = result.qa; // Use 'let' so we can update it after fixing
 
@@ -221,6 +241,11 @@ r.post("/coach/generate-drill-vetted", async (req, res) => {
           attempts: attemptsSummary,
           fixer: payload.fixer || null,
         });
+
+        // Increment usage after successful generation
+        if (req.userId) {
+          await incrementUsage(req.userId, 'drill');
+        }
 
         // --- RESPONSE VALIDATION ---
         const responseValidation = SuccessResponseSchema.safeParse(payload);

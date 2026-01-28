@@ -141,6 +141,9 @@ model Drill {
   visualThumbSvg String?
   visualHash     String? @unique
 
+  generatedBy    String?  // User ID who generated this drill
+  user           User?    @relation("GeneratedDrills", fields: [generatedBy], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -149,6 +152,7 @@ model Drill {
   @@index([refCode])
   @@index([savedToVault])
   @@index([gameModelId, ageGroup, phase, zone])
+  @@index([generatedBy])
 }
 
 model Session {
@@ -193,6 +197,9 @@ model Session {
   json           Json
   visualThumbSvg String?
   visualHash     String? @unique
+
+  generatedBy    String?  // User ID who generated this session
+  user           User?    @relation("GeneratedSessions", fields: [generatedBy], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -358,6 +365,11 @@ model User {
   // Activity tracking
   lastLoginAt      DateTime?
   
+  // Access control
+  blocked          Boolean   @default(false)
+  blockedAt        DateTime?
+  blockedReason    String?
+  
   // Admin fields
   adminRole        AdminRole?
   adminNotes       String?
@@ -373,9 +385,12 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   adminActions           AdminAction[]
   userSessions           UserSession[]
+  generatedSessions      Session[] @relation("GeneratedSessions")
+  generatedDrills        Drill[] @relation("GeneratedDrills")
   apiMetrics             ApiMetrics[]
   playerPlans            PlayerPlan[]
   calendarEvents         CalendarEvent[]
+  accessPermissions      AccessPermission[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -529,4 +544,39 @@ model CalendarEvent {
   @@index([sessionId])
   @@index([scheduledDate])
   @@index([userId, scheduledDate])
+}
+
+// Access permissions for sessions and vault based on age group, format, coach level, or specific user
+model AccessPermission {
+  id          String   @id @default(uuid())
+  
+  // What this permission controls
+  resourceType String   // "SESSION" | "VAULT" | "BOTH"
+  
+  // Who this applies to - either specific user OR coach level (mutually exclusive)
+  userId       String?  // Specific user ID (if set, this permission applies only to this user)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coachLevel   CoachLevel? // Coach level (if userId is null, applies to all users with this coach level)
+  
+  // Age group restrictions
+  ageGroups     String[] // Array of age groups (e.g., ["U8", "U9", "U10"]) - empty = all
+  
+  // Format restrictions (7v7, 9v9, 11v11)
+  // Format is derived from age group: U8-U12 = 7v7, U13-U14 = 9v9, U15-U18 = 11v11
+  formats       String[] // Array of formats (e.g., ["7v7", "9v9", "11v11"]) - empty = all
+  
+  // Access control
+  canGenerateSessions Boolean @default(false) // Can generate new sessions
+  canAccessVault      Boolean @default(false) // Can access vault (view and save)
+  
+  // Metadata
+  notes         String?  // Admin notes about this permission
+  createdBy     String?  // Admin user ID who created this
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([resourceType])
+  @@index([userId])
+  @@index([coachLevel])
+  @@index([createdAt])
 }

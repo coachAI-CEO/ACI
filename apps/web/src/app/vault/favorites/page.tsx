@@ -21,6 +21,16 @@ type FavoriteSession = {
   favoriteCount: number;
   createdAt: string;
   json: any;
+  user?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+  creator?: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
 };
 
 type FavoriteDrill = {
@@ -129,6 +139,7 @@ export default function FavoritesPage() {
     setError(null);
 
     try {
+      console.log("[FAVORITES] Loading favorites...");
       const params = new URLSearchParams();
       if (filters.gameModelId) params.set("gameModelId", filters.gameModelId);
       if (filters.ageGroup) params.set("ageGroup", filters.ageGroup);
@@ -150,15 +161,82 @@ export default function FavoritesPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to load favorites");
+        // Try to get error message from response
+        let errorData: any = {};
+        let errorText = "";
+        
+        try {
+          const contentType = res.headers.get("content-type");
+          if (contentType?.includes("application/json")) {
+            errorData = await res.json();
+          } else {
+            errorText = await res.text();
+          }
+        } catch (parseError) {
+          console.error("[FAVORITES] Failed to parse error response:", parseError);
+        }
+        
+        console.error("[FAVORITES] API error:", { 
+          status: res.status, 
+          statusText: res.statusText,
+          error: errorData, 
+          errorText,
+          url: res.url,
+          hasAuth: !!accessToken
+        });
+        
+        // If it's a 401/403, the token might be invalid - try without auth as fallback
+        if ((res.status === 401 || res.status === 403) && accessToken) {
+          console.log("[FAVORITES] Auth failed (401/403), trying as anonymous user...");
+          // Try again without auth header (as anonymous user)
+          try {
+            const anonymousRes = await fetch(`/api/favorites?${params.toString()}`, {
+              headers: getUserHeaders(),
+            });
+            
+            if (anonymousRes.ok) {
+              const anonymousData = await anonymousRes.json();
+              setSessions(anonymousData.sessions || []);
+              setDrills(anonymousData.drills || []);
+              setSeries(anonymousData.series || []);
+              // Don't show error - just show empty results
+              return;
+            } else {
+              console.error("[FAVORITES] Anonymous request also failed:", anonymousRes.status);
+            }
+          } catch (fallbackError) {
+            console.error("[FAVORITES] Fallback request failed:", fallbackError);
+          }
+        }
+        
+        // For other errors, show a user-friendly message
+        const errorMessage = errorData.error || errorData.message || errorText || `Failed to load favorites (${res.status} ${res.statusText})`;
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
-      setSessions(data.sessions || []);
-      setDrills(data.drills || []);
-      setSeries(data.series || []);
+      console.log("[FAVORITES] Loaded successfully:", { 
+        sessionsCount: data.sessions?.length || 0,
+        drillsCount: data.drills?.length || 0,
+        seriesCount: data.series?.length || 0,
+        ok: data.ok
+      });
+      
+      // Ensure we always have arrays, even if the response is malformed
+      setSessions(Array.isArray(data.sessions) ? data.sessions : []);
+      setDrills(Array.isArray(data.drills) ? data.drills : []);
+      setSeries(Array.isArray(data.series) ? data.series : []);
     } catch (e: any) {
-      setError(e.message);
+      console.error("[FAVORITES] Error loading favorites:", e);
+      // Don't show error for network issues - just show empty state
+      if (e.message?.includes("fetch") || e.message?.includes("network")) {
+        console.warn("[FAVORITES] Network error - showing empty state");
+        setSessions([]);
+        setDrills([]);
+        setSeries([]);
+      } else {
+        setError(e.message || "Failed to load favorites");
+      }
     } finally {
       setLoading(false);
     }
@@ -186,10 +264,20 @@ export default function FavoritesPage() {
         headers,
       });
 
-      if (res.ok) {
-        // Reload favorites
-        loadFavorites();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        // Check if it's an admin access error (shouldn't happen for favorites)
+        if (errorData.error === "Admin access required" || errorData.message?.includes("SUPER_ADMIN")) {
+          console.error("[FAVORITES] Admin access error on favorites endpoint - this should not happen!");
+          alert("Authentication error. Please try logging out and logging back in.");
+          return;
+        }
+        console.error("Error removing favorite:", errorData.error || "Unknown error");
+        return;
       }
+
+      // Reload favorites
+      loadFavorites();
     } catch (e) {
       console.error("Error removing favorite:", e);
     }
@@ -388,6 +476,11 @@ export default function FavoritesPage() {
                     </div>
                     <h3 className="font-semibold text-sm text-slate-200 leading-tight">
                       {session.title}
+                      {(session.user || session.creator) && (
+                        <div className="text-[9px] text-slate-500 mt-1">
+                          Created by: <span className="text-slate-400">{(session.user || session.creator)?.name || (session.user || session.creator)?.email || 'Unknown'}</span>
+                        </div>
+                      )}
                     </h3>
                   </div>
                   <button
@@ -523,6 +616,11 @@ export default function FavoritesPage() {
                       >
                         {selectedSession.refCode}
                       </button>
+                    )}
+                    {(selectedSession.user || selectedSession.creator) && (
+                      <div className="text-xs text-slate-400">
+                        Created by: <span className="text-slate-300">{(selectedSession.user || selectedSession.creator)?.name || (selectedSession.user || selectedSession.creator)?.email || 'Unknown'}</span>
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-4 text-sm">

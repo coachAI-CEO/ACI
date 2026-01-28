@@ -113,12 +113,24 @@ export async function sendVerificationEmail(
   const mailer = getTransporter();
 
   if (!SMTP_USER || !SMTP_PASS) {
-    // Development mode: log to console
-    console.log('\n[EMAIL] Verification email would be sent:');
+    // Development mode: log to console with clear instructions
+    console.log('\n═══════════════════════════════════════════════════════════');
+    console.log('[EMAIL] ⚠️  SMTP not configured - Email would be sent:');
+    console.log('═══════════════════════════════════════════════════════════');
     console.log('To:', email);
     console.log('Subject:', mailOptions.subject);
     console.log('Verification URL:', verificationUrl);
     console.log('');
+    console.log('To enable email sending, configure SMTP in .env:');
+    console.log('  SMTP_HOST=smtp.gmail.com');
+    console.log('  SMTP_PORT=587');
+    console.log('  SMTP_USER=your-email@gmail.com');
+    console.log('  SMTP_PASS=your-app-password');
+    console.log('  FROM_EMAIL=noreply@acitraining.com');
+    console.log('  FROM_NAME=ACI Training Platform');
+    console.log('═══════════════════════════════════════════════════════════\n');
+    // In development, we still want to create the token so users can verify manually
+    // The token is already created in the calling function, so we just return here
     return;
   }
 

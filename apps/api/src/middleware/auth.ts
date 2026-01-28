@@ -48,6 +48,7 @@ export const authenticate = async (
         id: true,
         email: true,
         name: true,
+        blocked: true,
         role: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
@@ -57,6 +58,11 @@ export const authenticate = async (
     
     if (!user) {
       return res.status(401).json({ ok: false, error: 'User not found' });
+    }
+    
+    // Check if user is blocked
+    if (user.blocked) {
+      return res.status(403).json({ ok: false, error: 'Account access is blocked' });
     }
     
     // Check if trial expired
@@ -102,16 +108,40 @@ export const optionalAuth = async (
             id: true,
             email: true,
             name: true,
+            blocked: true,
             role: true,
             subscriptionPlan: true,
             subscriptionStatus: true,
+            trialEndDate: true,
           }
         });
         if (user) {
+          // Check if trial expired
+          if (user.role === 'TRIAL' && user.trialEndDate && user.trialEndDate < new Date()) {
+            // Auto-downgrade to FREE
+            await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                role: 'FREE',
+                subscriptionPlan: 'FREE',
+                subscriptionStatus: 'EXPIRED',
+              }
+            });
+            user.role = 'FREE';
+            user.subscriptionPlan = 'FREE';
+          }
+          
+          // Set user info even if blocked (allows read-only access to favorites, etc.)
+          // Routes can check req.user.blocked to restrict write operations
           req.userId = user.id;
           req.user = user;
           req.userRole = user.role;
-          console.log(`[AUTH] optionalAuth: Authenticated user ${user.id}`);
+          
+          if (user.blocked) {
+            console.log(`[AUTH] optionalAuth: Authenticated user ${user.id} (BLOCKED - read-only access)`);
+          } else {
+            console.log(`[AUTH] optionalAuth: Authenticated user ${user.id}`);
+          }
         } else {
           console.log(`[AUTH] optionalAuth: User ${decoded.userId} not found in database`);
         }
@@ -158,6 +188,12 @@ export const requireFeature = (feature: string) => {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ ok: false, error: 'Authentication required' });
+    }
+
+    // Admins always bypass subscription feature checks. Their access is governed
+    // by admin roles/permissions instead of end‑user subscription plans.
+    if (req.userRole === 'ADMIN') {
+      return next();
     }
     
     const { SUBSCRIPTION_LIMITS } = await import('../config/subscription-limits');

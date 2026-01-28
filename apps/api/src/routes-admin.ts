@@ -1,4 +1,6 @@
 import express from "express";
+import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
+import { checkUsageLimit } from "./services/auth";
 import { prisma } from "./prisma";
 import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
@@ -445,6 +447,7 @@ type RandomSessionJob = {
   status: RandomSessionJobStatus;
   startedAt: string;
   finishedAt?: string;
+  userId?: string; // User who initiated the job
   results: Array<
     | { kind: "session"; id: string; refCode?: string; title?: string }
     | { kind: "series"; seriesId: string; totalSessions: number; firstRefCode?: string; title?: string }
@@ -486,6 +489,7 @@ async function runRandomSessionJob(jobId: string) {
   const job = randomSessionJobs.get(jobId);
   if (!job) return;
   job.status = "running";
+  const userId = job.userId; // Get userId from job
 
   const gameModels = ["COACHAI", "POSSESSION", "PRESSING", "TRANSITION"] as const;
   const phases = ["ATTACKING", "DEFENDING", "TRANSITION"] as const;
@@ -521,7 +525,7 @@ async function runRandomSessionJob(jobId: string) {
 
       if (job.mode === "series") {
         const seriesLen = Math.min(10, Math.max(2, Number(job.sessionsPerSeries || 3)));
-        const seriesResult = await generateProgressiveSessionSeries(input, seriesLen);
+        const seriesResult = await generateProgressiveSessionSeries(input, seriesLen, userId);
         const first = seriesResult.series?.[0]?.session;
         job.succeeded += 1;
         job.results.push({
@@ -532,7 +536,7 @@ async function runRandomSessionJob(jobId: string) {
           title: first?.title,
         });
       } else {
-        const result = await generateAndReviewSession(input);
+        const result = await generateAndReviewSession(input, userId);
         job.succeeded += 1;
         job.results.push({
           kind: "session",
@@ -606,6 +610,7 @@ r.post("/admin/random-sessions/start", requireAdminPermission('canGenerateBulkCo
       failed: 0,
       status: "queued",
       startedAt: new Date().toISOString(),
+      userId: req.userId,
       results: [],
       errors: [],
     };
@@ -920,7 +925,7 @@ r.post("/admin/drills/regenerate", requireAdminPermission('canReviewQA'), async 
   };
 
   // Generate new drill (auto-saved to vault, includes QA)
-  const regen = await generateAndReviewDrill(regenInput);
+  const regen = await generateAndReviewDrill(regenInput, req.userId);
   const replacement = regen?.drill || null;
 
   if (!replacement || !(replacement as any).id) {
@@ -1033,7 +1038,7 @@ r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), asyn
   };
 
   // Generate new session (auto-saved to vault, includes QA)
-  const regen = await generateAndReviewSession(regenInput);
+  const regen = await generateAndReviewSession(regenInput, req.userId);
   const replacement = regen?.session || null;
 
   if (!replacement) {
@@ -1394,8 +1399,10 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
     subscriptionPlan: z.enum(["FREE", "COACH_BASIC", "COACH_PRO", "CLUB_STANDARD", "CLUB_PREMIUM", "TRIAL"]).optional(),
     subscriptionStatus: z.enum(["ACTIVE", "CANCELLED", "EXPIRED", "TRIAL"]).optional(),
     adminRole: z.enum(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"]).optional(),
-    password: z.string().min(8).optional(),
+    password: z.string().min(8).optional().or(z.literal("").transform(() => undefined)),
     autoVerifyEmail: z.boolean().optional(),
+    coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).optional(),
+    teamAgeGroups: z.array(z.string()).optional(),
   });
 
   try {
@@ -1409,6 +1416,23 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
       });
     }
 
+    // Validate coach-specific fields when role is COACH
+    const role = body.role || "FREE";
+    if (role === "COACH") {
+      if (!body.coachLevel) {
+        return res.status(400).json({
+          ok: false,
+          error: "Coach level is required when role is COACH",
+        });
+      }
+      if (!body.teamAgeGroups || body.teamAgeGroups.length === 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "At least one age group is required when role is COACH",
+        });
+      }
+    }
+
     // Check for existing user
     const existing = await prisma.user.findUnique({
       where: { email: body.email },
@@ -1418,8 +1442,6 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
     if (existing) {
       return res.status(400).json({ ok: false, error: "User with this email already exists" });
     }
-
-    const role = body.role || "FREE";
 
     // Map role to default subscription plan if not explicitly provided
     const defaultPlanByRole: Record<string, string> = {
@@ -1466,6 +1488,8 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
         adminRole: body.adminRole as any,
         emailVerified: shouldAutoVerify,
         emailVerifiedAt: shouldAutoVerify ? now : null,
+        coachLevel: body.coachLevel as any,
+        teamAgeGroups: body.teamAgeGroups || [],
       },
     });
 
@@ -1484,9 +1508,14 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
         },
       });
 
-      sendVerificationEmail(user.email, user.name, verificationToken).catch((err) => {
+      try {
+        await sendVerificationEmail(user.email, user.name, verificationToken);
+        console.log(`[ADMIN] Verification email sent to ${user.email} for quick-create user`);
+      } catch (err: any) {
         console.error("[ADMIN] Failed to send verification email for quick-create user:", err);
-      });
+        // Don't fail the user creation if email fails, but log it clearly
+        console.warn(`[ADMIN] User ${user.email} created but verification email failed. Token: ${verificationToken}`);
+      }
     }
 
     await logAdminAction(
@@ -1561,6 +1590,13 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
           createdAt: true,
           lastLoginAt: true,
           adminRole: true,
+          blocked: true,
+          blockedAt: true,
+          blockedReason: true,
+          emailVerified: true,
+          emailVerifiedAt: true,
+          coachLevel: true,
+          teamAgeGroups: true,
         }
       }),
       prisma.user.count()
@@ -1602,8 +1638,110 @@ r.get("/admin/users/:userId", requireAdminPermission('canViewAllUserData'), asyn
     if (!user) {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
+
+    // Get usage limits
+    const sessionLimit = await checkUsageLimit(user.id, 'session');
+    const drillLimit = await checkUsageLimit(user.id, 'drill');
+
+    // Get subscription features
+    const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+    const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+    const features = {
+      canExportPDF: limits.canExportPDF,
+      canGenerateSeries: limits.canGenerateSeries,
+      canUseAdvancedFilters: limits.canUseAdvancedFilters,
+      canAccessCalendar: limits.canAccessCalendar,
+      canCreatePlayerPlans: limits.canCreatePlayerPlans,
+      canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
+      canInviteCoaches: limits.canInviteCoaches,
+      canManageOrganization: limits.canManageOrganization,
+    };
+
+    // Count vault items
+    const vaultSessionsCount = await prisma.session.count({
+      where: {
+        savedToVault: true,
+        generatedBy: user.id,
+      },
+    });
     
-    return res.json({ ok: true, user });
+    // Note: Drills in vault are global (not user-specific in current schema)
+    // For now, we'll set this to 0 or count all drills if needed
+    const vaultDrillsCount = 0;
+
+    // Count favorites
+    const favoritesCount = await prisma.favorite.count({
+      where: { userId: user.id },
+    });
+
+    // Calculate vault limits
+    const vaultSessionsLimit = limits.vaultSessions;
+    const vaultDrillsLimit = limits.vaultDrills;
+    const favoritesLimit = limits.maxFavorites;
+
+    // Trial status
+    let trialStatus = null;
+    if (user.subscriptionPlan === 'TRIAL' && user.trialEndDate) {
+      const now = new Date();
+      const trialEnd = new Date(user.trialEndDate);
+      const daysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      trialStatus = {
+        trialEndDate: user.trialEndDate,
+        daysRemaining: daysRemaining > 0 ? daysRemaining : 0,
+        trialExpired: trialEnd < now,
+      };
+    }
+
+    // Monthly reset info
+    const lastReset = new Date(user.lastResetDate);
+    const now = new Date();
+    const daysSinceReset = Math.floor((now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24));
+    const daysUntilNextReset = 30 - daysSinceReset;
+
+    return res.json({
+      ok: true,
+      user: {
+        ...user,
+        usage: {
+          sessions: {
+            used: user.sessionsGeneratedThisMonth,
+            limit: sessionLimit.limit,
+            remaining: sessionLimit.remaining,
+            percentage: sessionLimit.limit === -1 ? 0 : Math.round((user.sessionsGeneratedThisMonth / sessionLimit.limit) * 100),
+          },
+          drills: {
+            used: user.drillsGeneratedThisMonth,
+            limit: drillLimit.limit,
+            remaining: drillLimit.remaining,
+            percentage: drillLimit.limit === -1 ? 0 : Math.round((user.drillsGeneratedThisMonth / drillLimit.limit) * 100),
+          },
+        },
+        vault: {
+          sessions: {
+            count: vaultSessionsCount,
+            limit: vaultSessionsLimit,
+            remaining: vaultSessionsLimit === -1 ? -1 : Math.max(0, vaultSessionsLimit - vaultSessionsCount),
+          },
+          drills: {
+            count: vaultDrillsCount,
+            limit: vaultDrillsLimit,
+            remaining: vaultDrillsLimit === -1 ? -1 : Math.max(0, vaultDrillsLimit - vaultDrillsCount),
+          },
+        },
+        favorites: {
+          count: favoritesCount,
+          limit: favoritesLimit,
+          remaining: favoritesLimit === -1 ? -1 : Math.max(0, favoritesLimit - favoritesCount),
+        },
+        features,
+        trialStatus,
+        monthlyReset: {
+          lastResetDate: user.lastResetDate,
+          daysSinceReset,
+          daysUntilNextReset: daysUntilNextReset > 0 ? daysUntilNextReset : 0,
+        },
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
   }
@@ -1677,6 +1815,408 @@ r.delete("/admin/users/:userId", requireAdminPermission('canDeleteUsers'), async
     );
     
     return res.json({ ok: true });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Update user role (regular role or admin role)
+r.patch("/admin/users/:userId/role", requireAdminPermission('canChangeUserRoles'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { role, adminRole } = req.body;
+    
+    // Prevent changing your own role
+    if (userId === req.userId) {
+      return res.status(400).json({ ok: false, error: 'Cannot change your own role' });
+    }
+    
+    const updateData: any = {};
+    
+    // Update regular role if provided
+    if (role) {
+      if (!['FREE', 'COACH', 'CLUB', 'ADMIN', 'TRIAL'].includes(role)) {
+        return res.status(400).json({ ok: false, error: 'Invalid role' });
+      }
+      updateData.role = role;
+    }
+    
+    // Update admin role if provided
+    if (adminRole !== undefined) {
+      if (adminRole !== null && !['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'SUPPORT'].includes(adminRole)) {
+        return res.status(400).json({ ok: false, error: 'Invalid admin role' });
+      }
+      
+      // Only super admin can assign admin roles
+      if (req.adminRole !== 'SUPER_ADMIN') {
+        return res.status(403).json({ ok: false, error: 'Only super admins can assign admin roles' });
+      }
+      
+      // Prevent removing admin role from other admins (unless super admin)
+      const targetUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { adminRole: true }
+      });
+      
+      if (targetUser?.adminRole && adminRole === null && req.adminRole !== 'SUPER_ADMIN') {
+        return res.status(403).json({ ok: false, error: 'Cannot remove admin role from other admins' });
+      }
+      
+      updateData.adminRole = adminRole;
+    }
+    
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ ok: false, error: 'No role updates provided' });
+    }
+    
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        adminRole: true,
+      }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'user.role.changed',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: updateData
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Reset user password
+r.post("/admin/users/:userId/reset-password", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { password, autoGenerate } = req.body;
+    
+    // Prevent resetting your own password
+    if (userId === req.userId) {
+      return res.status(400).json({ ok: false, error: 'Cannot reset your own password' });
+    }
+    
+    // Get user to verify they exist
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+    
+    let newPassword: string;
+    const shouldAutoGenerate = autoGenerate === true || (autoGenerate !== false && (!password || password.trim() === ''));
+    
+    if (shouldAutoGenerate) {
+      // Auto-generate 12-char random password
+      newPassword = require("crypto").randomBytes(9).toString("base64url").slice(0, 12);
+      console.log(`[ADMIN] Auto-generating password for user ${user.email} (${userId})`);
+    } else if (password && password.trim()) {
+      const trimmedPassword = password.trim();
+      if (trimmedPassword.length < 8) {
+        return res.status(400).json({ ok: false, error: 'Password must be at least 8 characters' });
+      }
+      newPassword = trimmedPassword;
+      console.log(`[ADMIN] Setting custom password for user ${user.email} (${userId})`);
+    } else {
+      return res.status(400).json({ ok: false, error: 'Password is required' });
+    }
+    
+    // Hash the password
+    const passwordHash = await hashPassword(newPassword);
+    console.log(`[ADMIN] Password hashed successfully for user ${user.email}`);
+    
+    // Update user with new password hash
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+      select: { id: true, email: true, passwordHash: true }
+    });
+    
+    console.log(`[ADMIN] Password updated in database for user ${user.email}`);
+    
+    // Verify the password was saved correctly by testing it
+    const { verifyPassword } = await import('./services/auth');
+    const passwordMatches = await verifyPassword(newPassword, updatedUser.passwordHash!);
+    if (!passwordMatches) {
+      console.error(`[ADMIN] CRITICAL: Password verification failed after reset for user ${user.email}`);
+      return res.status(500).json({ 
+        ok: false, 
+        error: 'Password was set but verification failed. Please try again.' 
+      });
+    }
+    
+    console.log(`[ADMIN] Password verification successful for user ${user.email}`);
+    
+    await logAdminAction(
+      req.userId!,
+      'user.password.reset',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { autoGenerated: shouldAutoGenerate, userEmail: user.email }
+      },
+      req
+    );
+    
+    return res.json({
+      ok: true,
+      newPassword: shouldAutoGenerate ? newPassword : undefined,
+      message: shouldAutoGenerate 
+        ? 'Password reset successfully. New password generated.'
+        : 'Password reset successfully.'
+    });
+  } catch (error: any) {
+    console.error('[ADMIN] Password reset error:', error);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Manually verify user email
+r.post("/admin/users/:userId/verify-email", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerified: true,
+        emailVerifiedAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        emailVerified: true,
+        emailVerifiedAt: true,
+      }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'user.email.verified',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { manuallyVerified: true }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Resend verification email
+r.post("/admin/users/:userId/resend-verification", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, emailVerified: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+    
+    if (user.emailVerified) {
+      return res.status(400).json({ ok: false, error: 'Email is already verified' });
+    }
+    
+    if (!user.email) {
+      return res.status(400).json({ ok: false, error: 'User has no email address' });
+    }
+    
+    // Delete old tokens
+    await prisma.emailVerificationToken.deleteMany({
+      where: { userId: user.id }
+    });
+    
+    // Create new token
+    const verificationToken = generateVerificationToken();
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+    
+    await prisma.emailVerificationToken.create({
+      data: {
+        token: verificationToken,
+        userId: user.id,
+        email: user.email,
+        expiresAt,
+      }
+    });
+    
+    // Send email
+    try {
+      await sendVerificationEmail(user.email, user.name, verificationToken);
+      console.log(`[ADMIN] Verification email resent to ${user.email}`);
+    } catch (err: any) {
+      console.error("[ADMIN] Failed to resend verification email:", err);
+      // Still return success but with a warning
+      return res.json({
+        ok: true,
+        message: 'Verification token created, but email sending failed. Check SMTP configuration.',
+        token: process.env.NODE_ENV === 'development' ? verificationToken : undefined, // Only show token in dev
+      });
+    }
+    
+    await logAdminAction(
+      req.userId!,
+      'user.verification.resent',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+      },
+      req
+    );
+    
+    return res.json({
+      ok: true,
+      message: 'Verification email sent',
+      token: process.env.NODE_ENV === 'development' ? verificationToken : undefined, // Only show token in dev
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Update user coach level
+r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { coachLevel, teamAgeGroups } = req.body;
+    
+    const schema = z.object({
+      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      teamAgeGroups: z.array(z.string()).optional(),
+    });
+    
+    const body = schema.parse({ coachLevel, teamAgeGroups });
+    
+    // Get user to verify they exist and check their role
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+    
+    // Only allow updating coach level for COACH role users
+    if (user.role !== 'COACH') {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Coach level can only be set for users with COACH role' 
+      });
+    }
+    
+    const updateData: any = {};
+    if (body.coachLevel !== undefined) {
+      updateData.coachLevel = body.coachLevel;
+    }
+    if (body.teamAgeGroups !== undefined) {
+      updateData.teamAgeGroups = body.teamAgeGroups;
+    }
+    
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        coachLevel: true,
+        teamAgeGroups: true,
+      }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'user.coach_level.updated',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { coachLevel: body.coachLevel, teamAgeGroups: body.teamAgeGroups }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user: updatedUser });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Block/unblock user access
+r.patch("/admin/users/:userId/block", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { blocked, reason } = req.body;
+    
+    // Prevent blocking yourself
+    if (userId === req.userId) {
+      return res.status(400).json({ ok: false, error: 'Cannot block your own account' });
+    }
+    
+    if (typeof blocked !== 'boolean') {
+      return res.status(400).json({ ok: false, error: 'blocked must be a boolean' });
+    }
+    
+    const updateData: any = {
+      blocked,
+      blockedAt: blocked ? new Date() : null,
+      blockedReason: blocked ? (reason || null) : null,
+    };
+    
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        blocked: true,
+        blockedAt: true,
+        blockedReason: true,
+      }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      blocked ? 'user.blocked' : 'user.unblocked',
+      {
+        resourceType: 'User',
+        resourceId: userId,
+        data: { blocked, reason: reason || null }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, user });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
   }
@@ -1761,6 +2301,705 @@ r.get("/admin/audit-log", requireAdminPermission('canAccessAdminDashboard'), asy
         total,
         totalPages: Math.ceil(total / limit)
       }
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ============================================
+// Access Permissions Management
+// ============================================
+
+// Get all access permissions
+r.get("/admin/access-permissions", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const permissions = await prisma.accessPermission.findMany({
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            coachLevel: true,
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    
+    return res.json({ ok: true, permissions });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Create or update access permission
+r.post("/admin/access-permissions", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const schema = z.object({
+      id: z.string().uuid().optional(), // If provided, update existing
+      userId: z.string().uuid().nullable().optional(), // Specific user ID (if set, overrides coachLevel)
+      resourceType: z.enum(["SESSION", "VAULT", "BOTH"]),
+      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      ageGroups: z.array(z.string()).default([]), // Empty = all age groups
+      formats: z.array(z.enum(["7v7", "9v9", "11v11"])).default([]), // Empty = all formats
+      canGenerateSessions: z.boolean().default(false),
+      canAccessVault: z.boolean().default(false),
+      notes: z.string().optional(),
+      updateUserCoachLevel: z.boolean().optional(), // If true, update the user's coachLevel property
+    });
+    
+    const body = schema.parse(req.body);
+    
+    // If userId is provided, verify user exists and optionally update their coach level
+    if (body.userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: body.userId },
+        select: { id: true, role: true }
+      });
+      if (!user) {
+        return res.status(404).json({ ok: false, error: 'User not found' });
+      }
+      
+      // If coachLevel is provided and updateUserCoachLevel flag is set (or not explicitly false), update the user's coachLevel property
+      if (body.coachLevel && body.updateUserCoachLevel !== false) {
+        if (user.role !== 'COACH') {
+          return res.status(400).json({ 
+            ok: false, 
+            error: 'Cannot set coach level for a user who is not a COACH' 
+          });
+        }
+        
+        await prisma.user.update({
+          where: { id: body.userId },
+          data: { coachLevel: body.coachLevel }
+        });
+        
+        await logAdminAction(
+          req.userId!,
+          'user.coach_level.updated',
+          {
+            resourceType: 'User',
+            resourceId: body.userId,
+            data: { coachLevel: body.coachLevel, updatedVia: 'access_permission' }
+          },
+          req
+        );
+      }
+    }
+    
+    const data: any = {
+      resourceType: body.resourceType,
+      userId: body.userId || null,
+      coachLevel: body.userId ? null : (body.coachLevel || null), // Only set coachLevel if userId is not set
+      ageGroups: body.ageGroups,
+      formats: body.formats,
+      canGenerateSessions: body.canGenerateSessions,
+      canAccessVault: body.canAccessVault,
+      notes: body.notes || null,
+      createdBy: req.userId || null,
+    };
+    
+    let permission;
+    if (body.id) {
+      // Update existing
+      permission = await prisma.accessPermission.update({
+        where: { id: body.id },
+        data,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            }
+          }
+        }
+      });
+    } else {
+      // Create new
+      permission = await prisma.accessPermission.create({ 
+        data,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            }
+          }
+        }
+      });
+    }
+    
+    await logAdminAction(
+      req.userId!,
+      body.id ? 'access_permission.updated' : 'access_permission.created',
+      {
+        resourceType: 'AccessPermission',
+        resourceId: permission.id,
+        data: { 
+          resourceType: body.resourceType, 
+          userId: body.userId,
+          coachLevel: body.coachLevel, 
+          ageGroups: body.ageGroups, 
+          formats: body.formats 
+        }
+      },
+      req
+    );
+    
+    return res.json({ ok: true, permission });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Delete access permission
+r.delete("/admin/access-permissions/:permissionId", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { permissionId } = req.params;
+    
+    await prisma.accessPermission.delete({
+      where: { id: permissionId }
+    });
+    
+    await logAdminAction(
+      req.userId!,
+      'access_permission.deleted',
+      {
+        resourceType: 'AccessPermission',
+        resourceId: permissionId,
+      },
+      req
+    );
+    
+    return res.json({ ok: true, message: 'Permission deleted' });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Check user permissions (for testing/debugging)
+r.get("/admin/access-permissions/check/:userId", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
+  try {
+    const { userId } = req.params;
+    const { ageGroup, coachLevel } = req.query;
+    
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { coachLevel: true, adminRole: true }
+    });
+    
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+    
+    const { canGenerateSessions, canAccessVault } = await import('./services/access-permissions');
+    
+    const checks: any = {
+      userId,
+      coachLevel: user.coachLevel,
+      adminRole: user.adminRole,
+    };
+    
+    if (ageGroup) {
+      checks.canGenerateSessions = await canGenerateSessions(userId, ageGroup as string, coachLevel as any || user.coachLevel);
+      checks.canAccessVault = await canAccessVault(userId, ageGroup as string, coachLevel as any || user.coachLevel);
+    } else {
+      checks.canAccessVault = await canAccessVault(userId);
+    }
+    
+    return res.json({ ok: true, ...checks });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ------------------------------------
+// Admin: Analytics Endpoints
+// ------------------------------------
+
+/**
+ * GET /admin/analytics/usage-by-plan
+ * Track usage patterns across subscription plans
+ */
+r.get("/admin/analytics/usage-by-plan", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        subscriptionPlan: true,
+        sessionsGeneratedThisMonth: true,
+        drillsGeneratedThisMonth: true,
+      },
+    });
+
+    const usageByPlan: Record<string, {
+      totalUsers: number;
+      totalSessionsUsed: number;
+      totalDrillsUsed: number;
+      avgSessionsPerUser: number;
+      avgDrillsPerUser: number;
+      usersAtLimit: number;
+      usersApproachingLimit: number; // 80%+
+    }> = {};
+
+    for (const plan of Object.keys(SUBSCRIPTION_LIMITS)) {
+      const planUsers = users.filter(u => u.subscriptionPlan === plan);
+      const limits = SUBSCRIPTION_LIMITS[plan as keyof typeof SUBSCRIPTION_LIMITS];
+      
+      let totalSessions = 0;
+      let totalDrills = 0;
+      let usersAtLimit = 0;
+      let usersApproachingLimit = 0;
+
+      for (const user of planUsers) {
+        totalSessions += user.sessionsGeneratedThisMonth;
+        totalDrills += user.drillsGeneratedThisMonth;
+
+        if (limits.sessionsPerMonth !== -1) {
+          const sessionPct = (user.sessionsGeneratedThisMonth / limits.sessionsPerMonth) * 100;
+          if (sessionPct >= 100) usersAtLimit++;
+          else if (sessionPct >= 80) usersApproachingLimit++;
+        }
+        if (limits.drillsPerMonth !== -1) {
+          const drillPct = (user.drillsGeneratedThisMonth / limits.drillsPerMonth) * 100;
+          if (drillPct >= 100) usersAtLimit++;
+          else if (drillPct >= 80) usersApproachingLimit++;
+        }
+      }
+
+      usageByPlan[plan] = {
+        totalUsers: planUsers.length,
+        totalSessionsUsed: totalSessions,
+        totalDrillsUsed: totalDrills,
+        avgSessionsPerUser: planUsers.length > 0 ? totalSessions / planUsers.length : 0,
+        avgDrillsPerUser: planUsers.length > 0 ? totalDrills / planUsers.length : 0,
+        usersAtLimit,
+        usersApproachingLimit,
+      };
+    }
+
+    return res.json({ ok: true, usageByPlan });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * GET /admin/analytics/vault-usage
+ * Track vault usage across all users
+ */
+r.get("/admin/analytics/vault-usage", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        subscriptionPlan: true,
+      },
+    });
+
+    const vaultUsageByPlan: Record<string, {
+      totalUsers: number;
+      totalVaultSessions: number;
+      totalVaultDrills: number;
+      avgSessionsPerUser: number;
+      avgDrillsPerUser: number;
+      usersExceedingLimit: number;
+    }> = {};
+
+    // Get total vault drills (global, shared across all users)
+    const totalVaultDrills = await prisma.drill.count({
+      where: { savedToVault: true },
+    });
+
+    for (const plan of Object.keys(SUBSCRIPTION_LIMITS)) {
+      const planUsers = users.filter(u => u.subscriptionPlan === plan);
+      const limits = SUBSCRIPTION_LIMITS[plan as keyof typeof SUBSCRIPTION_LIMITS];
+      
+      let totalSessions = 0;
+      let usersExceedingLimit = 0;
+
+      for (const user of planUsers) {
+        const userSessions = await prisma.session.count({
+          where: { savedToVault: true, generatedBy: user.id },
+        });
+        
+        totalSessions += userSessions;
+
+        // Check if user exceeds vault session limit
+        if (limits.vaultSessions !== -1 && userSessions > limits.vaultSessions) {
+          usersExceedingLimit++;
+        }
+        // Note: Vault drills are global, so we don't check per-user drill limits here
+        // All users see the same global vault drills
+      }
+
+      // For drills, we use the global count (drills are shared in vault)
+      // Calculate average as if drills were distributed across all users
+      const avgDrillsPerUser = planUsers.length > 0 ? totalVaultDrills / planUsers.length : 0;
+
+      vaultUsageByPlan[plan] = {
+        totalUsers: planUsers.length,
+        totalVaultSessions: totalSessions,
+        totalVaultDrills: totalVaultDrills, // Global count (same for all plans)
+        avgSessionsPerUser: planUsers.length > 0 ? totalSessions / planUsers.length : 0,
+        avgDrillsPerUser,
+        usersExceedingLimit,
+      };
+    }
+
+    return res.json({ ok: true, vaultUsageByPlan });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * GET /admin/analytics/favorites-usage
+ * Track favorites usage across users
+ */
+r.get("/admin/analytics/favorites-usage", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        subscriptionPlan: true,
+      },
+    });
+
+    const favoritesByPlan: Record<string, {
+      totalUsers: number;
+      totalFavorites: number;
+      avgFavoritesPerUser: number;
+      usersAtLimit: number;
+      distribution: {
+        sessions: number;
+        drills: number;
+        series: number;
+      };
+    }> = {};
+
+    for (const plan of Object.keys(SUBSCRIPTION_LIMITS)) {
+      const planUsers = users.filter(u => u.subscriptionPlan === plan);
+      const limits = SUBSCRIPTION_LIMITS[plan as keyof typeof SUBSCRIPTION_LIMITS];
+      
+      let totalFavorites = 0;
+      let usersAtLimit = 0;
+      const distribution = { sessions: 0, drills: 0, series: 0 };
+
+      for (const user of planUsers) {
+        const [sessionFavs, drillFavs, seriesFavs] = await Promise.all([
+          prisma.favorite.count({
+            where: { userId: user.id, sessionId: { not: null }, seriesId: null },
+          }),
+          prisma.favorite.count({
+            where: { userId: user.id, drillId: { not: null } },
+          }),
+          prisma.favorite.count({
+            where: { userId: user.id, seriesId: { not: null } },
+          }),
+        ]);
+
+        const userTotal = sessionFavs + drillFavs + seriesFavs;
+        totalFavorites += userTotal;
+        distribution.sessions += sessionFavs;
+        distribution.drills += drillFavs;
+        distribution.series += seriesFavs;
+
+        if (limits.maxFavorites !== -1 && userTotal >= limits.maxFavorites) {
+          usersAtLimit++;
+        }
+      }
+
+      favoritesByPlan[plan] = {
+        totalUsers: planUsers.length,
+        totalFavorites,
+        avgFavoritesPerUser: planUsers.length > 0 ? totalFavorites / planUsers.length : 0,
+        usersAtLimit,
+        distribution,
+      };
+    }
+
+    return res.json({ ok: true, favoritesByPlan });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * GET /admin/analytics/feature-access
+ * Summary of which FEATURES are enabled per subscription plan.
+ *
+ * This returns a simple 1/0 matrix derived directly from SUBSCRIPTION_LIMITS,
+ * not from how many users happen to be on each plan.
+ */
+r.get(
+  "/admin/analytics/feature-access",
+  requireAdminPermission("canViewAnalytics"),
+  async (_req: AdminRequest, res) => {
+    try {
+      const featureAccess: Record<
+        string,
+        {
+          canExportPDF: number;
+          canGenerateSeries: number;
+          canUseAdvancedFilters: number;
+          canAccessCalendar: number;
+          canCreatePlayerPlans: number;
+          canGenerateWeeklySummaries: number;
+          canInviteCoaches: number;
+          canManageOrganization: number;
+        }
+      > = {};
+
+      for (const plan of Object.keys(SUBSCRIPTION_LIMITS)) {
+        const limits = SUBSCRIPTION_LIMITS[plan as keyof typeof SUBSCRIPTION_LIMITS];
+        featureAccess[plan] = {
+          canExportPDF: limits.canExportPDF ? 1 : 0,
+          canGenerateSeries: limits.canGenerateSeries ? 1 : 0,
+          canUseAdvancedFilters: limits.canUseAdvancedFilters ? 1 : 0,
+          canAccessCalendar: limits.canAccessCalendar ? 1 : 0,
+          canCreatePlayerPlans: limits.canCreatePlayerPlans ? 1 : 0,
+          canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries ? 1 : 0,
+          canInviteCoaches: limits.canInviteCoaches ? 1 : 0,
+          canManageOrganization: limits.canManageOrganization ? 1 : 0,
+        };
+      }
+
+      return res.json({ ok: true, featureAccess });
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /admin/analytics/trial-accounts
+ * Track trial accounts and conversions
+ */
+r.get("/admin/analytics/trial-accounts", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    const trialUsers = await prisma.user.findMany({
+      where: {
+        OR: [
+          { subscriptionPlan: 'TRIAL' },
+          { role: 'TRIAL' },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        subscriptionPlan: true,
+        subscriptionStatus: true,
+        trialEndDate: true,
+        createdAt: true,
+      },
+    });
+
+    const now = new Date();
+    const activeTrials = trialUsers.filter(u => {
+      if (!u.trialEndDate) return false;
+      return new Date(u.trialEndDate) >= now;
+    });
+
+    const expiredTrials = trialUsers.filter(u => {
+      if (!u.trialEndDate) return false;
+      return new Date(u.trialEndDate) < now;
+    });
+
+    // Calculate days remaining distribution
+    const daysRemainingDist: Record<string, number> = {};
+    for (const user of activeTrials) {
+      if (user.trialEndDate) {
+        const days = Math.ceil((new Date(user.trialEndDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        const bucket = days <= 1 ? '0-1' : days <= 3 ? '2-3' : days <= 5 ? '4-5' : '6-7';
+        daysRemainingDist[bucket] = (daysRemainingDist[bucket] || 0) + 1;
+      }
+    }
+
+    // Track conversions (users who were TRIAL and now have a paid plan)
+    const convertedUsers = await prisma.user.findMany({
+      where: {
+        subscriptionPlan: { in: ['COACH_BASIC', 'COACH_PRO', 'CLUB_STANDARD', 'CLUB_PREMIUM'] },
+      },
+      select: {
+        id: true,
+        subscriptionPlan: true,
+        createdAt: true,
+      },
+    });
+
+    // Estimate conversion rate (this is approximate - would need historical data for accurate tracking)
+    const conversionRate = trialUsers.length > 0 
+      ? (convertedUsers.length / (trialUsers.length + convertedUsers.length)) * 100 
+      : 0;
+
+    return res.json({
+      ok: true,
+      trialAccounts: {
+        total: trialUsers.length,
+        active: activeTrials.length,
+        expired: expiredTrials.length,
+        daysRemainingDistribution: daysRemainingDist,
+        conversionRate: Math.round(conversionRate * 100) / 100,
+        upcomingExpirations: activeTrials
+          .filter(u => u.trialEndDate)
+          .map(u => ({
+            userId: u.id,
+            email: u.email,
+            trialEndDate: u.trialEndDate,
+            daysRemaining: Math.ceil((new Date(u.trialEndDate!).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+          }))
+          .sort((a, b) => a.daysRemaining - b.daysRemaining)
+          .slice(0, 20), // Top 20 upcoming expirations
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * GET /admin/analytics/limit-enforcement
+ * Track when limits are hit (429 errors from ApiMetrics)
+ */
+r.get("/admin/analytics/limit-enforcement", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    // Query ApiMetrics for 429 status codes (limit exceeded)
+    // Note: We'd need to track HTTP status codes in ApiMetrics, but for now we'll use a different approach
+    // Check users who are at or over their limits
+    
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        subscriptionPlan: true,
+        sessionsGeneratedThisMonth: true,
+        drillsGeneratedThisMonth: true,
+      },
+    });
+
+    const limitHits: Array<{
+      userId: string;
+      email: string | null;
+      plan: string;
+      limitType: 'sessions' | 'drills';
+      used: number;
+      limit: number;
+    }> = [];
+
+    for (const user of users) {
+      const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+      const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+
+      if (limits.sessionsPerMonth !== -1 && user.sessionsGeneratedThisMonth >= limits.sessionsPerMonth) {
+        limitHits.push({
+          userId: user.id,
+          email: user.email,
+          plan: user.subscriptionPlan,
+          limitType: 'sessions',
+          used: user.sessionsGeneratedThisMonth,
+          limit: limits.sessionsPerMonth,
+        });
+      }
+
+      if (limits.drillsPerMonth !== -1 && user.drillsGeneratedThisMonth >= limits.drillsPerMonth) {
+        limitHits.push({
+          userId: user.id,
+          email: user.email,
+          plan: user.subscriptionPlan,
+          limitType: 'drills',
+          used: user.drillsGeneratedThisMonth,
+          limit: limits.drillsPerMonth,
+        });
+      }
+    }
+
+    // Group by plan
+    const hitsByPlan: Record<string, number> = {};
+    const hitsByType: Record<string, number> = { sessions: 0, drills: 0 };
+
+    for (const hit of limitHits) {
+      hitsByPlan[hit.plan] = (hitsByPlan[hit.plan] || 0) + 1;
+      hitsByType[hit.limitType]++;
+    }
+
+    return res.json({
+      ok: true,
+      limitEnforcement: {
+        totalHits: limitHits.length,
+        hitsByPlan,
+        hitsByType,
+        recentHits: limitHits.slice(0, 50), // Most recent 50
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+/**
+ * GET /admin/analytics/club-accounts
+ * Track CLUB account usage and organization features
+ */
+r.get("/admin/analytics/club-accounts", requireAdminPermission('canViewAnalytics'), async (req: AdminRequest, res) => {
+  try {
+    const clubUsers = await prisma.user.findMany({
+      where: {
+        role: 'CLUB',
+      },
+      select: {
+        id: true,
+        email: true,
+        subscriptionPlan: true,
+        organizationName: true,
+        createdAt: true,
+      },
+    });
+
+    const standardCount = clubUsers.filter(u => u.subscriptionPlan === 'CLUB_STANDARD').length;
+    const premiumCount = clubUsers.filter(u => u.subscriptionPlan === 'CLUB_PREMIUM').length;
+
+    // Count organizations
+    const orgNames = new Set(clubUsers.map(u => u.organizationName).filter(Boolean));
+    const organizations = Array.from(orgNames);
+
+    // Count coaches per organization
+    const orgCoachCounts: Record<string, number> = {};
+    for (const orgName of organizations) {
+      const coachCount = await prisma.user.count({
+        where: {
+          organizationName: orgName,
+          role: 'COACH',
+        },
+      });
+      orgCoachCounts[orgName!] = coachCount;
+    }
+
+    const avgCoachesPerOrg = organizations.length > 0
+      ? Object.values(orgCoachCounts).reduce((a, b) => a + b, 0) / organizations.length
+      : 0;
+
+    return res.json({
+      ok: true,
+      clubAccounts: {
+        total: clubUsers.length,
+        standard: standardCount,
+        premium: premiumCount,
+        organizations: {
+          total: organizations.length,
+          avgCoachesPerOrg: Math.round(avgCoachesPerOrg * 100) / 100,
+          coachCounts: orgCoachCounts,
+        },
+      },
     });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });

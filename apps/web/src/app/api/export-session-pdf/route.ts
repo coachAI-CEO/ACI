@@ -10,9 +10,19 @@ export async function POST(request: NextRequest) {
       drillsWithDiagrams: session?.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
       firstDrillHasDiagram: !!(session?.drills?.[0]?.diagram || session?.drills?.[0]?.diagramV1),
     });
+    
+    // Forward authorization header to backend
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+    
     const res = await fetch("http://localhost:4000/ai/export-session-pdf", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     if (!res.ok) {

@@ -10,6 +10,7 @@ import {
 } from './services/auth';
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
+import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
 
 const r = express.Router();
 
@@ -106,6 +107,20 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     const sessionLimit = await checkUsageLimit(req.userId, 'session');
     const drillLimit = await checkUsageLimit(req.userId, 'drill');
     
+    // Get subscription features
+    const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+    const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+    const features = {
+      canExportPDF: limits.canExportPDF,
+      canGenerateSeries: limits.canGenerateSeries,
+      canUseAdvancedFilters: limits.canUseAdvancedFilters,
+      canAccessCalendar: limits.canAccessCalendar,
+      canCreatePlayerPlans: limits.canCreatePlayerPlans,
+      canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
+      canInviteCoaches: limits.canInviteCoaches,
+      canManageOrganization: limits.canManageOrganization,
+    };
+    
     return res.json({
       ok: true,
       user: {
@@ -113,7 +128,8 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         limits: {
           sessions: sessionLimit,
           drills: drillLimit,
-        }
+        },
+        features,
       }
     });
   } catch (error: any) {

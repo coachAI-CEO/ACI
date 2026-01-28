@@ -57,6 +57,9 @@ export default function CreatePlayerPlanModal({
       if (focus) {
         body.focus = focus;
       }
+      if (sourceRefCode) {
+        body.sourceRefCode = sourceRefCode;
+      }
 
       const headers: HeadersInit = {
         "Content-Type": "application/json",

@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Helper to get auth headers
+function getAuthHeaders(request: NextRequest): HeadersInit {
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const headers: HeadersInit = {};
+  if (authHeader) {
+    headers.Authorization = authHeader;
+  }
+  return headers;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const apiUrl = process.env.API_URL || "http://localhost:4000";
@@ -10,7 +20,10 @@ export async function GET(request: NextRequest) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for large datasets
     
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { 
+      signal: controller.signal,
+      headers: getAuthHeaders(request),
+    });
     clearTimeout(timeoutId);
     
     if (!res.ok) {

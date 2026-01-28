@@ -146,7 +146,8 @@ async function generateSingleProgressiveSessionWithRetry(
  */
 export async function generateProgressiveSessionSeries(
   baseInput: SessionPromptInput,
-  numberOfSessions: number = 3
+  numberOfSessions: number = 3,
+  userId?: string
 ): Promise<{
   ok: boolean;
   series: Array<{
@@ -285,6 +286,7 @@ export async function generateProgressiveSessionSeries(
         approved: !!result.qa.pass,
         numbersMin: baseInput.numbersMin,
         numbersMax: baseInput.numbersMax,
+        generatedBy: userId || null,
         principleIds: Array.isArray(jsonForDb.principleIds) 
           ? jsonForDb.principleIds 
           : [],

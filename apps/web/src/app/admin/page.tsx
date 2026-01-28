@@ -249,8 +249,16 @@ export default function AdminDashboard() {
   const [operationStats, setOperationStats] = useState<OperationStats[]>([]);
   const [ageGroupStats, setAgeGroupStats] = useState<AgeGroupStats[]>([]);
   const [seriesAgeGroupStats, setSeriesAgeGroupStats] = useState<AgeGroupStats[]>([]);
+  const [usageByPlan, setUsageByPlan] = useState<any>(null);
+  const [vaultUsage, setVaultUsage] = useState<any>(null);
+  const [favoritesUsage, setFavoritesUsage] = useState<any>(null);
+  const [featureAccess, setFeatureAccess] = useState<any>(null);
+  const [trialAccounts, setTrialAccounts] = useState<any>(null);
+  const [limitEnforcement, setLimitEnforcement] = useState<any>(null);
+  const [clubAccounts, setClubAccounts] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasAdminAccess, setHasAdminAccess] = useState<boolean | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [pricePerSession, setPricePerSession] = useState(0.10);
   
@@ -333,6 +341,86 @@ export default function AdminDashboard() {
     bySubscriptionPlan: Record<string, number>;
     bySubscriptionStatus: Record<string, number>;
   } | null>(null);
+
+  // User Management
+  const [users, setUsers] = useState<Array<{
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    adminRole: string | null;
+    subscriptionPlan: string;
+    subscriptionStatus: string;
+    createdAt: string;
+    lastLoginAt: string | null;
+    blocked: boolean;
+    blockedAt: string | null;
+    blockedReason: string | null;
+    emailVerified: boolean;
+    emailVerifiedAt: string | null;
+    coachLevel: string | null;
+    teamAgeGroups: string[];
+  }>>([]);
+  const [resettingPassword, setResettingPassword] = useState<string | null>(null);
+  const [resetPasswordSuccess, setResetPasswordSuccess] = useState<{ userId: string; password?: string } | null>(null);
+  const [blockingUser, setBlockingUser] = useState<string | null>(null);
+  const [showBlockModal, setShowBlockModal] = useState<{ userId: string; email: string; currentlyBlocked: boolean } | null>(null);
+  const [blockReason, setBlockReason] = useState("");
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState<{ userId: string; email: string } | null>(null);
+  const [resetPasswordInput, setResetPasswordInput] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState<string | null>(null);
+  const [resendingVerification, setResendingVerification] = useState<string | null>(null);
+  const [showCoachLevelModal, setShowCoachLevelModal] = useState<{ userId: string; email: string; currentCoachLevel: string | null; currentAgeGroups: string[] } | null>(null);
+  const [coachLevelForm, setCoachLevelForm] = useState({
+    coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
+    teamAgeGroups: [] as string[],
+  });
+  const [updatingCoachLevel, setUpdatingCoachLevel] = useState<string | null>(null);
+
+  // Access Permissions Management
+  const [accessPermissions, setAccessPermissions] = useState<Array<{
+    id: string;
+    userId: string | null;
+    user: { id: string; email: string | null; name: string | null; coachLevel: string | null } | null;
+    resourceType: string;
+    coachLevel: string | null;
+    ageGroups: string[];
+    formats: string[];
+    canGenerateSessions: boolean;
+    canAccessVault: boolean;
+    notes: string | null;
+    createdAt: string;
+  }>>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [showPermissionModal, setShowPermissionModal] = useState<{ permission?: any } | null>(null);
+  const [permissionForm, setPermissionForm] = useState({
+    userId: "" as string | "",
+    resourceType: "BOTH" as "SESSION" | "VAULT" | "BOTH",
+    coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
+    ageGroups: [] as string[],
+    formats: [] as string[],
+    canGenerateSessions: false,
+    canAccessVault: false,
+    notes: "",
+  });
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState({
+    email: "",
+    name: "",
+    role: "FREE" as "FREE" | "COACH" | "CLUB" | "ADMIN" | "TRIAL",
+    adminRole: "" as "" | "SUPER_ADMIN" | "ADMIN" | "MODERATOR" | "SUPPORT",
+    password: "",
+    autoVerifyEmail: false,
+    coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
+    teamAgeGroups: [] as string[],
+  });
+  const [createUserError, setCreateUserError] = useState<string | null>(null);
+  const [createUserSuccess, setCreateUserSuccess] = useState<{ email: string; password?: string } | null>(null);
 
   const checkSystemStatus = useCallback(async () => {
     const apiUrl = API_BASE_URL;
@@ -518,44 +606,453 @@ export default function AdminDashboard() {
     }
   }, [viewingSession?.id, viewingSessionIsFavorited]);
 
+  const loadUsers = useCallback(async (page: number = 1) => {
+    setLoadingUsers(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users?page=${page}&limit=50`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setUsers(data.users || []);
+        setUsersPage(data.pagination?.page || 1);
+        setUsersTotalPages(data.pagination?.totalPages || 1);
+      }
+    } catch (e: any) {
+      console.error("Error loading users:", e);
+    } finally {
+      setLoadingUsers(false);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const authHeaders = getAuthHeaders();
-      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes] = await Promise.all([
+      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes, usageByPlanRes, vaultUsageRes, favoritesUsageRes, featureAccessRes, trialAccountsRes, limitEnforcementRes, clubAccountsRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/timeline?days=7`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/recent?limit=20`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/by-operation`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/stats/by-age-group`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/users/summary`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/usage-by-plan`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/vault-usage`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/favorites-usage`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/feature-access`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/trial-accounts`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/limit-enforcement`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/analytics/club-accounts`, { headers: authHeaders }),
       ]);
 
-      const [statsData, timelineData, recentData, operationsData, ageData, userSummaryData] = await Promise.all([
-        statsRes.json(),
-        timelineRes.json(),
-        recentRes.json(),
-        operationsRes.json(),
-        ageRes.json(),
-        userSummaryRes.json(),
-      ]);
-
-      if (statsData.ok) setStats(statsData.stats);
-      if (timelineData.ok) setTimeline(timelineData.timeline);
-      if (recentData.ok) setRecentMetrics(recentData.metrics);
-      if (operationsData.ok) setOperationStats(operationsData.operations);
-      if (ageData.ok) {
-        setAgeGroupStats(ageData.sessions || []);
-        setSeriesAgeGroupStats(ageData.seriesSessions || []);
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.ok) {
+          setStats(statsData.stats);
+        }
       }
-      if (userSummaryData.ok && userSummaryData.summary) {
-        setUserSummary(userSummaryData.summary);
+
+      if (timelineRes.ok) {
+        const timelineData = await timelineRes.json();
+        if (timelineData.ok) {
+          setTimeline(timelineData.timeline || []);
+        }
+      }
+
+      if (recentRes.ok) {
+        const recentData = await recentRes.json();
+        if (recentData.ok) {
+          setRecentMetrics(recentData.metrics || []);
+        }
+      }
+
+      if (operationsRes.ok) {
+        const operationsData = await operationsRes.json();
+        if (operationsData.ok) {
+          setOperationStats(operationsData.operations || []);
+        }
+      }
+
+      if (ageRes.ok) {
+        const ageData = await ageRes.json();
+        if (ageData.ok) {
+          setAgeGroupStats(ageData.sessions || []);
+          setSeriesAgeGroupStats(ageData.seriesSessions || []);
+        }
+      }
+
+      if (userSummaryRes.ok) {
+        const userSummaryData = await userSummaryRes.json();
+        if (userSummaryData.ok) {
+          setUserSummary(userSummaryData.summary);
+        }
+      }
+
+      if (usageByPlanRes.ok) {
+        const data = await usageByPlanRes.json();
+        if (data.ok) {
+          setUsageByPlan(data.usageByPlan);
+        }
+      }
+
+      if (vaultUsageRes.ok) {
+        const data = await vaultUsageRes.json();
+        if (data.ok) {
+          setVaultUsage(data.vaultUsageByPlan);
+        }
+      }
+
+      if (favoritesUsageRes.ok) {
+        const data = await favoritesUsageRes.json();
+        if (data.ok) {
+          setFavoritesUsage(data.favoritesByPlan);
+        }
+      }
+
+      if (featureAccessRes.ok) {
+        const data = await featureAccessRes.json();
+        if (data.ok) {
+          setFeatureAccess(data.featureAccess);
+        }
+      }
+
+      if (trialAccountsRes.ok) {
+        const data = await trialAccountsRes.json();
+        if (data.ok) {
+          setTrialAccounts(data.trialAccounts);
+        }
+      }
+
+      if (limitEnforcementRes.ok) {
+        const data = await limitEnforcementRes.json();
+        if (data.ok) {
+          setLimitEnforcement(data.limitEnforcement);
+        }
+      }
+
+      if (clubAccountsRes.ok) {
+        const data = await clubAccountsRes.json();
+        if (data.ok) {
+          setClubAccounts(data.clubAccounts);
+        }
       }
     } catch (e: any) {
-      setError(e?.message || String(e));
+      console.error("Error fetching data:", e);
+      setError(e?.message || "Failed to load admin data");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const createUser = useCallback(async () => {
+    setCreatingUser(true);
+    setCreateUserError(null);
+    setCreateUserSuccess(null);
+    try {
+      const res = await fetch("/api/admin/users/quick-create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          email: createUserForm.email,
+          name: createUserForm.name || undefined,
+          role: createUserForm.role,
+          adminRole: createUserForm.adminRole || undefined,
+          password: createUserForm.password && createUserForm.password.length > 0 ? createUserForm.password : undefined,
+          autoVerifyEmail: createUserForm.autoVerifyEmail,
+          coachLevel: createUserForm.role === "COACH" && createUserForm.coachLevel ? createUserForm.coachLevel : undefined,
+          teamAgeGroups: createUserForm.role === "COACH" && createUserForm.teamAgeGroups.length > 0 ? createUserForm.teamAgeGroups : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCreateUserSuccess({
+          email: data.user.email,
+          password: data.initialPassword,
+        });
+        setCreateUserForm({
+          email: "",
+          name: "",
+          role: "FREE",
+          adminRole: "",
+          password: "",
+          autoVerifyEmail: false,
+          coachLevel: "",
+          teamAgeGroups: [],
+        });
+        // Reload users and summary
+        loadUsers(1);
+        fetchData();
+      } else {
+        setCreateUserError(data.error || "Failed to create user");
+      }
+    } catch (e: any) {
+      setCreateUserError(e?.message || "Failed to create user");
+    } finally {
+      setCreatingUser(false);
+    }
+  }, [createUserForm, loadUsers, fetchData]);
+
+  const updateUserRole = useCallback(async (userId: string, role?: string, adminRole?: string | null) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          ...(role && { role }),
+          ...(adminRole !== undefined && { adminRole }),
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // Reload users and summary
+        loadUsers(usersPage);
+        fetchData();
+      } else {
+        alert(data.error || "Failed to update role");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to update role");
+    }
+  }, [usersPage, loadUsers, fetchData]);
+
+  const resetUserPassword = useCallback(async (userId: string, password?: string) => {
+    setResettingPassword(userId);
+    setResetPasswordSuccess(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          password: password && password.trim() ? password.trim() : undefined,
+          autoGenerate: !password || password.trim() === "",
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResetPasswordSuccess({
+          userId,
+          password: data.newPassword,
+        });
+        // Reload users after a short delay to show success message
+        setTimeout(() => {
+          loadUsers(usersPage);
+          setResetPasswordSuccess(null);
+        }, 3000);
+      } else {
+        alert(data.error || "Failed to reset password");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to reset password");
+    } finally {
+      setResettingPassword(null);
+    }
+  }, [usersPage, loadUsers]);
+
+  const updateCoachLevel = useCallback(async (userId: string, coachLevel: string, teamAgeGroups: string[]) => {
+    setUpdatingCoachLevel(userId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/coach-level`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          coachLevel: coachLevel || null,
+          teamAgeGroups: teamAgeGroups.length > 0 ? teamAgeGroups : [],
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        loadUsers(usersPage);
+        fetchData();
+        setShowCoachLevelModal(null);
+        setCoachLevelForm({ coachLevel: "", teamAgeGroups: [] });
+      } else {
+        alert(data.error || "Failed to update coach level");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to update coach level");
+    } finally {
+      setUpdatingCoachLevel(null);
+    }
+  }, [usersPage, loadUsers, fetchData]);
+
+  const toggleUserBlock = useCallback(async (userId: string, blocked: boolean, reason?: string) => {
+    setBlockingUser(userId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/block`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          blocked,
+          reason: reason || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        // Reload users and summary
+        loadUsers(usersPage);
+        fetchData();
+        setShowBlockModal(null);
+        setBlockReason("");
+      } else {
+        alert(data.error || `Failed to ${blocked ? 'block' : 'unblock'} user`);
+      }
+    } catch (e: any) {
+      alert(e?.message || `Failed to ${blocked ? 'block' : 'unblock'} user`);
+    } finally {
+      setBlockingUser(null);
+    }
+  }, [usersPage, loadUsers, fetchData]);
+
+  const verifyUserEmail = useCallback(async (userId: string) => {
+    setVerifyingEmail(userId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        loadUsers(usersPage);
+        fetchData();
+      } else {
+        alert(data.error || "Failed to verify email");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to verify email");
+    } finally {
+      setVerifyingEmail(null);
+    }
+  }, [usersPage, loadUsers, fetchData]);
+
+  const resendVerificationEmail = useCallback(async (userId: string) => {
+    setResendingVerification(userId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/resend-verification`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.token) {
+          // In development, show the token
+          alert(`Verification email sent! Token (dev only): ${data.token}`);
+        } else {
+          alert("Verification email sent!");
+        }
+        loadUsers(usersPage);
+      } else {
+        alert(data.error || "Failed to resend verification email");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to resend verification email");
+    } finally {
+      setResendingVerification(null);
+    }
+  }, [usersPage, loadUsers]);
+
+  // Access Permissions Management
+  const loadPermissions = useCallback(async () => {
+    setLoadingPermissions(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/access-permissions`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAccessPermissions(data.permissions || []);
+      }
+    } catch (e: any) {
+      console.error("Error loading permissions:", e);
+    } finally {
+      setLoadingPermissions(false);
+    }
+  }, []);
+
+  const savePermission = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/access-permissions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          id: showPermissionModal?.permission?.id,
+          userId: permissionForm.userId || null,
+          resourceType: permissionForm.resourceType,
+          coachLevel: permissionForm.userId ? null : (permissionForm.coachLevel || null), // For permission: null if userId set
+          updateUserCoachLevel: permissionForm.userId && permissionForm.coachLevel ? true : undefined, // Flag to update user's coach level
+          ageGroups: permissionForm.ageGroups,
+          formats: permissionForm.formats,
+          canGenerateSessions: permissionForm.canGenerateSessions,
+          canAccessVault: permissionForm.canAccessVault,
+          notes: permissionForm.notes || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        loadPermissions();
+        // Reload users list to reflect any coach level changes
+        if (permissionForm.userId) {
+          loadUsers(usersPage);
+        }
+        setShowPermissionModal(null);
+        setPermissionForm({
+          resourceType: "BOTH",
+          coachLevel: "",
+          ageGroups: [],
+          formats: [],
+          canGenerateSessions: false,
+          canAccessVault: false,
+          notes: "",
+        });
+      } else {
+        alert(data.error || "Failed to save permission");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to save permission");
+    }
+  }, [permissionForm, showPermissionModal, loadPermissions]);
+
+  const deletePermission = useCallback(async (permissionId: string) => {
+    if (!confirm("Are you sure you want to delete this permission?")) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/access-permissions/${permissionId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        loadPermissions();
+      } else {
+        alert(data.error || "Failed to delete permission");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete permission");
+    }
+  }, [loadPermissions]);
 
   const startBulkRandomSessions = useCallback(async () => {
     setBulkJobError(null);
@@ -614,6 +1111,50 @@ export default function AdminDashboard() {
       setBulkRunning(false);
     }
   }, [bulkJobId, fetchData]);
+
+  // Check admin access on mount
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!token) {
+        setHasAdminAccess(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/admin/stats`, {
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        });
+        
+        if (res.ok) {
+          setHasAdminAccess(true);
+        } else if (res.status === 403) {
+          const data = await res.json().catch(() => ({}));
+          if (data.error === "Admin access required" || data.message?.includes("SUPER_ADMIN")) {
+            setHasAdminAccess(false);
+          } else {
+            setHasAdminAccess(true); // Other 403 might be temporary
+          }
+        } else {
+          setHasAdminAccess(true); // Assume access for other errors
+        }
+      } catch (e) {
+        // Network error - assume access for now
+        setHasAdminAccess(true);
+      }
+    };
+
+    checkAdminAccess();
+  }, []);
+
+  // Load users and permissions on mount (only if admin access)
+  useEffect(() => {
+    if (hasAdminAccess === true) {
+      loadUsers(1);
+      loadPermissions();
+    }
+  }, [hasAdminAccess, loadUsers, loadPermissions]);
 
   useEffect(() => {
     fetchData();
@@ -839,6 +1380,32 @@ export default function AdminDashboard() {
       setRegenerateRunning(false);
     }
   }, [reviewRef, regenerateReplace, fetchData]);
+
+  // Check admin access
+  if (hasAdminAccess === false) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-200 p-8">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl font-bold mb-8">ACI Admin Dashboard</h1>
+          <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-6">
+            <h2 className="text-lg font-semibold text-yellow-300 mb-2">Admin Access Required</h2>
+            <p className="text-yellow-200 mb-4">
+              This page requires SUPER_ADMIN privileges. Your account does not have the necessary permissions to access the admin dashboard.
+            </p>
+            <p className="text-sm text-slate-400 mb-4">
+              If you believe you should have admin access, please contact your system administrator.
+            </p>
+            <Link
+              href="/vault"
+              className="inline-block px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors"
+            >
+              Go to Vault
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -1856,6 +2423,1298 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Usage Analytics by Plan */}
+        {usageByPlan && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Usage Analytics by Plan</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(usageByPlan).map(([plan, data]: [string, any]) => (
+                <div key={plan} className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-sm font-semibold text-slate-200 mb-2">{plan}</div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Users</span>
+                      <span className="text-slate-200">{data.totalUsers}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Sessions Used</span>
+                      <span className="text-slate-200">{data.totalSessionsUsed}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Drills Used</span>
+                      <span className="text-slate-200">{data.totalDrillsUsed}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Avg Sessions/User</span>
+                      <span className="text-slate-200">{data.avgSessionsPerUser.toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Avg Drills/User</span>
+                      <span className="text-slate-200">{data.avgDrillsPerUser.toFixed(1)}</span>
+                    </div>
+                    {data.usersAtLimit > 0 && (
+                      <div className="flex justify-between text-red-400">
+                        <span>At Limit</span>
+                        <span>{data.usersAtLimit}</span>
+                      </div>
+                    )}
+                    {data.usersApproachingLimit > 0 && (
+                      <div className="flex justify-between text-yellow-400">
+                        <span>Approaching (80%+)</span>
+                        <span>{data.usersApproachingLimit}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Vault Usage Analytics */}
+        {vaultUsage && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Vault Usage by Plan</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(vaultUsage).map(([plan, data]: [string, any]) => (
+                <div key={plan} className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-sm font-semibold text-slate-200 mb-2">{plan}</div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Total Sessions</span>
+                      <span className="text-slate-200">{data.totalVaultSessions}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Total Drills</span>
+                      <span className="text-slate-200">{data.totalVaultDrills}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Avg Sessions/User</span>
+                      <span className="text-slate-200">{data.avgSessionsPerUser.toFixed(1)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Avg Drills/User</span>
+                      <span className="text-slate-200">{data.avgDrillsPerUser.toFixed(1)}</span>
+                    </div>
+                    {data.usersExceedingLimit > 0 && (
+                      <div className="flex justify-between text-red-400">
+                        <span>Exceeding Limit</span>
+                        <span>{data.usersExceedingLimit}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Favorites Usage Analytics */}
+        {favoritesUsage && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Favorites Usage by Plan</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(favoritesUsage).map(([plan, data]: [string, any]) => (
+                <div key={plan} className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-sm font-semibold text-slate-200 mb-2">{plan}</div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Total Favorites</span>
+                      <span className="text-slate-200">{data.totalFavorites}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Avg/User</span>
+                      <span className="text-slate-200">{data.avgFavoritesPerUser.toFixed(1)}</span>
+                    </div>
+                    {data.usersAtLimit > 0 && (
+                      <div className="flex justify-between text-red-400">
+                        <span>At Limit</span>
+                        <span>{data.usersAtLimit}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 mt-2 border-t border-slate-700/50">
+                      <div className="text-[10px] text-slate-500 uppercase mb-1">Distribution</div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Sessions</span>
+                          <span className="text-slate-200">{data.distribution.sessions}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Drills</span>
+                          <span className="text-slate-200">{data.distribution.drills}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-400">Series</span>
+                          <span className="text-slate-200">{data.distribution.series}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Feature Access Analytics */}
+        {featureAccess && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Feature Access by Plan</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-700">
+                    <th className="text-left py-2 px-2 text-slate-400">Plan</th>
+                    <th className="text-right py-2 px-2 text-slate-400">PDF Export</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Series</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Advanced Filters</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Calendar</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Player Plans</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Weekly Summary</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Invite Coaches</th>
+                    <th className="text-right py-2 px-2 text-slate-400">Manage Org</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(featureAccess).map(([plan, data]: [string, any]) => (
+                    <tr key={plan} className="border-b border-slate-800">
+                      <td className="py-2 px-2 font-semibold text-slate-200">{plan}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canExportPDF}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canGenerateSeries}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canUseAdvancedFilters}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canAccessCalendar}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canCreatePlayerPlans}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canGenerateWeeklySummaries}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canInviteCoaches}</td>
+                      <td className="py-2 px-2 text-right text-slate-300">{data.canManageOrganization}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Trial Accounts Analytics */}
+        {trialAccounts && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Trial Accounts</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Overview</div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Trials</span>
+                    <span className="text-slate-200">{trialAccounts.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Active</span>
+                    <span className="text-emerald-400">{trialAccounts.active}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Expired</span>
+                    <span className="text-red-400">{trialAccounts.expired}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Conversion Rate</span>
+                    <span className="text-slate-200">{trialAccounts.conversionRate.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Days Remaining Distribution</div>
+                <div className="space-y-1.5 text-xs">
+                  {Object.entries(trialAccounts.daysRemainingDistribution || {}).map(([bucket, count]: [string, any]) => (
+                    <div key={bucket} className="flex justify-between">
+                      <span className="text-slate-400">{bucket} days</span>
+                      <span className="text-slate-200">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {trialAccounts.upcomingExpirations && trialAccounts.upcomingExpirations.length > 0 && (
+              <div className="mt-4 bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Upcoming Expirations (Next 20)</div>
+                <div className="space-y-1.5 text-xs max-h-60 overflow-y-auto">
+                  {trialAccounts.upcomingExpirations.map((trial: any) => (
+                    <div key={trial.userId} className="flex justify-between items-center py-1">
+                      <span className="text-slate-300 truncate">{trial.email || trial.userId}</span>
+                      <span className={`ml-2 ${trial.daysRemaining <= 1 ? 'text-red-400' : trial.daysRemaining <= 3 ? 'text-yellow-400' : 'text-slate-400'}`}>
+                        {trial.daysRemaining} days
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Limit Enforcement Analytics */}
+        {limitEnforcement && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Limit Enforcement</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-2">Summary</div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Limit Hits</span>
+                    <span className="text-red-400 font-semibold">{limitEnforcement.totalHits}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Sessions</span>
+                    <span className="text-slate-200">{limitEnforcement.hitsByType?.sessions || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Drills</span>
+                    <span className="text-slate-200">{limitEnforcement.hitsByType?.drills || 0}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-2">Hits by Plan</div>
+                <div className="space-y-1.5 text-xs">
+                  {Object.entries(limitEnforcement.hitsByPlan || {}).map(([plan, count]: [string, any]) => (
+                    <div key={plan} className="flex justify-between">
+                      <span className="text-slate-400">{plan}</span>
+                      <span className="text-red-400">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {limitEnforcement.recentHits && limitEnforcement.recentHits.length > 0 && (
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Recent Limit Hits (Top 50)</div>
+                <div className="space-y-1 text-xs max-h-60 overflow-y-auto">
+                  {limitEnforcement.recentHits.map((hit: any, idx: number) => (
+                    <div key={idx} className="flex justify-between items-center py-1 border-b border-slate-700/30">
+                      <div className="flex-1 truncate">
+                        <span className="text-slate-300">{hit.email || hit.userId}</span>
+                        <span className="text-slate-500 ml-2">({hit.plan})</span>
+                      </div>
+                      <div className="ml-2 text-red-400">
+                        {hit.limitType}: {hit.used}/{hit.limit}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Club Accounts Analytics */}
+        {clubAccounts && (
+          <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+            <h2 className="text-xs text-slate-400 uppercase tracking-wide mb-4">Club Accounts</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Overview</div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Club Accounts</span>
+                    <span className="text-slate-200">{clubAccounts.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Standard</span>
+                    <span className="text-slate-200">{clubAccounts.standard}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Premium</span>
+                    <span className="text-slate-200">{clubAccounts.premium}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
+                <div className="text-sm font-semibold text-slate-200 mb-3">Organizations</div>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Organizations</span>
+                    <span className="text-slate-200">{clubAccounts.organizations?.total || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Avg Coaches/Org</span>
+                    <span className="text-slate-200">{clubAccounts.organizations?.avgCoachesPerOrg?.toFixed(1) || 0}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* User Management */}
+        <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300">User Management</h2>
+            <button
+              onClick={() => {
+                setShowCreateUser(!showCreateUser);
+                setCreateUserError(null);
+                setCreateUserSuccess(null);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+            >
+              {showCreateUser ? "Cancel" : "+ Create User"}
+            </button>
+          </div>
+
+          {/* Create User Form */}
+          {showCreateUser && (
+            <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
+              <h3 className="text-sm font-semibold text-slate-200 mb-4">Create New User</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    value={createUserForm.email}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, email: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="user@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Name</label>
+                  <input
+                    type="text"
+                    value={createUserForm.name}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Optional"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Role *</label>
+                  <select
+                    value={createUserForm.role}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value as any })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="FREE">FREE</option>
+                    <option value="COACH">COACH</option>
+                    <option value="CLUB">CLUB</option>
+                    <option value="TRIAL">TRIAL</option>
+                    <option value="ADMIN">ADMIN</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Admin Role</label>
+                  <select
+                    value={createUserForm.adminRole}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, adminRole: e.target.value as any })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="">None</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="MODERATOR">MODERATOR</option>
+                    <option value="SUPPORT">SUPPORT</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={createUserForm.password}
+                    onChange={(e) => setCreateUserForm({ ...createUserForm, password: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Leave empty for auto-generated"
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Auto-generated if left empty</p>
+                </div>
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createUserForm.autoVerifyEmail}
+                      onChange={(e) => setCreateUserForm({ ...createUserForm, autoVerifyEmail: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                    />
+                    <span className="text-xs text-slate-400">Auto-verify email</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Coach-specific fields */}
+              {createUserForm.role === "COACH" && (
+                <div className="mt-4 pt-4 border-t border-slate-700/50">
+                  <h4 className="text-xs font-semibold text-slate-300 mb-3">Coach Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Coach Level * 
+                        {!createUserForm.coachLevel && (
+                          <span className="text-red-400 ml-1">(Required)</span>
+                        )}
+                      </label>
+                      <select
+                        value={createUserForm.coachLevel}
+                        onChange={(e) => setCreateUserForm({ ...createUserForm, coachLevel: e.target.value as any })}
+                        required
+                        className={`w-full px-3 py-2 rounded-lg border bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 ${
+                          !createUserForm.coachLevel 
+                            ? "border-red-600/50 focus:ring-red-500/50" 
+                            : "border-slate-700"
+                        }`}
+                      >
+                        <option value="">Select coach level *</option>
+                        <option value="GRASSROOTS">Grassroots</option>
+                        <option value="USSF_C">USSF C</option>
+                        <option value="USSF_B_PLUS">USSF B+</option>
+                      </select>
+                      {!createUserForm.coachLevel && (
+                        <p className="text-xs text-red-400 mt-1">Coach level is required for COACH role</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">
+                        Age Groups * 
+                        {createUserForm.teamAgeGroups.length === 0 && (
+                          <span className="text-red-400 ml-1">(Required)</span>
+                        )}
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {VAULT_AGE_GROUPS.map((ageGroup) => (
+                          <label key={ageGroup} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={createUserForm.teamAgeGroups.includes(ageGroup)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setCreateUserForm({
+                                    ...createUserForm,
+                                    teamAgeGroups: [...createUserForm.teamAgeGroups, ageGroup],
+                                  });
+                                } else {
+                                  setCreateUserForm({
+                                    ...createUserForm,
+                                    teamAgeGroups: createUserForm.teamAgeGroups.filter((ag) => ag !== ageGroup),
+                                  });
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                            />
+                            <span className="text-xs text-slate-300">{ageGroup}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {createUserForm.teamAgeGroups.length === 0 && (
+                        <p className="text-xs text-red-400 mt-1">At least one age group is required for COACH role</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {createUserError && (
+                <div className="mt-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-sm text-red-300">
+                  {createUserError}
+                </div>
+              )}
+              {createUserSuccess && (
+                <div className="mt-4 p-3 rounded-lg bg-emerald-900/20 border border-emerald-700/50 text-sm text-emerald-300">
+                  User created successfully! Email: {createUserSuccess.email}
+                  {createUserSuccess.password && (
+                    <div className="mt-2">
+                      <strong>Initial Password:</strong> <code className="bg-slate-800 px-2 py-1 rounded">{createUserSuccess.password}</code>
+                      <p className="text-xs mt-1 text-emerald-400">Save this password - it won't be shown again!</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={createUser}
+                  disabled={
+                    creatingUser ||
+                    !createUserForm.email ||
+                    (createUserForm.role === "COACH" && (!createUserForm.coachLevel || createUserForm.teamAgeGroups.length === 0))
+                  }
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creatingUser ? "Creating..." : "Create User"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateUser(false);
+                    setCreateUserForm({
+                      email: "",
+                      name: "",
+                      role: "FREE",
+                      adminRole: "",
+                      password: "",
+                      autoVerifyEmail: false,
+                      coachLevel: "",
+                      teamAgeGroups: [],
+                    });
+                    setCreateUserError(null);
+                    setCreateUserSuccess(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Users List */}
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-300">Users ({userSummary?.totalUsers || 0})</h3>
+            <button
+              onClick={() => loadUsers(1)}
+              disabled={loadingUsers}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              {loadingUsers ? "Loading..." : "Refresh"}
+            </button>
+          </div>
+
+          {loadingUsers && users.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">Loading users...</div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">No users found. Click "Refresh" to load users.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700/50">
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Email</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Name</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Role</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Admin Role</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Coach Level</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Verified</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Created</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b border-slate-700/30 hover:bg-slate-800/30">
+                      <td className="py-2 px-3 text-slate-200">{user.email}</td>
+                      <td className="py-2 px-3 text-slate-300">{user.name || "-"}</td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={user.role}
+                          onChange={(e) => updateUserRole(user.id, e.target.value)}
+                          className="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        >
+                          <option value="FREE">FREE</option>
+                          <option value="COACH">COACH</option>
+                          <option value="CLUB">CLUB</option>
+                          <option value="TRIAL">TRIAL</option>
+                          <option value="ADMIN">ADMIN</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={user.adminRole || ""}
+                          onChange={(e) => updateUserRole(user.id, undefined, e.target.value || null)}
+                          className="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                        >
+                          <option value="">None</option>
+                          <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                          <option value="ADMIN">ADMIN</option>
+                          <option value="MODERATOR">MODERATOR</option>
+                          <option value="SUPPORT">SUPPORT</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-3">
+                        {user.role === "COACH" ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-300">
+                              {user.coachLevel ? coachLevelLabel[user.coachLevel] || user.coachLevel : "Not set"}
+                            </span>
+                            {user.teamAgeGroups && user.teamAgeGroups.length > 0 && (
+                              <span className="text-xs text-slate-500" title={`Age groups: ${user.teamAgeGroups.join(", ")}`}>
+                                ({user.teamAgeGroups.length})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">N/A</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        {user.emailVerified ? (
+                          <span className="text-xs text-emerald-400 font-semibold">✓ Verified</span>
+                        ) : (
+                          <span className="text-xs text-yellow-400 font-semibold">⚠ Unverified</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-slate-400 text-xs">
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-2">
+                          {user.blocked && (
+                            <span className="text-xs text-red-400 font-semibold" title={user.blockedReason || "User is blocked"}>
+                              🔒 Blocked
+                            </span>
+                          )}
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {!user.emailVerified && (
+                              <>
+                                <button
+                                  onClick={() => verifyUserEmail(user.id)}
+                                  disabled={verifyingEmail === user.id}
+                                  className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                                  title="Manually verify email"
+                                >
+                                  {verifyingEmail === user.id ? "Verifying..." : "✓ Verify"}
+                                </button>
+                                <button
+                                  onClick={() => resendVerificationEmail(user.id)}
+                                  disabled={resendingVerification === user.id}
+                                  className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                                  title="Resend verification email"
+                                >
+                                  {resendingVerification === user.id ? "Sending..." : "📧 Resend"}
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => {
+                                setShowResetPasswordModal({ userId: user.id, email: user.email });
+                                setResetPasswordInput("");
+                                setShowPassword(false);
+                              }}
+                              disabled={resettingPassword === user.id}
+                              className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
+                              title="Reset password"
+                            >
+                              {resettingPassword === user.id ? "Resetting..." : "🔑 Reset"}
+                            </button>
+                            {user.role === "COACH" && (
+                              <button
+                                onClick={() => {
+                                  setShowCoachLevelModal({
+                                    userId: user.id,
+                                    email: user.email,
+                                    currentCoachLevel: user.coachLevel,
+                                    currentAgeGroups: user.teamAgeGroups || [],
+                                  });
+                                  setCoachLevelForm({
+                                    coachLevel: (user.coachLevel || "") as any,
+                                    teamAgeGroups: user.teamAgeGroups || [],
+                                  });
+                                }}
+                                disabled={updatingCoachLevel === user.id}
+                                className="text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50"
+                                title="Edit coach level and age groups"
+                              >
+                                {updatingCoachLevel === user.id ? "Updating..." : "🎓 Edit Level"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setShowBlockModal({ userId: user.id, email: user.email, currentlyBlocked: user.blocked })}
+                              disabled={blockingUser === user.id}
+                              className={`text-xs ${user.blocked ? 'text-green-400 hover:text-green-300' : 'text-red-400 hover:text-red-300'} disabled:opacity-50`}
+                              title={user.blocked ? "Unblock user" : "Block user"}
+                            >
+                              {user.blocked ? "🔓 Unblock" : "🚫 Block"}
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {usersTotalPages > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => loadUsers(usersPage - 1)}
+                    disabled={usersPage <= 1}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-slate-400">
+                    Page {usersPage} of {usersTotalPages}
+                  </span>
+                  <button
+                    onClick={() => loadUsers(usersPage + 1)}
+                    disabled={usersPage >= usersTotalPages}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Access Permissions Management */}
+        <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300">Access Permissions</h2>
+            <button
+              onClick={() => {
+                setPermissionForm({
+                  userId: "",
+                  resourceType: "BOTH",
+                  coachLevel: "",
+                  ageGroups: [],
+                  formats: [],
+                  canGenerateSessions: false,
+                  canAccessVault: false,
+                  notes: "",
+                });
+                setShowPermissionModal({});
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+            >
+              + New Permission
+            </button>
+          </div>
+
+          {loadingPermissions ? (
+            <div className="text-center py-8 text-slate-400">Loading permissions...</div>
+          ) : accessPermissions.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">No permissions configured. Click "New Permission" to create one.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-700/50">
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">User</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Resource</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Coach Level</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Age Groups</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Formats</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Sessions</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Vault</th>
+                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessPermissions.map((perm) => (
+                    <tr key={perm.id} className="border-b border-slate-700/30">
+                      <td className="py-2 px-3 text-slate-300">
+                        {perm.user ? (
+                          <div>
+                            <div className="text-xs font-semibold">{perm.user.name || perm.user.email}</div>
+                            <div className="text-xs text-slate-500">{perm.user.email}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">All Users</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">{perm.resourceType}</td>
+                      <td className="py-2 px-3 text-slate-300">
+                        {perm.userId ? (
+                          <span className="text-xs text-slate-500">N/A (User-specific)</span>
+                        ) : (
+                          perm.coachLevel ? coachLevelLabel[perm.coachLevel] || perm.coachLevel : "All"
+                        )}
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">
+                        {perm.ageGroups.length === 0 ? "All" : perm.ageGroups.join(", ")}
+                      </td>
+                      <td className="py-2 px-3 text-slate-300">
+                        {perm.formats.length === 0 ? "All" : perm.formats.join(", ")}
+                      </td>
+                      <td className="py-2 px-3">
+                        {perm.canGenerateSessions ? (
+                          <span className="text-xs text-emerald-400 font-semibold">✓ Allowed</span>
+                        ) : (
+                          <span className="text-xs text-red-400 font-semibold">✗ Denied</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        {perm.canAccessVault ? (
+                          <span className="text-xs text-emerald-400 font-semibold">✓ Allowed</span>
+                        ) : (
+                          <span className="text-xs text-red-400 font-semibold">✗ Denied</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              // If permission has a userId, find the user and load their current coach level
+                              const user = perm.userId ? users.find(u => u.id === perm.userId) : null;
+                              setPermissionForm({
+                                userId: perm.userId || "",
+                                resourceType: perm.resourceType as any,
+                                // If user-specific permission, load user's current coach level; otherwise use permission's coachLevel
+                                coachLevel: (perm.userId && user?.coachLevel) ? (user.coachLevel as any) : ((perm.coachLevel || "") as any),
+                                ageGroups: perm.ageGroups,
+                                formats: perm.formats,
+                                canGenerateSessions: perm.canGenerateSessions,
+                                canAccessVault: perm.canAccessVault,
+                                notes: perm.notes || "",
+                              });
+                              setShowPermissionModal({ permission: perm });
+                            }}
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                            title="Edit permission"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            onClick={() => deletePermission(perm.id)}
+                            className="text-xs text-red-400 hover:text-red-300"
+                            title="Delete permission"
+                          >
+                            🗑️ Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Coach Level Edit Modal */}
+        {showCoachLevelModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Edit Coach Level</h3>
+              <p className="text-sm text-slate-300 mb-4">
+                Update coach level and age groups for {showCoachLevelModal.email}
+              </p>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Coach Level *</label>
+                  <select
+                    value={coachLevelForm.coachLevel}
+                    onChange={(e) => setCoachLevelForm({ ...coachLevelForm, coachLevel: e.target.value as any })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="">Select coach level</option>
+                    <option value="GRASSROOTS">Grassroots</option>
+                    <option value="USSF_C">USSF C</option>
+                    <option value="USSF_B_PLUS">USSF B+</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Age Groups *</label>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border border-slate-700 rounded-lg bg-slate-800/50">
+                    {VAULT_AGE_GROUPS.map((ageGroup) => (
+                      <label key={ageGroup} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={coachLevelForm.teamAgeGroups.includes(ageGroup)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setCoachLevelForm({
+                                ...coachLevelForm,
+                                teamAgeGroups: [...coachLevelForm.teamAgeGroups, ageGroup],
+                              });
+                            } else {
+                              setCoachLevelForm({
+                                ...coachLevelForm,
+                                teamAgeGroups: coachLevelForm.teamAgeGroups.filter((ag) => ag !== ageGroup),
+                              });
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                        />
+                        <span className="text-xs text-slate-300">{ageGroup}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {coachLevelForm.teamAgeGroups.length === 0 && (
+                    <p className="text-xs text-red-400 mt-1">At least one age group is required</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    if (coachLevelForm.coachLevel && coachLevelForm.teamAgeGroups.length > 0) {
+                      updateCoachLevel(showCoachLevelModal.userId, coachLevelForm.coachLevel, coachLevelForm.teamAgeGroups);
+                    } else {
+                      alert("Coach level and at least one age group are required");
+                    }
+                  }}
+                  disabled={
+                    updatingCoachLevel === showCoachLevelModal.userId ||
+                    !coachLevelForm.coachLevel ||
+                    coachLevelForm.teamAgeGroups.length === 0
+                  }
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {updatingCoachLevel === showCoachLevelModal.userId ? "Updating..." : "Update Coach Level"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCoachLevelModal(null);
+                    setCoachLevelForm({ coachLevel: "", teamAgeGroups: [] });
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Access Permission Modal */}
+        {showPermissionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">
+                {showPermissionModal.permission ? "Edit Permission" : "New Permission"}
+              </h3>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Assign To</label>
+                  <select
+                    value={permissionForm.userId}
+                    onChange={(e) => {
+                      const userId = e.target.value;
+                      const selectedUser = userId ? users.find(u => u.id === userId) : null;
+                      setPermissionForm({ 
+                        ...permissionForm, 
+                        userId: userId || "",
+                        // If selecting a user, load their current coach level; if clearing, keep existing coachLevel
+                        coachLevel: userId && selectedUser?.coachLevel ? (selectedUser.coachLevel as any) : (permissionForm.coachLevel || "")
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="">All Users (Coach Level Based)</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email} {user.email ? `(${user.email})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select a specific user for user-specific permissions, or leave empty for coach-level based permissions
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Resource Type *</label>
+                  <select
+                    value={permissionForm.resourceType}
+                    onChange={(e) => setPermissionForm({ ...permissionForm, resourceType: e.target.value as any })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="SESSION">Sessions Only</option>
+                    <option value="VAULT">Vault Only</option>
+                    <option value="BOTH">Both Sessions & Vault</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">
+                    Coach Level
+                    {permissionForm.userId && <span className="text-slate-500 ml-1">(Updates user's coach level)</span>}
+                  </label>
+                  <select
+                    value={permissionForm.coachLevel}
+                    onChange={(e) => {
+                      const newCoachLevel = e.target.value as any;
+                      setPermissionForm({ 
+                        ...permissionForm, 
+                        coachLevel: newCoachLevel,
+                      });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  >
+                    <option value="">{permissionForm.userId ? "No change" : "All Coach Levels"}</option>
+                    <option value="GRASSROOTS">Grassroots</option>
+                    <option value="USSF_C">USSF C</option>
+                    <option value="USSF_B_PLUS">USSF B+</option>
+                  </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {permissionForm.userId 
+                      ? "This will update the user's coach level property. The permission itself is user-specific."
+                      : "Leave empty to apply to all coach levels, or select a specific level"}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Age Groups</label>
+                  <p className="text-xs text-slate-500 mb-2">Leave empty to allow all age groups</p>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 border border-slate-700 rounded-lg bg-slate-800/50">
+                    {VAULT_AGE_GROUPS.map((ageGroup) => (
+                      <label key={ageGroup} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={permissionForm.ageGroups.includes(ageGroup)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setPermissionForm({
+                                ...permissionForm,
+                                ageGroups: [...permissionForm.ageGroups, ageGroup],
+                              });
+                            } else {
+                              setPermissionForm({
+                                ...permissionForm,
+                                ageGroups: permissionForm.ageGroups.filter((ag) => ag !== ageGroup),
+                              });
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                        />
+                        <span className="text-xs text-slate-300">{ageGroup}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Formats</label>
+                  <p className="text-xs text-slate-500 mb-2">Leave empty to allow all formats</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["7v7", "9v9", "11v11"].map((format) => (
+                      <label key={format} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={permissionForm.formats.includes(format)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setPermissionForm({
+                                ...permissionForm,
+                                formats: [...permissionForm.formats, format],
+                              });
+                            } else {
+                              setPermissionForm({
+                                ...permissionForm,
+                                formats: permissionForm.formats.filter((f) => f !== format),
+                              });
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                        />
+                        <span className="text-xs text-slate-300">{format}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={permissionForm.canGenerateSessions}
+                      onChange={(e) => setPermissionForm({ ...permissionForm, canGenerateSessions: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                    />
+                    <span className="text-xs text-slate-300">Can Generate Sessions</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={permissionForm.canAccessVault}
+                      onChange={(e) => setPermissionForm({ ...permissionForm, canAccessVault: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
+                    />
+                    <span className="text-xs text-slate-300">Can Access Vault</span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Notes (optional)</label>
+                  <textarea
+                    value={permissionForm.notes}
+                    onChange={(e) => setPermissionForm({ ...permissionForm, notes: e.target.value })}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    rows={3}
+                    placeholder="Optional notes about this permission..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowPermissionModal(null);
+                    setPermissionForm({
+                      userId: "",
+                      resourceType: "BOTH",
+                      coachLevel: "",
+                      ageGroups: [],
+                      formats: [],
+                      canGenerateSessions: false,
+                      canAccessVault: false,
+                      notes: "",
+                    });
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={savePermission}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
+                >
+                  {showPermissionModal.permission ? "Update" : "Create"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Password Modal */}
+        {showResetPasswordModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Reset Password</h3>
+              <p className="text-sm text-slate-300 mb-4">
+                Enter a new password for {showResetPasswordModal.email}. Leave empty to auto-generate.
+              </p>
+              <div className="mb-4">
+                <label className="block text-xs text-slate-400 mb-1">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={resetPasswordInput}
+                    onChange={(e) => setResetPasswordInput(e.target.value)}
+                    className="w-full px-3 py-2 pr-10 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Leave empty to auto-generate"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        resetUserPassword(showResetPasswordModal.userId, resetPasswordInput || undefined);
+                      } else if (e.key === "Escape") {
+                        setShowResetPasswordModal(null);
+                        setResetPasswordInput("");
+                        setShowPassword(false);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors p-1"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">Press Enter to confirm, Escape to cancel</p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    resetUserPassword(showResetPasswordModal.userId, resetPasswordInput || undefined);
+                    setShowResetPasswordModal(null);
+                    setResetPasswordInput("");
+                  }}
+                  disabled={resettingPassword === showResetPasswordModal.userId}
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+                >
+                  {resettingPassword === showResetPasswordModal.userId ? "Resetting..." : "Reset Password"}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowResetPasswordModal(null);
+                    setResetPasswordInput("");
+                    setShowPassword(false);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Password Success Modal */}
+        {resetPasswordSuccess && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">Password Reset Successful</h3>
+              {resetPasswordSuccess.password && (
+                <div className="mb-4">
+                  <p className="text-sm text-slate-300 mb-2">New password generated:</p>
+                  <code className="block bg-slate-800 px-3 py-2 rounded text-slate-200 font-mono text-sm">
+                    {resetPasswordSuccess.password}
+                  </code>
+                  <p className="text-xs text-slate-500 mt-2">Save this password - it won't be shown again!</p>
+                </div>
+              )}
+              <button
+                onClick={() => setResetPasswordSuccess(null)}
+                className="w-full px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Block/Unblock User Modal */}
+        {showBlockModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold text-slate-100 mb-4">
+                {showBlockModal.currentlyBlocked ? "Unblock User" : "Block User"}
+              </h3>
+              <p className="text-sm text-slate-300 mb-4">
+                {showBlockModal.currentlyBlocked
+                  ? `Are you sure you want to unblock ${showBlockModal.email}?`
+                  : `Are you sure you want to block ${showBlockModal.email}? This will prevent them from accessing the system.`}
+              </p>
+              {!showBlockModal.currentlyBlocked && (
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-400 mb-1">Reason (optional)</label>
+                  <textarea
+                    value={blockReason}
+                    onChange={(e) => setBlockReason(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Enter reason for blocking..."
+                    rows={3}
+                  />
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => toggleUserBlock(showBlockModal.userId, !showBlockModal.currentlyBlocked, blockReason)}
+                  disabled={blockingUser === showBlockModal.userId}
+                  className={`flex-1 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 ${
+                    showBlockModal.currentlyBlocked
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      : 'bg-red-600 hover:bg-red-500 text-white'
+                  }`}
+                >
+                  {blockingUser === showBlockModal.userId
+                    ? (showBlockModal.currentlyBlocked ? "Unblocking..." : "Blocking...")
+                    : (showBlockModal.currentlyBlocked ? "Unblock User" : "Block User")}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowBlockModal(null);
+                    setBlockReason("");
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Revenue Calculator */}
         {(() => {
           const totalSessions = stats?.database.vaultSessions || 0;
@@ -2241,26 +4100,34 @@ export default function AdminDashboard() {
               </div>
 
               {/* Show sample drills for each status */}
-              {(qaAnalyticsDrills.statusCounts.PATCHABLE > 0 || qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0) && (
+              {(qaAnalyticsDrills.statusCounts.PATCHABLE > 0 ||
+                qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0 ||
+                qaAnalyticsDrills.statusCounts.NO_QA_OR_PASS > 0) && (
                 <details className="mt-4">
                   <summary className="cursor-pointer text-xs font-semibold text-slate-300 mb-2">
                     View Sample Drills by Status
                   </summary>
                   <div className="mt-2 space-y-3">
-                    {qaAnalyticsDrills.statusCounts.PATCHABLE > 0 && qaAnalyticsDrills.drillsByStatus.PATCHABLE.length > 0 && (
+                    {qaAnalyticsDrills.statusCounts.PATCHABLE > 0 &&
+                      qaAnalyticsDrills.drillsByStatus.PATCHABLE.length > 0 && (
                       <div>
                         <div className="text-xs font-semibold text-yellow-400 mb-2">
                           PATCHABLE Drills ({qaAnalyticsDrills.statusCounts.PATCHABLE} total)
                         </div>
                         <div className="space-y-1">
                           {qaAnalyticsDrills.drillsByStatus.PATCHABLE.slice(0, 5).map((d) => (
-                            <div key={d.id} className="text-[10px] text-slate-400 flex items-center gap-2">
+                            <div
+                              key={d.id}
+                              className="text-[10px] text-slate-400 flex items-center gap-2"
+                            >
                               {d.refCode && (
                                 <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
                                   {d.refCode}
                                 </span>
                               )}
-                              <span className="truncate">{d.title}</span>
+                              <span className="truncate">
+                                {d.title || d.id}
+                              </span>
                               {d.qaScore !== null && (
                                 <span className="text-yellow-400 ml-auto">QA: {d.qaScore.toFixed(2)}</span>
                               )}
@@ -2269,28 +4136,66 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     )}
-                    {qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0 && qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.length > 0 && (
-                      <div>
-                        <div className="text-xs font-semibold text-red-400 mb-2">
-                          NEEDS_REGEN Drills ({qaAnalyticsDrills.statusCounts.NEEDS_REGEN} total)
-                        </div>
-                        <div className="space-y-1">
-                          {qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.slice(0, 5).map((d) => (
-                            <div key={d.id} className="text-[10px] text-slate-400 flex items-center gap-2">
-                              {d.refCode && (
-                                <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
-                                  {d.refCode}
+                    {qaAnalyticsDrills.statusCounts.NEEDS_REGEN > 0 &&
+                      qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-red-400 mb-2">
+                            NEEDS_REGEN Drills ({qaAnalyticsDrills.statusCounts.NEEDS_REGEN} total)
+                          </div>
+                          <div className="space-y-1">
+                            {qaAnalyticsDrills.drillsByStatus.NEEDS_REGEN.slice(0, 5).map((d) => (
+                              <div
+                                key={d.id}
+                                className="text-[10px] text-slate-400 flex items-center gap-2"
+                              >
+                                {d.refCode && (
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                    {d.refCode}
+                                  </span>
+                                )}
+                                <span className="truncate">
+                                  {d.title || d.id}
                                 </span>
-                              )}
-                              <span className="truncate">{d.title}</span>
-                              {d.qaScore !== null && (
-                                <span className="text-red-400 ml-auto">QA: {d.qaScore.toFixed(2)}</span>
-                              )}
-                            </div>
-                          ))}
+                                {d.qaScore !== null && (
+                                  <span className="text-red-400 ml-auto">
+                                    QA: {d.qaScore.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    {qaAnalyticsDrills.statusCounts.NO_QA_OR_PASS > 0 &&
+                      qaAnalyticsDrills.drillsByStatus.NO_QA_OR_PASS.length > 0 && (
+                        <div>
+                          <div className="text-xs font-semibold text-slate-300 mb-2">
+                            NO_QA Drills ({qaAnalyticsDrills.statusCounts.NO_QA_OR_PASS} total)
+                          </div>
+                          <div className="space-y-1">
+                            {qaAnalyticsDrills.drillsByStatus.NO_QA_OR_PASS.slice(0, 5).map((d) => (
+                              <div
+                                key={d.id}
+                                className="text-[10px] text-slate-400 flex items-center gap-2"
+                              >
+                                {d.refCode && (
+                                  <span className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 font-mono border border-cyan-700/30">
+                                    {d.refCode}
+                                  </span>
+                                )}
+                                <span className="truncate">
+                                  {d.title || d.id}
+                                </span>
+                                {!d.refCode && (
+                                  <span className="ml-2 text-slate-500">
+                                    ID: <span className="font-mono">{d.id}</span>
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                   </div>
                 </details>
               )}

@@ -230,7 +230,8 @@ function parseJsonSafe(text: string) {
  * 5) Persist final drill + QA into DB.
  */
 export async function generateAndReviewDrill(
-  input: Parameters<typeof buildDrillPrompt>[0]
+  input: Parameters<typeof buildDrillPrompt>[0],
+  userId?: string
 ) {
   // Set metrics context for tracking
   setMetricsContext({
@@ -404,11 +405,30 @@ export async function generateAndReviewDrill(
       // Auto-save to vault
       savedToVault: true,
       
+      // Track who generated this drill
+      generatedBy: userId || null,
+      
       json: jsonForDb,
     },
   });
   
   console.log("✅ [DB CREATED] created.json.organization type:", typeof (created.json as any)?.organization);
+
+  // Fetch creator info if userId was provided
+  let creator = null;
+  if (userId) {
+    const creatorUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (creatorUser) {
+      creator = {
+        id: creatorUser.id,
+        name: creatorUser.name,
+        email: creatorUser.email,
+      };
+    }
+  }
 
   // Persist QA snapshot
   await prisma.qAReport.create({
@@ -452,7 +472,13 @@ export async function generateAndReviewDrill(
   }
 
     return {
-      drill: created,
+      drill: {
+        ...created,
+        // Ensure organization is accessible at top level
+        organization: (created.json as any)?.organization || "",
+        // Include creator information
+        creator,
+      },
       qa: finalQa,
       raw: { genText, qaText },
     };
