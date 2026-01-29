@@ -12,6 +12,7 @@ import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import TopicSelect from "@/components/TopicSelect";
 import CoachChat from "@/components/CoachChat";
+import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
 import type { DiagramV1 } from "@/types/diagram";
@@ -469,9 +470,13 @@ async function fetchSkillFocusForSeriesId(seriesId: string): Promise<SkillFocus 
 }
 
 async function generateSkillFocusForSessionId(sessionId: string): Promise<SkillFocus> {
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
   const res = await fetch("/api/skill-focus/session", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ sessionId }),
   });
   if (!res.ok) {
@@ -483,9 +488,13 @@ async function generateSkillFocusForSessionId(sessionId: string): Promise<SkillF
 }
 
 async function generateSkillFocusForSeries(input: { seriesId?: string; sessionIds?: string[] }): Promise<SkillFocus> {
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
   const res = await fetch("/api/skill-focus/series", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(input),
   });
   if (!res.ok) {
@@ -531,6 +540,12 @@ function SessionDemoPageContent() {
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
   const [generatingSeriesSkillFocus, setGeneratingSeriesSkillFocus] = useState(false);
+  const [scheduleModalSession, setScheduleModalSession] = useState<{
+    sessionId: string;
+    sessionTitle: string;
+    sessionRefCode?: string | null;
+    durationMin?: number;
+  } | null>(null);
 
   const config = getConfigFromSearchParams(searchParams);
   const hasParams = searchParams.toString().length > 0;
@@ -555,8 +570,10 @@ function SessionDemoPageContent() {
       setLoading(true);
       setError(null);
       setSessionMode("single");
-      
-      fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}`)
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: HeadersInit = {};
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+      fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}`, { headers })
         .then(async (res) => {
           if (res.status === 404) {
             try {
@@ -608,7 +625,11 @@ function SessionDemoPageContent() {
             return null;
           }
           if (!res.ok) {
-            throw new Error(`Session not found: ${res.status}`);
+            const errBody = await res.json().catch(() => ({}));
+            const msg = res.status === 401
+              ? "Please sign in to view this session."
+              : (errBody?.error || `Session not found (${res.status})`);
+            throw new Error(msg);
           }
           const vaultData = await res.json();
           if (vaultData.ok && vaultData.session) {
@@ -677,8 +698,10 @@ function SessionDemoPageContent() {
       setLoading(true);
       setError(null);
       setSessionMode("series");
-      
-      fetch(`/api/vault/series/${encodeURIComponent(seriesId)}`)
+      const seriesAccessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const seriesHeaders: HeadersInit = {};
+      if (seriesAccessToken) seriesHeaders["Authorization"] = `Bearer ${seriesAccessToken}`;
+      fetch(`/api/vault/series/${encodeURIComponent(seriesId)}`, { headers: seriesHeaders })
         .then(async (res) => {
           if (!res.ok) {
             throw new Error("Series not found in vault");
@@ -1879,40 +1902,42 @@ function SessionDemoPageContent() {
                     </div>
                   </div>
                 )}
-                {seriesSkillFocus.sectionPhrases && (
-                  <div className="mt-4">
-                    <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Section Phrases</div>
-                    <div className="mt-2 grid gap-3 md:grid-cols-2">
-                      {Object.entries(seriesSkillFocus.sectionPhrases).map(([section, phrases]) => (
-                        <div key={section} className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
-                          <div className="text-[11px] uppercase tracking-widest text-slate-300">
-                            {section.replace("_", " ")}
+                {seriesSkillFocus.sectionPhrases && (() => {
+                  const allEncourage: string[] = [];
+                  const allCorrect: string[] = [];
+                  Object.values(seriesSkillFocus.sectionPhrases).forEach((phrases: any) => {
+                    if (Array.isArray(phrases?.encourage)) allEncourage.push(...phrases.encourage);
+                    if (Array.isArray(phrases?.correct)) allCorrect.push(...phrases.correct);
+                  });
+                  if (allEncourage.length === 0 && allCorrect.length === 0) return null;
+                  return (
+                    <div className="mt-4">
+                      <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Coaching phrases</div>
+                      <div className="mt-2 grid gap-4 md:grid-cols-2">
+                        {allEncourage.length > 0 && (
+                          <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
+                            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-emerald-100/90">
+                              {allEncourage.map((item, i) => (
+                                <li key={i}>{item}</li>
+                              ))}
+                            </ul>
                           </div>
-                          {Array.isArray(phrases?.encourage) && phrases.encourage.length > 0 && (
-                            <div className="mt-2">
-                              <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
-                              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100/80">
-                                {phrases.encourage.map((item, i) => (
-                                  <li key={i}>{item}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          {Array.isArray(phrases?.correct) && phrases.correct.length > 0 && (
-                            <div className="mt-2">
-                              <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
-                              <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-rose-100/80">
-                                {phrases.correct.map((item, i) => (
-                                  <li key={i}>{item}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                        )}
+                        {allCorrect.length > 0 && (
+                          <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                            <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
+                            <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-rose-100/90">
+                              {allCorrect.map((item, i) => (
+                                <li key={i}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
             <div className="flex gap-2 border-b border-slate-700/70 -mx-6 px-6 pb-4">
@@ -2016,13 +2041,29 @@ function SessionDemoPageContent() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex flex-wrap justify-end gap-3 pt-2">
                 <Link
                   href="/vault"
                   className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
                 >
                   📂 View in Vault
                 </Link>
+                {resolvedSessionId && session && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setScheduleModalSession({
+                        sessionId: resolvedSessionId,
+                        sessionTitle: session.title,
+                        sessionRefCode: session.refCode ?? null,
+                        durationMin: session.durationMin ?? 90,
+                      })
+                    }
+                    className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
+                  >
+                    📅 Add to Calendar
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     try {
@@ -2212,40 +2253,42 @@ function SessionDemoPageContent() {
                       </div>
                     </div>
                   )}
-                  {skillFocus.sectionPhrases && (
-                    <div className="mt-4">
-                      <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Section Phrases</div>
-                      <div className="mt-2 grid gap-3 md:grid-cols-2">
-                        {Object.entries(skillFocus.sectionPhrases).map(([section, phrases]) => (
-                          <div key={section} className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
-                            <div className="text-[11px] uppercase tracking-widest text-slate-300">
-                              {section.replace("_", " ")}
+                  {skillFocus.sectionPhrases && (() => {
+                    const allEncourage: string[] = [];
+                    const allCorrect: string[] = [];
+                    Object.values(skillFocus.sectionPhrases).forEach((phrases: any) => {
+                      if (Array.isArray(phrases?.encourage)) allEncourage.push(...phrases.encourage);
+                      if (Array.isArray(phrases?.correct)) allCorrect.push(...phrases.correct);
+                    });
+                    if (allEncourage.length === 0 && allCorrect.length === 0) return null;
+                    return (
+                      <div className="mt-4">
+                        <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Coaching phrases</div>
+                        <div className="mt-2 grid gap-4 md:grid-cols-2">
+                          {allEncourage.length > 0 && (
+                            <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
+                              <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-emerald-100/90">
+                                {allEncourage.map((item, i) => (
+                                  <li key={i}>{item}</li>
+                                ))}
+                              </ul>
                             </div>
-                            {Array.isArray(phrases?.encourage) && phrases.encourage.length > 0 && (
-                              <div className="mt-2">
-                                <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
-                                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100/80">
-                                  {phrases.encourage.map((item, i) => (
-                                    <li key={i}>{item}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            {Array.isArray(phrases?.correct) && phrases.correct.length > 0 && (
-                              <div className="mt-2">
-                                <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
-                                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-rose-100/80">
-                                  {phrases.correct.map((item, i) => (
-                                    <li key={i}>{item}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                          )}
+                          {allCorrect.length > 0 && (
+                            <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                              <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
+                              <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-rose-100/90">
+                                {allCorrect.map((item, i) => (
+                                  <li key={i}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               )}
             </section>
@@ -2496,6 +2539,16 @@ function SessionDemoPageContent() {
             }}
           />
         </div>
+      )}
+      {scheduleModalSession && (
+        <ScheduleSessionModal
+          sessionId={scheduleModalSession.sessionId}
+          sessionTitle={scheduleModalSession.sessionTitle}
+          sessionRefCode={scheduleModalSession.sessionRefCode}
+          sessionDurationMin={scheduleModalSession.durationMin}
+          onClose={() => setScheduleModalSession(null)}
+          onScheduled={() => setScheduleModalSession(null)}
+        />
       )}
     </main>
   );

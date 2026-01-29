@@ -121,6 +121,14 @@ export default function LoginPage() {
               placeholder="••••••••"
               disabled={loading}
             />
+            <div className="mt-2 text-right">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+              >
+                Forgot your password?
+              </Link>
+            </div>
           </div>
 
           <button

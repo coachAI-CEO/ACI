@@ -352,6 +352,9 @@ model User {
   coachLevel        CoachLevel?
   organizationName String?
   teamAgeGroups    String[] // Age groups they coach (e.g., ["U10", "U12"])
+
+  // User preferences (defaults, notifications, etc.)
+  preferences       Json?    // e.g. { defaultAgeGroup, emailSessionReminders }
   
   // Usage tracking
   sessionsGeneratedThisMonth Int @default(0)
@@ -391,6 +394,7 @@ model User {
   playerPlans            PlayerPlan[]
   calendarEvents         CalendarEvent[]
   accessPermissions      AccessPermission[]
+  passwordResetTokens    PasswordResetToken[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -445,6 +449,20 @@ model EmailVerificationToken {
   @@index([userId])
   @@index([token])
   @@index([email])
+}
+
+// Password reset tokens for "forgot password" flow
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
 }
 
 // Audit log for admin actions

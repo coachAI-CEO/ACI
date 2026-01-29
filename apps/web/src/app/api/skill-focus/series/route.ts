@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const API_BASE = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const res = await fetch("http://localhost:4000/skill-focus/series", {
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (authHeader) headers["Authorization"] = authHeader;
+
+    const res = await fetch(`${API_BASE}/skill-focus/series`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     if (!res.ok) {

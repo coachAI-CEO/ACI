@@ -9,11 +9,13 @@ export async function GET(
   console.log("[API] Fetching series with ID:", seriesId);
   
   try {
-    // seriesId is already decoded by Next.js, just pass it through
-    const url = `http://localhost:4000/vault/series/${seriesId}`;
-    console.log("[API] Calling backend:", url);
+    const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+    const url = `${API_URL}/vault/series/${seriesId}`;
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    const headers: HeadersInit = {};
+    if (authHeader) headers["Authorization"] = authHeader;
     
-    const res = await fetch(url);
+    const res = await fetch(url, { headers });
     const data = await res.json();
     
     console.log("[API] Backend response:", { ok: res.ok, status: res.status, data });

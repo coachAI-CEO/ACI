@@ -1936,40 +1936,42 @@ export default function VaultPage() {
                         </div>
                       </div>
                     )}
-                    {skillFocus.sectionPhrases && (
-                      <div className="mt-4">
-                        <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Section Phrases</div>
-                        <div className="mt-2 grid gap-3 md:grid-cols-2">
-                          {Object.entries(skillFocus.sectionPhrases).map(([section, phrases]: any) => (
-                            <div key={section} className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
-                              <div className="text-[11px] uppercase tracking-widest text-slate-300">
-                                {String(section).replace("_", " ")}
+                    {skillFocus.sectionPhrases && (() => {
+                      const allEncourage: string[] = [];
+                      const allCorrect: string[] = [];
+                      Object.values(skillFocus.sectionPhrases).forEach((phrases: any) => {
+                        if (Array.isArray(phrases?.encourage)) allEncourage.push(...phrases.encourage);
+                        if (Array.isArray(phrases?.correct)) allCorrect.push(...phrases.correct);
+                      });
+                      if (allEncourage.length === 0 && allCorrect.length === 0) return null;
+                      return (
+                        <div className="mt-4">
+                          <div className="text-[11px] text-emerald-200/70 uppercase tracking-widest">Coaching phrases</div>
+                          <div className="mt-2 grid gap-4 md:grid-cols-2">
+                            {allEncourage.length > 0 && (
+                              <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                                <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
+                                <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-emerald-100/90">
+                                  {allEncourage.map((item: string, i: number) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
                               </div>
-                              {Array.isArray(phrases?.encourage) && phrases.encourage.length > 0 && (
-                                <div className="mt-2">
-                                  <div className="text-[10px] uppercase tracking-widest text-emerald-200/70">Encourage</div>
-                                  <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-emerald-100/80">
-                                    {phrases.encourage.map((item: string, i: number) => (
-                                      <li key={i}>{item}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                              {Array.isArray(phrases?.correct) && phrases.correct.length > 0 && (
-                                <div className="mt-2">
-                                  <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
-                                  <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-rose-100/80">
-                                    {phrases.correct.map((item: string, i: number) => (
-                                      <li key={i}>{item}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                            )}
+                            {allCorrect.length > 0 && (
+                              <div className="rounded-lg border border-slate-700/50 bg-slate-900/60 p-3">
+                                <div className="text-[10px] uppercase tracking-widest text-rose-200/70">Correct</div>
+                                <ul className="mt-2 list-disc space-y-1.5 pl-4 text-sm text-rose-100/90">
+                                  {allCorrect.map((item: string, i: number) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -2044,9 +2046,12 @@ export default function VaultPage() {
                       try {
                         if (!selectedSession?.id) return;
                         setGeneratingSkillFocus(true);
+                        const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                        const headers: HeadersInit = { "Content-Type": "application/json" };
+                        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
                         const response = await fetch("/api/skill-focus/session", {
                           method: "POST",
-                          headers: { "Content-Type": "application/json" },
+                          headers,
                           body: JSON.stringify({ sessionId: selectedSession.id }),
                         });
                         if (!response.ok) {

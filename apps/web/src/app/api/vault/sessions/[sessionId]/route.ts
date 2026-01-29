@@ -8,12 +8,15 @@ export async function GET(
 ) {
   const { sessionId } = await params;
   const url = `${API_URL}/vault/sessions/${encodeURIComponent(sessionId)}`;
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const headers: HeadersInit = {};
+  if (authHeader) headers["Authorization"] = authHeader;
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { headers, signal: controller.signal });
     clearTimeout(timeoutId);
     
     if (!res.ok) {

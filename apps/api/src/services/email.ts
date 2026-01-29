@@ -146,3 +146,93 @@ export async function sendVerificationEmail(
 export function generateVerificationToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
+
+export async function sendPasswordResetEmail(
+  email: string,
+  name: string | null,
+  resetToken: string
+): Promise<void> {
+  const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Reset your password</h1>
+        </div>
+        <div class="content">
+          <p>Hi ${name || 'there'},</p>
+          <p>We received a request to reset the password for your ACI Training Platform account.</p>
+          <p>If you made this request, click the button below to choose a new password:</p>
+          <p style="text-align: center;">
+            <a href="${resetUrl}" class="button">Reset Password</a>
+          </p>
+          <p>Or copy and paste this link into your browser:</p>
+          <p style="word-break: break-all; color: #6b7280; font-size: 12px;">${resetUrl}</p>
+          <p>This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>
+        </div>
+        <div class="footer">
+          <p>© ${new Date().getFullYear()} ACI Training Platform. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+    Reset your password - ACI Training Platform
+
+    Hi ${name || 'there'},
+
+    We received a request to reset the password for your ACI Training Platform account.
+
+    If you made this request, visit this link to choose a new password:
+    ${resetUrl}
+
+    This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email.
+
+    © ${new Date().getFullYear()} ACI Training Platform. All rights reserved.
+  `;
+
+  const mailOptions = {
+    from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+    to: email,
+    subject: 'Reset your password - ACI Training Platform',
+    text,
+    html,
+  };
+
+  const mailer = getTransporter();
+
+  if (!SMTP_USER || !SMTP_PASS) {
+    console.log('\n═══════════════════════════════════════════════════════════');
+    console.log('[EMAIL] ⚠️  SMTP not configured - Password reset email would be sent:');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('To:', email);
+    console.log('Subject:', mailOptions.subject);
+    console.log('Reset URL:', resetUrl);
+    console.log('═══════════════════════════════════════════════════════════\n');
+    return;
+  }
+
+  try {
+    await mailer.sendMail(mailOptions);
+    console.log(`[EMAIL] Password reset email sent to ${email}`);
+  } catch (error) {
+    console.error('[EMAIL] Failed to send password reset email:', error);
+    throw new Error('Failed to send password reset email');
+  }
+}

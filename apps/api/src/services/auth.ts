@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
-import { generateVerificationToken, sendVerificationEmail } from './email';
+import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from './email';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key-change-in-production';
@@ -380,4 +380,145 @@ export async function resendVerificationEmail(userId: string): Promise<void> {
   
   // Send verification email
   await sendVerificationEmail(user.email, user.name, verificationToken);
+}
+
+export async function updateProfile(
+  userId: string,
+  data: {
+    name?: string;
+    coachLevel?: string;
+    organizationName?: string;
+    teamAgeGroups?: string[];
+    preferences?: Record<string, unknown>;
+  }
+): Promise<void> {
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.coachLevel !== undefined) updateData.coachLevel = data.coachLevel;
+  if (data.organizationName !== undefined) updateData.organizationName = data.organizationName;
+  if (data.teamAgeGroups !== undefined) updateData.teamAgeGroups = data.teamAgeGroups;
+  if (data.preferences !== undefined) updateData.preferences = data.preferences;
+
+  if (Object.keys(updateData).length === 0) return;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: updateData as any,
+  });
+}
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { passwordHash: true },
+  });
+
+  if (!user?.passwordHash) {
+    throw new Error('Account has no password set. Use forgot password.');
+  }
+
+  const valid = await verifyPassword(currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new Error('Current password is incorrect');
+  }
+
+  if (newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+
+  // Revoke all refresh tokens so user must log in again on other devices
+  await prisma.refreshToken.deleteMany({
+    where: { userId },
+  });
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  // Always return success-like behaviour to avoid leaking whether an email exists
+  if (!user || !user.email || !user.passwordHash) {
+    return;
+  }
+
+  // For new models that may not yet be in the generated Prisma types (during migration),
+  // access via a typed-any client to avoid TS errors while keeping runtime behaviour.
+  const prismaAny = prisma as any;
+
+  // Invalidate old tokens
+  await prismaAny.passwordResetToken.deleteMany({
+    where: {
+      userId: user.id,
+      used: false,
+    },
+  });
+
+  const resetToken = generateVerificationToken();
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 1); // 1 hour expiry
+
+  await prismaAny.passwordResetToken.create({
+    data: {
+      token: resetToken,
+      userId: user.id,
+      expiresAt,
+    },
+  });
+
+  // Fire and forget email sending; do not block or throw
+  sendPasswordResetEmail(user.email, user.name, resetToken).catch((err) => {
+    console.error('[AUTH] Failed to send password reset email:', err);
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const prismaAny = prisma as any;
+
+  const tokenRecord = await prismaAny.passwordResetToken.findUnique({
+    where: { token },
+    include: { user: true },
+  });
+
+  if (!tokenRecord || !tokenRecord.user) {
+    throw new Error('Invalid or expired reset token');
+  }
+
+  if (tokenRecord.used) {
+    throw new Error('This reset link has already been used');
+  }
+
+  if (tokenRecord.expiresAt < new Date()) {
+    throw new Error('This reset link has expired');
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+
+  // Update password and mark token as used
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: tokenRecord.userId },
+      data: {
+        passwordHash,
+      },
+    }),
+    prismaAny.passwordResetToken.update({
+      where: { id: tokenRecord.id },
+      data: { used: true },
+    }),
+    // Revoke all existing refresh tokens (force re-login on all devices)
+    prisma.refreshToken.deleteMany({
+      where: { userId: tokenRecord.userId },
+    }),
+  ]);
 }

@@ -6,11 +6,37 @@ import {
   refreshAccessToken,
   checkUsageLimit,
   verifyEmail,
-  resendVerificationEmail
+  resendVerificationEmail,
+  requestPasswordReset,
+  resetPassword,
+  updateProfile,
+  changePassword,
 } from './services/auth';
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
 import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
+
+type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
+
+/** Shape of user returned by GET /auth/me (select + preferences) */
+interface AuthMeUser {
+  id: string;
+  email: string | null;
+  name: string | null;
+  role: string;
+  subscriptionPlan: SubscriptionPlanKey;
+  subscriptionStatus: string;
+  coachLevel: string | null;
+  organizationName: string | null;
+  teamAgeGroups: string[];
+  preferences: unknown;
+  sessionsGeneratedThisMonth: number;
+  drillsGeneratedThisMonth: number;
+  trialEndDate: Date | null;
+  emailVerified: boolean;
+  emailVerifiedAt: Date | null;
+  createdAt: Date;
+}
 
 const r = express.Router();
 
@@ -24,6 +50,28 @@ const RegisterSchema = z.object({
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string(),
+});
+
+const ForgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const ResetPasswordSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8),
+});
+
+const UpdateProfileSchema = z.object({
+  name: z.string().min(0).max(200).optional(),
+  coachLevel: z.enum(['GRASSROOTS', 'USSF_C', 'USSF_B_PLUS']).optional().nullable(),
+  organizationName: z.string().min(0).max(200).optional().nullable(),
+  teamAgeGroups: z.array(z.string().max(20)).max(20).optional(),
+  preferences: z.record(z.string(), z.unknown()).optional(),
+});
+
+const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8, 'New password must be at least 8 characters'),
 });
 
 // Register
@@ -78,7 +126,8 @@ r.post('/auth/refresh', async (req, res) => {
 // Get current user
 r.get('/auth/me', authenticate, async (req: any, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    // Omit preferences from select so /auth/me works even if migration add_user_preferences not applied
+    const raw = await prisma.user.findUnique({
       where: { id: req.userId },
       select: {
         id: true,
@@ -96,8 +145,10 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         emailVerified: true,
         emailVerifiedAt: true,
         createdAt: true,
-      }
+      },
     });
+
+    const user = raw ? { ...raw, preferences: null as unknown } as AuthMeUser : null;
     
     if (!user) {
       return res.status(404).json({ ok: false, error: 'User not found' });
@@ -108,7 +159,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     const drillLimit = await checkUsageLimit(req.userId, 'drill');
     
     // Get subscription features
-    const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+    const plan = user.subscriptionPlan;
     const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
     const features = {
       canExportPDF: limits.canExportPDF,
@@ -134,6 +185,43 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Update profile and preferences
+r.patch('/auth/me', authenticate, async (req: any, res) => {
+  try {
+    const body = UpdateProfileSchema.parse(req.body);
+    await updateProfile(req.userId, {
+      name: body.name,
+      coachLevel: body.coachLevel ?? undefined,
+      organizationName: body.organizationName ?? undefined,
+      teamAgeGroups: body.teamAgeGroups,
+      preferences: body.preferences ?? undefined,
+    });
+    return res.json({ ok: true, message: 'Profile updated' });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Change password (authenticated)
+r.post('/auth/password/change', authenticate, async (req: any, res) => {
+  try {
+    const body = ChangePasswordSchema.parse(req.body);
+    await changePassword(req.userId, body.currentPassword, body.newPassword);
+    return res.json({ ok: true, message: 'Password changed. Please sign in again.' });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    if (error.message?.includes('Current password') || error.message?.includes('incorrect')) {
+      return res.status(401).json({ ok: false, error: error.message });
+    }
+    return res.status(400).json({ ok: false, error: error.message });
   }
 });
 
@@ -197,6 +285,48 @@ r.post('/auth/resend-verification', authenticate, async (req: any, res) => {
       return res.status(400).json({ ok: false, error: error.message });
     }
     return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// Request password reset
+r.post('/auth/password/forgot', async (req, res) => {
+  try {
+    const data = ForgotPasswordSchema.parse(req.body);
+    await requestPasswordReset(data.email);
+    // Always respond with success message regardless of whether user exists
+    return res.json({
+      ok: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    return res
+      .status(500)
+      .json({ ok: false, error: error.message || 'Failed to request password reset' });
+  }
+});
+
+// Reset password
+r.post('/auth/password/reset', async (req, res) => {
+  try {
+    const data = ResetPasswordSchema.parse(req.body);
+    await resetPassword(data.token, data.password);
+    return res.json({ ok: true, message: 'Password has been reset successfully.' });
+  } catch (error: any) {
+    if (error.name === 'ZodError') {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Invalid input', details: error.errors });
+    }
+    // Treat token issues as 400 to avoid exposing stack traces
+    const message = error.message || 'Failed to reset password';
+    const status =
+      message.includes('reset link') || message.includes('token') ? 400 : 500;
+    return res.status(status).json({ ok: false, error: message });
   }
 });
 

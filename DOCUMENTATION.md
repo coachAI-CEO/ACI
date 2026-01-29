@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 15, 2026  
-**Version:** 1.6.0
+**Last Updated:** January 29, 2026  
+**Version:** 1.9.0
 
 ## Table of Contents
 
@@ -308,6 +308,8 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 - `POST /auth/login` - Login with email/password
 - `POST /auth/refresh` - Refresh access token
 - `GET /auth/me` - Get current user info and usage limits
+- `PATCH /auth/me` - Update profile (name, coachLevel, organizationName, teamAgeGroups) and/or preferences
+- `POST /auth/password/change` - Change password (authenticated; revokes other sessions)
 - `GET /auth/usage` - Get usage limits for current user
 - `POST /auth/logout` - Revoke refresh token
 - `POST /auth/verify-email` - Verify email with token (from verification link)
@@ -375,8 +377,12 @@ User Input → Next.js Frontend → Next.js API Routes → Express Backend → G
 ### Next.js API Routes (Port 3000)
 
 All backend endpoints are proxied through Next.js API routes:
+- `/api/auth/me` - GET/PATCH current user (settings page)
+- `/api/auth/refresh` - POST refresh token
+- `/api/auth/password/change` - POST change password
 - `/api/vault/*` - Vault operations
-- `/api/vault/sessions/[sessionId]` - Get individual session by ID
+- `/api/vault/sessions/[sessionId]` - Get individual session by ID (forwards Authorization)
+- `/api/vault/series/[seriesId]` - Get series by ID (forwards Authorization)
 - `/api/favorites/*` - Favorites operations (supports JWT and x-user-id)
 - `/api/player-plans/*` - Player plan operations (NEW)
 - `/api/player-plans/bulk-lookup` - Bulk lookup player plans (NEW)
@@ -476,7 +482,13 @@ All backend endpoints are proxied through Next.js API routes:
     - Copy text or export as PDF
     - Sticky header with week selector always visible
 
-8. **Player Plans** (`/player-plans`) (NEW)
+9. **Settings** (`/settings`) (NEW)
+  - Profile: name, coach level, organization, team age groups
+  - Preferences: default age group, email session reminders
+  - Account: change password (revokes other sessions on success)
+  - Requires sign-in; uses Next.js API auth proxy (`/api/auth/me`, etc.) for same-origin requests
+
+10. **Player Plans** (`/player-plans`) (NEW)
    - List all generated player plans
    - Filter by source type (SESSION, SERIES)
    - View plan details
@@ -832,6 +844,32 @@ pnpm test
 
 ## Recent Changes
 
+### January 29, 2026
+
+#### Settings Page & User Profiles (NEW)
+- ✅ Settings page (`/settings`) for profile, preferences, and account
+- ✅ Profile: name, coach level, organization, team age groups
+- ✅ Preferences: default age group, email session reminders (stored in `User.preferences` JSON)
+- ✅ Account: change password (authenticated); revokes other sessions on success
+- ✅ API: `PATCH /auth/me` (profile + preferences), `POST /auth/password/change`
+- ✅ Auth proxy: Next.js API routes `/api/auth/me`, `/api/auth/refresh`, `/api/auth/password/change` so settings works same-origin like calendar/vault
+- ✅ GET `/auth/me` omits `preferences` from Prisma select for backward compatibility when migration not applied
+
+#### Add to Calendar & Conflict Detection
+- ✅ "Add to Calendar" button on session view (after generating a session) opens ScheduleSessionModal
+- ✅ When scheduling, modal fetches existing calendar events for the selected day and shows a warning if another session overlaps the chosen time
+- ✅ Overlap uses session duration; optional `sessionDurationMin` prop for accurate conflict check
+
+#### Skill Focus & Coaching Phrases
+- ✅ Skill focus generation: frontend and Next.js proxy send `Authorization` header so generation works when backend requires auth
+- ✅ Coaching phrases: single "Coaching phrases" section with one Encourage list and one Correct list (all sections merged) instead of per-section cards
+- ✅ Prompt updated for more in-depth phrases (2–4 per section, specific/actionable, tactical/technical detail)
+
+#### Vault Full View Auth
+- ✅ Opening a session from vault to full view (`/demo/session?sessionId=...`) sends `Authorization` header when fetching session/series
+- ✅ Next.js API routes `/api/vault/sessions/[sessionId]` and `/api/vault/series/[seriesId]` forward Authorization to backend
+- ✅ Clearer 401 message: "Please sign in to view this session."
+
 ### January 15, 2026
 
 #### Player-Only Training Plans (NEW)
@@ -1092,8 +1130,8 @@ API calls are made directly to `http://localhost:4000` in development.
 
 - [x] Real user authentication (✅ Completed)
 - [x] Email verification (✅ Completed)
-- [ ] Password reset flow
-- [ ] User profiles and preferences
+- [x] Password reset flow (✅ Completed)
+- [x] User profiles and preferences (✅ Settings page: profile, preferences, change password)
 - [ ] Subscription management UI
 - [ ] Payment integration
 - [x] Admin dashboard: user counts, access level overview, and quick user add (✅ Completed)
@@ -1124,5 +1162,5 @@ API calls are made directly to `http://localhost:4000` in development.
 
 For issues, questions, or contributions, please refer to the project repository.
 
-**Last Updated:** January 24, 2026  
-**Version:** 1.7.0
+**Last Updated:** January 29, 2026  
+**Version:** 1.9.0

@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import DatePicker from "./DatePicker";
 import TimePicker from "./TimePicker";
+
+interface ConflictingEvent {
+  id: string;
+  title: string;
+  scheduledDate: string;
+  durationMin: number;
+}
 
 interface ScheduleSessionModalProps {
   sessionId: string;
   sessionTitle: string;
   sessionRefCode?: string | null;
+  /** Duration in minutes for conflict detection (default 60) */
+  sessionDurationMin?: number;
   onClose: () => void;
   onScheduled?: () => void;
 }
@@ -16,6 +25,7 @@ export default function ScheduleSessionModal({
   sessionId,
   sessionTitle,
   sessionRefCode,
+  sessionDurationMin = 60,
   onClose,
   onScheduled,
 }: ScheduleSessionModalProps) {
@@ -26,6 +36,81 @@ export default function ScheduleSessionModal({
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conflictingEvents, setConflictingEvents] = useState<ConflictingEvent[]>([]);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+
+  // Check for overlapping events when date or time changes
+  const checkConflicts = useCallback(async () => {
+    if (!scheduledDate || !scheduledTime) {
+      setConflictingEvents([]);
+      return;
+    }
+    const dateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+    if (isNaN(dateTime.getTime())) {
+      setConflictingEvents([]);
+      return;
+    }
+    const dayStart = new Date(scheduledDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(scheduledDate);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    setCheckingConflicts(true);
+    try {
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (!accessToken) {
+        setConflictingEvents([]);
+        return;
+      }
+      const params = new URLSearchParams({
+        startDate: dayStart.toISOString(),
+        endDate: dayEnd.toISOString(),
+        includeCompleted: "true",
+        includeCancelled: "false",
+      });
+      const res = await fetch(`/api/calendar/events?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        setConflictingEvents([]);
+        return;
+      }
+      const data = await res.json();
+      const events: Array<{
+        id: string;
+        scheduledDate: string;
+        durationMin?: number | null;
+        session?: { title?: string; durationMin?: number | null } | null;
+      }> = data.events || [];
+
+      const newStart = dateTime.getTime();
+      const newEnd = newStart + sessionDurationMin * 60 * 1000;
+      const conflicts: ConflictingEvent[] = [];
+
+      for (const ev of events) {
+        const existingStart = new Date(ev.scheduledDate).getTime();
+        const dur = ev.durationMin ?? ev.session?.durationMin ?? 60;
+        const existingEnd = existingStart + dur * 60 * 1000;
+        if (newStart < existingEnd && newEnd > existingStart) {
+          conflicts.push({
+            id: ev.id,
+            title: ev.session?.title ?? "Session",
+            scheduledDate: ev.scheduledDate,
+            durationMin: dur,
+          });
+        }
+      }
+      setConflictingEvents(conflicts);
+    } catch {
+      setConflictingEvents([]);
+    } finally {
+      setCheckingConflicts(false);
+    }
+  }, [scheduledDate, scheduledTime, sessionDurationMin]);
+
+  useEffect(() => {
+    checkConflicts();
+  }, [checkConflicts]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,6 +280,31 @@ export default function ScheduleSessionModal({
               className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 resize-none"
             />
           </div>
+
+          {checkingConflicts && (
+            <p className="text-xs text-slate-500">Checking for conflicts...</p>
+          )}
+          {!checkingConflicts && conflictingEvents.length > 0 && (
+            <div className="rounded-lg border border-amber-600/50 bg-amber-900/20 p-3 text-sm">
+              <p className="font-medium text-amber-200 mb-2">
+                You already have {conflictingEvents.length} session{conflictingEvents.length !== 1 ? "s" : ""} at this time:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-amber-200/90">
+                {conflictingEvents.map((ev) => {
+                  const time = new Date(ev.scheduledDate);
+                  const timeStr = time.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                  return (
+                    <li key={ev.id}>
+                      {timeStr} – {ev.title} ({ev.durationMin} min)
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2 text-xs text-amber-200/70">
+                You can still schedule this session, or pick a different time.
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-lg border border-red-700/50 bg-red-900/20 p-3 text-sm text-red-300">
