@@ -120,6 +120,15 @@ const UniversalDrillDiagram = ({
   const isSmall = size === "small";
 
   const { title, diagram, json, spaceConstraint } = drillData;
+  
+  // DEBUG: Log what we received
+  console.log("📥 Component received drillData:", {
+    title,
+    diagramExists: !!diagram,
+    diagramKeys: diagram ? Object.keys(diagram) : [],
+    diagramArrows: diagram?.arrows?.length ?? 0,
+  });
+  
   const { goals = [], players = [], pitch = {}, arrows = [], annotations = [], safeZones = [] } = diagram || {};
   
   // DEBUG: Log arrow data
