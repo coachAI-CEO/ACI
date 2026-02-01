@@ -35,6 +35,7 @@ export function aciToUniversalDrillData(
   };
 
   if (diagram) {
+    // Preserve ALL pitch data including orientation and showZones
     inner.pitch = diagram.pitch ? { ...diagram.pitch } : {};
     
     // Map players

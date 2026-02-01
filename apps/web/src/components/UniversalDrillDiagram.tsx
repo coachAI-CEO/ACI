@@ -33,6 +33,18 @@ export interface UniversalDrillAnnotation {
   fontWeight?: string;
 }
 
+/** Safe zone - restricted area with special rules */
+export interface UniversalDrillSafeZone {
+  id?: string;
+  x: number;  // Left edge (percentage)
+  y: number;  // Top edge (percentage)
+  width: number;  // Width (percentage)
+  height: number;  // Height (percentage)
+  team?: "ATT" | "DEF" | string;  // Which team can enter
+  label?: string;  // Optional label
+  color?: string;  // Custom color
+}
+
 /** Player shape for the universal diagram (matches ACI DiagramPlayer for id, number, team, role, x, y). */
 export interface UniversalDrillPlayer {
   id: string;
@@ -49,6 +61,7 @@ export interface UniversalDrillDiagramInner {
   pitch?: Record<string, unknown>;
   arrows?: UniversalDrillArrow[];
   annotations?: UniversalDrillAnnotation[];
+  safeZones?: UniversalDrillSafeZone[];
 }
 
 export interface UniversalDrillDataJson {
@@ -107,13 +120,13 @@ const UniversalDrillDiagram = ({
   const isSmall = size === "small";
 
   const { title, diagram, json, spaceConstraint } = drillData;
-  const { goals = [], players = [], pitch = {}, arrows = [], annotations = [] } = diagram || {};
+  const { goals = [], players = [], pitch = {}, arrows = [], annotations = [], safeZones = [] } = diagram || {};
   const pitchOrientation = (pitch as { orientation?: string }).orientation;
   const isHalfPitch = spaceConstraint === "HALF";
 
-  // ============================================================================
+  // ==========================================================================
   // MEASUREMENT-BASED RENDERING
-  // ============================================================================
+  // ==========================================================================
   
   // Get actual dimensions from JSON
   const widthYards = json?.organization?.area?.widthYards;
@@ -146,35 +159,19 @@ const UniversalDrillDiagram = ({
   // Determine if we should show field context
   // Show context for QUARTER drills or when location is explicitly mentioned
   const showFieldContext = (pitch as any)?.variant === "QUARTER" && fieldLocation !== null;
-  
-  // Calculate aspect ratio from actual measurements
-  let aspectRatio = 1.53; // Default ratio (520/340 ≈ 1.53)
-  let displayWidth = "Unknown";
-  let displayLength = "Unknown";
-  
-  if (widthYards && lengthYards) {
-    // Actual field aspect ratio
-    aspectRatio = lengthYards / widthYards;
-    displayWidth = `${widthYards}`;
-    displayLength = `${lengthYards}`;
-  }
-  
-  // Calculate container dimensions based on aspect ratio
-  const baseHeight = isSmall ? 210 : 340;
-  const pitchHeight = baseHeight;
-  const pitchWidth = Math.round(pitchHeight * aspectRatio);
-  const containerWidth = isSmall ? "auto" : Math.max(600, pitchWidth + 80);
 
   // Note: scaleX and scaleY will be defined later after viewport calculation
 
-  // ============================================================================
+  // ==========================================================================
   // ZONE DETECTION SYSTEM
-  // ============================================================================
+  // ==========================================================================
   
   const detectZones = (jsonData?: UniversalDrillDataJson): DetectedZone[] => {
     const zones: DetectedZone[] = [];
     if (!jsonData) return zones;
-
+    // Respect pitch flag -- if the adapter or author disabled auto zones, skip detection
+    const showZonesFlag = (pitch as any)?.showZones;
+    if (showZonesFlag === false) return zones;
     // Combine all text sources
     const textSources = [
       jsonData.description || "",
@@ -311,71 +308,96 @@ const UniversalDrillDiagram = ({
 
   const detectedZones = detectZones(json);
 
-  // ============================================================================
-  // ORIENTATION DETECTION
-  // ============================================================================
-
-  // ============================================================================
-  // SMART ORIENTATION DETECTION
-  // ============================================================================
+  // ==========================================================================
+  // ORIENTATION DETECTION & RENDERING DECISION
+  // ==========================================================================
   
-  // 1. Check goals first (most reliable indicator)
-  const goalsIndicateHorizontal = goals.length > 0 && (() => {
+  // ✅ PRIORITY 1: Respect explicit pitch.orientation first
+  const explicitOrientation = (pitch as any)?.orientation as string | undefined;
+  
+  // If pitch.orientation is explicitly set, use it directly
+  let drawVertical: boolean;
+  if (explicitOrientation === "HORIZONTAL") {
+    drawVertical = false; // Draw horizontally (landscape)
+  } else if (explicitOrientation === "VERTICAL") {
+    drawVertical = true;  // Draw vertically (portrait)
+  } else {
+    // ✅ PRIORITY 2: Infer from goals (most reliable)
     const leftGoals = goals.filter(g => g.x < 20);
     const rightGoals = goals.filter(g => g.x > 80);
     const topGoals = goals.filter(g => g.y < 20);
     const bottomGoals = goals.filter(g => g.y > 80);
     
-    // If goals are clearly on left/right (x-axis), it's horizontal
+    let goalsIndicateHorizontal: boolean | null = null;
     if ((leftGoals.length > 0 || rightGoals.length > 0) && topGoals.length === 0 && bottomGoals.length === 0) {
-      return true;
+      goalsIndicateHorizontal = true;  // Goals on left/right → horizontal data
+    } else if ((topGoals.length > 0 || bottomGoals.length > 0) && leftGoals.length === 0 && rightGoals.length === 0) {
+      goalsIndicateHorizontal = false; // Goals on top/bottom → vertical data
     }
-    // If goals are clearly on top/bottom (y-axis), it's vertical
-    if ((topGoals.length > 0 || bottomGoals.length > 0) && leftGoals.length === 0 && rightGoals.length === 0) {
-      return false;
-    }
-    return null; // Inconclusive
-  })();
-  
-  // 2. Infer from player spread (if goals inconclusive)
-  const inferHorizontal =
-    players.length >= 2 &&
-    (() => {
+    
+    if (goalsIndicateHorizontal !== null) {
+      drawVertical = !goalsIndicateHorizontal; // If data is horizontal, don't draw vertical
+    } else {
+      // ✅ PRIORITY 3: Infer from player spread
       const xs = players.map((p) => p.x);
       const ys = players.map((p) => p.y);
-      const rangeX = Math.max(...xs) - Math.min(...xs);
-      const rangeY = Math.max(...ys) - Math.min(...ys);
-      return rangeX > rangeY;
-    })();
-  
-  // 3. Final determination: goals override JSON, then player spread, then JSON
-  const isHorizontal = 
-    goalsIndicateHorizontal !== null 
-      ? goalsIndicateHorizontal  // Trust goals first
-      : pitchOrientation === "HORIZONTAL" 
-        ? inferHorizontal  // If JSON says horizontal, verify with player spread
-        : pitchOrientation == null && inferHorizontal;  // No orientation, use inference
+      const rangeX = xs.length > 0 ? Math.max(...xs) - Math.min(...xs) : 0;
+      const rangeY = ys.length > 0 ? Math.max(...ys) - Math.min(...ys) : 0;
+      
+      const dataIsHorizontal = players.length >= 2 && rangeX > rangeY;
+      drawVertical = !dataIsHorizontal; // If data is horizontal, don't draw vertical
+    }
+  }
 
-  // Always draw pitch vertically (goals top/bottom); #1 (GK) at bottom, others in front (up)
-  const drawVertical = true;
-  const dataIsHorizontalButDrawVertical = isHorizontal;
+  // Determine if we need to rotate the data coordinates
+  // We rotate only when the source data is horizontal but we're drawing vertically
+  // (which shouldn't happen if we respect pitch.orientation)
+  const shouldRotate = false; // IMPORTANT: Since we respect pitch.orientation, we don't rotate
 
-  // When vertical data: if GK (#1 or role GK) has low y, flip Y so GK goes to bottom
+  // When drawing vertically, flip the Y if the GK is in the top half so GK ends at the bottom
   const gkPlayer = players.find((p) => p.number === 1 || p.role === "GK");
   const flipVerticalY =
-    !dataIsHorizontalButDrawVertical &&
+    drawVertical &&
     players.length > 0 &&
     (gkPlayer ? gkPlayer.y < 50 : false);
 
-  // Horizontal data: low x = our goal (GK) → bottom; vertical data: flip Y when GK is in top half so GK → bottom
+  // Map data coords -> screen coords
   const toScreenX = (dataX: number, dataY: number) =>
-    dataIsHorizontalButDrawVertical ? scaleX(dataY) : scaleX(dataX);
+    scaleX(dataX);
   const toScreenY = (dataX: number, dataY: number) =>
-    dataIsHorizontalButDrawVertical
-      ? scaleY(100 - dataX)
-      : flipVerticalY
-        ? scaleY(100 - dataY)
-        : scaleY(dataY);
+    flipVerticalY ? scaleY(100 - dataY) : scaleY(dataY);
+
+  // ==========================================================================
+  // CALCULATE PITCH DIMENSIONS - AFTER DETERMINING ORIENTATION
+  // ==========================================================================
+  // Now that we know drawVertical, we can calculate the correct aspect ratio
+  
+  const baseHeight = isSmall ? 210 : 340;
+  const pitchHeight = baseHeight;
+  
+  // Aspect ratio depends on orientation:
+  // - Vertical: height/width = lengthYards/widthYards (taller)
+  // - Horizontal: width/height = lengthYards/widthYards (wider)
+  let aspectRatio = 1.53; // Default: 520/340 ≈ 1.53
+  
+  let displayWidth = "Unknown";
+  let displayLength = "Unknown";
+  
+  if (widthYards && lengthYards) {
+    displayWidth = `${widthYards}`;
+    displayLength = `${lengthYards}`;
+    
+    if (drawVertical) {
+      // Vertical: aspect = length/width (portrait ratio)
+      aspectRatio = lengthYards / widthYards;
+    } else {
+      // Horizontal: aspect = width/length (landscape ratio - inverted!)
+      aspectRatio = widthYards / lengthYards;
+    }
+  }
+  
+  const pitchWidth = Math.round(pitchHeight * aspectRatio);
+  const containerWidth = isSmall ? "auto" : Math.max(600, pitchWidth + 80);
 
   // When ACI/adapter passes no goals, infer default goals; use vertical layout when drawVertical
   const displayGoals: UniversalDrillGoal[] =
@@ -399,9 +421,9 @@ const UniversalDrillDiagram = ({
   const attackPlayers = players.filter((p) => p.team === "ATT");
   const defendPlayers = players.filter((p) => p.team === "DEF");
 
-  // ============================================================================
+  // ==========================================================================
   // DYNAMIC VIEWPORT - Calculate bounding box of active area
-  // ============================================================================
+  // ==========================================================================
   
   const calculateViewport = () => {
     if (players.length === 0) {
@@ -468,7 +490,8 @@ const UniversalDrillDiagram = ({
   const hasRightGoal = !drawVertical && displayGoals.some((g) => g.x > 80);
   const hasTopGoal = drawVertical && displayGoals.some((g) => g.y < 10);
   const hasBottomGoal = drawVertical && displayGoals.some((g) => g.y > 90);
-  
+  const isFullPitch = drawVertical ? hasTopGoal && hasBottomGoal : hasLeftGoal && hasRightGoal;
+
   const viewport = calculateViewport();
   
   // Create viewport-aware scale functions
@@ -518,8 +541,6 @@ const UniversalDrillDiagram = ({
       return 9;
     }
   };
-
-  const isFullPitch = drawVertical ? hasTopGoal && hasBottomGoal : hasLeftGoal && hasRightGoal;
 
   const fieldWidth = json?.organization?.area?.widthYards ?? 60;
   const fieldLength = json?.organization?.area?.lengthYards ?? 50;
@@ -679,6 +700,44 @@ const UniversalDrillDiagram = ({
               fill="rgba(251, 191, 36, 0.8)"
             />
           </marker>
+          
+          {/* Safe zone patterns for ATT and DEF teams */}
+          <pattern
+            id="safeZoneATT"
+            patternUnits="userSpaceOnUse"
+            width={8}
+            height={8}
+          >
+            <path
+              d="M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4"
+              stroke="rgba(59, 130, 246, 0.3)"
+              strokeWidth="1.5"
+            />
+          </pattern>
+          <pattern
+            id="safeZoneDEF"
+            patternUnits="userSpaceOnUse"
+            width={8}
+            height={8}
+          >
+            <path
+              d="M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4"
+              stroke="rgba(239, 68, 68, 0.3)"
+              strokeWidth="1.5"
+            />
+          </pattern>
+          <pattern
+            id="safeZoneNEUTRAL"
+            patternUnits="userSpaceOnUse"
+            width={8}
+            height={8}
+          >
+            <path
+              d="M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4"
+              stroke="rgba(251, 191, 36, 0.3)"
+              strokeWidth="1.5"
+            />
+          </pattern>
           
           {/* Diagonal pattern for restricted zones */}
           {detectedZones
@@ -1222,14 +1281,14 @@ const UniversalDrillDiagram = ({
           (() => {
             const passLines = players
               .filter((p) =>
-                p.team === "ATT" && (isHorizontal ? p.x > 70 : p.y > 70)
+                p.team === "ATT" && (!drawVertical ? p.x > 70 : p.y > 70)
               )
               .slice(0, 2)
               .map((player, idx) => {
                 const nextPlayer = players.find(
                   (p) =>
                     p.team === "ATT" &&
-                    (isHorizontal
+                    (!drawVertical
                       ? p.x < player.x && p.x > 50
                       : p.y < player.y && p.y > 50)
                 );
@@ -1259,9 +1318,9 @@ const UniversalDrillDiagram = ({
                 const target = players.find(
                   (p) =>
                     p.team === "ATT" &&
-                    Math.abs(isHorizontal ? p.y - player.y : p.x - player.x) <
+                    Math.abs(!drawVertical ? p.y - player.y : p.x - player.x) <
                       20 &&
-                    (isHorizontal ? p.x > player.x : p.y > player.y)
+                    (!drawVertical ? p.x > player.x : p.y > player.y)
                 );
                 if (target) {
                   return (
@@ -1286,118 +1345,203 @@ const UniversalDrillDiagram = ({
             );
           })()}
 
+        {/* Safe Zones - Restricted areas with special rules */}
+        {safeZones.map((zone, idx) => {
+          const zx = scaleX(zone.x);
+          const zy = scaleY(zone.y);
+          const zw = (zone.width / 100) * pitchWidth;
+          const zh = (zone.height / 100) * pitchHeight;
+          
+          // Get color and pattern based on team
+          const getZoneColor = (team?: string) => {
+            if (team === "ATT") return { pattern: "url(#safeZoneATT)", stroke: "rgba(59, 130, 246, 0.4)" };
+            if (team === "DEF") return { pattern: "url(#safeZoneDEF)", stroke: "rgba(239, 68, 68, 0.4)" };
+            return { pattern: "url(#safeZoneNEUTRAL)", stroke: "rgba(251, 191, 36, 0.4)" };
+          };
+          
+          const zoneStyle = getZoneColor(zone.team);
+          
+          return (
+            <g key={`safezone-${zone.id || idx}`}>
+              {/* Safe zone rectangle with pattern */}
+              <rect
+                x={zx}
+                y={zy}
+                width={zw}
+                height={zh}
+                fill={zone.color || zoneStyle.pattern}
+                stroke={zoneStyle.stroke}
+                strokeWidth="2"
+                strokeDasharray="6,4"
+              />
+              
+              {/* Optional label */}
+              {zone.label && !isSmall && (
+                <text
+                  x={zx + zw / 2}
+                  y={zy + 12}
+                  textAnchor="middle"
+                  fill={zoneStyle.stroke}
+                  fontSize="9"
+                  fontWeight="700"
+                  letterSpacing="0.5px"
+                >
+                  {zone.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
         {/* Custom Arrows - Passes, Movement, Pressing */}
+        {/* STEP 1: Draw arrow LINES first (behind everything) */}
         {arrows.map((arrow, idx) => {
           const x1 = toScreenX(arrow.from.x, arrow.from.y);
           const y1 = toScreenY(arrow.from.x, arrow.from.y);
           const x2 = toScreenX(arrow.to.x, arrow.to.y);
           const y2 = toScreenY(arrow.to.x, arrow.to.y);
           
-          // Different styles based on arrow type
           const getArrowStyle = (type: string) => {
             switch (type) {
               case "pass":
                 return {
-                  stroke: arrow.color || "rgba(255, 255, 255, 0.8)",
+                  stroke: arrow.color || "rgba(255, 255, 255, 0.6)",
                   strokeWidth: isSmall ? 1.2 : 1.8,
                   strokeDasharray: "none",
-                  opacity: 0.85,
-                  arrowSize: 8
+                  opacity: 1,
+                  arrowSize: 12,
+                  arrowFill: "rgba(255, 255, 255, 0.95)"
                 };
               case "movement":
               case "run":
                 return {
-                  stroke: arrow.color || "rgba(255, 255, 255, 0.5)",
+                  stroke: arrow.color || "rgba(255, 255, 255, 0.4)",
                   strokeWidth: isSmall ? 1 : 1.5,
                   strokeDasharray: isSmall ? "3,2" : "4,3",
-                  opacity: 0.6,
-                  arrowSize: 7
+                  opacity: 1,
+                  arrowSize: 8,
+                  arrowFill: "rgba(255, 255, 255, 0.4)"
                 };
               case "press":
                 return {
-                  stroke: arrow.color || "rgba(239, 68, 68, 0.8)",
+                  stroke: arrow.color || "rgba(239, 68, 68, 0.85)",
                   strokeWidth: isSmall ? 2 : 2.5,
                   strokeDasharray: "none",
-                  opacity: 0.9,
-                  arrowSize: 10
+                  opacity: 1,
+                  arrowSize: 12,
+                  arrowFill: "rgba(239, 68, 68, 0.95)"
                 };
               default:
                 return {
                   stroke: arrow.color || "rgba(255, 255, 255, 0.6)",
                   strokeWidth: isSmall ? 1.2 : 1.8,
                   strokeDasharray: "none",
-                  opacity: 0.7,
-                  arrowSize: 8
+                  opacity: 1,
+                  arrowSize: 12,
+                  arrowFill: "rgba(255, 255, 255, 0.95)"
                 };
             }
           };
           
           const style = getArrowStyle(arrow.type || "pass");
-          
-          // Calculate arrowhead
           const dx = x2 - x1;
           const dy = y2 - y1;
-          const angle = Math.atan2(dy, dx);
           const arrowSize = style.arrowSize;
-          
-          // Shorten the line so arrowhead sits at the end
           const lineLength = Math.sqrt(dx * dx + dy * dy);
           const shortenBy = arrowSize;
           const ratio = (lineLength - shortenBy) / lineLength;
           const x2Short = x1 + dx * ratio;
           const y2Short = y1 + dy * ratio;
           
-          // Arrowhead points
+          return (
+            <line
+              key={`arrow-line-${arrow.id || idx}`}
+              x1={x1}
+              y1={y1}
+              x2={x2Short}
+              y2={y2Short}
+              stroke={style.stroke}
+              strokeWidth={style.strokeWidth}
+              strokeDasharray={style.strokeDasharray}
+              opacity={style.opacity}
+            />
+          );
+        })}
+        
+        {/* STEP 2: Draw numbered circles (middle layer) */}
+        {arrows.map((arrow, idx) => {
+          if (!arrow.label || isSmall) return null;
+          
+          const x1 = toScreenX(arrow.from.x, arrow.from.y);
+          const y1 = toScreenY(arrow.from.x, arrow.from.y);
+          const x2 = toScreenX(arrow.to.x, arrow.to.y);
+          const y2 = toScreenY(arrow.to.x, arrow.to.y);
+          
+          return (
+            <g key={`arrow-label-${arrow.id || idx}`}>
+              <circle
+                cx={(x1 + x2) / 2}
+                cy={(y1 + y2) / 2}
+                r={9}
+                fill="rgba(255, 255, 255, 0.85)"
+                stroke="#000"
+                strokeWidth="1.5"
+              />
+              <text
+                x={(x1 + x2) / 2}
+                y={(y1 + y2) / 2 + 3.5}
+                textAnchor="middle"
+                fill="#000"
+                fontSize="9"
+                fontWeight="bold"
+              >
+                {arrow.label}
+              </text>
+            </g>
+          );
+        })}
+        
+        {/* STEP 3: Draw arrowheads LAST (on top of everything) */}
+        {arrows.map((arrow, idx) => {
+          const x1 = toScreenX(arrow.from.x, arrow.from.y);
+          const y1 = toScreenY(arrow.from.x, arrow.from.y);
+          const x2 = toScreenX(arrow.to.x, arrow.to.y);
+          const y2 = toScreenY(arrow.to.x, arrow.to.y);
+          
+          const getArrowStyle = (type: string) => {
+            switch (type) {
+              case "pass":
+                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.95)" };
+              case "movement":
+              case "run":
+                return { arrowSize: 8, arrowFill: "rgba(255, 255, 255, 0.4)" };
+              case "press":
+                return { arrowSize: 12, arrowFill: "rgba(239, 68, 68, 0.95)" };
+              default:
+                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.95)" };
+            }
+          };
+          
+          const style = getArrowStyle(arrow.type || "pass");
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const angle = Math.atan2(dy, dx);
+          const arrowSize = style.arrowSize;
+          
           const arrowPoint1X = x2 - arrowSize * Math.cos(angle - Math.PI / 6);
           const arrowPoint1Y = y2 - arrowSize * Math.sin(angle - Math.PI / 6);
           const arrowPoint2X = x2 - arrowSize * Math.cos(angle + Math.PI / 6);
           const arrowPoint2Y = y2 - arrowSize * Math.sin(angle + Math.PI / 6);
           
           return (
-            <g key={`arrow-${arrow.id || idx}`}>
-              {/* Arrow line */}
-              <line
-                x1={x1}
-                y1={y1}
-                x2={x2Short}
-                y2={y2Short}
-                stroke={style.stroke}
-                strokeWidth={style.strokeWidth}
-                strokeDasharray={style.strokeDasharray}
-                opacity={style.opacity}
-              />
-              
-              {/* Arrowhead triangle */}
-              <polygon
-                points={`${x2},${y2} ${arrowPoint1X},${arrowPoint1Y} ${arrowPoint2X},${arrowPoint2Y}`}
-                fill={style.stroke}
-                opacity={style.opacity}
-              />
-              
-              {/* Arrow label (optional) - numbered circles for pass sequences */}
-              {arrow.label && !isSmall && (
-                <>
-                  <circle
-                    cx={(x1 + x2) / 2}
-                    cy={(y1 + y2) / 2}
-                    r={9}
-                    fill="rgba(255, 255, 255, 0.95)"
-                    stroke="#000"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={(x1 + x2) / 2}
-                    y={(y1 + y2) / 2 + 3.5}
-                    textAnchor="middle"
-                    fill="#000"
-                    fontSize="9"
-                    fontWeight="bold"
-                  >
-                    {arrow.label}
-                  </text>
-                </>
-              )}
-            </g>
+            <polygon
+              key={`arrow-head-${arrow.id || idx}`}
+              points={`${x2},${y2} ${arrowPoint1X},${arrowPoint1Y} ${arrowPoint2X},${arrowPoint2Y}`}
+              fill={style.arrowFill}
+              stroke={arrow.type === "pass" ? "rgba(0, 0, 0, 0.3)" : "none"}
+              strokeWidth={arrow.type === "pass" ? "0.5" : "0"}
+              strokeLinejoin="miter"
+            />
           );
         })}
 
