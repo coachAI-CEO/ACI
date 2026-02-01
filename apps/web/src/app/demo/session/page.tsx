@@ -452,7 +452,10 @@ async function fetchProgressiveSeries(
 }
 
 async function fetchSkillFocusForSessionId(sessionId: string): Promise<SkillFocus | null> {
-  const res = await fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`);
+  const headers: HeadersInit = { ...getUserHeaders() };
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+  const res = await fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`, { headers });
   if (!res.ok) {
     return null;
   }
@@ -1020,7 +1023,12 @@ function SessionDemoPageContent() {
   async function checkVaultStatus(sessionId: string) {
     setCheckingVaultStatus(true);
     try {
-      const res = await fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}/status`);
+      const headers: HeadersInit = { ...getUserHeaders() };
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+      const res = await fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}/status`, {
+        headers,
+      });
       if (res.ok) {
         const data = await res.json();
         setSavedToVault(data.savedToVault || false);
@@ -2344,6 +2352,8 @@ function SessionDemoPageContent() {
                             phase={session.phase || "ATTACKING"}
                             zone={session.zone || "ATTACKING_THIRD"}
                             diagram={diagram}
+                            description={drill.description}
+                            organization={organizationObj ?? undefined}
                           />
                         </div>
                       )}

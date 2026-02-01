@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
-import DrillDiagram from "@/components/DrillDiagram";
+import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
+import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 
@@ -702,10 +703,13 @@ export default function FavoritesPage() {
                           {/* Left: Diagram */}
                           {drill.diagram && (
                             <div className="flex items-center justify-center">
-                              <DrillDiagram
-                                diagram={drill.diagram}
-                                width={220}
-                                height={140}
+                              <UniversalDrillDiagram
+                                drillData={aciToUniversalDrillData(drill.diagram, {
+                                  title: drill.title ?? "Diagram",
+                                  description: drill.description,
+                                  organization: drill.organization,
+                                })}
+                                size="small"
                               />
                             </div>
                           )}
@@ -839,10 +843,13 @@ export default function FavoritesPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
-                      <DrillDiagram
-                        diagram={selectedDrill.json.diagram}
-                        width={280}
-                        height={180}
+                      <UniversalDrillDiagram
+                        drillData={aciToUniversalDrillData(selectedDrill.json.diagram, {
+                          title: selectedDrill.title ?? "Diagram",
+                          description: selectedDrill.json.description,
+                          organization: selectedDrill.json.organization,
+                        })}
+                        size="small"
                       />
                     </div>
                   </div>

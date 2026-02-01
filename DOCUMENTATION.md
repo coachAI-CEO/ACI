@@ -1074,7 +1074,7 @@ pnpm test
 ```bash
 # Required
 GEMINI_API_KEY=your_gemini_api_key_here
-DATABASE_URL=postgresql://user:password@localhost:5432/aci_db
+DATABASE_URL=postgresql://user:password@localhost:5432/aci_db   # Or Supabase (see Future Enhancements: online database migration)
 JWT_SECRET=your-strong-secret-key-minimum-32-characters
 JWT_REFRESH_SECRET=your-strong-refresh-secret-minimum-32-characters
 
@@ -1143,7 +1143,8 @@ API calls are made directly to `http://localhost:4000` in development.
 - [ ] Sharing and collaboration features
 - [x] Advanced search and filtering (✅ Completed)
 - [ ] Export to other formats (Excel, CSV)
-- [ ] Mobile app
+- [ ] Mobile app (React Native; auth, vault, calendar subset)
+- [ ] **Online database migration (Supabase)** – Move from local PostgreSQL to hosted Supabase (pgvector-supported); use pooler URI (Transaction mode, port 6543) for API, direct URI for migrations; document in ENVIRONMENT_VARS.
 - [ ] Offline mode
 - [ ] Multi-language support
 

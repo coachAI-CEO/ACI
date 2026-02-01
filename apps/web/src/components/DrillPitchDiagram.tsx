@@ -245,8 +245,17 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     }
   }, [diagram, players.length]);
   
-  // Determine pitch variant - default to THIRD for final third diagrams
+  // Determine pitch variant and orientation
   const pitchVariant = diagram?.pitch?.variant || "THIRD";
+  const orientation = diagram?.pitch?.orientation || "HORIZONTAL";
+  // When orientation is HORIZONTAL, data uses x = along pitch (0→100 = back→goal), y = across.
+  // We always draw pitch vertically (goal at top). So map: across → screen X, along (flipped) → screen Y.
+  const toScreen = (p: { x: number; y: number }) => {
+    if (orientation === "HORIZONTAL") {
+      return { screenX: nx(p.y), screenY: ny(100 - p.x) };
+    }
+    return { screenX: nx(p.x), screenY: ny(p.y) };
+  };
 
   const layoutPlayers = React.useMemo(() => {
     const perfStart = performance.now();
@@ -266,11 +275,11 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       console.warn(`[DrillPitchDiagram] Filtered out ${players.length - validPlayers.length} invalid players (missing/invalid x/y coordinates)`);
     }
 
-    // First pass: normalize numbers and adjust positioning
-    // For pressing scenarios: attackers start further back relative to defenders
+    // First pass: map data coords to screen (respect orientation), then adjust positioning
     const normalized = validPlayers.map((p) => {
-      const baseX = nx(p.x);
-      let baseY = ny(p.y);
+      const screen = toScreen(p);
+      let baseX = screen.screenX;
+      let baseY = screen.screenY;
       
       // Adjust Y position based on team for better pressing visualization
       // In the diagram: Y=0 is at top (goal), Y increases downward
@@ -443,7 +452,7 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
     }
 
     return validLayoutPlayers;
-  }, [players]);
+  }, [players, orientation]);
   const coach = diagram?.coach || null;
 
   return (
@@ -648,9 +657,7 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
         if (g.x === undefined || g.y === undefined || g.x === null || g.y === null) {
           return null;
         }
-        
-        const gx = nx(g.x);
-        const gy = ny(g.y);
+        const { screenX: gx, screenY: gy } = toScreen({ x: g.x, y: g.y });
         
         // Skip if calculated position is NaN
         if (isNaN(gx) || isNaN(gy)) {
@@ -852,11 +859,13 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
       })}
 
       {/* Coach marker */}
-      {coach && (
+      {coach && (() => {
+        const { screenX: cx, screenY: cy } = toScreen({ x: coach.x, y: coach.y });
+        return (
         <g>
           <rect
-            x={nx(coach.x) - 10}
-            y={ny(coach.y) - 10}
+            x={cx - 10}
+            y={cy - 10}
             width={20}
             height={20}
             rx={4}
@@ -866,8 +875,8 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
             strokeWidth={2}
           />
           <text
-            x={nx(coach.x)}
-            y={ny(coach.y) + 28}
+            x={cx}
+            y={cy + 28}
             textAnchor="middle"
             fontFamily="system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
             fontSize={10}
@@ -876,7 +885,8 @@ function DrillPitchDiagram({ diagram }: DrillPitchDiagramProps) {
             Coach
           </text>
         </g>
-      )}
+        );
+      })()}
     </svg>
   );
 }

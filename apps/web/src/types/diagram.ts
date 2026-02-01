@@ -9,10 +9,18 @@ export interface DiagramPitchZones {
 }
 
 export interface DiagramPitch {
-  variant: "FULL" | "HALF";
+  variant: "FULL" | "HALF" | "THIRD";
   orientation: "HORIZONTAL" | "VERTICAL";
   showZones?: boolean;
   zones?: DiagramPitchZones;
+}
+
+export interface DiagramGoal {
+  id: string;
+  x: number;
+  y: number;
+  width?: number;
+  type?: "BIG" | "SMALL" | string;
 }
 
 export interface DiagramPlayer {
@@ -69,6 +77,7 @@ export interface DiagramLabel {
 export interface DiagramV1 {
   pitch: DiagramPitch;
   players: DiagramPlayer[];
+  goals?: DiagramGoal[];
   coach?: DiagramCoach;
   balls?: any[];
   cones?: any[];

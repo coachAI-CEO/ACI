@@ -14,9 +14,15 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const userId = request.headers.get("x-user-id");
+    const headers: HeadersInit = { "Content-Type": "application/json" };
+    if (authHeader) headers["Authorization"] = authHeader;
+    if (userId) headers["x-user-id"] = userId;
+
     const res = await fetch(`${API_BASE}/vault/lookup`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ refCodes }),
     });
     

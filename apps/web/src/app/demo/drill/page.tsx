@@ -669,6 +669,16 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
               phase={drill.phase}
               zone={drill.zone}
               diagram={diagram}
+              description={drill.json?.description}
+              organization={
+                typeof drill.json?.organization === "object" &&
+                drill.json.organization !== null
+                  ? {
+                      area: drill.json.organization.area,
+                      setupSteps: drill.json.organization.setupSteps,
+                    }
+                  : undefined
+              }
             />
             
             {/* QA Scores Display - below diagram */}

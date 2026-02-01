@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import DrillDiagram from "@/components/DrillDiagram";
+import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
+import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
 import { getUserHeaders } from "@/lib/user";
 
 // Label mappings (same as vault)
@@ -273,6 +274,15 @@ export default function AdminDashboard() {
     lastChecked: null,
   });
 
+  // View JSON by reference code (admin)
+  const [refCodeJsonInput, setRefCodeJsonInput] = useState("");
+  const [refCodeJsonResult, setRefCodeJsonResult] = useState<{ type: string; refCode: string; data: any } | null>(null);
+  const [refCodeJsonError, setRefCodeJsonError] = useState<string | null>(null);
+  const [refCodeJsonCopied, setRefCodeJsonCopied] = useState(false);
+  const [refCodeJsonLoading, setRefCodeJsonLoading] = useState(false);
+  const [refCodeJsonHistory, setRefCodeJsonHistory] = useState<Array<{ refCode: string; type: string }>>([]);
+  const refCodeInputRef = useRef<HTMLInputElement>(null);
+
   // Bulk random session generator (admin)
   const [bulkAgeGroup, setBulkAgeGroup] = useState<string>("U10");
   const [bulkMode, setBulkMode] = useState<"session" | "series">("session");
@@ -466,6 +476,62 @@ export default function AdminDashboard() {
       setSystemStatus(prev => ({ ...prev, lastChecked: new Date() }));
     }
   }, []);
+
+  const lookupRefCodeJson = useCallback(async (overrideRefCode?: string) => {
+    const raw = overrideRefCode ?? refCodeJsonInput;
+    const refCode = String(raw ?? "").trim().toUpperCase();
+    if (!refCode || /^\[object\s+object\]$/i.test(refCode)) {
+      setRefCodeJsonError("Enter a reference code (e.g. D-1234, S-5678)");
+      setRefCodeJsonResult(null);
+      return;
+    }
+    setRefCodeJsonError(null);
+    setRefCodeJsonResult(null);
+    setRefCodeJsonCopied(false);
+    setRefCodeJsonLoading(true);
+    try {
+      const res = await fetch(`/api/vault/lookup/${encodeURIComponent(refCode)}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRefCodeJsonError(data?.error || `Request failed: ${res.status}`);
+        return;
+      }
+      if (data.found && data.data) {
+        const refCodeStr = String(data.refCode ?? refCode ?? "").trim().toUpperCase();
+        const entry = { type: data.type, refCode: refCodeStr, data: data.data };
+        setRefCodeJsonResult(entry);
+        if (refCodeStr && !/^\[object object\]$/i.test(refCodeStr)) {
+          setRefCodeJsonHistory((prev) => {
+            const next = [{ refCode: refCodeStr, type: String(data.type ?? "") }, ...prev.filter((h) => String(h.refCode ?? "") !== refCodeStr)];
+            return next.slice(0, 5);
+          });
+        }
+      } else {
+        setRefCodeJsonError(data?.error || "No data returned");
+      }
+    } catch (e: any) {
+      setRefCodeJsonError(e?.message || "Lookup failed");
+    } finally {
+      setRefCodeJsonLoading(false);
+    }
+  }, [refCodeJsonInput]);
+  const lookupRefCodeByCode = (code: string | unknown) => {
+    const codeStr = String(code ?? "").trim();
+    if (!codeStr || /^\[object\s+object\]$/i.test(codeStr)) return;
+    setRefCodeJsonInput(codeStr);
+    lookupRefCodeJson(codeStr);
+  };
+
+  const copyRefCodeJson = useCallback(() => {
+    if (!refCodeJsonResult) return;
+    const jsonStr = JSON.stringify(refCodeJsonResult.data, null, 2);
+    navigator.clipboard.writeText(jsonStr).then(() => {
+      setRefCodeJsonCopied(true);
+      setTimeout(() => setRefCodeJsonCopied(false), 2000);
+    });
+  }, [refCodeJsonResult]);
 
   // Fetch QA Analytics for Drills
   const fetchQaAnalyticsDrills = useCallback(async () => {
@@ -1540,6 +1606,85 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* View JSON by Reference Code */}
+        <div className="rounded-2xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <h2 className="text-lg font-semibold mb-2">View JSON by Reference Code</h2>
+          <p className="text-xs text-slate-400 mb-4">
+            Look up a session or drill by its reference code (e.g. D-1234, S-5678, SR-ABCD) and view the full record as JSON.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              ref={refCodeInputRef}
+              type="text"
+              value={refCodeJsonInput}
+              onChange={(e) => setRefCodeJsonInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && lookupRefCodeJson(refCodeInputRef.current?.value ?? refCodeJsonInput)}
+              placeholder="e.g. D-1234, S-5678"
+              className="w-48 h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 placeholder:text-slate-500 uppercase"
+            />
+            <button
+              type="button"
+              onClick={() => lookupRefCodeJson(refCodeInputRef.current?.value ?? refCodeJsonInput)}
+              disabled={refCodeJsonLoading}
+              className="px-4 py-2 h-9 rounded-lg text-sm font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 disabled:opacity-50"
+            >
+              {refCodeJsonLoading ? "Looking up…" : "Look up"}
+            </button>
+          </div>
+          {refCodeJsonHistory.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-slate-500 mb-1.5">Last 5 inquiries:</p>
+              <div className="flex flex-wrap gap-2">
+                {refCodeJsonHistory
+                  .filter((h) => {
+                    const s = String(h.refCode ?? "").trim();
+                    return s && !/^\[object\s+object\]$/i.test(s);
+                  })
+                  .map((h, i) => (
+                  <button
+                    key={`${h.refCode}-${i}`}
+                    type="button"
+                    onClick={() => lookupRefCodeByCode(h.refCode)}
+                    className="px-2.5 py-1 rounded-md text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-slate-100 border border-slate-600/50 transition-colors"
+                  >
+                    {h.refCode}
+                    <span className="ml-1.5 text-slate-500 font-sans">{h.type}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {refCodeJsonError && (
+            <div className="mt-3 rounded-lg border border-red-700/50 bg-red-900/20 p-3 text-sm text-red-300">
+              {refCodeJsonError}
+            </div>
+          )}
+          {refCodeJsonResult && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-400">Type:</span>
+                  <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-200 font-medium">
+                    {refCodeJsonResult.type}
+                  </span>
+                  <span className="text-slate-400">Ref:</span>
+                  <span className="font-mono text-emerald-400">{refCodeJsonResult.refCode}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={copyRefCodeJson}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
+                >
+                  {refCodeJsonCopied ? "Copied!" : "Copy JSON"}
+                </button>
+              </div>
+              <pre className="rounded-lg border border-slate-700 bg-slate-950 p-4 text-xs text-slate-300 overflow-auto max-h-[480px] whitespace-pre-wrap break-words">
+                {JSON.stringify(refCodeJsonResult.data, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
 
         {/* Bulk Generate Random Sessions */}
@@ -4454,10 +4599,13 @@ export default function AdminDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {drill.diagram && (
                           <div className="flex items-center justify-center">
-                            <DrillDiagram
-                              diagram={drill.diagram}
-                              width={220}
-                              height={140}
+                            <UniversalDrillDiagram
+                              drillData={aciToUniversalDrillData(drill.diagram, {
+                                title: drill.title ?? "Diagram",
+                                description: drill.description,
+                                organization: drill.organization,
+                              })}
+                              size="small"
                             />
                           </div>
                         )}
@@ -4583,10 +4731,16 @@ export default function AdminDashboard() {
                 <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
                   <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-3">Diagram</h3>
                   <div className="flex items-center justify-center">
-                    <DrillDiagram
-                      diagram={viewingDrill.json.diagram || viewingDrill.json.diagramV1}
-                      width={400}
-                      height={250}
+                    <UniversalDrillDiagram
+                      drillData={aciToUniversalDrillData(
+                        viewingDrill.json.diagram ?? viewingDrill.json.diagramV1,
+                        {
+                          title: viewingDrill.json.title ?? viewingDrill.title ?? "Diagram",
+                          description: viewingDrill.json.description,
+                          organization: viewingDrill.json.organization,
+                        }
+                      )}
+                      size="small"
                     />
                   </div>
                 </div>

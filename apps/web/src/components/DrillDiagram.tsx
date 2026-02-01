@@ -112,6 +112,13 @@ export const DrillDiagram: React.FC<Props> = ({
     }
   }
 
+  // Prompt convention: facingAngle 90 = "attacking up" = direction of attack. In screen space:
+  // 0° = right, 90° = up, 180° = left, 270° = down. For HORIZONTAL pitch we draw attack → right (0°);
+  // for VERTICAL we draw attack → up (90°). Rotate so attack direction always matches the field.
+  const attackDirectionScreen = orientation === "HORIZONTAL" ? 0 : 90;
+  const facingAngleToScreen = (angleDeg: number) =>
+    (angleDeg - 90 + attackDirectionScreen + 360) % 360;
+
   return (
     <div className="w-full flex flex-col items-center gap-2">
       <svg
@@ -334,7 +341,7 @@ export const DrillDiagram: React.FC<Props> = ({
 
           const nose =
             typeof p.facingAngle === "number"
-              ? polarToCartesian(p.x, p.y, p.facingAngle, radius + 2)
+              ? polarToCartesian(p.x, p.y, facingAngleToScreen(p.facingAngle), radius + 2)
               : null;
 
           return (

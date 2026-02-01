@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
-import DrillDiagram from "@/components/DrillDiagram";
+import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
+import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
 import { getUserHeaders } from "@/lib/user";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
@@ -465,7 +466,9 @@ export default function VaultPage() {
           refCode: drill.refCode,
         }));
       });
-      const drillRefCodes = currentAllDrills.map(d => d.refCode).filter(Boolean) as string[];
+      const drillRefCodes = currentAllDrills
+        .map((d) => (typeof d.refCode === "string" ? d.refCode : String(d.refCode ?? "")))
+        .filter((s) => s && !/^\[object\s+object\]$/i.test(s));
       if (drillRefCodes.length > 0) {
         checkDrillFavorites(drillRefCodes).catch(() => {
           // Silently fail - favorites are optional
@@ -512,7 +515,10 @@ export default function VaultPage() {
       setSkillFocus(null);
       return;
     }
-    fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`)
+    const headers: HeadersInit = { ...getUserHeaders() };
+    const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`, { headers })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => setSkillFocus(data?.focus || null))
       .catch(() => setSkillFocus(null));
@@ -571,11 +577,12 @@ export default function VaultPage() {
     
     try {
       // Use bulk lookup endpoint instead of individual requests
+      const lookupHeaders: HeadersInit = { "Content-Type": "application/json", ...getUserHeaders() };
+      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      if (accessToken) lookupHeaders["Authorization"] = `Bearer ${accessToken}`;
       const res = await fetch("/api/vault/lookup", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: lookupHeaders,
         body: JSON.stringify({ refCodes: drillRefCodes }),
       });
 
@@ -602,18 +609,12 @@ export default function VaultPage() {
 
       setDrillRefCodeToDbId(refCodeMap);
 
-      // Check favorite status for these drill IDs
-      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      // Check favorite status for these drill IDs (reuse auth from above)
       const headers: HeadersInit = {
         "Content-Type": "application/json",
+        ...getUserHeaders(),
       };
-      
-      if (accessToken) {
-        headers["Authorization"] = `Bearer ${accessToken}`;
-      } else {
-        // Fallback to x-user-id for anonymous users
-        Object.assign(headers, getUserHeaders());
-      }
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
 
       const favRes = await fetch("/api/favorites", {
         method: "POST",
@@ -909,44 +910,50 @@ export default function VaultPage() {
   async function toggleDrillFavorite(drill: VaultDrill, e: React.MouseEvent) {
     e.stopPropagation();
     
-    if (!drill.refCode) {
-      // Silently fail - drill has no refCode
-      return;
+    const refCodeRaw = drill.refCode;
+    const refCodeStr = typeof refCodeRaw === "string" ? refCodeRaw : String(refCodeRaw ?? "");
+    if (!refCodeStr.trim() || /^\[object\s+object\]$/i.test(refCodeStr.trim())) {
+      return; // Silently fail - invalid refCode
     }
 
     // Check if we already have the DB ID mapped
-    let drillDbId = drillRefCodeToDbId.get(drill.refCode);
+    let drillDbId = drillRefCodeToDbId.get(refCodeStr);
     
     // If not, look it up
     if (!drillDbId) {
       try {
-        const lookupRes = await fetch(`/api/vault/lookup/${encodeURIComponent(drill.refCode)}`);
+        const lookupHeaders: HeadersInit = { ...getUserHeaders() };
+        const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        if (accessToken) lookupHeaders["Authorization"] = `Bearer ${accessToken}`;
+        const lookupRes = await fetch(`/api/vault/lookup/${encodeURIComponent(refCodeStr)}`, {
+          headers: lookupHeaders,
+        });
         if (!lookupRes.ok) {
           const errorData = await lookupRes.json().catch(() => ({}));
-          console.error(`[DRILL_FAVORITE] Drill lookup failed for ${drill.refCode}:`, errorData.error || lookupRes.status);
+          console.error(`[DRILL_FAVORITE] Drill lookup failed for ${refCodeStr}:`, errorData.error || lookupRes.status);
           // Try using refCode directly - the API now supports looking up by refCode
-          drillDbId = drill.refCode; // Use refCode as fallback
+          drillDbId = refCodeStr; // Use refCode as fallback
         } else {
           const lookupData = await lookupRes.json();
           if (lookupData.found && lookupData.type === "drill" && lookupData.data?.id) {
             drillDbId = lookupData.data.id;
             // Cache the mapping
-            setDrillRefCodeToDbId(prev => new Map(prev).set(drill.refCode!, drillDbId!));
+            setDrillRefCodeToDbId(prev => new Map(prev).set(refCodeStr, drillDbId!));
           } else {
             // Use refCode as fallback - API will try to find by refCode
-            drillDbId = drill.refCode;
+            drillDbId = refCodeStr;
           }
         }
       } catch (e: any) {
-        console.error(`[DRILL_FAVORITE] Error looking up drill ${drill.refCode}:`, e);
+        console.error(`[DRILL_FAVORITE] Error looking up drill ${refCodeStr}:`, e);
         // Use refCode as fallback
-        drillDbId = drill.refCode;
+        drillDbId = refCodeStr;
       }
     }
 
     // Use refCode if we don't have a DB ID
-    const identifierToUse = drillDbId || drill.refCode;
-    const isFavorited = drillDbId && drillDbId !== drill.refCode ? favoritedDrills.has(drillDbId) : false;
+    const identifierToUse = drillDbId || refCodeStr;
+    const isFavorited = drillDbId && drillDbId !== refCodeStr ? favoritedDrills.has(drillDbId) : false;
     
     try {
       // Get access token for authenticated requests
@@ -968,8 +975,8 @@ export default function VaultPage() {
       if (res.ok) {
         const result = await res.json();
         // If we used refCode and got a result, update our mapping
-        if (identifierToUse === drill.refCode && result.drillId) {
-          setDrillRefCodeToDbId(prev => new Map(prev).set(drill.refCode!, result.drillId));
+        if (identifierToUse === refCodeStr && result.drillId) {
+          setDrillRefCodeToDbId(prev => new Map(prev).set(refCodeStr, result.drillId));
           drillDbId = result.drillId;
         }
         
@@ -2000,10 +2007,13 @@ export default function VaultPage() {
                           {/* Left: Diagram */}
                           {drill.diagram && (
                             <div className="flex items-center justify-center">
-                              <DrillDiagram
-                                diagram={drill.diagram}
-                                width={220}
-                                height={140}
+                              <UniversalDrillDiagram
+                                drillData={aciToUniversalDrillData(drill.diagram, {
+                                  title: drill.title ?? "Diagram",
+                                  description: drill.description,
+                                  organization: drill.organization,
+                                })}
+                                size="small"
                               />
                             </div>
                           )}
@@ -2221,10 +2231,13 @@ export default function VaultPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
-                      <DrillDiagram
-                        diagram={selectedDrill.diagram}
-                        width={280}
-                        height={180}
+                      <UniversalDrillDiagram
+                        drillData={aciToUniversalDrillData(selectedDrill.diagram, {
+                          title: selectedDrill.title ?? "Diagram",
+                          description: selectedDrill.description,
+                          organization: selectedDrill.organization,
+                        })}
+                        size="small"
                       />
                     </div>
                   </div>

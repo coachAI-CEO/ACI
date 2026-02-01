@@ -9,8 +9,14 @@ export async function GET(
   const { refCode } = await params;
   
   try {
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const userId = request.headers.get("x-user-id");
+    const headers: HeadersInit = {};
+    if (authHeader) headers["Authorization"] = authHeader;
+    if (userId) headers["x-user-id"] = userId;
+
     const res = await fetch(`${API_BASE}/vault/lookup/${encodeURIComponent(refCode)}`, {
-      headers: { "Content-Type": "application/json" },
+      headers,
     });
     
     const data = await res.json();
