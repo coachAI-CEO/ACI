@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 
 /** Goal as expected by the universal diagram (optional in ACI; adapter can pass []). */
 export interface UniversalDrillGoal {
@@ -121,6 +121,20 @@ const UniversalDrillDiagram = ({
 
   const { title, diagram, json, spaceConstraint } = drillData;
   const { goals = [], players = [], pitch = {}, arrows = [], annotations = [], safeZones = [] } = diagram || {};
+  
+  // DEBUG: Log arrow data
+  useEffect(() => {
+    if (arrows.length > 0 || annotations.length > 0 || safeZones.length > 0) {
+      console.log("📊 Diagram content:", {
+        players: players.length,
+        arrows: arrows.length,
+        annotations: annotations.length,
+        safeZones: safeZones.length,
+        arrowData: arrows.slice(0, 2),
+      });
+    }
+  }, [arrows, annotations, safeZones, players]);
+  
   const pitchOrientation = (pitch as { orientation?: string }).orientation;
   const isHalfPitch = spaceConstraint === "HALF";
 
