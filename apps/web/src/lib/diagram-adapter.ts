@@ -100,6 +100,10 @@ export function aciToUniversalDrillData(
       };
       return arrow;
     });
+    
+    if (inner.arrows.length > 0) {
+      console.log("🔄 Adapter: Mapped", inner.arrows.length, "arrows");
+    }
 
     // Map labels/annotations
     inner.annotations = (diagram.labels ?? []).map((l, idx) => {
