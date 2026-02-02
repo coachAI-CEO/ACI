@@ -84,6 +84,9 @@ export interface UniversalDrillData {
 export type UniversalDrillDiagramProps = {
   drillData: UniversalDrillData;
   size?: "small" | "large";
+  autoSpacing?: boolean;
+  spacingMode?: "simple" | "advanced";
+  showSpacingWarning?: boolean;
 };
 
 /** Zone configuration for automatic detection */
@@ -107,6 +110,155 @@ interface DetectedZone extends ZoneConfig {
   xEnd?: number;
 }
 
+// ==========================================================================
+// AUTO-SPACING HELPERS (prevents cramped player spacing)
+// ==========================================================================
+
+const MINIMUM_SPREADS: Record<string, number> = {
+  FULL: 80,
+  HALF: 65,
+  THIRD: 60,
+  QUARTER: 50,
+};
+
+const TARGET_RANGES: Record<string, { min: number; max: number }> = {
+  FULL: { min: 5, max: 95 },
+  HALF: { min: 2, max: 75 },
+  THIRD: { min: 2, max: 80 },
+  QUARTER: { min: 20, max: 80 },
+};
+
+const TEAM_RANGES: Record<
+  string,
+  { ATT: { min: number; max: number }; DEF: { min: number; max: number } }
+> = {
+  FULL: {
+    ATT: { min: 50, max: 95 },
+    DEF: { min: 5, max: 50 },
+  },
+  HALF: {
+    ATT: { min: 20, max: 75 },
+    DEF: { min: 2, max: 45 },
+  },
+  THIRD: {
+    ATT: { min: 25, max: 80 },
+    DEF: { min: 2, max: 55 },
+  },
+  QUARTER: {
+    ATT: { min: 40, max: 80 },
+    DEF: { min: 20, max: 60 },
+  },
+};
+
+const needsSpacingAdjustment = (
+  players: UniversalDrillPlayer[],
+  variant: string
+) => {
+  if (!players || players.length === 0) return false;
+  const minY = Math.min(...players.map((p) => p.y));
+  const maxY = Math.max(...players.map((p) => p.y));
+  const currentSpread = maxY - minY;
+  const requiredSpread = MINIMUM_SPREADS[variant] || 65;
+  return currentSpread < requiredSpread;
+};
+
+const autoAdjustPlayerSpacing = (
+  players: UniversalDrillPlayer[],
+  variant: string
+) => {
+  if (!players || players.length === 0) return players;
+  const minY = Math.min(...players.map((p) => p.y));
+  const maxY = Math.max(...players.map((p) => p.y));
+  const currentSpread = maxY - minY;
+  const requiredSpread = MINIMUM_SPREADS[variant] || 65;
+  if (currentSpread >= requiredSpread || currentSpread === 0) return players;
+  const targetRange = TARGET_RANGES[variant] || { min: 2, max: 75 };
+  return players.map((player) => {
+    const normalized = (player.y - minY) / currentSpread;
+    const newY = targetRange.min + normalized * (targetRange.max - targetRange.min);
+    return { ...player, y: Math.round(newY * 100) / 100 };
+  });
+};
+
+const autoAdjustPlayerSpacingAdvanced = (
+  players: UniversalDrillPlayer[],
+  variant: string
+) => {
+  if (!players || players.length === 0) return players;
+  const attackers = players.filter((p) => p.team === "ATT");
+  const defenders = players.filter((p) => p.team === "DEF");
+  const neutral = players.filter((p) => p.team !== "ATT" && p.team !== "DEF");
+  const ranges = TEAM_RANGES[variant] || TEAM_RANGES.HALF;
+
+  const scaleGroup = (
+    group: UniversalDrillPlayer[],
+    targetRange: { min: number; max: number }
+  ) => {
+    if (group.length === 0) return [];
+    const minY = Math.min(...group.map((p) => p.y));
+    const maxY = Math.max(...group.map((p) => p.y));
+    const currentSpread = maxY - minY;
+    if (currentSpread === 0) {
+      const mid = (targetRange.min + targetRange.max) / 2;
+      return group.map((p) => ({ ...p, y: mid }));
+    }
+    return group.map((player) => {
+      const normalized = (player.y - minY) / currentSpread;
+      const newY = targetRange.min + normalized * (targetRange.max - targetRange.min);
+      return { ...player, y: Math.round(newY * 100) / 100 };
+    });
+  };
+
+  const scaledAttackers = scaleGroup(attackers, ranges.ATT);
+  const scaledDefenders = scaleGroup(defenders, ranges.DEF);
+  const scaledNeutral = neutral;
+  const combined = [...scaledAttackers, ...scaledDefenders, ...scaledNeutral];
+  return players.map((p) => combined.find((sp) => sp.id === p.id) || p);
+};
+
+const fitPlayersToBounds = (
+  players: UniversalDrillPlayer[],
+  padding = 5
+) => {
+  if (!players || players.length === 0) return players;
+  const xs = players.map((p) => p.x);
+  const ys = players.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const maxSpan = 100 - padding * 2;
+  const scaleX = spanX > maxSpan ? maxSpan / spanX : 1;
+  const scaleY = spanY > maxSpan ? maxSpan / spanY : 1;
+
+  const scaled = players.map((p) => ({
+    ...p,
+    x: minX + (p.x - minX) * scaleX,
+    y: minY + (p.y - minY) * scaleY,
+  }));
+
+  const sxs = scaled.map((p) => p.x);
+  const sys = scaled.map((p) => p.y);
+  const sMinX = Math.min(...sxs);
+  const sMaxX = Math.max(...sxs);
+  const sMinY = Math.min(...sys);
+  const sMaxY = Math.max(...sys);
+
+  const shiftX =
+    sMinX < padding ? padding - sMinX : sMaxX > 100 - padding ? 100 - padding - sMaxX : 0;
+  const shiftY =
+    sMinY < padding ? padding - sMinY : sMaxY > 100 - padding ? 100 - padding - sMaxY : 0;
+
+  return scaled.map((p) => ({
+    ...p,
+    x: Math.round((p.x + shiftX) * 100) / 100,
+    y: Math.round((p.y + shiftY) * 100) / 100,
+  }));
+};
+
 /**
  * Universal Drill Diagram Component - Enhanced with Zone Detection
  * Renders any drill JSON in either small preview or large detailed format.
@@ -116,10 +268,21 @@ interface DetectedZone extends ZoneConfig {
 const UniversalDrillDiagram = ({
   drillData,
   size = "large",
+  autoSpacing,
+  spacingMode,
+  showSpacingWarning,
 }: UniversalDrillDiagramProps) => {
+  const isAutoSpacing = true;
+  const resolvedSpacingMode = spacingMode ?? "advanced";
+  const shouldWarnOnSpacing = showSpacingWarning ?? false;
   const isSmall = size === "small";
+  const uid = React.useId();
 
   const { title, diagram, json, spaceConstraint } = drillData;
+  const debugOrientation =
+    (diagram as any)?.pitch?.orientation ??
+    (json as any)?.diagram?.pitch?.orientation ??
+    "UNKNOWN";
   
   // DEBUG: Log what we received
   console.log("📥 Component received drillData:", {
@@ -129,7 +292,73 @@ const UniversalDrillDiagram = ({
     diagramArrows: diagram?.arrows?.length ?? 0,
   });
   
-  const { goals = [], players = [], pitch = {}, arrows = [], annotations = [], safeZones = [] } = diagram || {};
+  const {
+    goals = [],
+    players: rawPlayers = [],
+    pitch = {},
+    arrows = [],
+    annotations = [],
+    safeZones = [],
+  } = diagram || {};
+
+  const pitchVariant =
+    (pitch as { variant?: "FULL" | "HALF" | "THIRD" | "QUARTER" }).variant ||
+    "HALF";
+
+  let players = rawPlayers;
+  if (isAutoSpacing && needsSpacingAdjustment(players, pitchVariant)) {
+    if (shouldWarnOnSpacing) {
+      console.warn("Auto-adjusting cramped spacing for", pitchVariant, "pitch");
+    }
+    players =
+      resolvedSpacingMode === "simple"
+        ? autoAdjustPlayerSpacing(players, pitchVariant)
+        : autoAdjustPlayerSpacingAdvanced(players, pitchVariant);
+  }
+  const fittedPlayers = fitPlayersToBounds(players, 6);
+
+  const transformPoint = (pt: { x: number; y: number }) => {
+    const xs = players.map((p) => p.x);
+    const ys = players.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const spanX = maxX - minX;
+    const spanY = maxY - minY;
+    const maxSpan = 100 - 12;
+    const scaleX = spanX > maxSpan ? maxSpan / spanX : 1;
+    const scaleY = spanY > maxSpan ? maxSpan / spanY : 1;
+    const sx = minX + (pt.x - minX) * scaleX;
+    const sy = minY + (pt.y - minY) * scaleY;
+    const sxs = fittedPlayers.map((p) => p.x);
+    const sys = fittedPlayers.map((p) => p.y);
+    const sMinX = Math.min(...sxs);
+    const sMaxX = Math.max(...sxs);
+    const sMinY = Math.min(...sys);
+    const sMaxY = Math.max(...sys);
+    const shiftX =
+      sMinX < 6 ? 6 - sMinX : sMaxX > 94 ? 94 - sMaxX : 0;
+    const shiftY =
+      sMinY < 6 ? 6 - sMinY : sMaxY > 94 ? 94 - sMaxY : 0;
+    return {
+      x: Math.round((sx + shiftX) * 100) / 100,
+      y: Math.round((sy + shiftY) * 100) / 100,
+    };
+  };
+
+  const adjustedArrows = arrows.map((a) => ({
+    ...a,
+    from: transformPoint(a.from),
+    to: transformPoint(a.to),
+  }));
+
+  const adjustedAnnotations = annotations.map((a) => {
+    const pt = transformPoint({ x: a.x, y: a.y });
+    return { ...a, x: pt.x, y: pt.y };
+  });
+
+  players = fittedPlayers;
   
   // DEBUG: Log arrow data
   useEffect(() => {
@@ -144,7 +373,6 @@ const UniversalDrillDiagram = ({
     }
   }, [arrows, annotations, safeZones, players]);
   
-  const pitchOrientation = (pitch as { orientation?: string }).orientation;
   const isHalfPitch = spaceConstraint === "HALF";
 
   // ==========================================================================
@@ -183,7 +411,7 @@ const UniversalDrillDiagram = ({
   // Show context for QUARTER drills or when location is explicitly mentioned
   const showFieldContext = (pitch as any)?.variant === "QUARTER" && fieldLocation !== null;
 
-  // Note: scaleX and scaleY will be defined later after viewport calculation
+  // Note: scaleX and scaleY will be defined later (fixed viewport)
 
   // ==========================================================================
   // ZONE DETECTION SYSTEM
@@ -332,95 +560,42 @@ const UniversalDrillDiagram = ({
   const detectedZones = detectZones(json);
 
   // ==========================================================================
-  // ORIENTATION DETECTION & RENDERING DECISION
+  // ORIENTATION (Prefer JSON, but correct obvious mismatches from goals)
   // ==========================================================================
-  
-  // ✅ PRIORITY 1: Respect explicit pitch.orientation first
   const explicitOrientation = (pitch as any)?.orientation as string | undefined;
-  
-  // If pitch.orientation is explicitly set, use it directly
-  let drawVertical: boolean;
-  if (explicitOrientation === "HORIZONTAL") {
-    drawVertical = false; // Draw horizontally (landscape)
-  } else if (explicitOrientation === "VERTICAL") {
-    drawVertical = true;  // Draw vertically (portrait)
-  } else {
-    // ✅ PRIORITY 2: Infer from goals (most reliable)
-    const leftGoals = goals.filter(g => g.x < 20);
-    const rightGoals = goals.filter(g => g.x > 80);
-    const topGoals = goals.filter(g => g.y < 20);
-    const bottomGoals = goals.filter(g => g.y > 80);
-    
-    let goalsIndicateHorizontal: boolean | null = null;
-    if ((leftGoals.length > 0 || rightGoals.length > 0) && topGoals.length === 0 && bottomGoals.length === 0) {
-      goalsIndicateHorizontal = true;  // Goals on left/right → horizontal data
-    } else if ((topGoals.length > 0 || bottomGoals.length > 0) && leftGoals.length === 0 && rightGoals.length === 0) {
-      goalsIndicateHorizontal = false; // Goals on top/bottom → vertical data
-    }
-    
-    if (goalsIndicateHorizontal !== null) {
-      drawVertical = !goalsIndicateHorizontal; // If data is horizontal, don't draw vertical
-    } else {
-      // ✅ PRIORITY 3: Infer from player spread
-      const xs = players.map((p) => p.x);
-      const ys = players.map((p) => p.y);
-      const rangeX = xs.length > 0 ? Math.max(...xs) - Math.min(...xs) : 0;
-      const rangeY = ys.length > 0 ? Math.max(...ys) - Math.min(...ys) : 0;
-      
-      const dataIsHorizontal = players.length >= 2 && rangeX > rangeY;
-      drawVertical = !dataIsHorizontal; // If data is horizontal, don't draw vertical
-    }
-  }
+  const goalsForOrientation = goals;
+  const hasLeft = goalsForOrientation.some((g) => g.x < 20);
+  const hasRight = goalsForOrientation.some((g) => g.x > 80);
+  const hasTop = goalsForOrientation.some((g) => g.y < 20);
+  const hasBottom = goalsForOrientation.some((g) => g.y > 80);
+  const inferredOrientation =
+    (hasTop || hasBottom) && !(hasLeft || hasRight)
+      ? "VERTICAL"
+      : (hasLeft || hasRight) && !(hasTop || hasBottom)
+        ? "HORIZONTAL"
+        : explicitOrientation;
+  const effectiveOrientation = inferredOrientation || explicitOrientation || "HORIZONTAL";
+  const drawVertical = effectiveOrientation === "VERTICAL";
 
-  // Determine if we need to rotate the data coordinates
-  // We rotate only when the source data is horizontal but we're drawing vertically
-  // (which shouldn't happen if we respect pitch.orientation)
-  const shouldRotate = false; // IMPORTANT: Since we respect pitch.orientation, we don't rotate
-
-  // When drawing vertically, flip the Y if the GK is in the top half so GK ends at the bottom
-  const gkPlayer = players.find((p) => p.number === 1 || p.role === "GK");
-  const flipVerticalY =
-    drawVertical &&
-    players.length > 0 &&
-    (gkPlayer ? gkPlayer.y < 50 : false);
-
-  // Map data coords -> screen coords
-  const toScreenX = (dataX: number, dataY: number) =>
-    scaleX(dataX);
-  const toScreenY = (dataX: number, dataY: number) =>
-    flipVerticalY ? scaleY(100 - dataY) : scaleY(dataY);
+  // Map data coords -> screen coords (simple percentage mapping)
+  const toScreenX = (dataX: number) => scaleX(dataX);
+  const toScreenY = (dataY: number) => scaleY(dataY);
 
   // ==========================================================================
-  // CALCULATE PITCH DIMENSIONS - AFTER DETERMINING ORIENTATION
+  // FIXED PITCH DIMENSIONS (No viewport/cropping)
   // ==========================================================================
-  // Now that we know drawVertical, we can calculate the correct aspect ratio
-  
-  const baseHeight = isSmall ? 210 : 340;
-  const pitchHeight = baseHeight;
-  
-  // Aspect ratio depends on orientation:
-  // - Vertical: height/width = lengthYards/widthYards (taller)
-  // - Horizontal: width/height = lengthYards/widthYards (wider)
-  let aspectRatio = 1.53; // Default: 520/340 ≈ 1.53
-  
+  const pitchWidth = isSmall ? 420 : 820;
+  const pitchHeight = isSmall ? 300 : 580;
+  const containerWidth = isSmall ? "auto" : "100%";
+  const containerMaxWidth = "100%";
+
   let displayWidth = "Unknown";
   let displayLength = "Unknown";
-  
+
   if (widthYards && lengthYards) {
     displayWidth = `${widthYards}`;
     displayLength = `${lengthYards}`;
-    
-    if (drawVertical) {
-      // Vertical: aspect = length/width (portrait ratio)
-      aspectRatio = lengthYards / widthYards;
-    } else {
-      // Horizontal: aspect = width/length (landscape ratio - inverted!)
-      aspectRatio = widthYards / lengthYards;
-    }
   }
-  
-  const pitchWidth = Math.round(pitchHeight * aspectRatio);
-  const containerWidth = isSmall ? "auto" : Math.max(600, pitchWidth + 80);
 
   // When ACI/adapter passes no goals, infer default goals; use vertical layout when drawVertical
   const displayGoals: UniversalDrillGoal[] =
@@ -444,110 +619,28 @@ const UniversalDrillDiagram = ({
   const attackPlayers = players.filter((p) => p.team === "ATT");
   const defendPlayers = players.filter((p) => p.team === "DEF");
 
-  // ==========================================================================
-  // DYNAMIC VIEWPORT - Calculate bounding box of active area
-  // ==========================================================================
-  
-  const calculateViewport = () => {
-    if (players.length === 0) {
-      return { minX: 0, maxX: 100, minY: 0, maxY: 100, useCrop: false };
-    }
-    
-    // Determine if this is a full-team game (90%+ of full squad)
-    const maxPlayersPerSide = Math.max(attackPlayers.length, defendPlayers.length);
-    const isFullTeamGame = maxPlayersPerSide >= 10 || // 11v11 or close (10+)
-                          (maxPlayersPerSide >= 9 && hasTopGoal && hasBottomGoal); // 9v9+ with both goals
-    
-    // For full-team games with goals at both ends, always show entire field
-    if (isFullTeamGame && hasTopGoal && hasBottomGoal) {
-      return { minX: 0, maxX: 100, minY: 0, maxY: 100, useCrop: false };
-    }
-    
-    // Get player position ranges
-    const xs = players.map(p => p.x);
-    const ys = players.map(p => p.y);
-    const minPlayerX = Math.min(...xs);
-    const maxPlayerX = Math.max(...xs);
-    const minPlayerY = Math.min(...ys);
-    const maxPlayerY = Math.max(...ys);
-    
-    // Include goals if they exist
-    let minX = minPlayerX;
-    let maxX = maxPlayerX;
-    let minY = minPlayerY;
-    let maxY = maxPlayerY;
-    
-    if (goals.length > 0) {
-      const goalXs = goals.map(g => g.x);
-      const goalYs = goals.map(g => g.y);
-      minX = Math.min(minPlayerX, ...goalXs);
-      maxX = Math.max(maxPlayerX, ...goalXs);
-      minY = Math.min(minPlayerY, ...goalYs);
-      maxY = Math.max(maxPlayerY, ...goalYs);
-    }
-    
-    // Calculate range
-    const rangeX = maxX - minX;
-    const rangeY = maxY - minY;
-    
-    // Add padding (15% of range, minimum 10%)
-    const paddingX = Math.max(rangeX * 0.15, 10);
-    const paddingY = Math.max(rangeY * 0.15, 10);
-    
-    // Apply padding with bounds checking
-    const viewMinX = Math.max(0, minX - paddingX);
-    const viewMaxX = Math.min(100, maxX + paddingX);
-    const viewMinY = Math.max(0, minY - paddingY);
-    const viewMaxY = Math.min(100, maxY + paddingY);
-    
-    return { 
-      minX: viewMinX, 
-      maxX: viewMaxX, 
-      minY: viewMinY, 
-      maxY: viewMaxY,
-      useCrop: true 
-    };
-  };
-  
   const hasLeftGoal = !drawVertical && displayGoals.some((g) => g.x < 20);
   const hasRightGoal = !drawVertical && displayGoals.some((g) => g.x > 80);
   const hasTopGoal = drawVertical && displayGoals.some((g) => g.y < 10);
   const hasBottomGoal = drawVertical && displayGoals.some((g) => g.y > 90);
   const isFullPitch = drawVertical ? hasTopGoal && hasBottomGoal : hasLeftGoal && hasRightGoal;
 
-  const viewport = calculateViewport();
-  
-  // Create viewport-aware scale functions
-  const viewportWidth = viewport.maxX - viewport.minX;
-  const viewportHeight = viewport.maxY - viewport.minY;
-  
-  // Replace original scale functions with viewport-aware versions
-  const scaleX = (percent: number) => {
-    if (!viewport.useCrop) {
-      return (percent / 100) * pitchWidth;
-    }
-    return ((percent - viewport.minX) / viewportWidth) * pitchWidth;
-  };
-  
-  const scaleY = (percent: number) => {
-    if (!viewport.useCrop) {
-      return (percent / 100) * pitchHeight;
-    }
-    return ((percent - viewport.minY) / viewportHeight) * pitchHeight;
-  };
+  // Simple percentage scaling
+  const scaleX = (percent: number) => (percent / 100) * pitchWidth;
+  const scaleY = (percent: number) => (percent / 100) * pitchHeight;
 
   const getPlayerRadius = () => {
+    const scale = isSmall ? 1.25 : 1.7;
     if (isSmall) {
-      if (totalPlayers <= 6) return 8;
-      if (totalPlayers <= 12) return 7;
-      if (totalPlayers <= 16) return 6;
-      return 5;
-    } else {
-      if (totalPlayers <= 6) return 14;
-      if (totalPlayers <= 12) return 12;
-      if (totalPlayers <= 16) return 11;
-      return 10;
+      if (totalPlayers <= 6) return Math.round(8 * scale);
+      if (totalPlayers <= 12) return Math.round(7 * scale);
+      if (totalPlayers <= 16) return Math.round(6 * scale);
+      return Math.round(5 * scale);
     }
+    if (totalPlayers <= 6) return Math.round(14 * scale);
+    if (totalPlayers <= 12) return Math.round(12 * scale);
+    if (totalPlayers <= 16) return Math.round(11 * scale);
+    return Math.round(10 * scale);
   };
 
   const getGKRadius = () => {
@@ -556,13 +649,13 @@ const UniversalDrillDiagram = ({
   };
 
   const getFontSize = () => {
+    const scale = isSmall ? 1.1 : 1.55;
     if (isSmall) {
-      if (totalPlayers <= 12) return 7;
-      return 6;
-    } else {
-      if (totalPlayers <= 12) return 10;
-      return 9;
+      if (totalPlayers <= 12) return Math.round(7 * scale);
+      return Math.round(6 * scale);
     }
+    if (totalPlayers <= 12) return Math.round(10 * scale);
+    return Math.round(9 * scale);
   };
 
   const fieldWidth = json?.organization?.area?.widthYards ?? 60;
@@ -575,7 +668,8 @@ const UniversalDrillDiagram = ({
   return (
     <div
       style={{
-        width: isSmall ? "auto" : `${containerWidth}px`,
+        width: containerWidth,
+        maxWidth: containerMaxWidth,
         padding: isSmall ? "12px" : "32px",
         background: isSmall ? "#1a2332" : "#0a1628",
         borderRadius: isSmall ? "8px" : "16px",
@@ -635,24 +729,27 @@ const UniversalDrillDiagram = ({
             {fieldLocation && (
               <> • {fieldLocation.zone}</>
             )}
-            {viewport.useCrop && <> • Cropped</>}
           </div>
         </div>
       )}
 
       <svg
-        width={pitchWidth}
-        height={pitchHeight}
+        width="100%"
+        height="auto"
+        viewBox={`0 0 ${pitchWidth} ${pitchHeight}`}
+        preserveAspectRatio="xMidYMid meet"
         style={{
           borderRadius: isSmall ? "4px" : "8px",
           overflow: "hidden",
           display: "block",
           marginBottom: isSmall ? "8px" : "20px",
+          maxWidth: "100%",
+          height: "auto",
         }}
       >
         <defs>
           <linearGradient
-            id={`pitchGrad-${size}`}
+            id={`pitchGrad-${size}-${uid}`}
             x1={drawVertical ? "0%" : "0%"}
             y1={drawVertical ? "0%" : "0%"}
             x2={drawVertical ? "0%" : "100%"}
@@ -665,7 +762,7 @@ const UniversalDrillDiagram = ({
           
           {/* Arrowhead markers for different arrow types */}
           <marker
-            id="arrowhead-pass"
+            id={`arrowhead-pass-${uid}`}
             markerWidth="10"
             markerHeight="10"
             refX="9"
@@ -680,7 +777,7 @@ const UniversalDrillDiagram = ({
           </marker>
           
           <marker
-            id="arrowhead-movement"
+            id={`arrowhead-movement-${uid}`}
             markerWidth="8"
             markerHeight="8"
             refX="7"
@@ -695,7 +792,7 @@ const UniversalDrillDiagram = ({
           </marker>
           
           <marker
-            id="arrowhead-press"
+            id={`arrowhead-press-${uid}`}
             markerWidth="12"
             markerHeight="12"
             refX="10"
@@ -710,7 +807,7 @@ const UniversalDrillDiagram = ({
           </marker>
           
           <marker
-            id="arrowhead-dribble"
+            id={`arrowhead-dribble-${uid}`}
             markerWidth="10"
             markerHeight="10"
             refX="9"
@@ -726,7 +823,7 @@ const UniversalDrillDiagram = ({
           
           {/* Safe zone patterns for ATT and DEF teams */}
           <pattern
-            id="safeZoneATT"
+            id={`safeZoneATT-${uid}`}
             patternUnits="userSpaceOnUse"
             width={8}
             height={8}
@@ -738,7 +835,7 @@ const UniversalDrillDiagram = ({
             />
           </pattern>
           <pattern
-            id="safeZoneDEF"
+            id={`safeZoneDEF-${uid}`}
             patternUnits="userSpaceOnUse"
             width={8}
             height={8}
@@ -750,7 +847,7 @@ const UniversalDrillDiagram = ({
             />
           </pattern>
           <pattern
-            id="safeZoneNEUTRAL"
+            id={`safeZoneNEUTRAL-${uid}`}
             patternUnits="userSpaceOnUse"
             width={8}
             height={8}
@@ -768,7 +865,7 @@ const UniversalDrillDiagram = ({
             .map((zone, idx) => (
               <pattern
                 key={`diag-${idx}`}
-                id={`diag-${idx}`}
+                id={`diag-${uid}-${idx}`}
                 patternUnits="userSpaceOnUse"
                 width={8}
                 height={8}
@@ -787,8 +884,21 @@ const UniversalDrillDiagram = ({
           y={0}
           width={pitchWidth}
           height={pitchHeight}
-          fill={`url(#pitchGrad-${size})`}
+          fill={`url(#pitchGrad-${size}-${uid})`}
         />
+
+        {/* Debug overlay: orientation */}
+        <text
+          x={pitchWidth - 10}
+          y={14}
+          textAnchor="end"
+          fill="rgba(255, 255, 255, 0.55)"
+          fontSize="10"
+          fontWeight="600"
+          letterSpacing="0.5px"
+        >
+          ORIENT: {effectiveOrientation}
+        </text>
 
         {/* Grass stripes - direction based on orientation */}
         {drawVertical
@@ -886,7 +996,7 @@ const UniversalDrillDiagram = ({
             />
           ))}
 
-        {/* Pitch boundary - adjusted for viewport */}
+        {/* Pitch boundary */}
         <rect 
           x={isSmall ? 8 : 15} 
           y={isSmall ? 8 : 15} 
@@ -1005,7 +1115,7 @@ const UniversalDrillDiagram = ({
                     y={scaleY(zone.yStart ?? 0)}
                     width={pitchWidth - 30}
                     height={scaleY((zone.yEnd ?? 100) - (zone.yStart ?? 0))}
-                    fill={zone.pattern === "diagonal" ? `url(#diag-${idx})` : zone.color}
+                    fill={zone.pattern === "diagonal" ? `url(#diag-${uid}-${idx})` : zone.color}
                     stroke="none"
                   />
                   <line
@@ -1216,8 +1326,8 @@ const UniversalDrillDiagram = ({
           const gWidth = scaleX(goal.width ?? (totalPlayers > 10 ? 8 : 4));
 
           if (drawVertical) {
-            const gx = toScreenX(goal.x, goal.y);
-            const gy = toScreenY(goal.x, goal.y);
+            const gx = toScreenX(goal.x);
+            const gy = toScreenY(goal.y);
 
             if (goal.type === "BIG") {
               return (
@@ -1256,8 +1366,8 @@ const UniversalDrillDiagram = ({
               );
             }
           } else {
-            const gx = toScreenX(goal.x, goal.y);
-            const gy = toScreenY(goal.x, goal.y);
+            const gx = toScreenX(goal.x);
+            const gy = toScreenY(goal.y);
             const gHeight = scaleY(goal.width ?? 8);
 
             if (goal.type === "BIG") {
@@ -1319,10 +1429,10 @@ const UniversalDrillDiagram = ({
                   return (
                     <line
                       key={`pass-${idx}`}
-                      x1={toScreenX(player.x, player.y)}
-                      y1={toScreenY(player.x, player.y)}
-                      x2={toScreenX(nextPlayer.x, nextPlayer.y)}
-                      y2={toScreenY(nextPlayer.x, nextPlayer.y)}
+                      x1={toScreenX(player.x)}
+                      y1={toScreenY(player.y)}
+                      x2={toScreenX(nextPlayer.x)}
+                      y2={toScreenY(nextPlayer.y)}
                       stroke="rgba(255, 255, 255, 0.35)"
                       strokeWidth={1.5}
                     />
@@ -1349,10 +1459,10 @@ const UniversalDrillDiagram = ({
                   return (
                     <line
                       key={`press-${idx}`}
-                      x1={toScreenX(player.x, player.y)}
-                      y1={toScreenY(player.x, player.y)}
-                      x2={toScreenX(target.x, target.y)}
-                      y2={toScreenY(target.x, target.y)}
+                      x1={toScreenX(player.x)}
+                      y1={toScreenY(player.y)}
+                      x2={toScreenX(target.x)}
+                      y2={toScreenY(target.y)}
                       stroke="rgba(255, 255, 255, 0.45)"
                       strokeWidth={2}
                     />
@@ -1377,9 +1487,9 @@ const UniversalDrillDiagram = ({
           
           // Get color and pattern based on team
           const getZoneColor = (team?: string) => {
-            if (team === "ATT") return { pattern: "url(#safeZoneATT)", stroke: "rgba(59, 130, 246, 0.4)" };
-            if (team === "DEF") return { pattern: "url(#safeZoneDEF)", stroke: "rgba(239, 68, 68, 0.4)" };
-            return { pattern: "url(#safeZoneNEUTRAL)", stroke: "rgba(251, 191, 36, 0.4)" };
+            if (team === "ATT") return { pattern: `url(#safeZoneATT-${uid})`, stroke: "rgba(59, 130, 246, 0.4)" };
+            if (team === "DEF") return { pattern: `url(#safeZoneDEF-${uid})`, stroke: "rgba(239, 68, 68, 0.4)" };
+            return { pattern: `url(#safeZoneNEUTRAL-${uid})`, stroke: "rgba(251, 191, 36, 0.4)" };
           };
           
           const zoneStyle = getZoneColor(zone.team);
@@ -1418,11 +1528,35 @@ const UniversalDrillDiagram = ({
 
         {/* Custom Arrows - Passes, Movement, Pressing */}
         {/* STEP 1: Draw arrow LINES first (behind everything) */}
-        {arrows.map((arrow, idx) => {
-          const x1 = toScreenX(arrow.from.x, arrow.from.y);
-          const y1 = toScreenY(arrow.from.x, arrow.from.y);
-          const x2 = toScreenX(arrow.to.x, arrow.to.y);
-          const y2 = toScreenY(arrow.to.x, arrow.to.y);
+        {adjustedArrows.map((arrow, idx) => {
+          const x1 = toScreenX(arrow.from.x);
+          const y1 = toScreenY(arrow.from.y);
+          const x2 = toScreenX(arrow.to.x);
+          const y2 = toScreenY(arrow.to.y);
+          if (
+            !Number.isFinite(x1) ||
+            !Number.isFinite(y1) ||
+            !Number.isFinite(x2) ||
+            !Number.isFinite(y2)
+          ) {
+            return null;
+          }
+          if (
+            !Number.isFinite(x1) ||
+            !Number.isFinite(y1) ||
+            !Number.isFinite(x2) ||
+            !Number.isFinite(y2)
+          ) {
+            return null;
+          }
+          if (
+            !Number.isFinite(x1) ||
+            !Number.isFinite(y1) ||
+            !Number.isFinite(x2) ||
+            !Number.isFinite(y2)
+          ) {
+            return null;
+          }
           
           const getArrowStyle = (type: string) => {
             switch (type) {
@@ -1472,7 +1606,7 @@ const UniversalDrillDiagram = ({
           const arrowSize = style.arrowSize;
           const lineLength = Math.sqrt(dx * dx + dy * dy);
           const shortenBy = arrowSize;
-          const ratio = (lineLength - shortenBy) / lineLength;
+          const ratio = lineLength > 0 ? (lineLength - shortenBy) / lineLength : 0;
           const x2Short = x1 + dx * ratio;
           const y2Short = y1 + dy * ratio;
           
@@ -1492,13 +1626,13 @@ const UniversalDrillDiagram = ({
         })}
         
         {/* STEP 2: Draw numbered circles (middle layer) */}
-        {arrows.map((arrow, idx) => {
+        {adjustedArrows.map((arrow, idx) => {
           if (!arrow.label || isSmall) return null;
           
-          const x1 = toScreenX(arrow.from.x, arrow.from.y);
-          const y1 = toScreenY(arrow.from.x, arrow.from.y);
-          const x2 = toScreenX(arrow.to.x, arrow.to.y);
-          const y2 = toScreenY(arrow.to.x, arrow.to.y);
+          const x1 = toScreenX(arrow.from.x);
+          const y1 = toScreenY(arrow.from.y);
+          const x2 = toScreenX(arrow.to.x);
+          const y2 = toScreenY(arrow.to.y);
           
           return (
             <g key={`arrow-label-${arrow.id || idx}`}>
@@ -1525,11 +1659,11 @@ const UniversalDrillDiagram = ({
         })}
         
         {/* STEP 3: Draw arrowheads LAST (on top of everything) */}
-        {arrows.map((arrow, idx) => {
-          const x1 = toScreenX(arrow.from.x, arrow.from.y);
-          const y1 = toScreenY(arrow.from.x, arrow.from.y);
-          const x2 = toScreenX(arrow.to.x, arrow.to.y);
-          const y2 = toScreenY(arrow.to.x, arrow.to.y);
+        {adjustedArrows.map((arrow, idx) => {
+          const x1 = toScreenX(arrow.from.x);
+          const y1 = toScreenY(arrow.from.y);
+          const x2 = toScreenX(arrow.to.x);
+          const y2 = toScreenY(arrow.to.y);
           
           const getArrowStyle = (type: string) => {
             switch (type) {
@@ -1569,9 +1703,9 @@ const UniversalDrillDiagram = ({
         })}
 
         {/* Text Annotations on Field */}
-        {annotations.map((annotation, idx) => {
-          const ax = toScreenX(annotation.x, annotation.y);
-          const ay = toScreenY(annotation.x, annotation.y);
+        {adjustedAnnotations.map((annotation, idx) => {
+          const ax = toScreenX(annotation.x);
+          const ay = toScreenY(annotation.y);
           
           return (
             <g key={`annotation-${annotation.id || idx}`}>
@@ -1594,7 +1728,10 @@ const UniversalDrillDiagram = ({
                 y={ay + 4}
                 textAnchor="middle"
                 fill={annotation.color || "rgba(255, 255, 255, 0.9)"}
-                fontSize={annotation.fontSize || (isSmall ? 8 : 11)}
+                fontSize={
+                  (annotation.fontSize || (isSmall ? 8 : 11)) *
+                  (isSmall ? 1.1 : 1.25)
+                }
                 fontWeight={annotation.fontWeight || "700"}
                 letterSpacing="0.5px"
               >
@@ -1605,8 +1742,8 @@ const UniversalDrillDiagram = ({
         })}
 
         {players.map((player, idx) => {
-          const px = toScreenX(player.x, player.y);
-          const py = toScreenY(player.x, player.y);
+          const px = toScreenX(player.x);
+          const py = toScreenY(player.y);
           const isGK = player.number === 1 || player.role === "GK";
           const radius = isGK ? gkRadius : playerRadius;
           
@@ -1799,20 +1936,6 @@ const UniversalDrillDiagram = ({
         )}
       </div>
 
-      {!isSmall && json?.description && (
-        <p
-          style={{
-            margin: "0",
-            color: "#94a3b8",
-            fontSize: "12px",
-            lineHeight: "1.6",
-          }}
-        >
-          {json.description.length > 200
-            ? `${json.description.substring(0, 200)}...`
-            : json.description}
-        </p>
-      )}
     </div>
   );
 };

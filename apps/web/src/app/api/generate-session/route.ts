@@ -18,6 +18,8 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const skipRecommendation = searchParams.get("skipRecommendation") === "1";
     const authHeaders = getAuthHeaders(request);
+    const hasAuth = Boolean(authHeaders["Authorization"] || authHeaders["authorization"]);
+    console.log("[API/generate-session] skipRecommendation:", skipRecommendation, "hasAuth:", hasAuth);
 
     if (!skipRecommendation) {
       try {
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
             threshold: 0.85,
           }),
         });
+        console.log("[API/generate-session] recommendations status:", recRes.status, recRes.statusText);
         if (recRes.ok) {
           const recData = await recRes.json();
           if (recData?.matches?.length > 0) {
@@ -49,8 +52,10 @@ export async function POST(request: NextRequest) {
       headers: authHeaders,
       body: JSON.stringify(body),
     });
+    console.log("[API/generate-session] generate status:", res.status, res.statusText);
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
+      console.log("[API/generate-session] generate error body:", errorData);
       return NextResponse.json(
         { ok: false, error: errorData?.error || `API error: ${res.status}` },
         { status: res.status }

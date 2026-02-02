@@ -90,6 +90,218 @@ function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
     drill.progressions = [drill.progressions];
     warnings.push("Converted 'progressions' to array");
   }
+
+  // 5b. Ensure diagram includes arrows + annotations (fallbacks if missing)
+  const ensureDiagramVisuals = (diagram: any, players: any[] | undefined, prefix: string = "") => {
+    if (!diagram || typeof diagram !== "object") return;
+
+    const safePlayers = Array.isArray(players) ? players : [];
+
+    if (diagram.pitch && typeof diagram.pitch === "object") {
+      diagram.pitch.showZones = false;
+    }
+
+    // Ensure orientation matches data layout
+    if (diagram.pitch && typeof diagram.pitch === "object") {
+      const inferOrientation = () => {
+        const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+        if (goals.length > 0) {
+          const left = goals.some((g: any) => typeof g.x === "number" && g.x < 20);
+          const right = goals.some((g: any) => typeof g.x === "number" && g.x > 80);
+          const top = goals.some((g: any) => typeof g.y === "number" && g.y < 20);
+          const bottom = goals.some((g: any) => typeof g.y === "number" && g.y > 80);
+          if ((left || right) && !(top || bottom)) return "HORIZONTAL";
+          if ((top || bottom) && !(left || right)) return "VERTICAL";
+        }
+        if (safePlayers.length >= 2) {
+          const xs = safePlayers.map((p: any) => p.x).filter((n: any) => Number.isFinite(n));
+          const ys = safePlayers.map((p: any) => p.y).filter((n: any) => Number.isFinite(n));
+          const rangeX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+          const rangeY = ys.length ? Math.max(...ys) - Math.min(...ys) : 0;
+          return rangeY >= rangeX ? "VERTICAL" : "HORIZONTAL";
+        }
+        return "HORIZONTAL";
+      };
+      const inferred = inferOrientation();
+      if (diagram.pitch.orientation !== inferred) {
+        diagram.pitch.orientation = inferred;
+        warnings.push(`${prefix}Adjusted pitch.orientation to ${inferred}`);
+      }
+    }
+
+    // Align goal teamAttacks with player positioning (prevents side mismatches)
+    if (diagram.pitch && typeof diagram.pitch === "object") {
+      const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+      if (goals.length >= 2 && safePlayers.length > 0) {
+        const attPlayers = safePlayers.filter((p: any) => p.team === "ATT");
+        const defPlayers = safePlayers.filter((p: any) => p.team === "DEF");
+        if (attPlayers.length > 0) {
+          const attCentroidX =
+            attPlayers.reduce((sum: number, p: any) => sum + (p.x || 0), 0) /
+            attPlayers.length;
+          const attCentroidY =
+            attPlayers.reduce((sum: number, p: any) => sum + (p.y || 0), 0) /
+            attPlayers.length;
+
+          if (diagram.pitch.orientation === "HORIZONTAL") {
+            const leftGoal = goals.reduce((min: any, g: any) => (g.x < min.x ? g : min), goals[0]);
+            const rightGoal = goals.reduce((max: any, g: any) => (g.x > max.x ? g : max), goals[0]);
+            const distLeft = Math.abs(attCentroidX - leftGoal.x);
+            const distRight = Math.abs(attCentroidX - rightGoal.x);
+            if (distRight < distLeft) {
+              leftGoal.teamAttacks = "DEF";
+              rightGoal.teamAttacks = "ATT";
+              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (right side)`);
+            } else {
+              leftGoal.teamAttacks = "ATT";
+              rightGoal.teamAttacks = "DEF";
+              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (left side)`);
+            }
+          } else {
+            const topGoal = goals.reduce((min: any, g: any) => (g.y < min.y ? g : min), goals[0]);
+            const bottomGoal = goals.reduce((max: any, g: any) => (g.y > max.y ? g : max), goals[0]);
+            const distTop = Math.abs(attCentroidY - topGoal.y);
+            const distBottom = Math.abs(attCentroidY - bottomGoal.y);
+            if (distBottom < distTop) {
+              topGoal.teamAttacks = "DEF";
+              bottomGoal.teamAttacks = "ATT";
+              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (bottom side)`);
+            } else {
+              topGoal.teamAttacks = "ATT";
+              bottomGoal.teamAttacks = "DEF";
+              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (top side)`);
+            }
+          }
+        }
+      }
+    }
+
+    if (!Array.isArray(diagram.arrows)) {
+      diagram.arrows = [];
+      warnings.push(`${prefix}Added missing 'diagram.arrows' array`);
+    }
+    if (!Array.isArray(diagram.annotations)) {
+      diagram.annotations = [];
+      warnings.push(`${prefix}Added missing 'diagram.annotations' array`);
+    }
+    if (!Array.isArray(diagram.safeZones)) {
+      diagram.safeZones = [];
+      warnings.push(`${prefix}Added missing 'diagram.safeZones' array`);
+    }
+
+    if (diagram.arrows.length < 7) {
+      const p0 = safePlayers[0];
+      const p1 = safePlayers[1];
+      const p2 = safePlayers[2];
+      const p3 = safePlayers[3];
+      const p4 = safePlayers[4];
+      const p5 = safePlayers[5];
+      const fallbackArrows = [];
+
+      if (p0 && p1) {
+        fallbackArrows.push({ id: "arr1", from: { x: p0.x, y: p0.y }, to: { x: p1.x, y: p1.y }, type: "pass", label: "1" });
+      }
+      if (p1 && p2) {
+        fallbackArrows.push({ id: "arr2", from: { x: p1.x, y: p1.y }, to: { x: p2.x, y: p2.y }, type: "pass", label: "2" });
+      }
+      if (p2 && p3) {
+        fallbackArrows.push({ id: "arr3", from: { x: p2.x, y: p2.y }, to: { x: p3.x, y: p3.y }, type: "movement" });
+      }
+      if (p3 && p4) {
+        fallbackArrows.push({ id: "arr4", from: { x: p3.x, y: p3.y }, to: { x: p4.x, y: p4.y }, type: "press" });
+      }
+      if (p4 && p5) {
+        fallbackArrows.push({ id: "arr5", from: { x: p4.x, y: p4.y }, to: { x: p5.x, y: p5.y }, type: "movement" });
+      }
+      if (p5 && p0) {
+        fallbackArrows.push({ id: "arr6", from: { x: p5.x, y: p5.y }, to: { x: p0.x, y: p0.y }, type: "pass", label: "3" });
+      }
+      if (p2 && p0) {
+        fallbackArrows.push({ id: "arr7", from: { x: p2.x, y: p2.y }, to: { x: p0.x, y: p0.y }, type: "movement" });
+      }
+
+      if (fallbackArrows.length < 7) {
+        fallbackArrows.push(
+          { id: "arrA", from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
+          { id: "arrB", from: { x: 40, y: 45 }, to: { x: 30, y: 35 }, type: "press" },
+          { id: "arrC", from: { x: 30, y: 35 }, to: { x: 70, y: 30 }, type: "movement" },
+          { id: "arrD", from: { x: 70, y: 30 }, to: { x: 60, y: 55 }, type: "pass", label: "2" }
+        );
+      }
+
+      diagram.arrows = fallbackArrows;
+      warnings.push(`${prefix}Inserted fallback arrows (diagram.arrows had insufficient count)`);
+    }
+
+    if (diagram.annotations.length < 4) {
+      diagram.annotations = [
+        {
+          id: "ann1",
+          text: "PRESS TRIGGER",
+          x: 30,
+          y: 30,
+          fontSize: 10,
+          color: "rgba(239, 68, 68, 0.95)",
+          fontWeight: "700",
+        },
+        {
+          id: "ann2",
+          text: "STAY COMPACT",
+          x: 55,
+          y: 55,
+          fontSize: 10,
+          color: "rgba(251, 191, 36, 0.95)",
+          fontWeight: "700",
+        },
+        {
+          id: "ann3",
+          text: "WIDE 2v1",
+          x: 85,
+          y: 35,
+          fontSize: 10,
+          color: "rgba(59, 130, 246, 0.9)",
+          fontWeight: "700",
+        },
+        {
+          id: "ann4",
+          text: "TRIGGER PASS",
+          x: 60,
+          y: 45,
+          fontSize: 9,
+          color: "rgba(34, 197, 94, 0.9)",
+          fontWeight: "700",
+        },
+      ];
+      warnings.push(`${prefix}Inserted fallback annotations (diagram.annotations had insufficient count)`);
+    }
+
+    // Ensure annotation styling is present
+    diagram.annotations = (diagram.annotations || []).map((a: any, idx: number) => ({
+      id: a.id ?? `ann-${idx}`,
+      text: a.text ?? "",
+      x: typeof a.x === "number" ? a.x : 50,
+      y: typeof a.y === "number" ? a.y : 50,
+      fontSize: typeof a.fontSize === "number" ? a.fontSize : 10,
+      color: typeof a.color === "string" ? a.color : "rgba(59, 130, 246, 0.95)",
+      fontWeight: typeof a.fontWeight === "string" ? a.fontWeight : "700",
+      backgroundColor: a.backgroundColor,
+    }));
+
+    if (diagram.safeZones.length < 1) {
+      diagram.safeZones = [
+        { id: "sz1", x: 0, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
+        { id: "sz2", x: 85, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
+      ];
+      warnings.push(`${prefix}Inserted fallback safeZones (diagram.safeZones had insufficient count)`);
+    }
+  };
+
+  if (drill.diagram) {
+    ensureDiagramVisuals(drill.diagram, drill.diagram.players, "");
+  }
+  if (drill.json?.diagram) {
+    ensureDiagramVisuals(drill.json.diagram, drill.json.diagram.players, "[json] ");
+  }
   
   // 6. Convert organization from string to structured object
   const convertOrganization = (orgString: string) => {

@@ -107,6 +107,10 @@ Please help the user with their request, using the context of the referenced ite
 
 r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
+  if (debug) {
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+    console.log("[SESSION] debug=1 authHeader present:", Boolean(authHeader));
+  }
 
   try {
     // Check access permissions
@@ -117,6 +121,9 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       if (ageGroup) {
         const hasPermission = await canGenerateSessions(req.userId, ageGroup);
         if (!hasPermission) {
+          if (debug) {
+            console.log("[SESSION] permission denied for ageGroup:", ageGroup, "userId:", req.userId);
+          }
           return res.status(403).json({
             ok: false,
             error: `You do not have permission to generate sessions for age group ${ageGroup}. Please contact an administrator.`,
@@ -129,6 +136,9 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       // Check usage limit
       const limit = await checkUsageLimit(req.userId, 'session');
       if (!limit.allowed) {
+        if (debug) {
+          console.log("[SESSION] usage limit reached for userId:", req.userId, "limit:", limit);
+        }
         return res.status(403).json({
           ok: false,
           error: 'Monthly limit reached',
@@ -275,4 +285,3 @@ r.post("/ai/export-session-pdf", authenticate, requireFeature('canExportPDF'), a
 });
 
 export default r;
-

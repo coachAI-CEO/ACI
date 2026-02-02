@@ -245,6 +245,11 @@ export async function checkUsageLimit(
   if (!user) {
     throw new Error('User not found');
   }
+
+  // Super admins have no usage limits
+  if (user.adminRole === 'SUPER_ADMIN') {
+    return { allowed: true, limit: -1, used: 0, remaining: -1 };
+  }
   
   const limits = SUBSCRIPTION_LIMITS[user.subscriptionPlan];
   const limit: number = operation === 'session' 
@@ -292,6 +297,12 @@ export async function checkUsageLimit(
 }
 
 export async function incrementUsage(userId: string, operation: 'session' | 'drill'): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { adminRole: true }
+  });
+  if (user?.adminRole === 'SUPER_ADMIN') return;
+
   const updateData = operation === 'session'
     ? { sessionsGeneratedThisMonth: { increment: 1 } }
     : { drillsGeneratedThisMonth: { increment: 1 } };

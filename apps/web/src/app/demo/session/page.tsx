@@ -317,9 +317,17 @@ async function fetchSession(
   console.log(`[SESSION_GEN] Response status: ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
+    const rawText = await res.text().catch(() => "");
+    let errorData: any = {};
+    if (rawText) {
+      try {
+        errorData = JSON.parse(rawText);
+      } catch {
+        errorData = { raw: rawText };
+      }
+    }
     console.error(`[SESSION_GEN] Error response:`, errorData);
-    const errorMessage = errorData?.error || `API error: ${res.status}`;
+    const errorMessage = errorData?.error || errorData?.message || errorData?.raw || `API error: ${res.status}`;
     throw new Error(errorMessage);
   }
 
@@ -2345,7 +2353,7 @@ function SessionDemoPageContent() {
 
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
                       {diagram && (
-                        <div className="max-w-xl" key={`diagram-${drill.title}-${index}`}>
+                        <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
                           <DrillDiagramCard
                             title={drill.title}
                             gameModelId={session.gameModelId}
@@ -2584,4 +2592,3 @@ export default function SessionDemoPage() {
     </Suspense>
   );
 }
-

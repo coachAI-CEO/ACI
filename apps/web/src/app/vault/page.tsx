@@ -1985,7 +1985,12 @@ export default function VaultPage() {
                 {selectedSession.json?.drills && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
-                    {selectedSession.json.drills.map((drill: any, i: number) => (
+                    {selectedSession.json.drills.map((drill: any, i: number) => {
+                      const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
+                      const description = drill.description ?? drill.json?.description;
+                      const organization = drill.organization ?? drill.json?.organization;
+
+                      return (
                       <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
                         {/* Drill Header */}
                         <div className="flex items-center gap-2 mb-2">
@@ -2005,13 +2010,13 @@ export default function VaultPage() {
                         {/* Two-column layout: Diagram + Details */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: Diagram */}
-                          {drill.diagram && (
+                          {diagram && (
                             <div className="flex items-center justify-center">
                               <UniversalDrillDiagram
-                                drillData={aciToUniversalDrillData(drill.diagram, {
+                                drillData={aciToUniversalDrillData(diagram, {
                                   title: drill.title ?? "Diagram",
-                                  description: drill.description,
-                                  organization: drill.organization,
+                                  description,
+                                  organization,
                                 })}
                                 size="small"
                               />
@@ -2020,13 +2025,13 @@ export default function VaultPage() {
                           
                           {/* Right: Description & Key Info */}
                           <div className="space-y-2">
-                            {drill.description && (
-                              <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{drill.description}</p>
+                            {description && (
+                              <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{description}</p>
                             )}
-                            {drill.organization?.area && (
+                            {organization?.area && (
                               <div className="flex gap-2 text-[10px] text-slate-400">
-                                {drill.organization.area.lengthYards && (
-                                  <span>{drill.organization.area.lengthYards}x{drill.organization.area.widthYards || '?'}y</span>
+                                {organization.area.lengthYards && (
+                                  <span>{organization.area.lengthYards}x{organization.area.widthYards || '?'}y</span>
                                 )}
                               </div>
                             )}
@@ -2046,7 +2051,8 @@ export default function VaultPage() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -2227,70 +2233,88 @@ export default function VaultPage() {
               {/* Two-column layout: Diagram + Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {/* Left: Diagram */}
-                {selectedDrill.diagram && (
+                {(() => {
+                  const diagram = selectedDrill.diagram ?? selectedDrill.json?.diagram ?? selectedDrill.json?.diagramV1;
+                  const description = selectedDrill.description ?? selectedDrill.json?.description;
+                  const organization = selectedDrill.organization ?? selectedDrill.json?.organization;
+
+                  return (
+                diagram && (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
                       <UniversalDrillDiagram
-                        drillData={aciToUniversalDrillData(selectedDrill.diagram, {
+                        drillData={aciToUniversalDrillData(diagram, {
                           title: selectedDrill.title ?? "Diagram",
-                          description: selectedDrill.description,
-                          organization: selectedDrill.organization,
+                          description,
+                          organization,
                         })}
                         size="small"
                       />
                     </div>
                   </div>
-                )}
+                )
+                  );
+                })()}
 
                 {/* Right: Description & Organization */}
                 <div className="space-y-3">
-                  {/* Description */}
-                  {selectedDrill.description && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-300 mb-1">Description</h3>
-                      <p className="text-xs text-slate-400">{selectedDrill.description}</p>
-                    </div>
-                  )}
+                  {(() => {
+                    const description = selectedDrill.description ?? selectedDrill.json?.description;
+                    const organization = selectedDrill.organization ?? selectedDrill.json?.organization;
 
-                  {/* Area Dimensions */}
-                  {selectedDrill.organization?.area && (
-                    <div className="flex gap-3 text-xs">
-                      {selectedDrill.organization.area.lengthYards && (
-                        <span className="text-slate-400">
-                          <span className="text-slate-500">Length:</span> {selectedDrill.organization.area.lengthYards}y
-                        </span>
-                      )}
-                      {selectedDrill.organization.area.widthYards && (
-                        <span className="text-slate-400">
-                          <span className="text-slate-500">Width:</span> {selectedDrill.organization.area.widthYards}y
-                        </span>
-                      )}
-                    </div>
-                  )}
+                    return (
+                      <>
+                        {/* Description */}
+                        {description && (
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-300 mb-1">Description</h3>
+                            <p className="text-xs text-slate-400">{description}</p>
+                          </div>
+                        )}
 
-                  {/* Rotation & Scoring */}
-                  {selectedDrill.organization?.rotation && (
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Rotation:</span>
-                      <p className="text-xs text-slate-400">{selectedDrill.organization.rotation}</p>
-                    </div>
-                  )}
-                  {selectedDrill.organization?.scoring && (
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Scoring:</span>
-                      <p className="text-xs text-slate-400">{selectedDrill.organization.scoring}</p>
-                    </div>
-                  )}
+                        {/* Area Dimensions */}
+                        {organization?.area && (
+                          <div className="flex gap-3 text-xs">
+                            {organization.area.lengthYards && (
+                              <span className="text-slate-400">
+                                <span className="text-slate-500">Length:</span> {organization.area.lengthYards}y
+                              </span>
+                            )}
+                            {organization.area.widthYards && (
+                              <span className="text-slate-400">
+                                <span className="text-slate-500">Width:</span> {organization.area.widthYards}y
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Rotation & Scoring */}
+                        {organization?.rotation && (
+                          <div>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Rotation:</span>
+                            <p className="text-xs text-slate-400">{organization.rotation}</p>
+                          </div>
+                        )}
+                        {organization?.scoring && (
+                          <div>
+                            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Scoring:</span>
+                            <p className="text-xs text-slate-400">{organization.scoring}</p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
               {/* Setup Steps */}
-              {selectedDrill.organization?.setupSteps && selectedDrill.organization.setupSteps.length > 0 && (
+              {(selectedDrill.organization ?? selectedDrill.json?.organization)?.setupSteps &&
+                (selectedDrill.organization ?? selectedDrill.json?.organization)?.setupSteps.length > 0 && (
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold text-slate-300 mb-2">Setup Steps</h3>
                   <ol className="list-decimal list-inside text-xs text-slate-400 space-y-1">
-                    {selectedDrill.organization.setupSteps.map((step: string, i: number) => (
+                    {(selectedDrill.organization ?? selectedDrill.json?.organization)?.setupSteps?.map((step: string, i: number) => (
                       <li key={i}>{step}</li>
                     ))}
                   </ol>

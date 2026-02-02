@@ -27,6 +27,9 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "- organization MUST be an object (with setupSteps, area, rotation, restarts, scoring).",
     "- Use 'diagram' (NOT 'diagramV1').",
     "- Use 'progressions' array (NOT 'progression').",
+    "- diagram MUST include arrows and annotations arrays (even if minimal).",
+    "- annotations MUST include fontSize, color (rgba), and fontWeight.",
+    "- diagram.pitch.showZones MUST be false (avoid auto-zone overlap).",
     "- Do NOT wrap JSON in markdown or add comments.",
     "",
     "INPUT:", ctx,
@@ -62,7 +65,19 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
         structure: "6 x 2:00 / 1:00 rest (1:0.5 work:rest ratio)",
         rationale: "Suitable for U10 players with 2-minute work periods and equal rest to maintain intensity and focus"
       },
-      diagram: { pitch: { variant: "HALF" }, players: [], goals: [] },
+      diagram: {
+        pitch: { variant: "HALF", orientation: "HORIZONTAL", showZones: false },
+        players: [],
+        goals: [],
+        arrows: [
+          { id: "arr1", from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
+          { id: "arr2", from: { x: 40, y: 45 }, to: { x: 30, y: 35 }, type: "press" }
+        ],
+        annotations: [
+          { id: "ann1", text: "PRESS TRIGGER", x: 30, y: 30, fontSize: 10, color: "rgba(239, 68, 68, 0.95)" },
+          { id: "ann2", text: "STAY COMPACT", x: 55, y: 55, fontSize: 10, color: "rgba(251, 191, 36, 0.95)" }
+        ]
+      },
       numbersOnField: { attackersOnField: 4, defendersOnField: 4, gkForDefend: true, totalPlayersOnField: 9 }
     }, null, 2),
     "",
@@ -95,6 +110,10 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "7. playerLevel=" + input.playerLevel + ": BEGINNER=simple, INTERMEDIATE=some combinations, ADVANCED=complex, game-realistic.",
     "8. coachLevel=" + input.coachLevel + ": GRASSROOTS=simple language, USSF_C=moderate detail, USSF_B_PLUS=advanced tactical detail.",
     "9. spaceConstraint=" + input.spaceConstraint + " sets area size; goalsAvailable=" + input.goalsAvailable + " sets goalMode (0=NONE, 1=LARGE, 2+=MINI2).",
+    "10. diagram MUST include arrows and annotations arrays. Include 7-10 arrows and 4-6 annotations (each annotation must include fontSize, color, fontWeight).",
+    "11. diagram.players MUST include EVERY player described in organization.setupSteps (no partial scenario diagrams).",
+    "12. diagram.pitch.showZones MUST be false.",
+    "13. diagram.pitch.orientation MUST match the data: goals on top/bottom => VERTICAL, goals on left/right => HORIZONTAL.",
     "",
     "REQUIRED FIELDS:",
     "{",
@@ -133,10 +152,12 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     '  },',
     '  "roleUsage": {"activeAttackRoles": string[], "activeDefendRoles": string[], "activeNeutralRoles": string[], "notes": string},',
     '  "diagram": {',
-    '    "pitch": {"variant": "FULL"|"HALF"|"THIRD"|"QUARTER", "orientation": "HORIZONTAL", "showZones": boolean, "zones": {...}},',
+    '    "pitch": {"variant": "FULL"|"HALF"|"THIRD"|"QUARTER", "orientation": "HORIZONTAL"|"VERTICAL", "showZones": false},',
     '    "players": [{"id": string, "number": number, "team": "ATT"|"DEF"|"NEUTRAL", "role": string, "x": number, "y": number, "facingAngle": number}],',
     '    "coach": {"x": number, "y": number, "label": "Coach", "note": string},',
-    '    "arrows": [{"from": {"playerId": string}, "to": {"playerId": string}, "type": "pass"|"run"|"press"}],',
+    '    "arrows": [{"id": string, "from": {"playerId"?: string, "x"?: number, "y"?: number}, "to": {"playerId"?: string, "x"?: number, "y"?: number}, "type": "pass"|"run"|"press"|"movement", "label"?: string, "color"?: string}], // 7-10 arrows',
+    '    "annotations": [{"id": string, "text": string, "x": number, "y": number, "fontSize": number, "color": string, "fontWeight": string, "backgroundColor"?: string}], // 4-6 annotations',
+    '    "safeZones": [{"id": string, "x": number, "y": number, "width": number, "height": number, "team": "ATT"|"DEF"|"NEUTRAL", "label"?: string}], // 1-3 zones',
     '    "goals": [{"id": string, "type": "BIG"|"MINI", "width": number, "x": number, "y": number, "facingAngle": number, "teamAttacks": "ATT"|"DEF"|"NEUTRAL"}]',
     '  },',
     '  "goalMode": string, "goalsAvailable": ' + input.goalsAvailable + ', "gkOptional": ' + (input.gkOptional ? 'true' : 'false'),
@@ -161,7 +182,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "  - Extract numbers from description (e.g., '4v4+GK' = 9 total)",
     "  - Extract numbers from organization.setupSteps (e.g., '4 attackers, 4 defenders, 1 GK' = 9 total)",
     "  - Check numbersOnField.totalPlayersOnField",
-    "  - ALL must match exactly",
+    "  - ALL must match exactly, and diagram.players length must equal the total",
     "",
     "STEP 4: Verify structure:",
     "  - organization is OBJECT (not string)",
@@ -205,6 +226,7 @@ export function buildQAReviewerPrompt(drill: any): string {
     "- No age mismatches (all mentions = drill.ageGroup)",
     "- Player counts are consistent across fields",
     "- No forbidden keys (uses 'diagram', 'progressions' array)",
+    "- diagram includes arrows[] and annotations[] (both present, not empty)",
     "",
     "Score 4 (strong):",
     "- Most clarity requirements met, minor issues (e.g., one age mention off, slight count inconsistency)",
@@ -222,6 +244,7 @@ export function buildQAReviewerPrompt(drill: any): string {
     "- Multiple age mismatches in critical fields (description, setupSteps)",
     "- Major player count inconsistencies (e.g., description says 4v4 but numbersOnField says 12)",
     "- Forbidden keys present (diagramV1, progression instead of progressions)",
+    "- diagram missing arrows/annotations arrays",
     "",
     "IMPORTANT: If organization object exists with setupSteps, area (numeric), rotation, restarts, scoring,",
     "and only minor issues (e.g., one age mention off, slight count difference), score 3-4, NOT 2.",
@@ -230,4 +253,3 @@ export function buildQAReviewerPrompt(drill: any): string {
     prettyDrill
   ].join("\n");
 }
-

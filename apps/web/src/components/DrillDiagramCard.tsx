@@ -43,7 +43,7 @@ export default function DrillDiagramCard({
 
   return (
     <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-6 py-5 sm:px-8 sm:py-6">
-      <div className="mx-auto max-w-[760px]">
+      <div className="mx-auto max-w-[950px]">
         <UniversalDrillDiagram drillData={drillData} size="large" />
       </div>
     </section>

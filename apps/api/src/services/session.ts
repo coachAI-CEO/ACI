@@ -104,6 +104,27 @@ export async function generateAndReviewSession(
   if (session.drills && Array.isArray(session.drills)) {
     session.drills.forEach((drill: any, index: number) => {
       if (drill.drillType !== "COOLDOWN" && drill.diagram) {
+        const inferOrientation = (diagram: any) => {
+          const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+          if (goals.length > 0) {
+            const left = goals.some((g: any) => typeof g.x === "number" && g.x < 20);
+            const right = goals.some((g: any) => typeof g.x === "number" && g.x > 80);
+            const top = goals.some((g: any) => typeof g.y === "number" && g.y < 20);
+            const bottom = goals.some((g: any) => typeof g.y === "number" && g.y > 80);
+            if ((left || right) && !(top || bottom)) return "HORIZONTAL";
+            if ((top || bottom) && !(left || right)) return "VERTICAL";
+          }
+          const players = Array.isArray(diagram.players) ? diagram.players : [];
+          if (players.length >= 2) {
+            const xs = players.map((p: any) => p.x).filter((n: any) => Number.isFinite(n));
+            const ys = players.map((p: any) => p.y).filter((n: any) => Number.isFinite(n));
+            const rangeX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+            const rangeY = ys.length ? Math.max(...ys) - Math.min(...ys) : 0;
+            return rangeY >= rangeX ? "VERTICAL" : "HORIZONTAL";
+          }
+          return "HORIZONTAL";
+        };
+
         // If diagram has 'elements' instead of 'players', try to convert it
         if (Array.isArray(drill.diagram.elements) && (!Array.isArray(drill.diagram.players) || drill.diagram.players.length === 0)) {
           console.warn(`[SESSION] Drill ${index} uses 'elements' format, attempting to convert to 'players' format`);
@@ -127,6 +148,53 @@ export async function generateAndReviewSession(
         // Ensure diagram has required structure
         if (!drill.diagram.pitch) {
           drill.diagram.pitch = { variant: "HALF", orientation: "HORIZONTAL", showZones: false };
+        }
+        if (drill.diagram.pitch) {
+          const inferred = inferOrientation(drill.diagram);
+          if (drill.diagram.pitch.orientation !== inferred) {
+            drill.diagram.pitch.orientation = inferred;
+            console.log(`[SESSION] Adjusted diagram orientation to ${inferred} for drill ${index}`);
+          }
+        }
+
+        // Align goal teamAttacks with player positioning
+        const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
+        const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
+        if (goals.length >= 2 && players.length > 0) {
+          const attPlayers = players.filter((p: any) => p.team === "ATT");
+          if (attPlayers.length > 0) {
+            const attCentroidX =
+              attPlayers.reduce((sum: number, p: any) => sum + (p.x || 0), 0) /
+              attPlayers.length;
+            const attCentroidY =
+              attPlayers.reduce((sum: number, p: any) => sum + (p.y || 0), 0) /
+              attPlayers.length;
+            if (drill.diagram.pitch.orientation === "HORIZONTAL") {
+              const leftGoal = goals.reduce((min: any, g: any) => (g.x < min.x ? g : min), goals[0]);
+              const rightGoal = goals.reduce((max: any, g: any) => (g.x > max.x ? g : max), goals[0]);
+              const distLeft = Math.abs(attCentroidX - leftGoal.x);
+              const distRight = Math.abs(attCentroidX - rightGoal.x);
+              if (distRight < distLeft) {
+                leftGoal.teamAttacks = "DEF";
+                rightGoal.teamAttacks = "ATT";
+              } else {
+                leftGoal.teamAttacks = "ATT";
+                rightGoal.teamAttacks = "DEF";
+              }
+            } else {
+              const topGoal = goals.reduce((min: any, g: any) => (g.y < min.y ? g : min), goals[0]);
+              const bottomGoal = goals.reduce((max: any, g: any) => (g.y > max.y ? g : max), goals[0]);
+              const distTop = Math.abs(attCentroidY - topGoal.y);
+              const distBottom = Math.abs(attCentroidY - bottomGoal.y);
+              if (distBottom < distTop) {
+                topGoal.teamAttacks = "DEF";
+                bottomGoal.teamAttacks = "ATT";
+              } else {
+                topGoal.teamAttacks = "ATT";
+                bottomGoal.teamAttacks = "DEF";
+              }
+            }
+          }
         }
         if (!Array.isArray(drill.diagram.players)) {
           drill.diagram.players = [];
@@ -355,4 +423,3 @@ export async function generateAndReviewSession(
     clearMetricsContext();
   }
 }
-

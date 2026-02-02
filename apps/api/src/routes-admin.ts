@@ -20,6 +20,17 @@ const r = express.Router();
 // Protect ALL admin routes
 r.use(requireAdmin);
 
+const normalizeJobStatus = {
+  running: false,
+  startedAt: null as string | null,
+  finishedAt: null as string | null,
+  processed: 0,
+  updated: 0,
+  target: 0,
+  skippedMissingCore: 0,
+  lastError: null as string | null,
+};
+
 // Gemini 2.0 Flash pricing (per 1M tokens)
 const GEMINI_INPUT_PRICE_PER_1M = 0.10;  // $0.10 per 1M input tokens
 const GEMINI_OUTPUT_PRICE_PER_1M = 0.40; // $0.40 per 1M output tokens
@@ -28,6 +39,141 @@ function calculateCost(promptTokens: number, completionTokens: number): number {
   const inputCost = (promptTokens / 1_000_000) * GEMINI_INPUT_PRICE_PER_1M;
   const outputCost = (completionTokens / 1_000_000) * GEMINI_OUTPUT_PRICE_PER_1M;
   return inputCost + outputCost;
+}
+
+function inferOrientationFromDiagram(diagram: any): "HORIZONTAL" | "VERTICAL" {
+  const goals = Array.isArray(diagram?.goals) ? diagram.goals : [];
+  if (goals.length > 0) {
+    const left = goals.some((g: any) => typeof g.x === "number" && g.x < 20);
+    const right = goals.some((g: any) => typeof g.x === "number" && g.x > 80);
+    const top = goals.some((g: any) => typeof g.y === "number" && g.y < 20);
+    const bottom = goals.some((g: any) => typeof g.y === "number" && g.y > 80);
+    if ((left || right) && !(top || bottom)) return "HORIZONTAL";
+    if ((top || bottom) && !(left || right)) return "VERTICAL";
+  }
+  const players = Array.isArray(diagram?.players) ? diagram.players : [];
+  if (players.length >= 2) {
+    const xs = players.map((p: any) => p.x).filter((n: any) => Number.isFinite(n));
+    const ys = players.map((p: any) => p.y).filter((n: any) => Number.isFinite(n));
+    const rangeX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+    const rangeY = ys.length ? Math.max(...ys) - Math.min(...ys) : 0;
+    return rangeY >= rangeX ? "VERTICAL" : "HORIZONTAL";
+  }
+  return "HORIZONTAL";
+}
+
+function normalizeDiagramInJson(json: any) {
+  let out: any = json || {};
+  if (typeof out === "string") {
+    try {
+      out = JSON.parse(out);
+    } catch {
+      out = {};
+    }
+  }
+  out.diagram = out.diagram || {};
+  const diagram = out.diagram;
+
+  if (typeof diagram.pitch !== "object" || diagram.pitch === null) {
+    diagram.pitch = {
+      variant: typeof diagram.pitch === "string" ? diagram.pitch : "HALF",
+      orientation: "HORIZONTAL",
+      showZones: false,
+    };
+  } else {
+    diagram.pitch = diagram.pitch || { variant: "HALF", orientation: "HORIZONTAL", showZones: false };
+  }
+  diagram.pitch.showZones = false;
+  const inferred = inferOrientationFromDiagram(diagram);
+  diagram.pitch.orientation = inferred;
+
+  diagram.players = Array.isArray(diagram.players) ? diagram.players : [];
+  diagram.goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+  diagram.arrows = Array.isArray(diagram.arrows) ? diagram.arrows : [];
+  diagram.annotations = Array.isArray(diagram.annotations) ? diagram.annotations : [];
+  diagram.safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones : [];
+
+  if (diagram.arrows.length < 7) {
+    const base = [
+      { id: "arr1", from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
+      { id: "arr2", from: { x: 40, y: 45 }, to: { x: 60, y: 40 }, type: "pass", label: "2" },
+      { id: "arr3", from: { x: 60, y: 40 }, to: { x: 70, y: 30 }, type: "movement" },
+      { id: "arr4", from: { x: 70, y: 30 }, to: { x: 50, y: 25 }, type: "pass", label: "3" },
+      { id: "arr5", from: { x: 30, y: 55 }, to: { x: 40, y: 45 }, type: "press" },
+      { id: "arr6", from: { x: 55, y: 55 }, to: { x: 50, y: 45 }, type: "press" },
+      { id: "arr7", from: { x: 50, y: 70 }, to: { x: 50, y: 55 }, type: "run" },
+    ];
+    diagram.arrows = [...diagram.arrows, ...base].slice(0, 10);
+  }
+
+  if (diagram.annotations.length < 4) {
+    const base = [
+      { id: "ann1", text: "PRESS TRIGGER", x: 30, y: 30, fontSize: 10, color: "rgba(239, 68, 68, 0.95)", fontWeight: "700" },
+      { id: "ann2", text: "STAY COMPACT", x: 55, y: 55, fontSize: 10, color: "rgba(251, 191, 36, 0.95)", fontWeight: "700" },
+      { id: "ann3", text: "WIDE 2v1", x: 85, y: 35, fontSize: 10, color: "rgba(59, 130, 246, 0.9)", fontWeight: "700" },
+      { id: "ann4", text: "TRIGGER PASS", x: 60, y: 45, fontSize: 9, color: "rgba(34, 197, 94, 0.9)", fontWeight: "700" },
+    ];
+    diagram.annotations = [...diagram.annotations, ...base].slice(0, 6);
+  }
+
+  diagram.annotations = diagram.annotations.map((a: any, idx: number) => ({
+    id: a.id ?? `ann-${idx}`,
+    text: a.text ?? "",
+    x: typeof a.x === "number" ? a.x : 50,
+    y: typeof a.y === "number" ? a.y : 50,
+    fontSize: typeof a.fontSize === "number" ? a.fontSize : 10,
+    color: typeof a.color === "string" ? a.color : "rgba(59, 130, 246, 0.95)",
+    fontWeight: typeof a.fontWeight === "string" ? a.fontWeight : "700",
+    backgroundColor: a.backgroundColor,
+  }));
+
+  if (diagram.safeZones.length < 1) {
+    diagram.safeZones = [
+      { id: "sz1", x: 0, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
+      { id: "sz2", x: 85, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
+    ];
+  }
+
+  out.diagram = diagram;
+  return out;
+}
+
+function getNormalizationState(json: any) {
+  let out: any = json || {};
+  if (typeof out === "string") {
+    try {
+      out = JSON.parse(out);
+    } catch {
+      return { needsEnhancement: true, missingCore: true };
+    }
+  }
+  const diagram = out?.diagram || {};
+  const pitch = diagram?.pitch;
+  const pitchMissing = !pitch || typeof pitch !== "object" || pitch.showZones !== false;
+
+  const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  const arrows = Array.isArray(diagram.arrows) ? diagram.arrows : [];
+  const annotations = Array.isArray(diagram.annotations) ? diagram.annotations : [];
+  const safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones : [];
+
+  const missingCore = players.length === 0 || goals.length === 0;
+  const arrowsMissing = arrows.length < 7;
+  const annotationsMissing = annotations.length < 4;
+  const safeZonesMissing = safeZones.length < 1;
+
+  const hasStyled = annotations.every(
+    (a: any) =>
+      typeof a?.fontSize === "number" &&
+      typeof a?.color === "string" &&
+      typeof a?.fontWeight === "string"
+  );
+  const annotationsUnstyled = !hasStyled;
+
+  const needsEnhancement =
+    !missingCore && (pitchMissing || arrowsMissing || annotationsMissing || safeZonesMissing || annotationsUnstyled);
+
+  return { needsEnhancement, missingCore };
 }
 
 // Get overall dashboard stats
@@ -848,6 +994,159 @@ r.post("/admin/drills/review", requireAdminPermission('canReviewQA'), async (req
   }
 });
 
+// Normalize Drill Diagram (add missing elements / fix orientation)
+r.post("/admin/drills/normalize-diagram", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  console.log("[ADMIN] normalize-diagram start", req.body);
+  normalizeJobStatus.running = true;
+  normalizeJobStatus.startedAt = new Date().toISOString();
+  normalizeJobStatus.finishedAt = null;
+  normalizeJobStatus.processed = 0;
+  normalizeJobStatus.updated = 0;
+  normalizeJobStatus.skippedMissingCore = 0;
+  normalizeJobStatus.lastError = null;
+  const schema = z.object({
+    drillRef: z.string().optional(),
+    all: z.boolean().optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+    dryRun: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) {
+    normalizeJobStatus.running = false;
+    normalizeJobStatus.lastError = "Invalid payload";
+    return res.status(400).json({ ok: false, error: "Invalid payload" });
+  }
+  const { drillRef, all, limit, dryRun } = parsed.data;
+  if (!drillRef && !all) {
+    normalizeJobStatus.running = false;
+    normalizeJobStatus.lastError = "Provide drillRef or all=true";
+    return res.status(400).json({ ok: false, error: "Provide drillRef or all=true" });
+  }
+
+  const updated: Array<{ id: string; refCode: string | null }> = [];
+  let processedTotal = 0;
+
+  if (drillRef) {
+    const drills = await prisma.drill.findMany({
+      where: { OR: [{ id: drillRef }, { refCode: drillRef }] },
+    });
+    if (drills.length === 0) {
+      normalizeJobStatus.running = false;
+      normalizeJobStatus.lastError = "No drills found";
+      return res.status(404).json({ ok: false, error: "No drills found" });
+    }
+    for (const drill of drills) {
+      processedTotal += 1;
+      const json = JSON.parse(JSON.stringify(drill.json || {}));
+      const before = JSON.stringify(json);
+      const normalized = normalizeDiagramInJson(json);
+      const after = JSON.stringify(normalized);
+      if (before !== after) {
+        if (!dryRun) {
+          await prisma.drill.update({
+            where: { id: drill.id },
+            data: { json: normalized },
+          });
+        }
+        updated.push({ id: drill.id, refCode: drill.refCode });
+      }
+    }
+  } else {
+    const maxUpdates = limit || 50;
+    const batchSize = 200;
+    let processed = 0;
+    let offset = 0;
+    normalizeJobStatus.target = maxUpdates;
+    while (updated.length < maxUpdates) {
+      const drills = await prisma.drill.findMany({
+        skip: offset,
+        take: batchSize,
+        orderBy: { createdAt: "desc" },
+      });
+      if (drills.length === 0) break;
+      for (const drill of drills) {
+        if (updated.length >= maxUpdates) break;
+        processedTotal += 1;
+        const json = JSON.parse(JSON.stringify(drill.json || {}));
+        const state = getNormalizationState(json);
+        if (state.missingCore) {
+          normalizeJobStatus.skippedMissingCore += 1;
+          continue;
+        }
+        if (!state.needsEnhancement) {
+          continue;
+        }
+        const before = JSON.stringify(json);
+        const normalized = normalizeDiagramInJson(json);
+        const after = JSON.stringify(normalized);
+        if (before !== after) {
+          if (!dryRun) {
+            await prisma.drill.update({
+              where: { id: drill.id },
+              data: { json: normalized },
+            });
+          }
+          updated.push({ id: drill.id, refCode: drill.refCode });
+          normalizeJobStatus.updated = updated.length;
+        }
+      }
+      processed += drills.length;
+      offset += drills.length;
+      normalizeJobStatus.processed = processedTotal;
+      console.log("[ADMIN] normalize-diagram progress", { processed, updated: updated.length, target: maxUpdates });
+    }
+  }
+
+  console.log("[ADMIN] normalize-diagram done", { updated: updated.length, dryRun: !!dryRun });
+  normalizeJobStatus.running = false;
+  normalizeJobStatus.finishedAt = new Date().toISOString();
+  normalizeJobStatus.processed = processedTotal;
+  normalizeJobStatus.updated = updated.length;
+  return res.json({
+    ok: true,
+    dryRun: !!dryRun,
+    processed: processedTotal,
+    updatedCount: updated.length,
+    skippedMissingCore: normalizeJobStatus.skippedMissingCore,
+    updated,
+  });
+});
+
+// Drill normalization status (how many need normalization)
+r.get("/admin/drills/normalize-status", requireAdminPermission('canReviewQA'), async (_req: AdminRequest, res) => {
+  const total = await prisma.drill.count();
+  const batchSize = 500;
+  let needs = 0;
+  let missingCore = 0;
+  let processed = 0;
+
+  while (processed < total) {
+    const drills = await prisma.drill.findMany({
+      skip: processed,
+      take: batchSize,
+      orderBy: { createdAt: "desc" },
+      select: { json: true },
+    });
+    if (drills.length === 0) break;
+    for (const d of drills) {
+      const state = getNormalizationState(d.json);
+      if (state.missingCore) missingCore += 1;
+      if (state.needsEnhancement) needs += 1;
+    }
+    processed += drills.length;
+  }
+
+  return res.json({
+    ok: true,
+    total,
+    needsNormalization: needs,
+    missingCore,
+    processed,
+    batchSize,
+    job: normalizeJobStatus,
+  });
+});
+
 // Get Drill by ID
 r.get("/admin/drills/:drillId", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
   const drillId = req.params.drillId;
@@ -986,6 +1285,7 @@ r.post("/admin/drills/regenerate", requireAdminPermission('canReviewQA'), async 
     },
   });
 });
+
 
 r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
   const sessionRef = String(req.body?.sessionRef || "").trim();

@@ -681,7 +681,12 @@ export default function FavoritesPage() {
                 {selectedSession.json?.drills && selectedSession.json.drills.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
-                    {selectedSession.json.drills.map((drill: any, i: number) => (
+                    {selectedSession.json.drills.map((drill: any, i: number) => {
+                      const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
+                      const description = drill.description ?? drill.json?.description;
+                      const organization = drill.organization ?? drill.json?.organization;
+
+                      return (
                       <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
                         {/* Drill Header */}
                         <div className="flex items-center gap-2 mb-2">
@@ -701,13 +706,13 @@ export default function FavoritesPage() {
                         {/* Two-column layout: Diagram + Details */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: Diagram */}
-                          {drill.diagram && (
+                          {diagram && (
                             <div className="flex items-center justify-center">
                               <UniversalDrillDiagram
-                                drillData={aciToUniversalDrillData(drill.diagram, {
+                                drillData={aciToUniversalDrillData(diagram, {
                                   title: drill.title ?? "Diagram",
-                                  description: drill.description,
-                                  organization: drill.organization,
+                                  description,
+                                  organization,
                                 })}
                                 size="small"
                               />
@@ -716,13 +721,13 @@ export default function FavoritesPage() {
                           
                           {/* Right: Description & Key Info */}
                           <div className="space-y-2">
-                            {drill.description && (
-                              <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{drill.description}</p>
+                            {description && (
+                              <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{description}</p>
                             )}
-                            {drill.organization?.area && (
+                            {organization?.area && (
                               <div className="flex gap-2 text-[10px] text-slate-400">
-                                {drill.organization.area.lengthYards && (
-                                  <span>{drill.organization.area.lengthYards}x{drill.organization.area.widthYards || '?'}y</span>
+                                {organization.area.lengthYards && (
+                                  <span>{organization.area.lengthYards}x{organization.area.widthYards || '?'}y</span>
                                 )}
                               </div>
                             )}
@@ -742,7 +747,8 @@ export default function FavoritesPage() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 

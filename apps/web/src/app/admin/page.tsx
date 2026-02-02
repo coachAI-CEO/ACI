@@ -226,6 +226,24 @@ type DrillRegenerateResult = {
   replacement: { id: string; refCode?: string; title?: string; qaScore: number | null; approved: boolean };
 };
 
+type DrillNormalizeStatus = {
+  total: number;
+  needsNormalization: number;
+  missingCore?: number;
+  processed: number;
+  batchSize: number;
+  job?: {
+    running: boolean;
+    startedAt: string | null;
+    finishedAt: string | null;
+    processed: number;
+    updated: number;
+    target: number;
+    skippedMissingCore: number;
+    lastError: string | null;
+  };
+};
+
 // Base URL for backend API (used for admin-only endpoints that require JWT)
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -316,6 +334,13 @@ export default function AdminDashboard() {
   const [regenerateDrillReplace, setRegenerateDrillReplace] = useState<boolean>(false);
   const [viewingDrill, setViewingDrill] = useState<any | null>(null);
   const [loadingDrill, setLoadingDrill] = useState<boolean>(false);
+
+  const [normalizeStatus, setNormalizeStatus] = useState<DrillNormalizeStatus | null>(null);
+  const [normalizeBatchSize, setNormalizeBatchSize] = useState<number>(100);
+  const [normalizeRunning, setNormalizeRunning] = useState<boolean>(false);
+  const [normalizeResult, setNormalizeResult] = useState<any | null>(null);
+  const [normalizeError, setNormalizeError] = useState<string | null>(null);
+  const [normalizeStatusError, setNormalizeStatusError] = useState<string | null>(null);
   
   // QA Status Analytics
   const [qaAnalytics, setQaAnalytics] = useState<{
@@ -696,7 +721,7 @@ export default function AdminDashboard() {
     setError(null);
     try {
       const authHeaders = getAuthHeaders();
-      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes, usageByPlanRes, vaultUsageRes, favoritesUsageRes, featureAccessRes, trialAccountsRes, limitEnforcementRes, clubAccountsRes] = await Promise.all([
+      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes, usageByPlanRes, vaultUsageRes, favoritesUsageRes, featureAccessRes, trialAccountsRes, limitEnforcementRes, clubAccountsRes, normalizeStatusRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/timeline?days=7`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/recent?limit=20`, { headers: authHeaders }),
@@ -710,12 +735,26 @@ export default function AdminDashboard() {
         fetch(`${API_BASE_URL}/admin/analytics/trial-accounts`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/analytics/limit-enforcement`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/analytics/club-accounts`, { headers: authHeaders }),
+        fetch(`${API_BASE_URL}/admin/drills/normalize-status`, { headers: authHeaders }),
       ]);
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         if (statsData.ok) {
           setStats(statsData.stats);
+        }
+      }
+      if (normalizeStatusRes.ok) {
+        const normData = await normalizeStatusRes.json();
+        if (normData.ok) {
+          setNormalizeStatus({
+            total: normData.total,
+            needsNormalization: normData.needsNormalization,
+            missingCore: normData.missingCore,
+            processed: normData.processed,
+            batchSize: normData.batchSize,
+            job: normData.job,
+          });
         }
       }
 
@@ -1390,6 +1429,80 @@ export default function AdminDashboard() {
       setRegenerateDrillRunning(false);
     }
   }, [reviewDrillRef, regenerateDrillReplace, fetchData]);
+
+  const runDrillNormalizeBatch = useCallback(async () => {
+    setNormalizeRunning(true);
+    setNormalizeError(null);
+    setNormalizeResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/drills/normalize-diagram`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ all: true, limit: normalizeBatchSize }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Normalize failed (${res.status})`);
+      }
+      setNormalizeResult(data);
+      const statusRes = await fetch(`${API_BASE_URL}/admin/drills/normalize-status`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+          setNormalizeStatus({
+            total: statusData.total,
+            needsNormalization: statusData.needsNormalization,
+            missingCore: statusData.missingCore,
+            processed: statusData.processed,
+            batchSize: statusData.batchSize,
+            job: statusData.job,
+          });
+          setNormalizeStatusError(null);
+        }
+      } else {
+        const errText = await statusRes.text().catch(() => "");
+        setNormalizeStatusError(`Status fetch failed (${statusRes.status}) ${errText}`);
+      }
+    } catch (e: any) {
+      setNormalizeError(e?.message || String(e));
+    } finally {
+      setNormalizeRunning(false);
+    }
+  }, [normalizeBatchSize]);
+
+  const refreshNormalizeStatus = useCallback(async () => {
+    setNormalizeStatusError(null);
+    try {
+      const statusRes = await fetch(`${API_BASE_URL}/admin/drills/normalize-status`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (!statusRes.ok) {
+        const errText = await statusRes.text().catch(() => "");
+        setNormalizeStatusError(`Status fetch failed (${statusRes.status}) ${errText}`);
+        return;
+      }
+      const statusData = await statusRes.json();
+      if (statusData.ok) {
+      setNormalizeStatus({
+        total: statusData.total,
+        needsNormalization: statusData.needsNormalization,
+        missingCore: statusData.missingCore,
+        processed: statusData.processed,
+        batchSize: statusData.batchSize,
+        job: statusData.job,
+      });
+      } else {
+        setNormalizeStatusError(statusData?.error || "Status fetch failed");
+      }
+    } catch (e: any) {
+      setNormalizeStatusError(e?.message || String(e));
+    }
+  }, []);
 
   const runSessionRegenerate = useCallback(async () => {
     const ref = reviewRef.trim();
@@ -2441,6 +2554,78 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Drill Diagram Normalization */}
+        <div className="mt-6 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs text-slate-400 uppercase tracking-wide">Drill Diagram Normalization</div>
+              <div className="mt-2 text-sm text-slate-300">
+                {normalizeStatus ? (
+                  <>
+                    <span className="text-slate-400">Needs normalization: </span>
+                    <span className="font-semibold text-amber-300">{formatNumber(normalizeStatus.needsNormalization)}</span>
+                    <span className="text-slate-500"> / {formatNumber(normalizeStatus.total)}</span>
+                    {typeof normalizeStatus.missingCore === "number" && (
+                      <span className="text-slate-500"> · Missing core: {formatNumber(normalizeStatus.missingCore)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-slate-500">Status unavailable</span>
+                )}
+              </div>
+              {normalizeStatusError && (
+                <div className="mt-1 text-xs text-red-400">{normalizeStatusError}</div>
+              )}
+              {normalizeStatus?.job && (
+                <div className="mt-1 text-xs text-slate-400">
+                  {normalizeStatus.job.running ? (
+                    <>Processing: {formatNumber(normalizeStatus.job.updated)} updated / {formatNumber(normalizeStatus.job.processed)} scanned</>
+                  ) : normalizeStatus.job.finishedAt ? (
+                    <>Last run: {formatNumber(normalizeStatus.job.updated)} updated / {formatNumber(normalizeStatus.job.processed)} scanned</>
+                  ) : (
+                    <>No recent runs</>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={normalizeBatchSize}
+                onChange={(e) => setNormalizeBatchSize(Number(e.target.value || 1))}
+                className="w-24 rounded-md border border-slate-700/70 bg-slate-950/60 px-2 py-1 text-sm text-slate-200"
+              />
+              <button
+                onClick={refreshNormalizeStatus}
+                className="rounded-md border border-slate-600/60 bg-slate-800/40 px-3 py-1 text-sm text-slate-200 hover:bg-slate-800/70"
+              >
+                Refresh
+              </button>
+              <button
+                onClick={runDrillNormalizeBatch}
+                disabled={normalizeRunning}
+                className="rounded-md border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {normalizeRunning ? "Normalizing..." : "Normalize Batch"}
+              </button>
+            </div>
+          </div>
+          {normalizeRunning && (
+            <div className="mt-2 text-xs text-slate-400">Processing batch… check API logs for progress.</div>
+          )}
+          {normalizeError && (
+            <div className="mt-2 text-xs text-red-400">{normalizeError}</div>
+          )}
+          {normalizeResult && (
+            <div className="mt-2 text-xs text-slate-400">
+              Updated {normalizeResult.updatedCount} of {normalizeResult.processed} scanned
+              {typeof normalizeResult.skippedMissingCore === "number" ? ` · Skipped core-missing: ${normalizeResult.skippedMissingCore}` : ""}.
+            </div>
+          )}
         </div>
 
         {/* Users & Access Breakdown - Combined Section */}
@@ -4580,7 +4765,12 @@ export default function AdminDashboard() {
               {viewingSession.json?.drills && (
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
-                  {viewingSession.json.drills.map((drill: any, i: number) => (
+                  {viewingSession.json.drills.map((drill: any, i: number) => {
+                    const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
+                    const description = drill.description ?? drill.json?.description;
+                    const organization = drill.organization ?? drill.json?.organization;
+
+                    return (
                     <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${
@@ -4597,13 +4787,13 @@ export default function AdminDashboard() {
                       <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title}</h4>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {drill.diagram && (
+                        {diagram && (
                           <div className="flex items-center justify-center">
                             <UniversalDrillDiagram
-                              drillData={aciToUniversalDrillData(drill.diagram, {
+                              drillData={aciToUniversalDrillData(diagram, {
                                 title: drill.title ?? "Diagram",
-                                description: drill.description,
-                                organization: drill.organization,
+                                description,
+                                organization,
                               })}
                               size="small"
                             />
@@ -4611,8 +4801,8 @@ export default function AdminDashboard() {
                         )}
                         
                         <div className="space-y-2">
-                          {drill.description && (
-                            <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{drill.description}</p>
+                          {description && (
+                            <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{description}</p>
                           )}
                           {drill.coachingPoints && drill.coachingPoints.length > 0 && (
                             <div>
@@ -4630,7 +4820,8 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
