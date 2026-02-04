@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SessionForm from "@/components/SessionForm";
@@ -551,6 +551,8 @@ function SessionDemoPageContent() {
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
   const [generatingSeriesSkillFocus, setGeneratingSeriesSkillFocus] = useState(false);
+  const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
+  const diagramFetchInFlight = useRef<Set<string>>(new Set());
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
     sessionTitle: string;
@@ -561,11 +563,57 @@ function SessionDemoPageContent() {
   const config = getConfigFromSearchParams(searchParams);
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
   useEffect(() => {
     // Fetch user features
     fetchUserFeatures().then(setUserFeatures).catch(() => setUserFeatures(null));
   }, []);
+
+  const isDiagramMissingTactical = (diagram: any) => {
+    if (!diagram) return true;
+    const arrows = Array.isArray(diagram.arrows) ? diagram.arrows.length : 0;
+    const annotations = Array.isArray(diagram.annotations) ? diagram.annotations.length : 0;
+    const safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones.length : 0;
+    return arrows === 0 || annotations === 0 || safeZones === 0;
+  };
+
+  useEffect(() => {
+    const drills = data?.session?.drills;
+    if (!drills || !Array.isArray(drills)) return;
+    drills.forEach((drill: any) => {
+      const refCode = drill.refCode;
+      if (!refCode) return;
+      if (diagramOverrides[refCode]) return;
+      if (diagramFetchInFlight.current.has(refCode)) return;
+      const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
+      if (!isDiagramMissingTactical(baseDiagram)) return;
+      diagramFetchInFlight.current.add(refCode);
+      fetch(`${apiBaseUrl}/vault/lookup/${encodeURIComponent(refCode)}`, {
+        headers: {
+          ...getUserHeaders(),
+        },
+      })
+        .then((res) => res.json())
+        .then((payload) => {
+          const fullDrill = payload?.data;
+          const enriched =
+            fullDrill?.json?.diagram ||
+            fullDrill?.diagram ||
+            fullDrill?.diagramV1 ||
+            fullDrill?.json?.diagramV1;
+          if (enriched) {
+            setDiagramOverrides((prev) => ({ ...prev, [refCode]: enriched }));
+          }
+        })
+        .catch(() => {
+          // ignore fetch failures
+        })
+        .finally(() => {
+          diagramFetchInFlight.current.delete(refCode);
+        });
+    });
+  }, [data, diagramOverrides]);
 
   useEffect(() => {
     const sessionId = searchParams.get("sessionId");
@@ -2125,6 +2173,9 @@ function SessionDemoPageContent() {
                             if (drill.diagramV1 && !drill.diagram) {
                               drillCopy.diagram = drill.diagramV1;
                             }
+                            if (drill.json?.diagram && !drillCopy.diagram) {
+                              drillCopy.diagram = drill.json.diagram;
+                            }
                             return drillCopy;
                           }) || [],
                         };
@@ -2313,7 +2364,23 @@ function SessionDemoPageContent() {
             <div className="space-y-6">
               <h2 className="text-lg font-semibold">Session Drills</h2>
               {session.drills.map((drill, index) => {
-                const diagram = drill.diagram || drill.diagramV1;
+                const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
+                const diagram = drill.refCode && diagramOverrides[drill.refCode]
+                  ? diagramOverrides[drill.refCode]
+                  : baseDiagram;
+                if (process.env.NODE_ENV !== "production") {
+                  console.log("[SESSION] Drill diagram source", {
+                    refCode: drill.refCode,
+                    title: drill.title,
+                    fromJson: !!drill.json?.diagram,
+                    fromDiagram: !!drill.diagram,
+                    fromDiagramV1: !!drill.diagramV1,
+                    arrows: baseDiagram?.arrows?.length ?? 0,
+                    annotations: baseDiagram?.annotations?.length ?? 0,
+                    safeZones: baseDiagram?.safeZones?.length ?? 0,
+                    overrideApplied: drill.refCode ? !!diagramOverrides[drill.refCode] : false,
+                  });
+                }
                 const isOrganizationObject = drill.organization && typeof drill.organization === "object" && !Array.isArray(drill.organization);
                 const organizationObj = isOrganizationObject ? (drill.organization as OrganizationObject) : null;
                 const organizationString = isOrganizationObject ? "" : (typeof drill.organization === "string" ? drill.organization : "");

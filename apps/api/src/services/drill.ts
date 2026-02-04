@@ -12,6 +12,7 @@ import { generateText, setMetricsContext, clearMetricsContext } from "../gemini"
 import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
 import { generateRefCode } from "../utils/ref-code";
+import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 
 /**
  * Sanitize LLM output to enforce clarity rules:
@@ -176,124 +177,11 @@ function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
       }
     }
 
-    if (!Array.isArray(diagram.arrows)) {
-      diagram.arrows = [];
-      warnings.push(`${prefix}Added missing 'diagram.arrows' array`);
-    }
-    if (!Array.isArray(diagram.annotations)) {
-      diagram.annotations = [];
-      warnings.push(`${prefix}Added missing 'diagram.annotations' array`);
-    }
-    if (!Array.isArray(diagram.safeZones)) {
-      diagram.safeZones = [];
-      warnings.push(`${prefix}Added missing 'diagram.safeZones' array`);
-    }
-
-    if (diagram.arrows.length < 7) {
-      const p0 = safePlayers[0];
-      const p1 = safePlayers[1];
-      const p2 = safePlayers[2];
-      const p3 = safePlayers[3];
-      const p4 = safePlayers[4];
-      const p5 = safePlayers[5];
-      const fallbackArrows = [];
-
-      if (p0 && p1) {
-        fallbackArrows.push({ id: "arr1", from: { x: p0.x, y: p0.y }, to: { x: p1.x, y: p1.y }, type: "pass", label: "1" });
-      }
-      if (p1 && p2) {
-        fallbackArrows.push({ id: "arr2", from: { x: p1.x, y: p1.y }, to: { x: p2.x, y: p2.y }, type: "pass", label: "2" });
-      }
-      if (p2 && p3) {
-        fallbackArrows.push({ id: "arr3", from: { x: p2.x, y: p2.y }, to: { x: p3.x, y: p3.y }, type: "movement" });
-      }
-      if (p3 && p4) {
-        fallbackArrows.push({ id: "arr4", from: { x: p3.x, y: p3.y }, to: { x: p4.x, y: p4.y }, type: "press" });
-      }
-      if (p4 && p5) {
-        fallbackArrows.push({ id: "arr5", from: { x: p4.x, y: p4.y }, to: { x: p5.x, y: p5.y }, type: "movement" });
-      }
-      if (p5 && p0) {
-        fallbackArrows.push({ id: "arr6", from: { x: p5.x, y: p5.y }, to: { x: p0.x, y: p0.y }, type: "pass", label: "3" });
-      }
-      if (p2 && p0) {
-        fallbackArrows.push({ id: "arr7", from: { x: p2.x, y: p2.y }, to: { x: p0.x, y: p0.y }, type: "movement" });
-      }
-
-      if (fallbackArrows.length < 7) {
-        fallbackArrows.push(
-          { id: "arrA", from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
-          { id: "arrB", from: { x: 40, y: 45 }, to: { x: 30, y: 35 }, type: "press" },
-          { id: "arrC", from: { x: 30, y: 35 }, to: { x: 70, y: 30 }, type: "movement" },
-          { id: "arrD", from: { x: 70, y: 30 }, to: { x: 60, y: 55 }, type: "pass", label: "2" }
-        );
-      }
-
-      diagram.arrows = fallbackArrows;
-      warnings.push(`${prefix}Inserted fallback arrows (diagram.arrows had insufficient count)`);
-    }
-
-    if (diagram.annotations.length < 4) {
-      diagram.annotations = [
-        {
-          id: "ann1",
-          text: "PRESS TRIGGER",
-          x: 30,
-          y: 30,
-          fontSize: 10,
-          color: "rgba(239, 68, 68, 0.95)",
-          fontWeight: "700",
-        },
-        {
-          id: "ann2",
-          text: "STAY COMPACT",
-          x: 55,
-          y: 55,
-          fontSize: 10,
-          color: "rgba(251, 191, 36, 0.95)",
-          fontWeight: "700",
-        },
-        {
-          id: "ann3",
-          text: "WIDE 2v1",
-          x: 85,
-          y: 35,
-          fontSize: 10,
-          color: "rgba(59, 130, 246, 0.9)",
-          fontWeight: "700",
-        },
-        {
-          id: "ann4",
-          text: "TRIGGER PASS",
-          x: 60,
-          y: 45,
-          fontSize: 9,
-          color: "rgba(34, 197, 94, 0.9)",
-          fontWeight: "700",
-        },
-      ];
-      warnings.push(`${prefix}Inserted fallback annotations (diagram.annotations had insufficient count)`);
-    }
-
-    // Ensure annotation styling is present
-    diagram.annotations = (diagram.annotations || []).map((a: any, idx: number) => ({
-      id: a.id ?? `ann-${idx}`,
-      text: a.text ?? "",
-      x: typeof a.x === "number" ? a.x : 50,
-      y: typeof a.y === "number" ? a.y : 50,
-      fontSize: typeof a.fontSize === "number" ? a.fontSize : 10,
-      color: typeof a.color === "string" ? a.color : "rgba(59, 130, 246, 0.95)",
-      fontWeight: typeof a.fontWeight === "string" ? a.fontWeight : "700",
-      backgroundColor: a.backgroundColor,
-    }));
-
-    if (diagram.safeZones.length < 1) {
-      diagram.safeZones = [
-        { id: "sz1", x: 0, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
-        { id: "sz2", x: 85, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
-      ];
-      warnings.push(`${prefix}Inserted fallback safeZones (diagram.safeZones had insufficient count)`);
-    }
+    // Do not auto-insert generic arrows/annotations/safeZones.
+    // These must be provided in the drill JSON itself.
+    if (!Array.isArray(diagram.arrows)) diagram.arrows = [];
+    if (!Array.isArray(diagram.annotations)) diagram.annotations = [];
+    if (!Array.isArray(diagram.safeZones)) diagram.safeZones = [];
   };
 
   if (drill.diagram) {
@@ -501,6 +389,21 @@ export async function generateAndReviewDrill(
   } catch (err) {
     console.error("postProcessDrill error:", err);
     // never hard-crash on post-processing, but log the error
+  }
+
+  // Re-enrich diagram with LLM if tactical elements are generic/missing
+  try {
+    if (needsDiagramEnrichment(drill?.diagram)) {
+      const reenriched = await reenrichDiagramFromDrillJson(drill);
+      if (reenriched) {
+        drill.diagram = reenriched;
+        if (processedFields?.json) {
+          processedFields.json.diagram = reenriched;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[DRILL] Diagram re-enrichment failed:", err?.message || String(err));
   }
 
   // 2) First QA (40s timeout - QA can be slow with large drill objects)

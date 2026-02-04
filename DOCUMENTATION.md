@@ -1,7 +1,7 @@
 # ACI Training Platform - Complete Documentation
 
-**Last Updated:** January 29, 2026  
-**Version:** 1.9.0
+**Last Updated:** February 4, 2026  
+**Version:** 1.10.0
 
 ## Table of Contents
 
@@ -843,6 +843,36 @@ pnpm test
 ---
 
 ## Recent Changes
+
+### February 4, 2026
+
+#### Tactical Diagram System Overhaul
+- ✅ UniversalDrillDiagram updated to render full tactical layers (arrows, annotations, safeZones) with consistent sizing and responsive layout.
+- ✅ Auto-spacing with team-aware distribution and bounds fitting to prevent cramped or clipped player positions.
+- ✅ Orientation handling improved: JSON-driven with goal/player inference fallback, plus debug orientation overlay.
+- ✅ Stronger visibility for arrows and zones (increased stroke/opacity).
+- ✅ Safer rendering: guard against NaN coordinates and invalid annotation positions.
+- ✅ Diagram rendering now prefers `json.diagram` over legacy `diagram`/`diagramV1` when available.
+
+#### LLM Re-enrichment & Normalization Tools (Admin)
+- ✅ Batch normalization (admin) now differentiates **missing core** vs **needs enhancement**.
+- ✅ New LLM re-enrichment pipeline to regenerate drill-specific arrows/annotations/safeZones from each drill’s own content.
+- ✅ New admin endpoint: `POST /admin/drills/reenrich-diagram` (batch, include sessions).
+- ✅ New admin endpoint: `POST /admin/sessions/reenrich-diagram` (single session by ID or refCode).
+- ✅ Admin UI: “Re-enrich Diagrams (LLM)” with batch size, progress bar, and updated drill list.
+- ✅ Admin UI: “Re-enrich by Session ID” input with results summary.
+- ✅ Status endpoint now returns `needsReenrich` and job state for live progress.
+- ✅ 5s polling while jobs run to keep progress current.
+
+#### Session & Drill Generation Improvements
+- ✅ Session generation now auto-reenriches diagrams when missing/insufficient.
+- ✅ Drill generation auto-reenriches diagrams when missing/insufficient.
+- ✅ Session page now falls back to full drill lookup when tactical layers are missing.
+
+#### Debugging & Admin Visibility
+- ✅ Admin UI now shows counts for needs normalization vs needs re-enrich, and “done” count.
+- ✅ Updated drill list shows up to 25 recent ref codes with quick JSON view links.
+- ✅ Session update count is displayed after re-enrichment runs.
 
 ### January 29, 2026
 

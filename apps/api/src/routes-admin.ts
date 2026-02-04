@@ -9,6 +9,7 @@ import { buildSessionQAReviewerPrompt } from "./prompts/session";
 import { fixSessionDecision, fixDrillDecision } from "./services/fixer";
 import { buildQAReviewerPrompt } from "./prompts/drill-optimized-v2";
 import { generateAndReviewDrill } from "./services/drill";
+import { reenrichDiagramFromDrillJson, needsDiagramEnrichment } from "./services/diagram-enrichment";
 import type { FixDecisionCode } from "./services/fixer";
 import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
 import { hashPassword } from "./services/auth";
@@ -31,6 +32,26 @@ const normalizeJobStatus = {
   lastError: null as string | null,
 };
 
+const reenrichJobStatus = {
+  running: false,
+  startedAt: null as string | null,
+  finishedAt: null as string | null,
+  processed: 0,
+  updated: 0,
+  target: 0,
+  lastError: null as string | null,
+};
+
+const stripJobStatus = {
+  running: false,
+  startedAt: null as string | null,
+  finishedAt: null as string | null,
+  processed: 0,
+  updated: 0,
+  target: 0,
+  lastError: null as string | null,
+};
+
 // Gemini 2.0 Flash pricing (per 1M tokens)
 const GEMINI_INPUT_PRICE_PER_1M = 0.10;  // $0.10 per 1M input tokens
 const GEMINI_OUTPUT_PRICE_PER_1M = 0.40; // $0.40 per 1M output tokens
@@ -39,6 +60,18 @@ function calculateCost(promptTokens: number, completionTokens: number): number {
   const inputCost = (promptTokens / 1_000_000) * GEMINI_INPUT_PRICE_PER_1M;
   const outputCost = (completionTokens / 1_000_000) * GEMINI_OUTPUT_PRICE_PER_1M;
   return inputCost + outputCost;
+}
+
+function parseJsonSafe(text: string) {
+  try {
+    const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace === -1 || lastBrace === -1) return null;
+    return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
+  } catch {
+    return null;
+  }
 }
 
 function inferOrientationFromDiagram(diagram: any): "HORIZONTAL" | "VERTICAL" {
@@ -93,46 +126,11 @@ function normalizeDiagramInJson(json: any) {
   diagram.annotations = Array.isArray(diagram.annotations) ? diagram.annotations : [];
   diagram.safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones : [];
 
-  if (diagram.arrows.length < 7) {
-    const base = [
-      { id: "arr1", from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
-      { id: "arr2", from: { x: 40, y: 45 }, to: { x: 60, y: 40 }, type: "pass", label: "2" },
-      { id: "arr3", from: { x: 60, y: 40 }, to: { x: 70, y: 30 }, type: "movement" },
-      { id: "arr4", from: { x: 70, y: 30 }, to: { x: 50, y: 25 }, type: "pass", label: "3" },
-      { id: "arr5", from: { x: 30, y: 55 }, to: { x: 40, y: 45 }, type: "press" },
-      { id: "arr6", from: { x: 55, y: 55 }, to: { x: 50, y: 45 }, type: "press" },
-      { id: "arr7", from: { x: 50, y: 70 }, to: { x: 50, y: 55 }, type: "run" },
-    ];
-    diagram.arrows = [...diagram.arrows, ...base].slice(0, 10);
-  }
-
-  if (diagram.annotations.length < 4) {
-    const base = [
-      { id: "ann1", text: "PRESS TRIGGER", x: 30, y: 30, fontSize: 10, color: "rgba(239, 68, 68, 0.95)", fontWeight: "700" },
-      { id: "ann2", text: "STAY COMPACT", x: 55, y: 55, fontSize: 10, color: "rgba(251, 191, 36, 0.95)", fontWeight: "700" },
-      { id: "ann3", text: "WIDE 2v1", x: 85, y: 35, fontSize: 10, color: "rgba(59, 130, 246, 0.9)", fontWeight: "700" },
-      { id: "ann4", text: "TRIGGER PASS", x: 60, y: 45, fontSize: 9, color: "rgba(34, 197, 94, 0.9)", fontWeight: "700" },
-    ];
-    diagram.annotations = [...diagram.annotations, ...base].slice(0, 6);
-  }
-
-  diagram.annotations = diagram.annotations.map((a: any, idx: number) => ({
-    id: a.id ?? `ann-${idx}`,
-    text: a.text ?? "",
-    x: typeof a.x === "number" ? a.x : 50,
-    y: typeof a.y === "number" ? a.y : 50,
-    fontSize: typeof a.fontSize === "number" ? a.fontSize : 10,
-    color: typeof a.color === "string" ? a.color : "rgba(59, 130, 246, 0.95)",
-    fontWeight: typeof a.fontWeight === "string" ? a.fontWeight : "700",
-    backgroundColor: a.backgroundColor,
-  }));
-
-  if (diagram.safeZones.length < 1) {
-    diagram.safeZones = [
-      { id: "sz1", x: 0, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
-      { id: "sz2", x: 85, y: 0, width: 15, height: 100, team: "ATT", label: "WIDE CHANNEL" },
-    ];
-  }
+  // Do not inject generic arrows/annotations/safeZones.
+  // These must be supplied by the drill JSON itself.
+  diagram.arrows = Array.isArray(diagram.arrows) ? diagram.arrows : [];
+  diagram.annotations = Array.isArray(diagram.annotations) ? diagram.annotations : [];
+  diagram.safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones : [];
 
   out.diagram = diagram;
   return out;
@@ -558,21 +556,6 @@ r.get("/admin/stats/by-game-model", requireAdminPermission('canAccessAdminDashbo
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
-
-function parseJsonSafe(text: string) {
-  try {
-    const cleaned = String(text || "")
-      .replace(/```json\n?/gi, "")
-      .replace(/```\n?/g, "")
-      .trim();
-    const firstBrace = cleaned.indexOf("{");
-    const lastBrace = cleaned.lastIndexOf("}");
-    if (firstBrace === -1 || lastBrace === -1) return null;
-    return JSON.parse(cleaned.substring(firstBrace, lastBrace + 1));
-  } catch {
-    return null;
-  }
-}
 
 // -----------------------------
 // Admin: Bulk generate sessions
@@ -1118,6 +1101,7 @@ r.get("/admin/drills/normalize-status", requireAdminPermission('canReviewQA'), a
   const batchSize = 500;
   let needs = 0;
   let missingCore = 0;
+  let needsReenrich = 0;
   let processed = 0;
 
   while (processed < total) {
@@ -1132,6 +1116,9 @@ r.get("/admin/drills/normalize-status", requireAdminPermission('canReviewQA'), a
       const state = getNormalizationState(d.json);
       if (state.missingCore) missingCore += 1;
       if (state.needsEnhancement) needs += 1;
+      const json = typeof d.json === "string" ? parseJsonSafe(d.json) : d.json;
+      const diagram = json?.diagram;
+      if (needsDiagramEnrichment(diagram)) needsReenrich += 1;
     }
     processed += drills.length;
   }
@@ -1141,9 +1128,394 @@ r.get("/admin/drills/normalize-status", requireAdminPermission('canReviewQA'), a
     total,
     needsNormalization: needs,
     missingCore,
+    needsReenrich,
     processed,
     batchSize,
     job: normalizeJobStatus,
+    reenrichJob: reenrichJobStatus,
+    stripJob: stripJobStatus,
+  });
+});
+
+// Strip generic overlays from diagrams (annotations/arrows/safeZones)
+r.post("/admin/drills/strip-generic-diagram", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  stripJobStatus.running = true;
+  stripJobStatus.startedAt = new Date().toISOString();
+  stripJobStatus.finishedAt = null;
+  stripJobStatus.processed = 0;
+  stripJobStatus.updated = 0;
+  stripJobStatus.lastError = null;
+
+  const schema = z.object({
+    all: z.boolean().optional(),
+    limit: z.number().int().min(1).max(500).optional(),
+    includeSessions: z.boolean().optional(),
+    dryRun: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) {
+    stripJobStatus.running = false;
+    stripJobStatus.lastError = "Invalid payload";
+    return res.status(400).json({ ok: false, error: "Invalid payload" });
+  }
+  const { all, limit, includeSessions, dryRun } = parsed.data;
+  if (!all) {
+    stripJobStatus.running = false;
+    stripJobStatus.lastError = "Provide all=true";
+    return res.status(400).json({ ok: false, error: "Provide all=true" });
+  }
+
+  const defaultAnnTexts = new Set([
+    "PRESS TRIGGER",
+    "STAY COMPACT",
+    "WIDE 2V1",
+    "TRIGGER PASS",
+  ]);
+  const defaultArrowSet = [
+    { from: { x: 20, y: 50 }, to: { x: 40, y: 45 }, type: "pass", label: "1" },
+    { from: { x: 40, y: 45 }, to: { x: 60, y: 40 }, type: "pass", label: "2" },
+    { from: { x: 60, y: 40 }, to: { x: 70, y: 30 }, type: "movement" },
+    { from: { x: 70, y: 30 }, to: { x: 50, y: 25 }, type: "pass", label: "3" },
+    { from: { x: 30, y: 55 }, to: { x: 40, y: 45 }, type: "press" },
+    { from: { x: 55, y: 55 }, to: { x: 50, y: 45 }, type: "press" },
+    { from: { x: 50, y: 70 }, to: { x: 50, y: 55 }, type: "run" },
+  ];
+
+  const isDefaultArrow = (a: any) =>
+    defaultArrowSet.some(
+      (d) =>
+        a?.type === d.type &&
+        String(a?.label || "") === String(d.label || "") &&
+        a?.from?.x === d.from.x &&
+        a?.from?.y === d.from.y &&
+        a?.to?.x === d.to.x &&
+        a?.to?.y === d.to.y
+    );
+
+  const stripDiagram = (diagram: any) => {
+    if (!diagram) return false;
+    let changed = false;
+    if (Array.isArray(diagram.annotations) && diagram.annotations.length > 0) {
+      const allDefault = diagram.annotations.every((a: any) =>
+        defaultAnnTexts.has(String(a?.text || "").toUpperCase())
+      );
+      if (allDefault) {
+        diagram.annotations = [];
+        changed = true;
+      }
+    }
+    if (Array.isArray(diagram.arrows) && diagram.arrows.length > 0) {
+      const defaultCount = diagram.arrows.filter(isDefaultArrow).length;
+      if (defaultCount >= 4) {
+        diagram.arrows = diagram.arrows.filter((a: any) => !isDefaultArrow(a));
+        changed = true;
+      }
+    }
+    if (Array.isArray(diagram.safeZones) && diagram.safeZones.length > 0) {
+      const allGenericZones = diagram.safeZones.every(
+        (z: any) =>
+          String(z?.label || "").toUpperCase() === "WIDE CHANNEL" &&
+          z?.width === 15 &&
+          z?.height === 100
+      );
+      if (allGenericZones) {
+        diagram.safeZones = [];
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
+  const updated: Array<{ id: string; refCode: string | null }> = [];
+  const maxUpdates = limit || 50;
+  stripJobStatus.target = maxUpdates;
+  let processed = 0;
+
+  const batchSize = 200;
+  let offset = 0;
+  while (updated.length < maxUpdates) {
+    const drills = await prisma.drill.findMany({
+      skip: offset,
+      take: batchSize,
+      orderBy: { createdAt: "desc" },
+      select: { id: true, refCode: true, json: true },
+    });
+    if (drills.length === 0) break;
+    for (const drill of drills) {
+      if (updated.length >= maxUpdates) break;
+      processed += 1;
+      const json = typeof drill.json === "string" ? parseJsonSafe(drill.json) : drill.json;
+      if (!json) continue;
+      const changed = stripDiagram(json.diagram);
+      if (changed && !dryRun) {
+        await prisma.drill.update({ where: { id: drill.id }, data: { json } });
+        if (includeSessions && drill.refCode) {
+          const sessions = await prisma.session.findMany({
+            where: { savedToVault: true },
+            select: { id: true, json: true },
+          });
+          for (const s of sessions) {
+            const sj = typeof s.json === "string" ? parseJsonSafe(s.json) : s.json;
+            if (!sj || !Array.isArray(sj.drills)) continue;
+            let sChanged = false;
+            sj.drills = sj.drills.map((d: any) => {
+              if (String(d?.refCode || "").toUpperCase() === String(drill.refCode || "").toUpperCase()) {
+                const did = stripDiagram(d.diagram);
+                if (did) sChanged = true;
+                return d;
+              }
+              return d;
+            });
+            if (sChanged) {
+              await prisma.session.update({ where: { id: s.id }, data: { json: sj } });
+            }
+          }
+        }
+      }
+      if (changed) updated.push({ id: drill.id, refCode: drill.refCode });
+      stripJobStatus.updated = updated.length;
+    }
+    offset += drills.length;
+    stripJobStatus.processed = processed;
+  }
+
+  stripJobStatus.running = false;
+  stripJobStatus.finishedAt = new Date().toISOString();
+  stripJobStatus.processed = processed;
+  stripJobStatus.updated = updated.length;
+
+  return res.json({
+    ok: true,
+    dryRun: !!dryRun,
+    processed,
+    updatedCount: updated.length,
+    updated,
+  });
+});
+
+// Re-enrich Drill Diagram via LLM (rebuild arrows/annotations/safeZones per drill content)
+r.post("/admin/drills/reenrich-diagram", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  console.log("[ADMIN] reenrich-diagram start", req.body);
+  reenrichJobStatus.running = true;
+  reenrichJobStatus.startedAt = new Date().toISOString();
+  reenrichJobStatus.finishedAt = null;
+  reenrichJobStatus.processed = 0;
+  reenrichJobStatus.updated = 0;
+  reenrichJobStatus.lastError = null;
+
+  const schema = z.object({
+    drillRef: z.string().optional(),
+    all: z.boolean().optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+    includeSessions: z.boolean().optional(),
+    dryRun: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) {
+    reenrichJobStatus.running = false;
+    reenrichJobStatus.lastError = "Invalid payload";
+    return res.status(400).json({ ok: false, error: "Invalid payload" });
+  }
+  const { drillRef, all, limit, includeSessions, dryRun } = parsed.data;
+  if (!drillRef && !all) {
+    reenrichJobStatus.running = false;
+    reenrichJobStatus.lastError = "Provide drillRef or all=true";
+    return res.status(400).json({ ok: false, error: "Provide drillRef or all=true" });
+  }
+
+  const updated: Array<{ id: string; refCode: string | null }> = [];
+  const touchedSessionIds = new Set<string>();
+  let sessionsUpdated = 0;
+  let sessionsTouched = 0;
+  const maxUpdates = limit || 50;
+  reenrichJobStatus.target = maxUpdates;
+
+  const enrichDrill = async (drillRow: any) => {
+    const drillJson = typeof drillRow.json === "string" ? parseJsonSafe(drillRow.json) : drillRow.json;
+    if (!drillJson) return null;
+    return await reenrichDiagramFromDrillJson(drillJson);
+  };
+
+  const updateSessionsForRef = async (refCode: string, newDiagram: any) => {
+    const sessions = await prisma.session.findMany({
+      where: { savedToVault: true },
+      select: { id: true, json: true },
+    });
+    for (const s of sessions) {
+      const json = typeof s.json === "string" ? parseJsonSafe(s.json) : s.json;
+      if (!json || !Array.isArray(json.drills)) continue;
+      let changed = false;
+      json.drills = json.drills.map((d: any) => {
+        if (String(d?.refCode || "").toUpperCase() === refCode.toUpperCase()) {
+          changed = true;
+          return { ...d, diagram: newDiagram, json: { ...(d.json || {}), diagram: newDiagram } };
+        }
+        return d;
+      });
+      if (changed && !dryRun) {
+        await prisma.session.update({ where: { id: s.id }, data: { json } });
+        sessionsUpdated += 1;
+      }
+      if (changed) {
+        sessionsTouched += 1;
+        touchedSessionIds.add(s.id);
+      }
+    }
+  };
+
+  let processed = 0;
+  if (drillRef) {
+    const drills = await prisma.drill.findMany({
+      where: { OR: [{ id: drillRef }, { refCode: drillRef }] },
+    });
+    if (drills.length === 0) {
+      reenrichJobStatus.running = false;
+      reenrichJobStatus.lastError = "No drills found";
+      return res.status(404).json({ ok: false, error: "No drills found" });
+    }
+    for (const drill of drills) {
+      processed += 1;
+      const newDiagram = await enrichDrill(drill);
+      if (!newDiagram) continue;
+      if (!dryRun) {
+        const json = typeof drill.json === "string" ? parseJsonSafe(drill.json) : drill.json;
+        const updatedJson = { ...(json || {}), diagram: newDiagram };
+        await prisma.drill.update({ where: { id: drill.id }, data: { json: updatedJson } });
+        if (includeSessions && drill.refCode) {
+          await updateSessionsForRef(drill.refCode, newDiagram);
+        }
+      }
+      updated.push({ id: drill.id, refCode: drill.refCode });
+    }
+  } else {
+    const batchSize = 50;
+    let offset = 0;
+    while (updated.length < maxUpdates) {
+      const drills = await prisma.drill.findMany({
+        skip: offset,
+        take: batchSize,
+        orderBy: { createdAt: "desc" },
+      });
+      if (drills.length === 0) break;
+      for (const drill of drills) {
+        if (updated.length >= maxUpdates) break;
+        processed += 1;
+        const newDiagram = await enrichDrill(drill);
+        if (!newDiagram) continue;
+        if (!dryRun) {
+          const json = typeof drill.json === "string" ? parseJsonSafe(drill.json) : drill.json;
+          const updatedJson = { ...(json || {}), diagram: newDiagram };
+          await prisma.drill.update({ where: { id: drill.id }, data: { json: updatedJson } });
+          if (includeSessions && drill.refCode) {
+            await updateSessionsForRef(drill.refCode, newDiagram);
+          }
+        }
+        updated.push({ id: drill.id, refCode: drill.refCode });
+        reenrichJobStatus.updated = updated.length;
+      }
+      offset += drills.length;
+      reenrichJobStatus.processed = processed;
+      console.log("[ADMIN] reenrich-diagram progress", { processed, updated: updated.length, target: maxUpdates });
+    }
+  }
+
+  reenrichJobStatus.running = false;
+  reenrichJobStatus.finishedAt = new Date().toISOString();
+  reenrichJobStatus.processed = processed;
+  reenrichJobStatus.updated = updated.length;
+
+  return res.json({
+    ok: true,
+    dryRun: !!dryRun,
+    processed,
+    updatedCount: updated.length,
+    sessionsUpdated,
+    sessionsTouched,
+    sessions: Array.from(touchedSessionIds).slice(0, 25),
+    updated,
+  });
+});
+
+// Re-enrich diagrams for a single session by ID or refCode
+r.post("/admin/sessions/reenrich-diagram", requireAdminPermission('canReviewQA'), async (req: AdminRequest, res) => {
+  const schema = z.object({
+    sessionId: z.string().min(1).optional(),
+    refCode: z.string().min(1).optional(),
+    dryRun: z.boolean().optional(),
+  });
+  const parsed = schema.safeParse(req.body || {});
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, error: "Invalid payload" });
+  }
+  const { sessionId, refCode, dryRun } = parsed.data;
+  if (!sessionId && !refCode) {
+    return res.status(400).json({ ok: false, error: "Provide sessionId or refCode" });
+  }
+
+  const ref = String(refCode || "").toUpperCase();
+  let session = await prisma.session.findFirst({
+    where: sessionId ? { id: sessionId } : { refCode: ref },
+    select: { id: true, json: true, refCode: true },
+  });
+  if (!session && refCode) {
+    // Fallback: some legacy sessions may store refCode only inside json
+    const total = await prisma.session.count();
+    const batchSize = 500;
+    let processed = 0;
+    while (processed < total && !session) {
+      const sessions = await prisma.session.findMany({
+        skip: processed,
+        take: batchSize,
+        orderBy: { createdAt: "desc" },
+        select: { id: true, json: true, refCode: true },
+      });
+      if (sessions.length === 0) break;
+      for (const s of sessions) {
+        const json = typeof s.json === "string" ? parseJsonSafe(s.json) : s.json;
+        const jsonRef = String(json?.refCode || "").toUpperCase();
+        if (jsonRef === ref) {
+          session = s;
+          break;
+        }
+      }
+      processed += sessions.length;
+    }
+  }
+  if (!session) {
+    return res.status(404).json({ ok: false, error: "Session not found" });
+  }
+
+  const json = typeof session.json === "string" ? parseJsonSafe(session.json) : session.json;
+  if (!json || !Array.isArray(json.drills)) {
+    return res.status(400).json({ ok: false, error: "Session JSON missing drills" });
+  }
+
+  const updatedDrills: Array<{ refCode?: string; title?: string }> = [];
+  for (const drill of json.drills) {
+    try {
+      const reenriched = await reenrichDiagramFromDrillJson(drill);
+      if (reenriched) {
+        drill.diagram = reenriched;
+        if (drill.json && typeof drill.json === "object") {
+          drill.json.diagram = reenriched;
+        }
+        updatedDrills.push({ refCode: drill.refCode, title: drill.title });
+      }
+    } catch (err: any) {
+      console.error("[ADMIN] session reenrich drill failed:", err?.message || String(err));
+    }
+  }
+
+  if (!dryRun) {
+    await prisma.session.update({ where: { id: session.id }, data: { json } });
+  }
+
+  return res.json({
+    ok: true,
+    sessionId: session.id,
+    refCode: refCode || undefined,
+    updatedCount: updatedDrills.length,
+    updatedDrills,
   });
 });
 

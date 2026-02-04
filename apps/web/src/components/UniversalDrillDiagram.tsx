@@ -320,6 +320,9 @@ const UniversalDrillDiagram = ({
   const transformPoint = (pt: { x: number; y: number }) => {
     const xs = players.map((p) => p.x);
     const ys = players.map((p) => p.y);
+    if (xs.length === 0 || ys.length === 0) {
+      return { x: pt.x, y: pt.y };
+    }
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
@@ -353,10 +356,16 @@ const UniversalDrillDiagram = ({
     to: transformPoint(a.to),
   }));
 
-  const adjustedAnnotations = annotations.map((a) => {
-    const pt = transformPoint({ x: a.x, y: a.y });
-    return { ...a, x: pt.x, y: pt.y };
-  });
+  const adjustedAnnotations = annotations
+    .map((a) => {
+      const pt = transformPoint({ x: a.x, y: a.y });
+      return { ...a, x: pt.x, y: pt.y };
+    })
+    .filter(
+      (a) =>
+        Number.isFinite(a.x) &&
+        Number.isFinite(a.y)
+    );
 
   players = fittedPlayers;
   
@@ -1487,9 +1496,9 @@ const UniversalDrillDiagram = ({
           
           // Get color and pattern based on team
           const getZoneColor = (team?: string) => {
-            if (team === "ATT") return { pattern: `url(#safeZoneATT-${uid})`, stroke: "rgba(59, 130, 246, 0.4)" };
-            if (team === "DEF") return { pattern: `url(#safeZoneDEF-${uid})`, stroke: "rgba(239, 68, 68, 0.4)" };
-            return { pattern: `url(#safeZoneNEUTRAL-${uid})`, stroke: "rgba(251, 191, 36, 0.4)" };
+            if (team === "ATT") return { pattern: `url(#safeZoneATT-${uid})`, stroke: "rgba(59, 130, 246, 0.7)" };
+            if (team === "DEF") return { pattern: `url(#safeZoneDEF-${uid})`, stroke: "rgba(239, 68, 68, 0.7)" };
+            return { pattern: `url(#safeZoneNEUTRAL-${uid})`, stroke: "rgba(251, 191, 36, 0.7)" };
           };
           
           const zoneStyle = getZoneColor(zone.team);
@@ -1504,8 +1513,8 @@ const UniversalDrillDiagram = ({
                 height={zh}
                 fill={zone.color || zoneStyle.pattern}
                 stroke={zoneStyle.stroke}
-                strokeWidth="2"
-                strokeDasharray="6,4"
+                strokeWidth="2.5"
+                strokeDasharray="6,3"
               />
               
               {/* Optional label */}
@@ -1562,27 +1571,27 @@ const UniversalDrillDiagram = ({
             switch (type) {
               case "pass":
                 return {
-                  stroke: arrow.color || "rgba(255, 255, 255, 0.6)",
-                  strokeWidth: isSmall ? 1.2 : 1.8,
+                  stroke: arrow.color || "rgba(255, 255, 255, 0.85)",
+                  strokeWidth: isSmall ? 1.4 : 2.4,
                   strokeDasharray: "none",
                   opacity: 1,
                   arrowSize: 12,
-                  arrowFill: "rgba(255, 255, 255, 0.95)"
+                  arrowFill: "rgba(255, 255, 255, 0.98)"
                 };
               case "movement":
               case "run":
                 return {
-                  stroke: arrow.color || "rgba(255, 255, 255, 0.4)",
-                  strokeWidth: isSmall ? 1 : 1.5,
-                  strokeDasharray: isSmall ? "3,2" : "4,3",
+                  stroke: arrow.color || "rgba(255, 255, 255, 0.6)",
+                  strokeWidth: isSmall ? 1.1 : 1.8,
+                  strokeDasharray: isSmall ? "3,2" : "4,2",
                   opacity: 1,
                   arrowSize: 8,
-                  arrowFill: "rgba(255, 255, 255, 0.4)"
+                  arrowFill: "rgba(255, 255, 255, 0.6)"
                 };
               case "press":
                 return {
                   stroke: arrow.color || "rgba(239, 68, 68, 0.85)",
-                  strokeWidth: isSmall ? 2 : 2.5,
+                  strokeWidth: isSmall ? 2.2 : 3,
                   strokeDasharray: "none",
                   opacity: 1,
                   arrowSize: 12,
@@ -1590,12 +1599,12 @@ const UniversalDrillDiagram = ({
                 };
               default:
                 return {
-                  stroke: arrow.color || "rgba(255, 255, 255, 0.6)",
-                  strokeWidth: isSmall ? 1.2 : 1.8,
+                  stroke: arrow.color || "rgba(255, 255, 255, 0.85)",
+                  strokeWidth: isSmall ? 1.4 : 2.4,
                   strokeDasharray: "none",
                   opacity: 1,
                   arrowSize: 12,
-                  arrowFill: "rgba(255, 255, 255, 0.95)"
+                  arrowFill: "rgba(255, 255, 255, 0.98)"
                 };
             }
           };
@@ -1668,14 +1677,14 @@ const UniversalDrillDiagram = ({
           const getArrowStyle = (type: string) => {
             switch (type) {
               case "pass":
-                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.95)" };
+                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.98)" };
               case "movement":
               case "run":
-                return { arrowSize: 8, arrowFill: "rgba(255, 255, 255, 0.4)" };
+                return { arrowSize: 8, arrowFill: "rgba(255, 255, 255, 0.6)" };
               case "press":
                 return { arrowSize: 12, arrowFill: "rgba(239, 68, 68, 0.95)" };
               default:
-                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.95)" };
+                return { arrowSize: 12, arrowFill: "rgba(255, 255, 255, 0.98)" };
             }
           };
           

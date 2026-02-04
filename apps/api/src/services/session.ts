@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { buildSessionPrompt, buildSessionQAReviewerPrompt } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
 import { generateRefCode } from "../utils/ref-code";
+import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -266,6 +267,19 @@ export async function generateAndReviewSession(
   // Add ref codes to embedded drills in the session JSON and persist as standalone records
   const drillsWithRefCodes = finalSession.drills ? await Promise.all(
     finalSession.drills.map(async (drill: any) => {
+      try {
+        if (needsDiagramEnrichment(drill?.diagram)) {
+          const reenriched = await reenrichDiagramFromDrillJson(drill);
+          if (reenriched) {
+            drill.diagram = reenriched;
+            if (drill.json && typeof drill.json === "object") {
+              drill.json.diagram = reenriched;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error("[SESSION] Diagram re-enrichment failed:", err?.message || String(err));
+      }
       const drillRefCode = drill.refCode || await generateRefCode("drill");
       
       // Persist drill as standalone record (upsert by refCode)

@@ -230,6 +230,7 @@ type DrillNormalizeStatus = {
   total: number;
   needsNormalization: number;
   missingCore?: number;
+  needsReenrich?: number;
   processed: number;
   batchSize: number;
   job?: {
@@ -240,6 +241,15 @@ type DrillNormalizeStatus = {
     updated: number;
     target: number;
     skippedMissingCore: number;
+    lastError: string | null;
+  };
+  reenrichJob?: {
+    running: boolean;
+    startedAt: string | null;
+    finishedAt: string | null;
+    processed: number;
+    updated: number;
+    target: number;
     lastError: string | null;
   };
 };
@@ -341,6 +351,20 @@ export default function AdminDashboard() {
   const [normalizeResult, setNormalizeResult] = useState<any | null>(null);
   const [normalizeError, setNormalizeError] = useState<string | null>(null);
   const [normalizeStatusError, setNormalizeStatusError] = useState<string | null>(null);
+  const [reenrichBatchSize, setReenrichBatchSize] = useState<number>(25);
+  const [reenrichIncludeSessions, setReenrichIncludeSessions] = useState<boolean>(true);
+  const [reenrichRunning, setReenrichRunning] = useState<boolean>(false);
+  const [reenrichResult, setReenrichResult] = useState<any | null>(null);
+  const [reenrichError, setReenrichError] = useState<string | null>(null);
+  const [reenrichSessionId, setReenrichSessionId] = useState<string>("");
+  const [reenrichSessionRunning, setReenrichSessionRunning] = useState<boolean>(false);
+  const [reenrichSessionResult, setReenrichSessionResult] = useState<any | null>(null);
+  const [reenrichSessionError, setReenrichSessionError] = useState<string | null>(null);
+  const [stripBatchSize, setStripBatchSize] = useState<number>(100);
+  const [stripIncludeSessions, setStripIncludeSessions] = useState<boolean>(true);
+  const [stripRunning, setStripRunning] = useState<boolean>(false);
+  const [stripResult, setStripResult] = useState<any | null>(null);
+  const [stripError, setStripError] = useState<string | null>(null);
   
   // QA Status Analytics
   const [qaAnalytics, setQaAnalytics] = useState<{
@@ -751,9 +775,11 @@ export default function AdminDashboard() {
             total: normData.total,
             needsNormalization: normData.needsNormalization,
             missingCore: normData.missingCore,
+            needsReenrich: normData.needsReenrich,
             processed: normData.processed,
             batchSize: normData.batchSize,
             job: normData.job,
+            reenrichJob: normData.reenrichJob,
           });
         }
       }
@@ -1458,9 +1484,11 @@ export default function AdminDashboard() {
             total: statusData.total,
             needsNormalization: statusData.needsNormalization,
             missingCore: statusData.missingCore,
+            needsReenrich: statusData.needsReenrich,
             processed: statusData.processed,
             batchSize: statusData.batchSize,
             job: statusData.job,
+            reenrichJob: statusData.reenrichJob,
           });
           setNormalizeStatusError(null);
         }
@@ -1474,6 +1502,142 @@ export default function AdminDashboard() {
       setNormalizeRunning(false);
     }
   }, [normalizeBatchSize]);
+
+  const runDrillReenrichBatch = useCallback(async () => {
+    setReenrichRunning(true);
+    setReenrichError(null);
+    setReenrichResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/drills/reenrich-diagram`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          all: true,
+          limit: reenrichBatchSize,
+          includeSessions: reenrichIncludeSessions,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Re-enrich failed (${res.status})`);
+      }
+      setReenrichResult(data);
+      const statusRes = await fetch(`${API_BASE_URL}/admin/drills/normalize-status`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+      setNormalizeStatus({
+        total: statusData.total,
+        needsNormalization: statusData.needsNormalization,
+        missingCore: statusData.missingCore,
+        needsReenrich: statusData.needsReenrich,
+        processed: statusData.processed,
+        batchSize: statusData.batchSize,
+        job: statusData.job,
+        reenrichJob: statusData.reenrichJob,
+      });
+          setNormalizeStatusError(null);
+        }
+      }
+    } catch (e: any) {
+      setReenrichError(e?.message || String(e));
+    } finally {
+      setReenrichRunning(false);
+    }
+  }, [reenrichBatchSize, reenrichIncludeSessions]);
+
+  const runSessionReenrich = useCallback(async () => {
+    if (!reenrichSessionId.trim()) {
+      setReenrichSessionError("Session ID is required");
+      return;
+    }
+    setReenrichSessionRunning(true);
+    setReenrichSessionError(null);
+    setReenrichSessionResult(null);
+    try {
+      const input = reenrichSessionId.trim();
+      const isRefCode = /^[sS]-[A-Z0-9]{4}$/.test(input);
+      const payload = isRefCode ? { refCode: input.toUpperCase() } : { sessionId: input };
+      const res = await fetch(`${API_BASE_URL}/admin/sessions/reenrich-diagram`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const rawText = await res.text().catch(() => "");
+      let data: any = {};
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = { raw: rawText };
+        }
+      }
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || data?.raw || `Re-enrich failed (${res.status})`);
+      }
+      setReenrichSessionResult(data);
+    } catch (e: any) {
+      setReenrichSessionError(e?.message || String(e));
+    } finally {
+      setReenrichSessionRunning(false);
+    }
+  }, [reenrichSessionId]);
+
+  const runStripGenericOverlays = useCallback(async () => {
+    setStripRunning(true);
+    setStripError(null);
+    setStripResult(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/drills/strip-generic-diagram`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          all: true,
+          limit: stripBatchSize,
+          includeSessions: stripIncludeSessions,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Strip failed (${res.status})`);
+      }
+      setStripResult(data);
+      const statusRes = await fetch(`${API_BASE_URL}/admin/drills/normalize-status`, {
+        headers: { ...getAuthHeaders() },
+      });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.ok) {
+          setNormalizeStatus({
+            total: statusData.total,
+            needsNormalization: statusData.needsNormalization,
+            missingCore: statusData.missingCore,
+            needsReenrich: statusData.needsReenrich,
+            processed: statusData.processed,
+            batchSize: statusData.batchSize,
+            job: statusData.job,
+            reenrichJob: statusData.reenrichJob,
+          });
+          setNormalizeStatusError(null);
+        }
+      }
+    } catch (e: any) {
+      setStripError(e?.message || String(e));
+    } finally {
+      setStripRunning(false);
+    }
+  }, [stripBatchSize, stripIncludeSessions]);
 
   const refreshNormalizeStatus = useCallback(async () => {
     setNormalizeStatusError(null);
@@ -1492,9 +1656,11 @@ export default function AdminDashboard() {
         total: statusData.total,
         needsNormalization: statusData.needsNormalization,
         missingCore: statusData.missingCore,
+        needsReenrich: statusData.needsReenrich,
         processed: statusData.processed,
         batchSize: statusData.batchSize,
         job: statusData.job,
+        reenrichJob: statusData.reenrichJob,
       });
       } else {
         setNormalizeStatusError(statusData?.error || "Status fetch failed");
@@ -1503,6 +1669,15 @@ export default function AdminDashboard() {
       setNormalizeStatusError(e?.message || String(e));
     }
   }, []);
+
+  useEffect(() => {
+    const shouldPoll = normalizeRunning || reenrichRunning || normalizeStatus?.job?.running || normalizeStatus?.reenrichJob?.running;
+    if (!shouldPoll) return;
+    const interval = setInterval(() => {
+      refreshNormalizeStatus();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [normalizeRunning, reenrichRunning, normalizeStatus?.job?.running, normalizeStatus?.reenrichJob?.running, refreshNormalizeStatus]);
 
   const runSessionRegenerate = useCallback(async () => {
     const ref = reviewRef.trim();
@@ -2624,6 +2799,259 @@ export default function AdminDashboard() {
             <div className="mt-2 text-xs text-slate-400">
               Updated {normalizeResult.updatedCount} of {normalizeResult.processed} scanned
               {typeof normalizeResult.skippedMissingCore === "number" ? ` · Skipped core-missing: ${normalizeResult.skippedMissingCore}` : ""}.
+            </div>
+          )}
+        </div>
+
+        {/* Drill Diagram Re-enrichment (LLM) */}
+        <div className="mt-4 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xs text-slate-400 uppercase tracking-wide">Re-enrich Diagrams (LLM)</div>
+              <div className="mt-2 text-sm text-slate-300">
+                Uses LLM to rebuild arrows/annotations/safeZones per drill content. Costs tokens.
+              </div>
+              {typeof normalizeStatus?.needsReenrich === "number" && typeof normalizeStatus?.total === "number" && (
+                <div className="mt-1 text-xs text-slate-400">
+                  Needs re-enrich: {formatNumber(normalizeStatus.needsReenrich)} / {formatNumber(normalizeStatus.total)} ·
+                  Done: {formatNumber(Math.max(0, normalizeStatus.total - normalizeStatus.needsReenrich))}
+                </div>
+              )}
+              {normalizeStatus?.reenrichJob && (
+                <div className="mt-1 text-xs text-slate-400">
+                  {normalizeStatus.reenrichJob.running ? (
+                    <>Processing: {formatNumber(normalizeStatus.reenrichJob.updated)} updated / {formatNumber(normalizeStatus.reenrichJob.processed)} scanned</>
+                  ) : normalizeStatus.reenrichJob.finishedAt ? (
+                    <>Last run: {formatNumber(normalizeStatus.reenrichJob.updated)} updated / {formatNumber(normalizeStatus.reenrichJob.processed)} scanned</>
+                  ) : (
+                    <>No recent runs</>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  id="reenrichIncludeSessions"
+                  type="checkbox"
+                  checked={reenrichIncludeSessions}
+                  onChange={(e) => setReenrichIncludeSessions(e.target.checked)}
+                  className="rounded bg-slate-800 border-slate-600"
+                />
+                <label htmlFor="reenrichIncludeSessions">Update sessions</label>
+              </div>
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={reenrichBatchSize}
+                onChange={(e) => setReenrichBatchSize(Number(e.target.value || 1))}
+                className="w-24 rounded-md border border-slate-700/70 bg-slate-950/60 px-2 py-1 text-sm text-slate-200"
+              />
+              <button
+                onClick={runDrillReenrichBatch}
+                disabled={reenrichRunning}
+                className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-1 text-sm font-semibold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                {reenrichRunning ? "Re-enriching..." : "Re-enrich Batch"}
+              </button>
+            </div>
+          </div>
+          {reenrichRunning && (
+            <div className="mt-2 text-xs text-slate-400">Processing batch… check API logs for progress.</div>
+          )}
+          {reenrichError && (
+            <div className="mt-2 text-xs text-red-400">{reenrichError}</div>
+          )}
+          {reenrichResult && (
+            <div className="mt-2 text-xs text-slate-400">
+              Updated {reenrichResult.updatedCount} of {reenrichResult.processed} drills.
+              {typeof reenrichResult.sessionsUpdated === "number" && (
+                <span className="text-slate-500"> · Sessions updated: {formatNumber(reenrichResult.sessionsUpdated)}</span>
+              )}
+            </div>
+          )}
+          {Array.isArray(reenrichResult?.sessions) && reenrichResult.sessions.length > 0 && (
+            <div className="mt-2 text-xs text-slate-300">
+              <div className="text-[11px] text-slate-500 mb-1">Sessions updated (sample):</div>
+              <div className="flex flex-wrap gap-2">
+                {reenrichResult.sessions.slice(0, 8).map((id: string) => (
+                  <div key={id} className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigator.clipboard.writeText(id)}
+                      className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/60 text-slate-200 hover:bg-slate-800"
+                      title="Click to copy id"
+                    >
+                      {id.slice(0, 8)}…
+                    </button>
+                    <a
+                      href={`/demo/session?sessionId=${encodeURIComponent(id)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-amber-300 hover:text-amber-200 underline"
+                      title="Open session view"
+                    >
+                      View
+                    </a>
+                  </div>
+                ))}
+              </div>
+              {reenrichResult.sessions.length > 8 && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  +{reenrichResult.sessions.length - 8} more in this batch
+                </div>
+              )}
+            </div>
+          )}
+          {Array.isArray(reenrichResult?.updated) && reenrichResult.updated.length > 0 && (
+            <div className="mt-2 text-xs text-slate-300">
+              <div className="text-[11px] text-slate-500 mb-1">Recently updated drills:</div>
+              <div className="flex flex-wrap gap-2">
+                {reenrichResult.updated.slice(0, 25).map((d: any) => {
+                  const ref = d?.refCode || d?.id;
+                  return (
+                    <div key={ref} className="flex items-center gap-2">
+                      <button
+                        onClick={() => ref && navigator.clipboard.writeText(ref)}
+                        className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/60 text-slate-200 hover:bg-slate-800"
+                        title="Click to copy ref"
+                      >
+                        {ref}
+                      </button>
+                      {ref && (
+                        <a
+                          href={`${API_BASE_URL}/vault/lookup/${ref}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-amber-300 hover:text-amber-200 underline"
+                          title="Open JSON in new tab"
+                        >
+                          View JSON
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {reenrichResult.updated.length > 25 && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  +{reenrichResult.updated.length - 25} more in this batch
+                </div>
+              )}
+            </div>
+          )}
+          {normalizeStatus?.reenrichJob?.running && normalizeStatus.reenrichJob.target > 0 && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                <span>Progress</span>
+                <span>
+                  {formatNumber(Math.min(normalizeStatus.reenrichJob.updated, normalizeStatus.reenrichJob.target))} / {formatNumber(normalizeStatus.reenrichJob.target)}
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-800/70 overflow-hidden">
+                <div
+                  className="h-full bg-amber-400/80"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.max(
+                        0,
+                        (normalizeStatus.reenrichJob.updated / normalizeStatus.reenrichJob.target) * 100
+                      )
+                    )}%`,
+                    transition: "width 200ms ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Re-enrich by Session ID */}
+        <div className="mt-4 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="text-xs text-slate-400 uppercase tracking-wide">Re-enrich by Session ID</div>
+          <div className="mt-2 text-sm text-slate-300">
+            Enter a session ID (UUID) or ref code (S-XXXX) to re-enrich all drill diagrams inside that session.
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <input
+              type="text"
+              value={reenrichSessionId}
+              onChange={(e) => setReenrichSessionId(e.target.value)}
+              placeholder="Session ID or S-XXXX"
+              className="w-80 max-w-full rounded-md border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-200"
+            />
+            <button
+              onClick={runSessionReenrich}
+              disabled={reenrichSessionRunning}
+              className="rounded-md border border-amber-500/60 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+            >
+              {reenrichSessionRunning ? "Re-enriching..." : "Re-enrich Session"}
+            </button>
+          </div>
+          {reenrichSessionError && (
+            <div className="mt-2 text-xs text-red-400">{reenrichSessionError}</div>
+          )}
+          {reenrichSessionResult && (
+            <div className="mt-2 text-xs text-slate-400">
+              Updated {reenrichSessionResult.updatedCount} drills in session {reenrichSessionResult.sessionId}.
+            </div>
+          )}
+          {Array.isArray(reenrichSessionResult?.updatedDrills) && reenrichSessionResult.updatedDrills.length > 0 && (
+            <div className="mt-2 text-xs text-slate-300">
+              <div className="text-[11px] text-slate-500 mb-1">Updated drills:</div>
+              <div className="flex flex-wrap gap-2">
+                {reenrichSessionResult.updatedDrills.slice(0, 12).map((d: any, idx: number) => (
+                  <div key={`${d?.refCode || idx}`} className="flex items-center gap-2">
+                    <span className="px-2 py-1 rounded bg-slate-800/60 border border-slate-700/60 text-slate-200">
+                      {d?.refCode || d?.title || "Drill"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Strip generic overlays */}
+        <div className="mt-4 bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
+          <div className="text-xs text-slate-400 uppercase tracking-wide">Strip Generic Overlays</div>
+          <div className="mt-2 text-sm text-slate-300">
+            Removes default annotations/arrows/safeZones inserted by legacy normalizers.
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <input
+                id="stripIncludeSessions"
+                type="checkbox"
+                checked={stripIncludeSessions}
+                onChange={(e) => setStripIncludeSessions(e.target.checked)}
+                className="rounded bg-slate-800 border-slate-600"
+              />
+              <label htmlFor="stripIncludeSessions">Update sessions</label>
+            </div>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              value={stripBatchSize}
+              onChange={(e) => setStripBatchSize(Number(e.target.value || 1))}
+              className="w-24 rounded-md border border-slate-700/70 bg-slate-950/60 px-2 py-1 text-sm text-slate-200"
+            />
+            <button
+              onClick={runStripGenericOverlays}
+              disabled={stripRunning}
+              className="rounded-md border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+            >
+              {stripRunning ? "Stripping..." : "Strip Batch"}
+            </button>
+          </div>
+          {stripError && (
+            <div className="mt-2 text-xs text-red-400">{stripError}</div>
+          )}
+          {stripResult && (
+            <div className="mt-2 text-xs text-slate-400">
+              Stripped {stripResult.updatedCount} of {stripResult.processed} drills.
             </div>
           )}
         </div>
