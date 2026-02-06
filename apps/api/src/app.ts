@@ -20,6 +20,10 @@ import organizationRoutes from "./routes-organization";
 
 const app = express();
 
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : null;
+
 // Request logging middleware
 app.use((req, res, next) => {
   // Log favorites requests specifically to debug routing issues
@@ -35,7 +39,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-  origin: true, // Allow all origins
+  origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
