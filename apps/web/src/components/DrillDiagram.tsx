@@ -65,7 +65,8 @@ export const DrillDiagram: React.FC<Props> = ({
   width = 520,
   height = 340,
 }) => {
-  const { pitch = {}, players = [], coach, arrows = [] } = diagram || {};
+  const { players = [], coach, arrows = [] } = diagram || {};
+  const pitch = (diagram?.pitch ?? {}) as any;
 
   const playerMap = new Map<string, DiagramPlayer>();
   if (players) players.forEach((p) => playerMap.set(p.id, p));

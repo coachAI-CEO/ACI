@@ -30,8 +30,8 @@ export const SAMPLE_DIAGRAM_V1: DiagramV1 = {
   cones: [],
 
   goals: [
-    { id: "G1", type: "MINI", width: 10, x: 90, y: 20, facingAngle: 270, teamAttacks: "ATT" },
-    { id: "G2", type: "MINI", width: 10, x: 90, y: 80, facingAngle: 270, teamAttacks: "ATT" }
+    { id: "G1", type: "MINI", width: 10, x: 90, y: 20 },
+    { id: "G2", type: "MINI", width: 10, x: 90, y: 80 }
   ],
 
   arrows: [

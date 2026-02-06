@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Helper to get auth headers from request
-function getAuthHeaders(request: NextRequest): HeadersInit {
+function getAuthHeaders(request: NextRequest): Record<string, string> {
   const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
   if (authHeader) {
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const skipRecommendation = searchParams.get("skipRecommendation") === "1";
     const authHeaders = getAuthHeaders(request);
-    const hasAuth = Boolean(authHeaders["Authorization"] || authHeaders["authorization"]);
+    const hasAuth = Boolean(authHeaders.Authorization);
     console.log("[API/generate-session] skipRecommendation:", skipRecommendation, "hasAuth:", hasAuth);
 
     if (!skipRecommendation) {

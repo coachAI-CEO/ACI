@@ -42,6 +42,7 @@ type SessionDrill = {
   constraints?: string[];
   diagram?: DiagramV1;
   diagramV1?: DiagramV1;
+  json?: any;
   rpeMin?: number;
   rpeMax?: number;
   loadNotes?: {
@@ -298,7 +299,7 @@ async function fetchSession(
   
   // Get auth token from localStorage for authenticated requests
   const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
   if (accessToken) {
@@ -460,7 +461,9 @@ async function fetchProgressiveSeries(
 }
 
 async function fetchSkillFocusForSessionId(sessionId: string): Promise<SkillFocus | null> {
-  const headers: HeadersInit = { ...getUserHeaders() };
+  const headers: Record<string, string> = {
+    ...(getUserHeaders() as Record<string, string>),
+  };
   const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
   if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
   const res = await fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`, { headers });
@@ -482,7 +485,7 @@ async function fetchSkillFocusForSeriesId(seriesId: string): Promise<SkillFocus 
 
 async function generateSkillFocusForSessionId(sessionId: string): Promise<SkillFocus> {
   const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
 
   const res = await fetch("/api/skill-focus/session", {
@@ -500,7 +503,7 @@ async function generateSkillFocusForSessionId(sessionId: string): Promise<SkillF
 
 async function generateSkillFocusForSeries(input: { seriesId?: string; sessionIds?: string[] }): Promise<SkillFocus> {
   const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
 
   const res = await fetch("/api/skill-focus/series", {
@@ -630,7 +633,7 @@ function SessionDemoPageContent() {
       setError(null);
       setSessionMode("single");
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
       fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}`, { headers })
         .then(async (res) => {
@@ -758,7 +761,7 @@ function SessionDemoPageContent() {
       setError(null);
       setSessionMode("series");
       const seriesAccessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const seriesHeaders: HeadersInit = {};
+      const seriesHeaders: Record<string, string> = {};
       if (seriesAccessToken) seriesHeaders["Authorization"] = `Bearer ${seriesAccessToken}`;
       fetch(`/api/vault/series/${encodeURIComponent(seriesId)}`, { headers: seriesHeaders })
         .then(async (res) => {
@@ -1079,7 +1082,9 @@ function SessionDemoPageContent() {
   async function checkVaultStatus(sessionId: string) {
     setCheckingVaultStatus(true);
     try {
-      const headers: HeadersInit = { ...getUserHeaders() };
+      const headers: Record<string, string> = {
+        ...(getUserHeaders() as Record<string, string>),
+      };
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
       const res = await fetch(`/api/vault/sessions/${encodeURIComponent(sessionId)}/status`, {
@@ -2193,7 +2198,7 @@ function SessionDemoPageContent() {
                         
                         // Get auth token for authenticated requests
                         const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                        const headers: HeadersInit = {
+                        const headers: Record<string, string> = {
                           "Content-Type": "application/json",
                         };
                         if (accessToken) {

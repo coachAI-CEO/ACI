@@ -45,16 +45,6 @@ type VaultSession = {
     name: string | null;
     email: string;
   } | null;
-  user?: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
-  creator?: {
-    id: string;
-    name: string | null;
-    email: string;
-  } | null;
 };
 
 type VaultSeries = {
@@ -77,6 +67,7 @@ type VaultDrill = {
   progressions?: string[];
   coachingPoints?: string[];
   diagram?: any;
+  json?: any;
   // Parent session info
   sessionId: string;
   sessionRefCode?: string;
@@ -400,7 +391,7 @@ export default function VaultPage() {
 
       // Get auth token for authenticated requests
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
       }
@@ -515,7 +506,9 @@ export default function VaultPage() {
       setSkillFocus(null);
       return;
     }
-    const headers: HeadersInit = { ...getUserHeaders() };
+    const headers: Record<string, string> = {
+      ...(getUserHeaders() as Record<string, string>),
+    };
     const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
     fetch(`/api/skill-focus/session/${encodeURIComponent(sessionId)}`, { headers })
@@ -529,7 +522,7 @@ export default function VaultPage() {
     try {
       // Get access token for authenticated requests
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
       
@@ -537,7 +530,7 @@ export default function VaultPage() {
         headers["Authorization"] = `Bearer ${accessToken}`;
       } else {
         // Fallback to x-user-id for anonymous users
-        Object.assign(headers, getUserHeaders());
+        Object.assign(headers, getUserHeaders() as Record<string, string>);
       }
 
       const res = await fetch("/api/favorites", {
@@ -577,7 +570,10 @@ export default function VaultPage() {
     
     try {
       // Use bulk lookup endpoint instead of individual requests
-      const lookupHeaders: HeadersInit = { "Content-Type": "application/json", ...getUserHeaders() };
+      const lookupHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(getUserHeaders() as Record<string, string>),
+      };
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (accessToken) lookupHeaders["Authorization"] = `Bearer ${accessToken}`;
       const res = await fetch("/api/vault/lookup", {
@@ -610,9 +606,9 @@ export default function VaultPage() {
       setDrillRefCodeToDbId(refCodeMap);
 
       // Check favorite status for these drill IDs (reuse auth from above)
-      const headers: HeadersInit = {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        ...getUserHeaders(),
+        ...(getUserHeaders() as Record<string, string>),
       };
       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
 
@@ -838,13 +834,13 @@ export default function VaultPage() {
     try {
       // Get access token for authenticated requests
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       
       if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
       } else {
         // Fallback to x-user-id for anonymous users
-        Object.assign(headers, getUserHeaders());
+        Object.assign(headers, getUserHeaders() as Record<string, string>);
       }
 
       const res = await fetch(`/api/favorites/session/${sessionId}`, {
@@ -876,13 +872,13 @@ export default function VaultPage() {
     try {
       // Get access token for authenticated requests
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       
       if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
       } else {
         // Fallback to x-user-id for anonymous users
-        Object.assign(headers, getUserHeaders());
+        Object.assign(headers, getUserHeaders() as Record<string, string>);
       }
 
       const res = await fetch(`/api/favorites/series/${seriesId}`, {
@@ -922,7 +918,9 @@ export default function VaultPage() {
     // If not, look it up
     if (!drillDbId) {
       try {
-        const lookupHeaders: HeadersInit = { ...getUserHeaders() };
+        const lookupHeaders: Record<string, string> = {
+          ...(getUserHeaders() as Record<string, string>),
+        };
         const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         if (accessToken) lookupHeaders["Authorization"] = `Bearer ${accessToken}`;
         const lookupRes = await fetch(`/api/vault/lookup/${encodeURIComponent(refCodeStr)}`, {
@@ -958,13 +956,13 @@ export default function VaultPage() {
     try {
       // Get access token for authenticated requests
       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      const headers: HeadersInit = {};
+      const headers: Record<string, string> = {};
       
       if (accessToken) {
         headers["Authorization"] = `Bearer ${accessToken}`;
       } else {
         // Fallback to x-user-id for anonymous users
-        Object.assign(headers, getUserHeaders());
+        Object.assign(headers, getUserHeaders() as Record<string, string>);
       }
 
       const res = await fetch(`/api/favorites/drill/${identifierToUse}`, {
@@ -983,10 +981,12 @@ export default function VaultPage() {
         if (drillDbId) {
           setFavoritedDrills(prev => {
             const next = new Set(prev);
+            const stableDrillId = drillDbId;
+            if (!stableDrillId) return next;
             if (isFavorited) {
-              next.delete(drillDbId);
+              next.delete(stableDrillId);
             } else {
-              next.add(drillDbId);
+              next.add(stableDrillId);
             }
             return next;
           });
@@ -2063,7 +2063,7 @@ export default function VaultPage() {
                         if (!selectedSession?.id) return;
                         setGeneratingSkillFocus(true);
                         const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                        const headers: HeadersInit = { "Content-Type": "application/json" };
+                        const headers: Record<string, string> = { "Content-Type": "application/json" };
                         if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
                         const response = await fetch("/api/skill-focus/session", {
                           method: "POST",
@@ -2118,7 +2118,7 @@ export default function VaultPage() {
                         try {
                           // Get auth token for authenticated requests
                           const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                          const headers: HeadersInit = {
+                          const headers: Record<string, string> = {
                             "Content-Type": "application/json",
                           };
                           if (accessToken) {
