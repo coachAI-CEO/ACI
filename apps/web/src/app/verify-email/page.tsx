@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function VerifyEmailPage() {
+function VerifyEmailPageContent() {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
@@ -21,7 +22,7 @@ export default function VerifyEmailPage() {
 
     const verifyEmail = async () => {
       try {
-        const res = await fetch("http://localhost:4000/auth/verify-email", {
+        const res = await fetch(`${apiBase}/auth/verify-email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
@@ -56,7 +57,7 @@ export default function VerifyEmailPage() {
     };
 
     verifyEmail();
-  }, [searchParams]);
+  }, [searchParams, apiBase]);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-6 py-12">
@@ -111,5 +112,13 @@ export default function VerifyEmailPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-950" />}>
+      <VerifyEmailPageContent />
+    </Suspense>
   );
 }
