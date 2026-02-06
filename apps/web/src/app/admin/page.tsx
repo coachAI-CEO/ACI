@@ -453,7 +453,17 @@ export default function AdminDashboard() {
   }>>([]);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [showPermissionModal, setShowPermissionModal] = useState<{ permission?: any } | null>(null);
-  const [permissionForm, setPermissionForm] = useState({
+  type PermissionFormState = {
+    userId: string;
+    resourceType: "SESSION" | "VAULT" | "BOTH";
+    coachLevel: "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS";
+    ageGroups: string[];
+    formats: string[];
+    canGenerateSessions: boolean;
+    canAccessVault: boolean;
+    notes: string;
+  };
+  const createEmptyPermissionForm = (): PermissionFormState => ({
     userId: "" as string | "",
     resourceType: "BOTH" as "SESSION" | "VAULT" | "BOTH",
     coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
@@ -463,6 +473,9 @@ export default function AdminDashboard() {
     canAccessVault: false,
     notes: "",
   });
+  const [permissionForm, setPermissionForm] = useState<PermissionFormState>(
+    createEmptyPermissionForm()
+  );
   const [usersPage, setUsersPage] = useState(1);
   const [usersTotalPages, setUsersTotalPages] = useState(1);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -1150,16 +1163,7 @@ export default function AdminDashboard() {
           loadUsers(usersPage);
         }
         setShowPermissionModal(null);
-        setPermissionForm({
-          userId: "",
-          resourceType: "BOTH",
-          coachLevel: "",
-          ageGroups: [],
-          formats: [],
-          canGenerateSessions: false,
-          canAccessVault: false,
-          notes: "",
-        });
+        setPermissionForm(createEmptyPermissionForm());
       } else {
         alert(data.error || "Failed to save permission");
       }
@@ -3914,16 +3918,7 @@ export default function AdminDashboard() {
             <h2 className="text-sm font-semibold text-slate-300">Access Permissions</h2>
             <button
               onClick={() => {
-                setPermissionForm({
-                  userId: "",
-                  resourceType: "BOTH",
-                  coachLevel: "",
-                  ageGroups: [],
-                  formats: [],
-                  canGenerateSessions: false,
-                  canAccessVault: false,
-                  notes: "",
-                });
+                setPermissionForm(createEmptyPermissionForm());
                 setShowPermissionModal({});
               }}
               className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors"
@@ -4297,16 +4292,7 @@ export default function AdminDashboard() {
                 <button
                   onClick={() => {
                     setShowPermissionModal(null);
-                    setPermissionForm({
-                      userId: "",
-                      resourceType: "BOTH",
-                      coachLevel: "",
-                      ageGroups: [],
-                      formats: [],
-                      canGenerateSessions: false,
-                      canAccessVault: false,
-                      notes: "",
-                    });
+                    setPermissionForm(createEmptyPermissionForm());
                   }}
                   className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
                 >
