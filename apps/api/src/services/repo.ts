@@ -45,7 +45,9 @@ export async function saveGeneratedDrill(json: any) {
         pass: Boolean(qa?.pass ?? true),
         // DB column is JSON; accept any shaped scores object
         scores: (qa?.scores ?? {}) as Prisma.InputJsonValue,
-        artifact: { connect: { id: rec.id } },
+        artifactId: rec.id,
+        artifactType: "DRILL",
+        drillId: rec.id,
       },
     });
   }

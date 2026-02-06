@@ -1,15 +1,14 @@
-import { json, Router } from "express";
+import { Router } from "express";
 import { z } from "zod";
 
-import { prisma } from "../../prisma";
-import { requireAuth } from "../../utils/auth";
-import { parseJson } from "../../utils/parseJson";
+import { authenticate } from "../middleware/auth";
 
 const router = Router();
 
 const DrillAttemptSchema = z.object({
   id: z.string().uuid(),
   title: z.string(),
+  drill: z.unknown().optional(),
   decision: z.enum(["PASS", "FAIL", "NEEDS_REGEN"]),
   qa: z
     .object({
@@ -29,7 +28,7 @@ const GenerateDrillRequestSchema = z.object({
 
 router.post(
   "/coach/generate-drill-vetted",
-  requireAuth,
+  authenticate,
   async (req, res) => {
     const parsed = GenerateDrillRequestSchema.safeParse(req.body);
 
@@ -64,7 +63,7 @@ router.post(
         );
         return res.json({
           ok: true,
-          drill: bestAttempt.drill,
+          drill: bestAttempt.drill ?? null,
           qa: bestAttempt.qa,
           qaStatus: bestAttempt.decision,
           attemptsSummary: attempts.map((a) => ({
