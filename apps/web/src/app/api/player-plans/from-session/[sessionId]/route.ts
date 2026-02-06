@@ -4,10 +4,10 @@ const API_BASE = process.env.API_URL || "http://localhost:4000";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
-    const { sessionId } = params;
+    const { sessionId } = await params;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
     const body = await request.text();
 
