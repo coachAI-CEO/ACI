@@ -1151,6 +1151,7 @@ export default function AdminDashboard() {
         }
         setShowPermissionModal(null);
         setPermissionForm({
+          userId: "",
           resourceType: "BOTH",
           coachLevel: "",
           ageGroups: [],
