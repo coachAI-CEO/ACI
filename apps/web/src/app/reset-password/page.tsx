@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
@@ -38,7 +39,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:4000/auth/password/reset", {
+      const res = await fetch(`${apiBase}/auth/password/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
@@ -153,3 +154,10 @@ export default function ResetPasswordPage() {
   );
 }
 
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-950" />}>
+      <ResetPasswordPageContent />
+    </Suspense>
+  );
+}
