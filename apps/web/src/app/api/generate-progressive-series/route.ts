@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const PROGRESSIVE_SERIES_TIMEOUT = 900000; // 15 minutes
 
 // Configure the route to allow long-running requests
-export const maxDuration = 900; // 15 minutes (Vercel/Next.js config)
+export const maxDuration = 300; // Vercel Hobby limit is 300s
 
 export async function POST(request: NextRequest) {
   console.log("[API/progressive-series] Starting request...");
