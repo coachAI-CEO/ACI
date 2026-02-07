@@ -15,6 +15,7 @@ interface User {
 }
 
 export default function AuthButton() {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
@@ -78,7 +79,7 @@ export default function AuthButton() {
   const handleResendVerification = async () => {
     try {
       const accessToken = localStorage.getItem("accessToken");
-      const res = await fetch("http://localhost:4000/auth/resend-verification", {
+      const res = await fetch(`${apiBase}/auth/resend-verification`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
