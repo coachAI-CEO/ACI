@@ -14,6 +14,10 @@ function getAuthHeaders(request: NextRequest): Record<string, string> {
 
 export async function POST(request: NextRequest) {
   try {
+    const apiBase =
+      (process.env.API_URL && !process.env.API_URL.includes("localhost"))
+        ? process.env.API_URL
+        : process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const body = await request.json();
     const { searchParams } = new URL(request.url);
     const skipRecommendation = searchParams.get("skipRecommendation") === "1";
@@ -23,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     if (!skipRecommendation) {
       try {
-        const recRes = await fetch("http://localhost:4000/vault/sessions/similar", {
+        const recRes = await fetch(`${apiBase}/vault/sessions/similar`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const res = await fetch("http://localhost:4000/ai/generate-session", {
+    const res = await fetch(`${apiBase}/ai/generate-session`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify(body),

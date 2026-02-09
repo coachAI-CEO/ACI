@@ -9,6 +9,10 @@ export async function POST(request: NextRequest) {
   console.log("[API/progressive-series] Starting request...");
   
   try {
+    const apiBase =
+      (process.env.API_URL && !process.env.API_URL.includes("localhost"))
+        ? process.env.API_URL
+        : process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const body = await request.json();
     const baseInput = body.baseInput || body;
     const numberOfSessions = body.numberOfSessions || 3;
@@ -17,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     console.log("[API/progressive-series] Forwarding to backend with numberOfSessions:", numberOfSessions);
 
-    const url = `http://localhost:4000/ai/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
+    const url = `${apiBase}/ai/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), PROGRESSIVE_SERIES_TIMEOUT);
