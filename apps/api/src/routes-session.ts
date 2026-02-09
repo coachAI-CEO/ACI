@@ -200,10 +200,12 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
       });
     }
 
-    // Check usage limit (counts as multiple sessions)
+    // Check usage limit (counts as multiple sessions).
+    // Unlimited plans/admins return limit = -1 and should always pass.
     if (req.userId) {
       const limit = await checkUsageLimit(req.userId, 'session');
-      if (!limit.allowed || limit.remaining < numberOfSessions) {
+      const isUnlimited = limit.limit === -1;
+      if (!isUnlimited && (!limit.allowed || limit.remaining < numberOfSessions)) {
         return res.status(403).json({
           ok: false,
           error: 'Insufficient monthly limit for series',
