@@ -1,5 +1,5 @@
 import express from "express";
-import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
+import { SUBSCRIPTION_LIMITS, getFeaturesForUser } from "./config/subscription-limits";
 import { checkUsageLimit } from "./services/auth";
 import { prisma } from "./prisma";
 import { generateAndReviewSession } from "./services/session";
@@ -1766,6 +1766,64 @@ r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), asyn
   });
 });
 
+r.delete("/admin/sessions/:sessionRef", requireAdminPermission('canDeleteSessions'), async (req: AdminRequest, res) => {
+  const sessionRef = String(req.params.sessionRef || "").trim();
+  if (!sessionRef) {
+    return res.status(400).json({ ok: false, error: "sessionRef is required" });
+  }
+
+  const sessionRow = await prisma.session.findFirst({
+    where: {
+      OR: [{ id: sessionRef }, { refCode: sessionRef.toUpperCase() }],
+    },
+    select: { id: true, refCode: true, title: true },
+  });
+
+  if (!sessionRow) {
+    return res.status(404).json({ ok: false, error: "Session not found" });
+  }
+
+  await logAdminAction(
+    req.userId!,
+    "session.delete",
+    {
+      resourceType: "Session",
+      resourceId: sessionRow.id,
+      data: { refCode: sessionRow.refCode, title: sessionRow.title },
+    },
+    req
+  );
+
+  const result = await prisma.$transaction(async (tx) => {
+    const favoritesDeleted = await tx.favorite.deleteMany({
+      where: { sessionId: sessionRow.id },
+    });
+    const calendarEventsDeleted = await tx.calendarEvent.deleteMany({
+      where: { sessionId: sessionRow.id },
+    });
+    const playerPlansDeleted = await tx.playerPlan.deleteMany({
+      where: { sourceType: "SESSION", sourceId: sessionRow.id },
+    });
+    await tx.session.delete({ where: { id: sessionRow.id } });
+
+    return {
+      favoritesDeleted: favoritesDeleted.count,
+      calendarEventsDeleted: calendarEventsDeleted.count,
+      playerPlansDeleted: playerPlansDeleted.count,
+    };
+  });
+
+  return res.json({
+    ok: true,
+    deleted: {
+      id: sessionRow.id,
+      refCode: sessionRow.refCode,
+      title: sessionRow.title,
+    },
+    ...result,
+  });
+});
+
 // ------------------------------------
 // Admin: QA Status Analytics
 // ------------------------------------
@@ -2315,19 +2373,11 @@ r.get("/admin/users/:userId", requireAdminPermission('canViewAllUserData'), asyn
     const sessionLimit = await checkUsageLimit(user.id, 'session');
     const drillLimit = await checkUsageLimit(user.id, 'drill');
 
-    // Get subscription features
-    const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
-    const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
-    const features = {
-      canExportPDF: limits.canExportPDF,
-      canGenerateSeries: limits.canGenerateSeries,
-      canUseAdvancedFilters: limits.canUseAdvancedFilters,
-      canAccessCalendar: limits.canAccessCalendar,
-      canCreatePlayerPlans: limits.canCreatePlayerPlans,
-      canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
-      canInviteCoaches: limits.canInviteCoaches,
-      canManageOrganization: limits.canManageOrganization,
-    };
+    // Get subscription features (SUPER_ADMIN has no feature limits)
+    const features = getFeaturesForUser({
+      subscriptionPlan: user.subscriptionPlan,
+      adminRole: user.adminRole,
+    });
 
     // Count vault items
     const vaultSessionsCount = await prisma.session.count({
@@ -2346,10 +2396,13 @@ r.get("/admin/users/:userId", requireAdminPermission('canViewAllUserData'), asyn
       where: { userId: user.id },
     });
 
-    // Calculate vault limits
-    const vaultSessionsLimit = limits.vaultSessions;
-    const vaultDrillsLimit = limits.vaultDrills;
-    const favoritesLimit = limits.maxFavorites;
+    // Calculate vault limits (SUPER_ADMIN unlimited)
+    const plan = user.subscriptionPlan as keyof typeof SUBSCRIPTION_LIMITS;
+    const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
+    const isSuperAdmin = user.adminRole === "SUPER_ADMIN";
+    const vaultSessionsLimit = isSuperAdmin ? -1 : limits.vaultSessions;
+    const vaultDrillsLimit = isSuperAdmin ? -1 : limits.vaultDrills;
+    const favoritesLimit = isSuperAdmin ? -1 : limits.maxFavorites;
 
     // Trial status
     let trialStatus = null;

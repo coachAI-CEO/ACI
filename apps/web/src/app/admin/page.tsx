@@ -360,6 +360,10 @@ export default function AdminDashboard() {
   const [reenrichSessionRunning, setReenrichSessionRunning] = useState<boolean>(false);
   const [reenrichSessionResult, setReenrichSessionResult] = useState<any | null>(null);
   const [reenrichSessionError, setReenrichSessionError] = useState<string | null>(null);
+  const [deleteSessionRef, setDeleteSessionRef] = useState<string>("");
+  const [deleteSessionRunning, setDeleteSessionRunning] = useState<boolean>(false);
+  const [deleteSessionResult, setDeleteSessionResult] = useState<any | null>(null);
+  const [deleteSessionError, setDeleteSessionError] = useState<string | null>(null);
   const [stripBatchSize, setStripBatchSize] = useState<number>(100);
   const [stripIncludeSessions, setStripIncludeSessions] = useState<boolean>(true);
   const [stripRunning, setStripRunning] = useState<boolean>(false);
@@ -1595,6 +1599,40 @@ export default function AdminDashboard() {
       setReenrichSessionRunning(false);
     }
   }, [reenrichSessionId]);
+
+  const runDeleteSession = useCallback(async () => {
+    const input = deleteSessionRef.trim();
+    if (!input) {
+      setDeleteSessionError("Session ID or ref code is required");
+      return;
+    }
+    if (!window.confirm(`Delete session ${input}? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleteSessionRunning(true);
+    setDeleteSessionError(null);
+    setDeleteSessionResult(null);
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/sessions/${encodeURIComponent(input)}`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Delete failed (${res.status})`);
+      }
+      setDeleteSessionResult(data);
+      fetchData();
+    } catch (e: any) {
+      setDeleteSessionError(e?.message || String(e));
+    } finally {
+      setDeleteSessionRunning(false);
+    }
+  }, [deleteSessionRef, fetchData]);
 
   const runStripGenericOverlays = useCallback(async () => {
     setStripRunning(true);
@@ -3014,6 +3052,40 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Delete session by ID/ref */}
+        <div className="mt-4 bg-slate-900/70 border border-red-700/40 rounded-xl p-4">
+          <div className="text-xs text-slate-400 uppercase tracking-wide">Delete Session (Super Admin)</div>
+          <div className="mt-2 text-sm text-slate-300">
+            Permanently deletes a session by UUID or ref code (S-XXXX), plus linked favorites, calendar events, and SESSION player plans.
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <input
+              type="text"
+              value={deleteSessionRef}
+              onChange={(e) => setDeleteSessionRef(e.target.value)}
+              placeholder="Session ID or S-XXXX"
+              className="w-80 max-w-full rounded-md border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-200"
+            />
+            <button
+              onClick={runDeleteSession}
+              disabled={deleteSessionRunning}
+              className="rounded-md border border-red-500/60 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+            >
+              {deleteSessionRunning ? "Deleting..." : "Delete Session"}
+            </button>
+          </div>
+          {deleteSessionError && (
+            <div className="mt-2 text-xs text-red-400">{deleteSessionError}</div>
+          )}
+          {deleteSessionResult?.ok && (
+            <div className="mt-2 text-xs text-slate-300">
+              Deleted {deleteSessionResult?.deleted?.refCode || deleteSessionResult?.deleted?.id}. Favorites:{" "}
+              {deleteSessionResult?.favoritesDeleted ?? 0}, Calendar: {deleteSessionResult?.calendarEventsDeleted ?? 0}, Player Plans:{" "}
+              {deleteSessionResult?.playerPlansDeleted ?? 0}
             </div>
           )}
         </div>

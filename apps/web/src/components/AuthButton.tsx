@@ -23,6 +23,12 @@ export default function AuthButton() {
 
   const checkUser = () => {
     const storedUser = localStorage.getItem("user");
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    } else {
+      document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    }
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
@@ -31,6 +37,7 @@ export default function AuthButton() {
         localStorage.removeItem("user");
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
+        document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
         setUser(null);
       }
     } else {
@@ -67,6 +74,7 @@ export default function AuthButton() {
     localStorage.removeItem("user");
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
     setUser(null);
     router.push("/login");
     router.refresh();

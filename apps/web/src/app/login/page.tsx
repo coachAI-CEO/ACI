@@ -11,6 +11,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  const setAuthCookie = (token: string | null) => {
+    if (!token) {
+      document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+      return;
+    }
+    document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -34,6 +42,7 @@ export default function LoginPage() {
       if (data.tokens) {
         localStorage.setItem("accessToken", data.tokens.accessToken);
         localStorage.setItem("refreshToken", data.tokens.refreshToken);
+        setAuthCookie(data.tokens.accessToken);
       }
 
       // Store user info
