@@ -79,9 +79,18 @@ export const CoachChat: React.FC<CoachChatProps> = ({
     ]);
 
     try {
+      const accessToken =
+        typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
       const res = await fetch("/api/coach-chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           message: userMessage.content,
           history: messages.filter((m) => m.id !== "welcome").slice(-10),

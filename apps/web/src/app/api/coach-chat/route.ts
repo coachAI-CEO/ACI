@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const CHAT_TIMEOUT = 60000; // 1 minute
+const API_BASE =
+  process.env.API_URL && !process.env.API_URL.includes("localhost")
+    ? process.env.API_URL
+    : process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 // System prompt for the AI to understand coaching requests
 const SYSTEM_PROMPT = `You are an expert soccer/football coaching assistant. Your job is to understand what the coach needs and help them find or create training sessions.
@@ -119,10 +123,17 @@ Coach's latest message: "${message}"
 
 Analyze this request and respond in the JSON format specified above.`;
 
+    const authHeader =
+      request.headers.get("authorization") || request.headers.get("Authorization");
+    const baseHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (authHeader) {
+      baseHeaders.Authorization = authHeader;
+    }
+
     // Call the backend AI endpoint
-    const aiResponse = await fetch("http://localhost:4000/ai/chat", {
+    const aiResponse = await fetch(`${API_BASE}/ai/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: baseHeaders,
       body: JSON.stringify({ prompt }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT),
     }).catch(async () => {
@@ -159,9 +170,9 @@ Analyze this request and respond in the JSON format specified above.`;
     let recommendations: any[] = [];
     if (parsed.intent === "search" || parsed.intent === "generate") {
       try {
-        const vaultRes = await fetch("http://localhost:4000/vault/sessions/search", {
+        const vaultRes = await fetch(`${API_BASE}/vault/sessions/search`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: baseHeaders,
           body: JSON.stringify({
             query: parsed.searchQuery || message,
             params: parsed.extractedParams,
