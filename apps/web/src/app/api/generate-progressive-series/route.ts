@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const skipRecommendation = searchParams.get("skipRecommendation") === "1";
 
+    const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Connection": "keep-alive",
+    };
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    }
+
     console.log("[API/progressive-series] Forwarding to backend with numberOfSessions:", numberOfSessions);
 
     const url = `${apiBase}/ai/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
@@ -30,10 +39,7 @@ export async function POST(request: NextRequest) {
       // Use undici-style fetch options for better long-running request handling
       const res = await fetch(url, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Connection": "keep-alive",
-        },
+        headers,
         body: JSON.stringify({ baseInput, numberOfSessions }),
         signal: controller.signal,
         // @ts-ignore - Next.js extended fetch options

@@ -379,7 +379,12 @@ async function fetchProgressiveSeries(
   
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(typeof window !== "undefined" && localStorage.getItem("accessToken")
+        ? { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
+        : {}),
+    },
     body: JSON.stringify({
       baseInput: config,
       numberOfSessions,
