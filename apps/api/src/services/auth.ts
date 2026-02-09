@@ -163,11 +163,25 @@ export async function loginUser(email: string, password: string, ipAddress?: str
   });
   
   if (!user || !user.passwordHash) {
+    console.log('[AUTH] loginUser reject', {
+      email: normalizedEmail,
+      reason: !user ? 'USER_NOT_FOUND' : 'MISSING_PASSWORD_HASH',
+      hasUser: Boolean(user),
+      hasPasswordHash: Boolean(user?.passwordHash),
+      timestamp: new Date().toISOString(),
+    });
     throw new Error('Invalid credentials');
   }
   
   const isValid = await verifyPassword(password, user.passwordHash);
   if (!isValid) {
+    console.log('[AUTH] loginUser reject', {
+      email: normalizedEmail,
+      reason: 'PASSWORD_MISMATCH',
+      hasUser: true,
+      hasPasswordHash: true,
+      timestamp: new Date().toISOString(),
+    });
     throw new Error('Invalid credentials');
   }
   
