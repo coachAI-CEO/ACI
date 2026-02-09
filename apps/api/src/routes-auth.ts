@@ -14,9 +14,52 @@ import {
 } from './services/auth';
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
-import { SUBSCRIPTION_LIMITS, getFeaturesForUser } from './config/subscription-limits';
+import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
+type SubscriptionFeatures = {
+  canExportPDF: boolean;
+  canGenerateSeries: boolean;
+  canUseAdvancedFilters: boolean;
+  canAccessCalendar: boolean;
+  canCreatePlayerPlans: boolean;
+  canGenerateWeeklySummaries: boolean;
+  canInviteCoaches: boolean;
+  canManageOrganization: boolean;
+};
+
+function getFeaturesForAuthUser(input: {
+  subscriptionPlan?: SubscriptionPlanKey | string | null;
+  adminRole?: string | null;
+}): SubscriptionFeatures {
+  if (input.adminRole === 'SUPER_ADMIN') {
+    return {
+      canExportPDF: true,
+      canGenerateSeries: true,
+      canUseAdvancedFilters: true,
+      canAccessCalendar: true,
+      canCreatePlayerPlans: true,
+      canGenerateWeeklySummaries: true,
+      canInviteCoaches: true,
+      canManageOrganization: true,
+    };
+  }
+
+  const plan = (input.subscriptionPlan && input.subscriptionPlan in SUBSCRIPTION_LIMITS
+    ? input.subscriptionPlan
+    : 'FREE') as SubscriptionPlanKey;
+  const limits = SUBSCRIPTION_LIMITS[plan];
+  return {
+    canExportPDF: limits.canExportPDF,
+    canGenerateSeries: limits.canGenerateSeries,
+    canUseAdvancedFilters: limits.canUseAdvancedFilters,
+    canAccessCalendar: limits.canAccessCalendar,
+    canCreatePlayerPlans: limits.canCreatePlayerPlans,
+    canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
+    canInviteCoaches: limits.canInviteCoaches,
+    canManageOrganization: limits.canManageOrganization,
+  };
+}
 
 /** Shape of user returned by GET /auth/me (select + preferences) */
 interface AuthMeUser {
@@ -187,7 +230,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     const drillLimit = await checkUsageLimit(req.userId, 'drill');
     
     // Get subscription features (SUPER_ADMIN has no feature limits)
-    const features = getFeaturesForUser({
+    const features = getFeaturesForAuthUser({
       subscriptionPlan: user.subscriptionPlan,
       adminRole: user.adminRole,
     });
