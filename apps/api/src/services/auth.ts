@@ -64,9 +64,16 @@ export async function registerUser(data: {
   coachLevel?: string;
   subscriptionPlan?: string;
 }): Promise<{ user: any; tokens: AuthTokens }> {
+  const normalizedEmail = data.email.trim().toLowerCase();
+
   // Check if user exists
-  const existing = await prisma.user.findUnique({
-    where: { email: data.email }
+  const existing = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: normalizedEmail,
+        mode: 'insensitive',
+      },
+    },
   });
   
   if (existing) {
@@ -82,7 +89,7 @@ export async function registerUser(data: {
   
   const user = await prisma.user.create({
     data: {
-      email: data.email,
+      email: normalizedEmail,
       passwordHash,
       name: data.name,
       coachLevel: data.coachLevel as any,
@@ -145,8 +152,14 @@ export async function registerUser(data: {
 }
 
 export async function loginUser(email: string, password: string, ipAddress?: string, userAgent?: string): Promise<{ user: any; tokens: AuthTokens }> {
-  const user = await prisma.user.findUnique({
-    where: { email }
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: normalizedEmail,
+        mode: 'insensitive',
+      },
+    },
   });
   
   if (!user || !user.passwordHash) {

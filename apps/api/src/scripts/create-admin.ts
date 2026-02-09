@@ -6,8 +6,9 @@ async function createAdmin() {
   const email = process.argv[2];
   const password = process.argv[3];
   const adminRole = process.argv[4] || 'SUPER_ADMIN';
+  const normalizedEmail = email?.trim().toLowerCase();
   
-  if (!email || !password) {
+  if (!normalizedEmail || !password) {
     console.error('Usage: ts-node create-admin.ts <email> <password> [adminRole]');
     console.error('Admin roles: SUPER_ADMIN, ADMIN, MODERATOR, SUPPORT');
     process.exit(1);
@@ -16,7 +17,7 @@ async function createAdmin() {
   try {
     // Check if user exists
     const existing = await prisma.user.findUnique({
-      where: { email }
+      where: { email: normalizedEmail }
     });
     
     if (existing) {
@@ -38,7 +39,7 @@ async function createAdmin() {
         where: { id: existing.id },
         data: updateData
       });
-      console.log(`✅ Updated user ${email} to ${adminRole}`);
+      console.log(`✅ Updated user ${normalizedEmail} to ${adminRole}`);
       if (adminRole === 'SUPER_ADMIN') {
         console.log(`   Email automatically verified for SUPER_ADMIN`);
       }
@@ -50,7 +51,7 @@ async function createAdmin() {
     const passwordHash = await hashPassword(password);
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         passwordHash,
         name: 'Admin User',
         role: 'ADMIN',
@@ -62,7 +63,7 @@ async function createAdmin() {
       }
     });
     
-    console.log(`✅ Created admin user ${email} with role ${adminRole}`);
+    console.log(`✅ Created admin user ${normalizedEmail} with role ${adminRole}`);
     console.log(`   User ID: ${user.id}`);
     return user;
   } catch (error: any) {
