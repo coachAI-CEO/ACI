@@ -14,7 +14,7 @@ import {
 } from './services/auth';
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
-import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
+import { SUBSCRIPTION_LIMITS, getFeaturesForUser } from './config/subscription-limits';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
 
@@ -24,6 +24,7 @@ interface AuthMeUser {
   email: string | null;
   name: string | null;
   role: string;
+  adminRole: string | null;
   subscriptionPlan: SubscriptionPlanKey;
   subscriptionStatus: string;
   coachLevel: string | null;
@@ -99,9 +100,35 @@ r.post('/auth/login', async (req, res) => {
     const data = LoginSchema.parse(req.body);
     const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
     const userAgent = req.headers['user-agent'];
+    const email = data.email?.trim().toLowerCase();
+    console.log('[AUTH] Login attempt', {
+      email,
+      ipAddress,
+      userAgent,
+      timestamp: new Date().toISOString(),
+    });
     const result = await loginUser(data.email, data.password, ipAddress, userAgent);
+    console.log('[AUTH] Login success', {
+      email,
+      userId: result.user?.id,
+      role: result.user?.role,
+      adminRole: result.user?.adminRole,
+      timestamp: new Date().toISOString(),
+    });
     return res.json({ ok: true, ...result });
   } catch (error: any) {
+    const rawEmail = typeof req.body?.email === 'string' ? req.body.email : undefined;
+    const email = rawEmail?.trim().toLowerCase();
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
+    const userAgent = req.headers['user-agent'];
+    console.log('[AUTH] Login failed', {
+      email,
+      ipAddress,
+      userAgent,
+      error: error?.message || 'Unknown auth error',
+      errorType: error?.name || 'Error',
+      timestamp: new Date().toISOString(),
+    });
     if (error.name === 'ZodError') {
       return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
     }
@@ -134,6 +161,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         email: true,
         name: true,
         role: true,
+        adminRole: true,
         subscriptionPlan: true,
         subscriptionStatus: true,
         coachLevel: true,
@@ -158,19 +186,11 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     const sessionLimit = await checkUsageLimit(req.userId, 'session');
     const drillLimit = await checkUsageLimit(req.userId, 'drill');
     
-    // Get subscription features
-    const plan = user.subscriptionPlan;
-    const limits = SUBSCRIPTION_LIMITS[plan] || SUBSCRIPTION_LIMITS.FREE;
-    const features = {
-      canExportPDF: limits.canExportPDF,
-      canGenerateSeries: limits.canGenerateSeries,
-      canUseAdvancedFilters: limits.canUseAdvancedFilters,
-      canAccessCalendar: limits.canAccessCalendar,
-      canCreatePlayerPlans: limits.canCreatePlayerPlans,
-      canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
-      canInviteCoaches: limits.canInviteCoaches,
-      canManageOrganization: limits.canManageOrganization,
-    };
+    // Get subscription features (SUPER_ADMIN has no feature limits)
+    const features = getFeaturesForUser({
+      subscriptionPlan: user.subscriptionPlan,
+      adminRole: user.adminRole,
+    });
     
     return res.json({
       ok: true,
