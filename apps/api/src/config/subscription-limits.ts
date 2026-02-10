@@ -95,3 +95,53 @@ export const SUBSCRIPTION_LIMITS = {
 } as const;
 
 export type SubscriptionPlan = keyof typeof SUBSCRIPTION_LIMITS;
+
+const FEATURE_KEYS = [
+  "canExportPDF",
+  "canGenerateSeries",
+  "canUseAdvancedFilters",
+  "canAccessCalendar",
+  "canCreatePlayerPlans",
+  "canGenerateWeeklySummaries",
+  "canInviteCoaches",
+  "canManageOrganization",
+] as const;
+
+export type SubscriptionFeatureKey = typeof FEATURE_KEYS[number];
+export type SubscriptionFeatures = Record<SubscriptionFeatureKey, boolean>;
+
+export function getFeaturesForPlan(
+  plan: SubscriptionPlan | string | null | undefined
+): SubscriptionFeatures {
+  const planKey = (plan && plan in SUBSCRIPTION_LIMITS ? plan : "FREE") as SubscriptionPlan;
+  const limits = SUBSCRIPTION_LIMITS[planKey];
+  return {
+    canExportPDF: limits.canExportPDF,
+    canGenerateSeries: limits.canGenerateSeries,
+    canUseAdvancedFilters: limits.canUseAdvancedFilters,
+    canAccessCalendar: limits.canAccessCalendar,
+    canCreatePlayerPlans: limits.canCreatePlayerPlans,
+    canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
+    canInviteCoaches: limits.canInviteCoaches,
+    canManageOrganization: limits.canManageOrganization,
+  };
+}
+
+export function getFeaturesForUser(input: {
+  subscriptionPlan?: SubscriptionPlan | string | null;
+  adminRole?: string | null;
+}): SubscriptionFeatures {
+  if (input.adminRole === "SUPER_ADMIN") {
+    return {
+      canExportPDF: true,
+      canGenerateSeries: true,
+      canUseAdvancedFilters: true,
+      canAccessCalendar: true,
+      canCreatePlayerPlans: true,
+      canGenerateWeeklySummaries: true,
+      canInviteCoaches: true,
+      canManageOrganization: true,
+    };
+  }
+  return getFeaturesForPlan(input.subscriptionPlan);
+}
