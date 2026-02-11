@@ -608,9 +608,13 @@ export default function TacticalEdgeLanding() {
       }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <img src="/images/TacticalEdge_Emblem.png" alt="TacticalEdge" style={{
-              width: "81px",
-              height: "81px",
+            <img
+              src="/images/tacticaledge-emblem.png"
+              alt="TacticalEdge"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+              style={{
+              width: "52px",
+              height: "52px",
               borderRadius: "8px",
               objectFit: "cover",
             }} />
@@ -1180,9 +1184,13 @@ export default function TacticalEdgeLanding() {
         }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-              <img src="/images/TacticalEdge_Emblem.png" alt="TacticalEdge" style={{
-                width: "72px",
-                height: "72px",
+              <img
+                src="/images/tacticaledge-emblem.png"
+                alt="TacticalEdge"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                style={{
+                width: "54px",
+                height: "54px",
                 borderRadius: "7px",
                 objectFit: "cover",
               }} />
