@@ -58,9 +58,9 @@ export default function LoginPage() {
         }
       }
 
-      // Redirect to home (unless showing verification notice)
+      // Redirect to app home (unless showing verification notice)
       if (data.user?.emailVerified !== false) {
-        router.push("/");
+        router.push("/app");
         router.refresh();
       }
     } catch (err: any) {
@@ -76,7 +76,7 @@ export default function LoginPage() {
         <div className="text-center">
           <h1 className="text-3xl font-bold text-emerald-400">Welcome Back</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Sign in to your ACI Training Platform account
+            Sign in to your TacticalEdge account
           </p>
         </div>
 
@@ -91,7 +91,7 @@ export default function LoginPage() {
               {error.includes("verify") && (
                 <div className="mt-2">
                   <button
-                    onClick={() => router.push("/")}
+                    onClick={() => router.push("/app")}
                     className="text-xs underline hover:text-amber-200"
                   >
                     Continue anyway →
@@ -158,8 +158,8 @@ export default function LoginPage() {
         </div>
 
         <div className="text-center text-xs text-slate-500">
-          <Link href="/" className="hover:text-slate-400">
-            ← Back to home
+          <Link href="/landing" className="hover:text-slate-400">
+            ← Back to landing
           </Link>
         </div>
       </div>

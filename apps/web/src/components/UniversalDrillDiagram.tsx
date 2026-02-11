@@ -2,7 +2,7 @@
 
 import React, { useEffect } from "react";
 
-/** Goal as expected by the universal diagram (optional in ACI; adapter can pass []). */
+/** Goal as expected by the universal diagram (optional in TacticalEdge; adapter can pass []). */
 export interface UniversalDrillGoal {
   id: string;
   x: number;
@@ -45,7 +45,7 @@ export interface UniversalDrillSafeZone {
   color?: string;  // Custom color
 }
 
-/** Player shape for the universal diagram (matches ACI DiagramPlayer for id, number, team, role, x, y). */
+/** Player shape for the universal diagram (matches TacticalEdge DiagramPlayer for id, number, team, role, x, y). */
 export interface UniversalDrillPlayer {
   id: string;
   number?: number;
@@ -606,7 +606,7 @@ const UniversalDrillDiagram = ({
     displayLength = `${lengthYards}`;
   }
 
-  // When ACI/adapter passes no goals, infer default goals; use vertical layout when drawVertical
+  // When adapter passes no goals, infer default goals; use vertical layout when drawVertical
   const displayGoals: UniversalDrillGoal[] =
     goals.length > 0
       ? goals

@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { DiagramV1 } from "@/types/diagram";
 import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
-import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
+import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
 
 export type DrillDiagramCardOrganization = {
   area?: { 
@@ -33,7 +33,7 @@ export default function DrillDiagramCard({
 }: Props) {
   const drillData = React.useMemo(
     () =>
-      aciToUniversalDrillData(diagram, {
+      tacticalEdgeToUniversalDrillData(diagram, {
         title,
         description,
         organization,

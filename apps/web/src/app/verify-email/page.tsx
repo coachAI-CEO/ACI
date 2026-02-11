@@ -80,10 +80,10 @@ function VerifyEmailPageContent() {
               <p className="text-emerald-400 font-semibold mb-2">Email Verified!</p>
               <p className="text-slate-300 text-sm mb-6">{message}</p>
               <Link
-                href="/"
+                href="/app"
                 className="inline-block rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition"
               >
-                Go to Home
+                Go to App
               </Link>
             </div>
           )}

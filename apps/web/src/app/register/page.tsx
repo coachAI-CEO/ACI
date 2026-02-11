@@ -85,7 +85,7 @@ export default function RegisterPage() {
       alert("Registration successful! Please check your email to verify your account. You can continue using the platform.");
 
       // Redirect to home
-      router.push("/");
+      router.push("/app");
       router.refresh();
     } catch (err: any) {
       setError(err.message || "Failed to register");
@@ -214,8 +214,8 @@ export default function RegisterPage() {
         </div>
 
         <div className="text-center text-xs text-slate-500">
-          <Link href="/" className="hover:text-slate-400">
-            ← Back to home
+          <Link href="/landing" className="hover:text-slate-400">
+            ← Back to landing
           </Link>
         </div>
       </div>

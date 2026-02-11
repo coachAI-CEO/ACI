@@ -5,7 +5,7 @@ import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
 import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
-import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
+import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 
@@ -709,7 +709,7 @@ export default function FavoritesPage() {
                           {diagram && (
                             <div className="flex items-center justify-center">
                               <UniversalDrillDiagram
-                                drillData={aciToUniversalDrillData(diagram, {
+                                drillData={tacticalEdgeToUniversalDrillData(diagram, {
                                   title: drill.title ?? "Diagram",
                                   description,
                                   organization,
@@ -850,7 +850,7 @@ export default function FavoritesPage() {
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
                       <UniversalDrillDiagram
-                        drillData={aciToUniversalDrillData(selectedDrill.json.diagram, {
+                        drillData={tacticalEdgeToUniversalDrillData(selectedDrill.json.diagram, {
                           title: selectedDrill.title ?? "Diagram",
                           description: selectedDrill.json.description,
                           organization: selectedDrill.json.organization,

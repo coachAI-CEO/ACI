@@ -1222,7 +1222,7 @@ function SessionDemoPageContent() {
         {/* Header */}
         <header className="space-y-1">
           <h1 className="text-xl font-bold tracking-tight">
-            ACI Session Generator
+            TacticalEdge Session Generator
           </h1>
           <p className="text-sm text-slate-400">
             Generate complete training sessions (60 or 90 minutes) with multiple drills
@@ -1808,7 +1808,7 @@ function SessionDemoPageContent() {
               </div>
             ) : (
               <p className="text-sm text-red-300">
-                Failed to fetch session from ACI API: {error}
+                Failed to fetch session from TacticalEdge API: {error}
               </p>
             )}
           </div>
@@ -2656,7 +2656,7 @@ export default function SessionDemoPage() {
         <div className="max-w-7xl mx-auto space-y-6">
           <header className="space-y-1">
             <h1 className="text-xl font-bold tracking-tight">
-              ACI Session Generator
+              TacticalEdge Session Generator
             </h1>
             <p className="text-sm text-slate-400">
               Loading...

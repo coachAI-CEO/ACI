@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
-import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
+import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
 import { getUserHeaders } from "@/lib/user";
 
 // Label mappings (same as vault)
@@ -1783,7 +1783,7 @@ export default function AdminDashboard() {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-200 p-8">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold mb-8">ACI Admin Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-8">TacticalEdge Admin Dashboard</h1>
           <div className="bg-yellow-900/30 border border-yellow-700 rounded-lg p-6">
             <h2 className="text-lg font-semibold text-yellow-300 mb-2">Admin Access Required</h2>
             <p className="text-yellow-200 mb-4">
@@ -1808,7 +1808,7 @@ export default function AdminDashboard() {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-200 p-8">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold mb-8">ACI Admin Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-8">TacticalEdge Admin Dashboard</h1>
           <div className="animate-pulse">Loading metrics...</div>
         </div>
       </div>
@@ -1819,7 +1819,7 @@ export default function AdminDashboard() {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-200 p-8">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold mb-8">ACI Admin Dashboard</h1>
+          <h1 className="text-2xl font-bold mb-8">TacticalEdge Admin Dashboard</h1>
           <div className="bg-red-900/30 border border-red-700 rounded-lg p-4">
             <p className="text-red-300">Error: {error}</p>
             <button
@@ -1840,7 +1840,7 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">ACI Admin Dashboard</h1>
+            <h1 className="text-2xl font-bold">TacticalEdge Admin Dashboard</h1>
             <p className="text-sm text-slate-400">Monitor generation metrics and database usage</p>
           </div>
           <div className="flex items-center gap-4">
@@ -1860,7 +1860,7 @@ export default function AdminDashboard() {
               Refresh
             </button>
             <Link
-              href="/"
+              href="/app"
               className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm font-medium"
             >
               Back to App
@@ -5145,7 +5145,7 @@ export default function AdminDashboard() {
 
         {/* Footer */}
         <div className="text-center text-xs text-slate-500 pt-4 border-t border-slate-800">
-          ACI Admin Dashboard • Data refreshes {autoRefresh ? "every 10s" : "on demand"}
+          TacticalEdge Admin Dashboard • Data refreshes {autoRefresh ? "every 10s" : "on demand"}
         </div>
       </div>
 
@@ -5277,7 +5277,7 @@ export default function AdminDashboard() {
                         {diagram && (
                           <div className="flex items-center justify-center">
                             <UniversalDrillDiagram
-                              drillData={aciToUniversalDrillData(diagram, {
+                              drillData={tacticalEdgeToUniversalDrillData(diagram, {
                                 title: drill.title ?? "Diagram",
                                 description,
                                 organization,
@@ -5410,7 +5410,7 @@ export default function AdminDashboard() {
                   <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-3">Diagram</h3>
                   <div className="flex items-center justify-center">
                     <UniversalDrillDiagram
-                      drillData={aciToUniversalDrillData(
+                      drillData={tacticalEdgeToUniversalDrillData(
                         viewingDrill.json.diagram ?? viewingDrill.json.diagramV1,
                         {
                           title: viewingDrill.json.title ?? viewingDrill.title ?? "Diagram",

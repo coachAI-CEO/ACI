@@ -559,7 +559,7 @@ export default function SettingsPage() {
         </section>
 
         <div className="text-sm text-slate-500">
-          <Link href="/" className="text-emerald-400 hover:text-emerald-300">
+          <Link href="/app" className="text-emerald-400 hover:text-emerald-300">
             ← Back to home
           </Link>
         </div>

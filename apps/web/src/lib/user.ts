@@ -5,7 +5,8 @@
  * in localStorage. This will be replaced with real authentication later.
  */
 
-const USER_ID_KEY = "aci_user_id";
+const USER_ID_KEY = "tacticaledge_user_id";
+const LEGACY_USER_ID_KEY = "aci_user_id";
 
 /**
  * Generate a random user ID
@@ -31,6 +32,16 @@ export function getUserId(): string | null {
 
   try {
     let userId = localStorage.getItem(USER_ID_KEY);
+
+    // Migrate legacy anonymous IDs from previous brand key.
+    if (!userId) {
+      const legacyUserId = localStorage.getItem(LEGACY_USER_ID_KEY);
+      if (legacyUserId) {
+        userId = legacyUserId;
+        localStorage.setItem(USER_ID_KEY, legacyUserId);
+        localStorage.removeItem(LEGACY_USER_ID_KEY);
+      }
+    }
     
     if (!userId) {
       userId = generateUserId();
@@ -53,6 +64,7 @@ export function clearUserId(): void {
     return;
   }
   localStorage.removeItem(USER_ID_KEY);
+  localStorage.removeItem(LEGACY_USER_ID_KEY);
 }
 
 /**

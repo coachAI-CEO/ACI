@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PATHS = new Set([
+  "/",
+  "/landing",
   "/login",
   "/register",
   "/forgot-password",
@@ -15,7 +17,12 @@ export function middleware(request: NextRequest) {
 
   // Keep auth pages inaccessible once logged in.
   if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/app", request.url));
+  }
+
+  // Logged-in users land inside the product app by default.
+  if (token && pathname === "/") {
+    return NextResponse.redirect(new URL("/app", request.url));
   }
 
   // Require auth cookie for app pages.
@@ -34,4 +41,3 @@ export const config = {
     "/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)",
   ],
 };
-

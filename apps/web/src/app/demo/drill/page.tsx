@@ -303,9 +303,9 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
         <div className="max-w-5xl mx-auto space-y-4">
-          <h1 className="text-xl font-semibold">ACI Drill Generator</h1>
+          <h1 className="text-xl font-semibold">TacticalEdge Drill Generator</h1>
           <p className="text-sm text-red-300">
-            Failed to fetch drill from ACI API: {e?.message || String(e)}
+            Failed to fetch drill from TacticalEdge API: {e?.message || String(e)}
           </p>
         </div>
       </main>
@@ -329,7 +329,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
         <div className="max-w-5xl mx-auto space-y-4">
-          <h1 className="text-xl font-semibold">ACI Drill Generator</h1>
+          <h1 className="text-xl font-semibold">TacticalEdge Drill Generator</h1>
           <p className="text-sm text-amber-300">
             API responded but no diagram was found on the drill.
           </p>
@@ -384,7 +384,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
         {/* Header */}
         <header className="space-y-1">
           <h1 className="text-xl font-bold tracking-tight">
-            ACI Drill Generator
+            TacticalEdge Drill Generator
           </h1>
           <p className="text-sm text-slate-400">
             Rendering <code>diagram</code> from{" "}

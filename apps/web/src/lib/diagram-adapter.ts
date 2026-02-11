@@ -10,7 +10,7 @@ import type {
   UniversalDrillSafeZone,
 } from "@/components/UniversalDrillDiagram";
 
-export interface AciToUniversalOptions {
+export interface TacticalEdgeToUniversalOptions {
   title?: string;
   description?: string;
   organization?: {
@@ -20,12 +20,12 @@ export interface AciToUniversalOptions {
 }
 
 /**
- * Converts ACI DiagramV1 (and optional drill metadata) into the shape
+ * Converts TacticalEdge DiagramV1 (and optional drill metadata) into the shape
  * expected by UniversalDrillDiagram (drillData).
  */
-export function aciToUniversalDrillData(
+export function tacticalEdgeToUniversalDrillData(
   diagram: DiagramV1 | null | undefined,
-  options?: AciToUniversalOptions
+  options?: TacticalEdgeToUniversalOptions
 ): UniversalDrillData {
   const title = options?.title ?? "Diagram";
   const description = options?.description;
@@ -184,3 +184,6 @@ export function aciToUniversalDrillData(
     spaceConstraint,
   };
 }
+
+// Backward-compat alias for older imports.
+export const aciToUniversalDrillData = tacticalEdgeToUniversalDrillData;

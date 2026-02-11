@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import DrillDiagramCard from "@/components/DrillDiagramCard";
 import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
-import { aciToUniversalDrillData } from "@/lib/diagram-adapter";
+import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
 import { getUserHeaders } from "@/lib/user";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
@@ -2013,7 +2013,7 @@ export default function VaultPage() {
                           {diagram && (
                             <div className="flex items-center justify-center">
                               <UniversalDrillDiagram
-                                drillData={aciToUniversalDrillData(diagram, {
+                                drillData={tacticalEdgeToUniversalDrillData(diagram, {
                                   title: drill.title ?? "Diagram",
                                   description,
                                   organization,
@@ -2244,7 +2244,7 @@ export default function VaultPage() {
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
                       <UniversalDrillDiagram
-                        drillData={aciToUniversalDrillData(diagram, {
+                        drillData={tacticalEdgeToUniversalDrillData(diagram, {
                           title: selectedDrill.title ?? "Diagram",
                           description,
                           organization,
