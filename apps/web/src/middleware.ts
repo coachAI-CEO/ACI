@@ -13,11 +13,16 @@ const PUBLIC_PATHS = new Set([
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const token = request.cookies.get("accessToken")?.value;
+  const nextParam = request.nextUrl.searchParams.get("next");
+  const safeNext =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : "/app";
   const isPublicPath = PUBLIC_PATHS.has(pathname);
 
   // Keep auth pages inaccessible once logged in.
   if (token && (pathname === "/login" || pathname === "/register")) {
-    return NextResponse.redirect(new URL("/app", request.url));
+    return NextResponse.redirect(new URL(safeNext, request.url));
   }
 
   // Logged-in users land inside the product app by default.

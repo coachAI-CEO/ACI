@@ -626,7 +626,7 @@ export default function TacticalEdgeLanding() {
             <a href="#features" className="nav-link">Features</a>
             <a href="#diagrams" className="nav-link">Diagrams</a>
             <a href="#workflow" className="nav-link">Workflow</a>
-            <a href="/login" className="nav-link">Log In</a>
+            <a href="/login?next=/app" className="nav-link">Log In</a>
             <a href="/register" className="cta-btn" style={{ padding: "10px 24px", fontSize: "13px" }}>Start Free →</a>
           </div>
           <button
@@ -661,7 +661,7 @@ export default function TacticalEdgeLanding() {
             <a href="#features" className="nav-link" onClick={() => setMobileMenu(false)}>Features</a>
             <a href="#diagrams" className="nav-link" onClick={() => setMobileMenu(false)}>Diagrams</a>
             <a href="#workflow" className="nav-link" onClick={() => setMobileMenu(false)}>Workflow</a>
-            <a href="/login" className="nav-link" onClick={() => setMobileMenu(false)}>Log In</a>
+            <a href="/login?next=/app" className="nav-link" onClick={() => setMobileMenu(false)}>Log In</a>
             <a href="/register" className="cta-btn" style={{ padding: "10px 24px", fontSize: "13px", textAlign: "center", justifyContent: "center" }}>Start Free →</a>
           </div>
         )}
@@ -718,7 +718,7 @@ export default function TacticalEdgeLanding() {
                   Start Free
                   <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </a>
-                <a href="/app" className="cta-secondary">
+                <a href="/login?next=/app" className="cta-secondary">
                   Explore App
                 </a>
               </div>
@@ -1205,16 +1205,16 @@ export default function TacticalEdgeLanding() {
           <div>
             <h4 style={{ fontSize: "12px", letterSpacing: "2px", color: "#64748b", fontWeight: "700", fontFamily: "'JetBrains Mono', monospace", marginBottom: "16px" }}>PRODUCT</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <a href="/app" className="nav-link" style={{ fontSize: "13px" }}>App Home</a>
-              <a href="/demo/session" className="nav-link" style={{ fontSize: "13px" }}>Session Generator</a>
-              <a href="/demo/drill" className="nav-link" style={{ fontSize: "13px" }}>Drill Generator</a>
+              <a href="/login?next=/app" className="nav-link" style={{ fontSize: "13px" }}>App Home</a>
+              <a href="/login?next=/demo/session" className="nav-link" style={{ fontSize: "13px" }}>Session Generator</a>
+              <a href="/login?next=/demo/drill" className="nav-link" style={{ fontSize: "13px" }}>Drill Generator</a>
             </div>
           </div>
           <div>
             <h4 style={{ fontSize: "12px", letterSpacing: "2px", color: "#64748b", fontWeight: "700", fontFamily: "'JetBrains Mono', monospace", marginBottom: "16px" }}>ACCOUNT</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <a href="/register" className="nav-link" style={{ fontSize: "13px" }}>Register</a>
-              <a href="/login" className="nav-link" style={{ fontSize: "13px" }}>Login</a>
+              <a href="/login?next=/app" className="nav-link" style={{ fontSize: "13px" }}>Login</a>
             </div>
           </div>
           <div>

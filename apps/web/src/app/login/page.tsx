@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 export default function LoginPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -60,7 +61,7 @@ export default function LoginPage() {
 
       // Redirect to app home (unless showing verification notice)
       if (data.user?.emailVerified !== false) {
-        router.push("/app");
+        router.push(redirectTo);
         router.refresh();
       }
     } catch (err: any) {
@@ -91,7 +92,7 @@ export default function LoginPage() {
               {error.includes("verify") && (
                 <div className="mt-2">
                   <button
-                    onClick={() => router.push("/app")}
+                    onClick={() => router.push(redirectTo)}
                     className="text-xs underline hover:text-amber-200"
                   >
                     Continue anyway →
@@ -166,3 +167,8 @@ export default function LoginPage() {
     </main>
   );
 }
+  const nextParam = searchParams.get("next");
+  const redirectTo =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+      ? nextParam
+      : "/app";
