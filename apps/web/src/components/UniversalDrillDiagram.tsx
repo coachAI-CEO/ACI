@@ -744,7 +744,6 @@ const UniversalDrillDiagram = ({
 
       <svg
         width="100%"
-        height="auto"
         viewBox={`0 0 ${pitchWidth} ${pitchHeight}`}
         preserveAspectRatio="xMidYMid meet"
         style={{
