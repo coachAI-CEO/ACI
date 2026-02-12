@@ -5,6 +5,7 @@ import PlayerCountInputs from "@/components/PlayerCountInputs";
 import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillActions from "@/components/DrillActions";
 import type { DiagramV1 } from "@/types/diagram";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -253,10 +254,16 @@ async function fetchDrill(
     process.env.API_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:4000";
+  const cookieStore = await cookies();
+  const accessToken = cookieStore.get("accessToken")?.value;
+  const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+  if (accessToken) {
+    authHeaders.Authorization = `Bearer ${decodeURIComponent(accessToken)}`;
+  }
   
   const res = await fetch(`${apiBase}/coach/generate-drill-vetted`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders,
     cache: "no-store",
     body: JSON.stringify(config),
   });
