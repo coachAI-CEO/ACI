@@ -97,7 +97,7 @@ export async function fetchUserFeatures(): Promise<UserFeatures | null> {
       return getFeaturesForPlan('FREE');
     }
 
-    const response = await fetch('http://localhost:4000/auth/me', {
+    const response = await fetch('/api/auth/me', {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
       },

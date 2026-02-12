@@ -249,8 +249,12 @@ async function fetchDrill(
   // Debug: log the config being sent
   console.log("[DRILL_GEN] Sending config:", JSON.stringify(config, null, 2));
   const apiStart = Date.now();
+  const apiBase =
+    process.env.API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:4000";
   
-  const res = await fetch("http://localhost:4000/coach/generate-drill-vetted", {
+  const res = await fetch(`${apiBase}/coach/generate-drill-vetted`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
