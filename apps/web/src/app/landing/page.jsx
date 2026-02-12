@@ -1349,7 +1349,7 @@ export default function TacticalEdgeLanding() {
             </div>
 
             <div style={{ display: "flex", gap: "16px", justifyContent: "center", marginTop: "32px" }}>
-              <a href="https://x.com/tacticaledge" target="_blank" rel="noopener noreferrer" style={{
+              <a href="https://x.com/tacticaledgeapp" target="_blank" rel="noopener noreferrer" style={{
                 width: "48px", height: "48px", borderRadius: "12px",
                 background: "rgba(15,23,42,0.8)", border: "1px solid rgba(51,65,85,0.5)",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -1357,7 +1357,7 @@ export default function TacticalEdgeLanding() {
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
               </a>
-              <a href="https://instagram.com/tacticaledge" target="_blank" rel="noopener noreferrer" style={{
+              <a href="https://instagram.com/tacticaledge.app" target="_blank" rel="noopener noreferrer" style={{
                 width: "48px", height: "48px", borderRadius: "12px",
                 background: "rgba(15,23,42,0.8)", border: "1px solid rgba(51,65,85,0.5)",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -1426,11 +1426,11 @@ export default function TacticalEdgeLanding() {
             <h4 style={{ fontSize: "12px", letterSpacing: "2px", color: "#64748b", fontWeight: "700", fontFamily: "'JetBrains Mono', monospace", marginBottom: "16px" }}>CONNECT</h4>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               <a href="mailto:hello@tacticaledge.app" className="nav-link" style={{ fontSize: "13px" }}>Contact</a>
-              <a href="https://x.com/tacticaledge" target="_blank" rel="noopener noreferrer" className="nav-link" style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <a href="https://x.com/tacticaledgeapp" target="_blank" rel="noopener noreferrer" className="nav-link" style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                 Twitter / X
               </a>
-              <a href="https://instagram.com/tacticaledge" target="_blank" rel="noopener noreferrer" className="nav-link" style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <a href="https://instagram.com/tacticaledge.app" target="_blank" rel="noopener noreferrer" className="nav-link" style={{ fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
                 Instagram
               </a>
