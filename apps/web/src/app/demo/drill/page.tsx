@@ -301,90 +301,91 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
   const configStart = Date.now();
   const config = getConfigFromSearchParams(resolvedSearchParams);
   const hasParams = Object.keys(resolvedSearchParams || {}).length > 0;
-  const useStatic = !hasParams; // initial load uses static demo, query → live API
   console.log(`[PERF] Config parsing: ${Date.now() - configStart}ms`);
 
-  let data: DrillApiResponse;
+  let data: DrillApiResponse | null = null;
 
-  const fetchStart = Date.now();
-  try {
-    data = await fetchDrill(config, useStatic);
-    console.log(`[PERF] fetchDrill total: ${((Date.now() - fetchStart) / 1000).toFixed(2)}s`);
-  } catch (e: any) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-        <div className="max-w-5xl mx-auto space-y-4">
-          <h1 className="text-xl font-semibold">TacticalEdge Drill Generator</h1>
-          <p className="text-sm text-red-300">
-            Failed to fetch drill from TacticalEdge API: {e?.message || String(e)}
-          </p>
-        </div>
-      </main>
-    );
-  }
+  // Only fetch a drill when query params are present (user clicked Generate)
+  if (hasParams) {
+    const fetchStart = Date.now();
+    try {
+      data = await fetchDrill(config, false);
+      console.log(`[PERF] fetchDrill total: ${((Date.now() - fetchStart) / 1000).toFixed(2)}s`);
+    } catch (e: any) {
+      return (
+        <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
+          <div className="max-w-5xl mx-auto space-y-4">
+            <h1 className="text-xl font-semibold">TacticalEdge Drill Generator</h1>
+            <p className="text-sm text-red-300">
+              Failed to fetch drill from TacticalEdge API: {e?.message || String(e)}
+            </p>
+          </div>
+        </main>
+      );
+    }
 
     // Fallback: if first response has no diagram, try static demo
-  const hasDiagram = data.ok && (data.drill?.json?.diagram || data.drill?.json?.diagramV1);
-  if (!hasDiagram) {
-    try {
-      const fallback = await fetchDrill(config, true);
-      if (fallback.ok && (fallback.drill?.json?.diagram || fallback.drill?.json?.diagramV1)) {
-        data = fallback;
-      }
-    } catch {}
+    const hasDiagram = data.ok && (data.drill?.json?.diagram || data.drill?.json?.diagramV1);
+    if (!hasDiagram) {
+      try {
+        const fallback = await fetchDrill(config, true);
+        if (fallback.ok && (fallback.drill?.json?.diagram || fallback.drill?.json?.diagramV1)) {
+          data = fallback;
+        }
+      } catch {}
+    }
   }
 
-  // Check for diagram (new format) or diagramV1 (legacy)
-  const diagram = data.drill?.json?.diagram || data.drill?.json?.diagramV1;
-  if (!data.ok || !diagram) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-        <div className="max-w-5xl mx-auto space-y-4">
-          <h1 className="text-xl font-semibold">TacticalEdge Drill Generator</h1>
-          <p className="text-sm text-amber-300">
-            API responded but no diagram was found on the drill.
-          </p>
-        </div>
-      </main>
-    );
+  // Extract drill data if we have a successful response
+  const diagram = data?.drill?.json?.diagram || data?.drill?.json?.diagramV1 || null;
+  const hasDrill = data?.ok && diagram;
+
+  let title = "";
+  let description = "";
+  let organizationObj: OrganizationObject | null = null;
+  let organizationString = "";
+  let sessionObjective = "";
+  let difficulty = 3;
+  let coachingLevel = "";
+  let playerLevel = "";
+  let constraints: string[] = [];
+  let coachingPoints: string[] = [];
+  let progressions: string[] = [];
+  let qaScores: Record<string, number> = {};
+  let qaPass: boolean | undefined;
+  let gmText = "";
+  let phaseText = "";
+  let zoneText = "";
+
+  if (hasDrill && data) {
+    const { drill } = data;
+    const meta = drill.json;
+
+    title = meta.title ?? drill.title;
+    description = meta.description ?? "";
+
+    // Handle organization: can be string (legacy) or object (new format)
+    const organizationRaw = meta.organization;
+    const isOrganizationObject = organizationRaw && typeof organizationRaw === "object" && !Array.isArray(organizationRaw);
+    organizationObj = isOrganizationObject ? (organizationRaw as OrganizationObject) : null;
+    organizationString = isOrganizationObject ? "" : (typeof organizationRaw === "string" ? organizationRaw : "");
+
+    sessionObjective = meta.sessionObjective ?? "";
+    difficulty = meta.difficulty ?? 3;
+    coachingLevel = meta.coachingLevel ?? "";
+    playerLevel = meta.playerLevel ?? "";
+    constraints = Array.isArray(meta.constraints) ? meta.constraints : [];
+    coachingPoints = Array.isArray(meta.coachingPoints) ? meta.coachingPoints : [];
+    progressions = Array.isArray(meta.progressions) ? meta.progressions : [];
+
+    // Extract QA scores - QA is at top level of response
+    qaScores = (data.qa?.scores || {}) as Record<string, number>;
+    qaPass = data.qa?.pass;
+
+    gmText = gameModelLabel[drill.gameModelId] ?? drill.gameModelId;
+    phaseText = phaseLabel[drill.phase] ?? drill.phase.toLowerCase().replace(/_/g, " ");
+    zoneText = zoneLabel[drill.zone] ?? drill.zone.toLowerCase().replace(/_/g, " ");
   }
-
-  const { drill } = data;
-  const meta = drill.json;
-
-  const title = meta.title ?? drill.title;
-  const description = meta.description ?? "";
-  
-  // Handle organization: can be string (legacy) or object (new format)
-  const organizationRaw = meta.organization;
-  const isOrganizationObject = organizationRaw && typeof organizationRaw === "object" && !Array.isArray(organizationRaw);
-  const organizationObj = isOrganizationObject ? (organizationRaw as OrganizationObject) : null;
-  const organizationString = isOrganizationObject ? "" : (typeof organizationRaw === "string" ? organizationRaw : "");
-  
-  const sessionObjective = meta.sessionObjective ?? "";
-  const difficulty = meta.difficulty ?? 3;
-  const coachingLevel = meta.coachingLevel ?? "";
-  const playerLevel = meta.playerLevel ?? "";
-  const constraints = Array.isArray(meta.constraints) ? meta.constraints : [];
-  const coachingPoints = Array.isArray(meta.coachingPoints)
-    ? meta.coachingPoints
-    : [];
-  const progressions = Array.isArray(meta.progressions)
-    ? meta.progressions
-    : [];
-
-  // Extract QA scores - QA is at top level of response
-  const qaScores = (data.qa?.scores || {}) as Record<string, number>;
-  const qaPass = data.qa?.pass;
-
-  const gmText = gameModelLabel[drill.gameModelId] ?? drill.gameModelId;
-  const phaseText =
-    phaseLabel[drill.phase] ??
-    drill.phase.toLowerCase().replace(/_/g, " ");
-  const zoneText =
-    zoneLabel[drill.zone] ?? drill.zone.toLowerCase().replace(/_/g, " ");
-
-  const sourceLabel = useStatic ? "Static demo JSON" : "/coach/generate-drill-vetted";
 
   const pageTime = Date.now() - pageStart;
   console.log(`[PERF] Total server-side page render: ${(pageTime / 1000).toFixed(2)}s`);
@@ -398,22 +399,29 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
             TacticalEdge Drill Generator
           </h1>
           <p className="text-sm text-slate-400">
-            Rendering <code>diagram</code> from{" "}
-            <span className="text-emerald-300">{sourceLabel}</span>{" "}
-            based on your selected inputs.
+            {hasDrill
+              ? <>Showing generated drill based on your selected inputs.</>
+              : <>Configure your settings below and click <span className="text-emerald-300 font-medium">Generate drill</span> to create a new drill.</>
+            }
           </p>
         </header>
 
         {/* Generator settings card */}
-        <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
-              Generator Settings
-            </h2>
-            <span className="text-[11px] text-slate-400">
-              Configure context → Generate drill → Inspect diagram & details.
-            </span>
-          </div>
+        <details className="collapsible-card rounded-3xl border border-slate-700/70 bg-slate-900/70 overflow-hidden" open={!hasDrill}>
+          <summary className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-slate-800/30 transition-colors">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+                Generator Settings
+              </h2>
+              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                Configure context → Generate drill → Inspect diagram & details.
+              </span>
+            </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chevron-icon h-4 w-4 shrink-0 text-slate-400">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </summary>
+          <div className="px-6 pb-5 pt-1 space-y-4 border-t border-slate-800/50">
 
           <DrillFormWithLoading>
               <div className="space-y-5 text-[11px] sm:text-xs text-slate-200">
@@ -657,7 +665,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   href="/demo/drill"
                   className="text-[11px] text-slate-400 hover:text-slate-200 underline-offset-2 hover:underline"
                 >
-                  Reset to static demo
+                  Reset form
                 </a>
               )}
                 <button
@@ -669,29 +677,32 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
               </div>
               </div>
             </DrillFormWithLoading>
-        </section>
 
-        {/* Main diagram + details layout (same visual style as before) */}
+          </div>
+        </details>
+
+        {/* Main diagram + details layout */}
+        {hasDrill && data && diagram ? (
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
           <div className="max-w-xl space-y-4">
             <DrillDiagramCard
               title={title}
-              gameModelId={drill.gameModelId}
-              phase={drill.phase}
-              zone={drill.zone}
+              gameModelId={data.drill.gameModelId}
+              phase={data.drill.phase}
+              zone={data.drill.zone}
               diagram={diagram}
-              description={drill.json?.description}
+              description={data.drill.json?.description}
               organization={
-                typeof drill.json?.organization === "object" &&
-                drill.json.organization !== null
+                typeof data.drill.json?.organization === "object" &&
+                data.drill.json.organization !== null
                   ? {
-                      area: drill.json.organization.area,
-                      setupSteps: drill.json.organization.setupSteps,
+                      area: data.drill.json.organization.area,
+                      setupSteps: data.drill.json.organization.setupSteps,
                     }
                   : undefined
               }
             />
-            
+
             {/* QA Scores Display - below diagram */}
             {Object.keys(qaScores).length > 0 && (
               <QAScoresDisplay scores={qaScores} pass={qaPass} />
@@ -704,12 +715,12 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 Drill Details
               </h2>
             </div>
-            
+
             {/* Action buttons: Identifier, Save to Vault, Print PDF */}
             <DrillActions
-              drillId={drill.id}
-              refCode={drill.refCode}
-              drill={drill}
+              drillId={data.drill.id}
+              refCode={data.drill.refCode}
+              drill={data.drill}
             />
 
             {/* Game model / phase / where row */}
@@ -772,10 +783,10 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 </div>
               )}
 
-              {meta.ageGroup && (
+              {data?.drill?.json?.ageGroup && (
                 <div>
                   <span className="text-slate-400 mr-1">Age Group:</span>
-                  <span>{meta.ageGroup}</span>
+                  <span>{data.drill.json.ageGroup}</span>
                 </div>
               )}
             </div>
@@ -913,6 +924,29 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
             )}
           </aside>
         </section>
+        ) : !hasParams ? (
+          <section className="rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/30 px-6 py-16 text-center">
+            <div className="mx-auto max-w-sm space-y-3">
+              <svg viewBox="0 0 24 24" className="mx-auto h-10 w-10 text-slate-600" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <circle cx="6.5" cy="6.5" r="2.5" />
+                <circle cx="17.5" cy="17.5" r="2.5" />
+                <path d="M8.5 8.5l7 7" />
+                <path d="M15 6h3v3" />
+                <path d="M6 15v3h3" />
+              </svg>
+              <h3 className="text-sm font-semibold text-slate-300">No drill generated yet</h3>
+              <p className="text-xs text-slate-500">
+                Choose your settings above and click <span className="text-emerald-400 font-medium">Generate drill</span> to create a custom tactical drill with diagram.
+              </p>
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-12 text-center">
+            <p className="text-sm text-amber-300">
+              API responded but no diagram was found on the drill.
+            </p>
+          </section>
+        )}
       </div>
     </main>
   );

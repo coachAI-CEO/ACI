@@ -14,12 +14,13 @@ interface User {
   emailVerified?: boolean;
 }
 
-export default function AuthButton() {
+export default function AuthButton({ compact = false }: { compact?: boolean }) {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const checkUser = () => {
     const storedUser = localStorage.getItem("user");
@@ -33,7 +34,6 @@ export default function AuthButton() {
       try {
         setUser(JSON.parse(storedUser));
       } catch (e) {
-        // Invalid JSON, clear it
         localStorage.removeItem("user");
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
@@ -47,16 +47,13 @@ export default function AuthButton() {
   };
 
   useEffect(() => {
-    // Check on mount and when pathname changes
     checkUser();
 
-    // Listen for custom login event (when login happens in same tab)
     const handleLogin = () => {
       checkUser();
     };
     window.addEventListener("userLogin", handleLogin);
 
-    // Listen for storage changes (when login happens in another tab/window)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "user") {
         checkUser();
@@ -76,6 +73,7 @@ export default function AuthButton() {
     localStorage.removeItem("refreshToken");
     document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
     setUser(null);
+    setMenuOpen(false);
     router.push("/login");
     router.refresh();
   };
@@ -106,52 +104,141 @@ export default function AuthButton() {
     }
   };
 
+  // Get user initials for avatar
+  const getInitials = (u: User) => {
+    if (u.name) {
+      return u.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+    }
+    return u.email[0].toUpperCase();
+  };
+
   if (user) {
-    return (
-      <div className="flex items-center gap-3">
-        {/* Show name/email */}
-        <span className="text-xs text-slate-400 hidden sm:inline">
-          {user.name || user.email}
-        </span>
-
-        {/* Email verification status */}
-        {user.emailVerified === false && (
+    // Compact mode: just show avatar circle
+    if (compact) {
+      return (
+        <div className="relative">
           <button
-            onClick={handleResendVerification}
-            className="text-xs text-amber-400 hover:text-amber-300 transition"
-            title="Email not verified - click to resend verification email"
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/25 transition hover:bg-emerald-500/30 hover:ring-emerald-400/40"
+            title={user.name || user.email}
           >
-            ⚠️ Verify Email
+            {getInitials(user)}
           </button>
-        )}
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+              <div className="absolute bottom-full left-0 mb-2 z-50 w-48 rounded-xl border border-white/[0.08] bg-[#0f1520] p-2 shadow-2xl shadow-black/50">
+                <p className="px-3 py-1.5 text-xs text-slate-400 truncate">{user.name || user.email}</p>
+                {user.emailVerified === false && (
+                  <button
+                    onClick={handleResendVerification}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-amber-300 transition hover:bg-white/[0.04]"
+                  >
+                    Verify Email
+                  </button>
+                )}
+                {user.adminRole === "SUPER_ADMIN" && (
+                  <Link
+                    href="/admin"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-amber-300 transition hover:bg-white/[0.04]"
+                  >
+                    Admin Panel
+                  </Link>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/[0.04] hover:text-red-300"
+                >
+                  Log out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
 
-        {/* Admin link only for SUPER_ADMIN users */}
-        {user.adminRole === "SUPER_ADMIN" && (
-          <Link
-            href="/admin"
-            className="text-xs text-amber-300 hover:text-amber-200 transition"
-          >
-            ⚙️ Admin
-          </Link>
-        )}
-
-        {/* Logout button */}
+    // Expanded mode: show user row
+    return (
+      <div className="relative">
         <button
-          onClick={handleLogout}
-          className="text-xs text-slate-300 hover:text-emerald-300 transition"
+          onClick={() => setMenuOpen((o) => !o)}
+          className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 transition hover:bg-white/[0.04]"
         >
-          Logout
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-[11px] font-semibold text-emerald-300 ring-1 ring-emerald-500/25">
+            {getInitials(user)}
+          </span>
+          <span className="flex-1 text-left min-w-0">
+            <span className="block truncate text-[13px] font-medium text-slate-200">
+              {user.name || user.email.split("@")[0]}
+            </span>
+            <span className="block truncate text-[11px] text-slate-500">
+              {user.email}
+            </span>
+          </span>
         </button>
+
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
+            <div className="absolute bottom-full left-0 mb-2 z-50 w-full rounded-xl border border-white/[0.08] bg-[#0f1520] p-1.5 shadow-2xl shadow-black/50">
+              {user.emailVerified === false && (
+                <button
+                  onClick={handleResendVerification}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-amber-300 transition hover:bg-white/[0.04]"
+                >
+                  Verify Email
+                </button>
+              )}
+              {user.adminRole === "SUPER_ADMIN" && (
+                <Link
+                  href="/admin"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-amber-300 transition hover:bg-white/[0.04]"
+                >
+                  Admin Panel
+                </Link>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-300 transition hover:bg-white/[0.04] hover:text-red-300"
+              >
+                Log out
+              </button>
+            </div>
+          </>
+        )}
       </div>
+    );
+  }
+
+  // Not logged in
+  if (compact) {
+    return (
+      <Link
+        href="/login"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-slate-400 ring-1 ring-white/[0.08] transition hover:bg-white/[0.1] hover:text-slate-200"
+        title="Login"
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M5.5 20.5c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" />
+        </svg>
+      </Link>
     );
   }
 
   return (
     <Link
       href="/login"
-      className="text-xs text-slate-300 hover:text-emerald-300 transition"
+      className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13px] font-medium text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
     >
-      Login
+      <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="8" r="4" />
+        <path d="M5.5 20.5c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" />
+      </svg>
+      <span>Login</span>
     </Link>
   );
 }

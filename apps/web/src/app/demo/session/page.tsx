@@ -559,6 +559,7 @@ function SessionDemoPageContent() {
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
   const [generatingSeriesSkillFocus, setGeneratingSeriesSkillFocus] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
   const [scheduleModalSession, setScheduleModalSession] = useState<{
@@ -1046,6 +1047,15 @@ function SessionDemoPageContent() {
             raw: currentSeriesItem as any,
           }
         : null;
+  const hasGeneratedSession = Boolean(
+    currentSessionData?.ok || (seriesData?.ok && seriesList.length > 0)
+  );
+
+  useEffect(() => {
+    if (hasGeneratedSession) {
+      setSettingsOpen(false);
+    }
+  }, [hasGeneratedSession]);
 
   const session = currentSessionData?.session;
   const qaScores = (currentSessionData?.qa?.scores || {}) as Record<string, number>;
@@ -1225,23 +1235,37 @@ function SessionDemoPageContent() {
             TacticalEdge Session Generator
           </h1>
           <p className="text-sm text-slate-400">
-            Generate complete training sessions (60 or 90 minutes) with multiple drills
-            {seriesData?.metadata?.totalSessions
-              ? ` • ${seriesData.metadata.totalSessions}-session progressive series`
-              : ""}
+            {currentSessionData?.ok || (seriesData?.ok && seriesList.length > 0)
+              ? <>Showing generated session based on your selected inputs.
+                {seriesData?.metadata?.totalSessions
+                  ? ` • ${seriesData.metadata.totalSessions}-session progressive series`
+                  : ""}
+              </>
+              : <>Configure your settings below and click <span className="text-emerald-300 font-medium">Generate Session</span> to create a new training session.</>
+            }
           </p>
         </header>
 
         {/* Generator settings card */}
-        <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5 space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
-              Generator Settings
-            </h2>
-            <span className="text-[11px] text-slate-400">
-              Configure context → Generate session → Review all drills.
-            </span>
-          </div>
+        <details
+          className="collapsible-card rounded-3xl border border-slate-700/70 bg-slate-900/70 overflow-hidden"
+          open={settingsOpen}
+          onToggle={(e) => setSettingsOpen(e.currentTarget.open)}
+        >
+          <summary className="flex items-center justify-between gap-4 px-6 py-4 hover:bg-slate-800/30 transition-colors">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+                Generator Settings
+              </h2>
+              <span className="text-[11px] text-slate-400 hidden sm:inline">
+                Configure context → Generate session → Review all drills.
+              </span>
+            </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="chevron-icon h-4 w-4 shrink-0 text-slate-400">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </summary>
+          <div className="px-6 pb-5 pt-1 space-y-4 border-t border-slate-800/50">
 
           <SessionForm>
             <SessionFormWithLoading>
@@ -1533,7 +1557,9 @@ function SessionDemoPageContent() {
               </div>
             </SessionFormWithLoading>
           </SessionForm>
-        </section>
+
+          </div>
+        </details>
 
         {/* Loading state */}
         {loading && !progressInfo && (
@@ -1812,6 +1838,22 @@ function SessionDemoPageContent() {
               </p>
             )}
           </div>
+        )}
+
+        {/* Empty state — no session generated yet */}
+        {!loading && !error && !currentSessionData?.ok && !(seriesData?.ok && seriesList.length > 0) && !showRecommendations && (
+          <section className="rounded-3xl border border-dashed border-slate-700/70 bg-slate-900/30 px-6 py-16 text-center">
+            <div className="mx-auto max-w-sm space-y-3">
+              <svg viewBox="0 0 24 24" className="mx-auto h-10 w-10 text-slate-600" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <rect x="4" y="4" width="16" height="16" rx="2.5" />
+                <path d="M8 9.5h8M8 13h8M8 16.5h5" />
+              </svg>
+              <h3 className="text-sm font-semibold text-slate-300">No session generated yet</h3>
+              <p className="text-xs text-slate-500">
+                Choose your settings above and click <span className="text-emerald-400 font-medium">Generate Session</span> to create a full training session with drills, diagrams, and coaching points.
+              </p>
+            </div>
+          </section>
         )}
 
         {/* Series Tabs (if series mode) */}

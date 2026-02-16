@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AppHeader from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "TacticalEdge",
@@ -13,9 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-slate-950 text-slate-50 antialiased">
+      <body className="bg-[#060a13] text-slate-50 antialiased">
         <AppHeader />
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

@@ -185,6 +185,7 @@ export default function VaultPage() {
   const [sessionCalendarCounts, setSessionCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps sessionId -> number of scheduled events
   const [seriesCalendarCounts, setSeriesCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps seriesId -> number of scheduled events
   
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({
     gameModelId: "",
     ageGroup: "",
@@ -1063,156 +1064,197 @@ export default function VaultPage() {
           </button>
         </div>
 
-        {/* Filters (for sessions) */}
-        {/* Filters - shown for both tabs */}
-        <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5 space-y-4">
-          <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
-            Filters
-          </h2>
-          {/* Search & Creator */}
-          <div className="grid gap-4 md:grid-cols-2 mb-2">
-            <div>
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
-                Search (Name, Code, Summary, Drills)
-              </label>
-              <input
-                type="text"
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                placeholder='e.g., "pressing trap", "3v2 overload", S-9M3P, D-AB12...'
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              />
+        {/* Filters - collapsible */}
+        <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            className="flex w-full items-center justify-between px-6 py-4 transition-colors hover:bg-slate-800/30"
+          >
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+                Filters
+              </h2>
+              {/* Active filter count badge */}
+              {(() => {
+                const count = [
+                  filters.search, filters.creator, filters.gameFormat, filters.drillType,
+                  filters.gameModelId, filters.ageGroup, filters.phase, filters.zone,
+                ].filter(Boolean).length + (filters.favoritesOnly ? 1 : 0);
+                return count > 0 ? (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500/20 px-1.5 text-[11px] font-semibold text-emerald-400">
+                    {count}
+                  </span>
+                ) : null;
+              })()}
             </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
-                Creator (Name or Email)
-              </label>
-              <input
-                type="text"
-                value={filters.creator}
-                onChange={(e) => setFilters({ ...filters, creator: e.target.value })}
-                placeholder="e.g., Alex, coach@club.com"
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Game Format</label>
-              <select
-                value={filters.gameFormat}
-                onChange={(e) => setFilters({ ...filters, gameFormat: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-              >
-                <option value="">All Formats</option>
-                <option value="7v7">7v7</option>
-                <option value="9v9">9v9</option>
-                <option value="11v11">11v11</option>
-              </select>
-            </div>
-            {activeTab === "drills" && (
-              <div className="space-y-1">
-                <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Drill Type</label>
-                <select
-                  value={filters.drillType}
-                  onChange={(e) => setFilters({ ...filters, drillType: e.target.value })}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-                >
-                  <option value="">All Types</option>
-                  <option value="WARMUP">Warm-up</option>
-                  <option value="TECHNICAL">Technical</option>
-                  <option value="TACTICAL">Tactical</option>
-                  <option value="CONDITIONED_GAME">Conditioned Game</option>
-                  <option value="COOLDOWN">Cool-down</option>
-                </select>
-              </div>
-            )}
-            <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Game Model</label>
-              <select
-                value={filters.gameModelId}
-                onChange={(e) => setFilters({ ...filters, gameModelId: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-              >
-                <option value="">All</option>
-                <option value="POSSESSION">Possession</option>
-                <option value="PRESSING">Pressing</option>
-                <option value="TRANSITION">Transition</option>
-                <option value="COACHAI">Balanced</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Age Group</label>
-              <select
-                value={filters.ageGroup}
-                onChange={(e) => setFilters({ ...filters, ageGroup: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-              >
-                <option value="">All</option>
-                {["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"].map(age => (
-                  <option key={age} value={age}>{age}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Phase</label>
-              <select
-                value={filters.phase}
-                onChange={(e) => setFilters({ ...filters, phase: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-              >
-                <option value="">All</option>
-                <option value="ATTACKING">Attacking</option>
-                <option value="DEFENDING">Defending</option>
-                <option value="TRANSITION">Transition</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Zone</label>
-              <select
-                value={filters.zone}
-                onChange={(e) => setFilters({ ...filters, zone: e.target.value })}
-                className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
-              >
-                <option value="">All</option>
-                <option value="DEFENSIVE_THIRD">Defensive Third</option>
-                <option value="MIDDLE_THIRD">Middle Third</option>
-                <option value="ATTACKING_THIRD">Attacking Third</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/70 mt-2">
-            <div className="flex items-center gap-2">
-              <input
-                id="favoritesOnly"
-                type="checkbox"
-                checked={filters.favoritesOnly}
-                onChange={(e) => setFilters({ ...filters, favoritesOnly: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
-              />
-              <label htmlFor="favoritesOnly" className="text-[11px] text-slate-300">
-                Show <span className="font-semibold">favorites only</span> (applies to the active tab)
-              </label>
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setFilters({
-                  gameModelId: "",
-                  ageGroup: "",
-                  phase: "",
-                  zone: "",
-                  gameFormat: "",
-                  drillType: "",
-                  search: "",
-                  creator: "",
-                  favoritesOnly: false,
-                })
-              }
-              className="text-[11px] text-slate-400 hover:text-emerald-400 underline"
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${filtersOpen ? "rotate-180" : ""}`}
             >
-              Clear all filters
-            </button>
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(.4,0,.2,1)] ${
+              filtersOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+            }`}
+          >
+            <div className="overflow-hidden">
+              <div className="px-6 pb-5 space-y-4 border-t border-slate-800/50">
+                {/* Search & Creator */}
+                <div className="grid gap-4 md:grid-cols-2 mt-4">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                      Search (Name, Code, Summary, Drills)
+                    </label>
+                    <input
+                      type="text"
+                      value={filters.search}
+                      onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                      placeholder='e.g., "pressing trap", "3v2 overload", S-9M3P, D-AB12...'
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide mb-1">
+                      Creator (Name or Email)
+                    </label>
+                    <input
+                      type="text"
+                      value={filters.creator}
+                      onChange={(e) => setFilters({ ...filters, creator: e.target.value })}
+                      placeholder="e.g., Alex, coach@club.com"
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Game Format</label>
+                    <select
+                      value={filters.gameFormat}
+                      onChange={(e) => setFilters({ ...filters, gameFormat: e.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="">All Formats</option>
+                      <option value="7v7">7v7</option>
+                      <option value="9v9">9v9</option>
+                      <option value="11v11">11v11</option>
+                    </select>
+                  </div>
+                  {activeTab === "drills" && (
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Drill Type</label>
+                      <select
+                        value={filters.drillType}
+                        onChange={(e) => setFilters({ ...filters, drillType: e.target.value })}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                      >
+                        <option value="">All Types</option>
+                        <option value="WARMUP">Warm-up</option>
+                        <option value="TECHNICAL">Technical</option>
+                        <option value="TACTICAL">Tactical</option>
+                        <option value="CONDITIONED_GAME">Conditioned Game</option>
+                        <option value="COOLDOWN">Cool-down</option>
+                      </select>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Game Model</label>
+                    <select
+                      value={filters.gameModelId}
+                      onChange={(e) => setFilters({ ...filters, gameModelId: e.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="">All</option>
+                      <option value="POSSESSION">Possession</option>
+                      <option value="PRESSING">Pressing</option>
+                      <option value="TRANSITION">Transition</option>
+                      <option value="COACHAI">Balanced</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Age Group</label>
+                    <select
+                      value={filters.ageGroup}
+                      onChange={(e) => setFilters({ ...filters, ageGroup: e.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="">All</option>
+                      {["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"].map(age => (
+                        <option key={age} value={age}>{age}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Phase</label>
+                    <select
+                      value={filters.phase}
+                      onChange={(e) => setFilters({ ...filters, phase: e.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="">All</option>
+                      <option value="ATTACKING">Attacking</option>
+                      <option value="DEFENDING">Defending</option>
+                      <option value="TRANSITION">Transition</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] text-slate-400 uppercase tracking-wide">Zone</label>
+                    <select
+                      value={filters.zone}
+                      onChange={(e) => setFilters({ ...filters, zone: e.target.value })}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                    >
+                      <option value="">All</option>
+                      <option value="DEFENSIVE_THIRD">Defensive Third</option>
+                      <option value="MIDDLE_THIRD">Middle Third</option>
+                      <option value="ATTACKING_THIRD">Attacking Third</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/70 mt-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="favoritesOnly"
+                      type="checkbox"
+                      checked={filters.favoritesOnly}
+                      onChange={(e) => setFilters({ ...filters, favoritesOnly: e.target.checked })}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-emerald-500 focus:ring-emerald-500"
+                    />
+                    <label htmlFor="favoritesOnly" className="text-[11px] text-slate-300">
+                      Show <span className="font-semibold">favorites only</span> (applies to the active tab)
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFilters({
+                        gameModelId: "",
+                        ageGroup: "",
+                        phase: "",
+                        zone: "",
+                        gameFormat: "",
+                        drillType: "",
+                        search: "",
+                        creator: "",
+                        favoritesOnly: false,
+                      })
+                    }
+                    className="text-[11px] text-slate-400 hover:text-emerald-400 underline"
+                  >
+                    Clear all filters
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
