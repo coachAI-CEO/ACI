@@ -20,7 +20,14 @@ const bottomItems = [
 
 export default function AppHeader() {
   const pathname = usePathname();
-  const hideHeader = pathname === "/" || pathname.startsWith("/landing");
+  const hideHeader =
+    pathname === "/" ||
+    pathname.startsWith("/landing") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/verify-email");
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -123,7 +130,7 @@ export default function AppHeader() {
         <div className="relative flex h-[65px] w-[65px] shrink-0 items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/TacticalEdge_Emblem.png"
+            src="/images/logo.png"
             alt="TacticalEdge"
             width={65}
             height={65}

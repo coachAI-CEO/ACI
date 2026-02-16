@@ -5,7 +5,14 @@ import { useEffect, useState } from "react";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLanding = pathname === "/" || pathname.startsWith("/landing");
+  const hideShell =
+    pathname === "/" ||
+    pathname.startsWith("/landing") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/register") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/verify-email");
   const [collapsed, setCollapsed] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -31,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  if (isLanding) {
+  if (hideShell) {
     return <>{children}</>;
   }
 
