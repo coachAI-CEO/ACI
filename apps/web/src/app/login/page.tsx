@@ -29,6 +29,7 @@ function LoginContent() {
       : "/app";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   
@@ -46,10 +47,11 @@ function LoginContent() {
     setLoading(true);
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
       const res = await fetch(`${apiBase}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       const data = await res.json();
@@ -84,7 +86,12 @@ function LoginContent() {
         router.refresh();
       }
     } catch (err: any) {
-      setError(err.message || "Failed to login");
+      const message = err?.message || "Failed to login";
+      if (message.toLowerCase().includes("invalid credentials")) {
+        setError("Invalid email or password. Please check your details or reset your password.");
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -128,6 +135,9 @@ function LoginContent() {
             <input
               id="email"
               type="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -141,16 +151,39 @@ function LoginContent() {
             <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
               Password
             </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-2.5 text-slate-50 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition"
-              placeholder="••••••••"
-              disabled={loading}
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/50 px-4 py-2.5 pr-11 text-slate-50 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition"
+                placeholder="••••••••"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 transition hover:text-emerald-300"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? (
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M3 3l18 18" />
+                    <path d="M10.5 10.7A3 3 0 0 0 13.3 13.5" />
+                    <path d="M9.9 5.1A10.8 10.8 0 0 1 12 4.9c5.2 0 9.4 4.1 10 7.1a12.2 12.2 0 0 1-3.3 5.4" />
+                    <path d="M6.6 6.7C4.4 8.1 2.8 10.1 2 12c.9 2.9 5.1 7.1 10 7.1a10.8 10.8 0 0 0 4.3-.9" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <div className="mt-2 text-right">
               <Link
                 href="/forgot-password"
