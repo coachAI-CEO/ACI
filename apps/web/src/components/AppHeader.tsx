@@ -23,6 +23,7 @@ export default function AppHeader() {
   const hideHeader =
     pathname === "/" ||
     pathname.startsWith("/landing") ||
+    pathname.startsWith("/pricing") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/forgot-password") ||

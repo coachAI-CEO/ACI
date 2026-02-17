@@ -17,6 +17,7 @@ import favoritesRoutes from "./routes-favorites";
 import playerPlanRoutes from "./routes-player-plan";
 import calendarRoutes from "./routes-calendar";
 import organizationRoutes from "./routes-organization";
+import billingRoutes from "./routes-billing";
 
 const app = express();
 
@@ -44,7 +45,16 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
 }));
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: any, _res, buf) => {
+      if (req.originalUrl?.startsWith("/billing/stripe/webhook")) {
+        req.rawBody = Buffer.from(buf);
+      }
+    },
+  })
+);
 
 // Order matters!
 app.use(routes);
@@ -59,6 +69,7 @@ app.use(vaultRoutes);  // Vault system routes
 app.use(skillFocusRoutes); // Skill focus routes
 app.use(calendarRoutes); // Calendar routes (BEFORE admin routes to avoid conflicts)
 app.use(favoritesRoutes); // Favorites routes (BEFORE admin routes to avoid conflicts)
+app.use(billingRoutes); // Stripe checkout, portal, and webhook routes
 app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)

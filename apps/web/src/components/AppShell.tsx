@@ -8,6 +8,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const hideShell =
     pathname === "/" ||
     pathname.startsWith("/landing") ||
+    pathname.startsWith("/pricing") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
     pathname.startsWith("/forgot-password") ||
