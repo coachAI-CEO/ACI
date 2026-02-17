@@ -75,3 +75,44 @@ details.collapsible-card > summary .chevron-icon {
 details.collapsible-card[open] > summary .chevron-icon {
   transform: rotate(180deg);
 }
+
+/* Landing emblem coin-spin */
+.logo-spin-wrap {
+  perspective: 900px;
+}
+
+.logo-coin {
+  transform-origin: center;
+  backface-visibility: hidden;
+}
+
+.logo-spin-wrap:hover .logo-coin,
+.logo-spin-wrap:focus-within .logo-coin {
+  animation: coinSpin 1.8s ease-in-out infinite;
+}
+
+@keyframes coinSpin {
+  0%,
+  12% {
+    transform: rotateY(0deg);
+  }
+  20% {
+    transform: rotateY(90deg) scaleX(0.72);
+  }
+  30% {
+    transform: rotateY(180deg);
+  }
+  40% {
+    transform: rotateY(270deg) scaleX(0.72);
+  }
+  52%,
+  100% {
+    transform: rotateY(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-coin {
+    animation: none;
+  }
+}
