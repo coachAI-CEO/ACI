@@ -59,6 +59,7 @@ const GenerateDrillRequestSchema = z.object({
 const QAScoresSchema = z.object({
   structure: z.number().min(1).max(5),
   gameModel: z.number().min(1).max(5),
+  phase: z.number().min(1).max(5),
   psych: z.number().min(1).max(5),
   clarity: z.number().min(1).max(5),
   realism: z.number().min(1).max(5),
@@ -102,6 +103,14 @@ const SuccessResponseSchema = z.object({
     summary: z.string().optional(),
   }),
   fixDecision: FixDecisionSchema,
+  telemetry: z.object({
+    gameModelScore: z.number().nullable(),
+    phaseScore: z.number().nullable(),
+    strictGateApplied: z.boolean(),
+    rejectedByGate: z.boolean(),
+    strictPhaseGateApplied: z.boolean(),
+    rejectedByPhaseGate: z.boolean(),
+  }).optional(),
   fixer: z.any().optional(),
   attempts: z.array(z.any()).optional(),
 });
@@ -109,6 +118,14 @@ const SuccessResponseSchema = z.object({
 const ErrorResponseSchema = z.object({
   ok: z.literal(false),
   error: z.string(),
+  telemetry: z.object({
+    gameModelScore: z.number().nullable(),
+    phaseScore: z.number().nullable(),
+    strictGateApplied: z.boolean(),
+    rejectedByGate: z.boolean(),
+    strictPhaseGateApplied: z.boolean(),
+    rejectedByPhaseGate: z.boolean(),
+  }).optional(),
   details: z.array(z.any()).optional(),
   attemptsSummary: z.array(z.any()).optional(),
   attempts: z.array(z.any()).optional(),
@@ -130,6 +147,12 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
   const maxAttempts = Number.isNaN(Number(maxAttemptsEnv))
     ? 3
     : Number(maxAttemptsEnv);
+  const strictGameModelAlignment = process.env.STRICT_GAME_MODEL_ALIGNMENT === "1";
+  const minGameModelScoreEnv = Number(process.env.MIN_GAME_MODEL_SCORE || "4");
+  const minGameModelScore = Number.isFinite(minGameModelScoreEnv) ? minGameModelScoreEnv : 4;
+  const strictPhaseAlignment = process.env.STRICT_PHASE_ALIGNMENT === "1";
+  const minPhaseScoreEnv = Number(process.env.MIN_PHASE_SCORE || "4");
+  const minPhaseScore = Number.isFinite(minPhaseScoreEnv) ? minPhaseScoreEnv : 4;
 
   // Check usage limit for drill generation
   if (req.userId) {
@@ -176,6 +199,10 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
     scores: any;
     decision: any;
   }> = [];
+  let sawGateRejection = false;
+  let sawPhaseGateRejection = false;
+  let latestGameModelScore: number | null = null;
+  let latestPhaseScore: number | null = null;
 
   for (let i = 0; i < maxAttempts; i++) {
     try {
@@ -184,6 +211,32 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
       let qa = result.qa; // Use 'let' so we can update it after fixing
 
       let decision = fixDrillDecision(qa?.scores || null); // Use 'let' so we can update it after fixing
+      const gameModelScore = Number(qa?.scores?.gameModel ?? 0);
+      const phaseScore = Number(qa?.scores?.phase ?? 0);
+      latestGameModelScore = Number.isFinite(gameModelScore) ? gameModelScore : null;
+      latestPhaseScore = Number.isFinite(phaseScore) ? phaseScore : null;
+
+      // Optional strict gate: require stronger game model alignment before accepting.
+      if (strictGameModelAlignment && gameModelScore < minGameModelScore) {
+        sawGateRejection = true;
+        decision = {
+          code: "NEEDS_REGEN",
+          reason: `gameModel score ${gameModelScore} < required ${minGameModelScore}`,
+        };
+        console.log(
+          `[GAME_MODEL_GATE] Rejecting attempt due to low gameModel score (${gameModelScore}/${minGameModelScore})`
+        );
+      }
+      if (strictPhaseAlignment && phaseScore < minPhaseScore) {
+        sawPhaseGateRejection = true;
+        decision = {
+          code: "NEEDS_REGEN",
+          reason: `phase score ${phaseScore} < required ${minPhaseScore}`,
+        };
+        console.log(
+          `[PHASE_GATE] Rejecting attempt due to low phase score (${phaseScore}/${minPhaseScore})`
+        );
+      }
 
       attemptsSummary.push({
         title:
@@ -225,6 +278,14 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
           drill: drillResponse,
           qa,
           fixDecision: decision,
+          telemetry: {
+            gameModelScore: latestGameModelScore,
+            phaseScore: latestPhaseScore,
+            strictGateApplied: strictGameModelAlignment,
+            rejectedByGate: sawGateRejection,
+            strictPhaseGateApplied: strictPhaseAlignment,
+            rejectedByPhaseGate: sawPhaseGateRejection,
+          },
         };
 
         if (fixerMeta) {
@@ -288,6 +349,14 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
           message: isQuota
             ? "Gemini API quota exceeded. Please try again later."
             : "LLM request timed out. Please try again.",
+          telemetry: {
+            gameModelScore: latestGameModelScore,
+            phaseScore: latestPhaseScore,
+            strictGateApplied: strictGameModelAlignment,
+            rejectedByGate: sawGateRejection,
+            strictPhaseGateApplied: strictPhaseAlignment,
+            rejectedByPhaseGate: sawPhaseGateRejection,
+          },
           attemptsSummary: debug ? attemptsSummary : undefined,
         });
       }
@@ -302,6 +371,14 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
       return res.status(500).json({
         ok: false,
         error: errorMsg,
+        telemetry: {
+          gameModelScore: latestGameModelScore,
+          phaseScore: latestPhaseScore,
+          strictGateApplied: strictGameModelAlignment,
+          rejectedByGate: sawGateRejection,
+          strictPhaseGateApplied: strictPhaseAlignment,
+          rejectedByPhaseGate: sawPhaseGateRejection,
+        },
         attemptsSummary: debug ? attemptsSummary : undefined,
       });
     }
@@ -312,6 +389,14 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
     ok: false,
     error:
       "Could not generate a high-quality drill after several attempts. Please try again.",
+    telemetry: {
+      gameModelScore: latestGameModelScore,
+      phaseScore: latestPhaseScore,
+      strictGateApplied: strictGameModelAlignment,
+      rejectedByGate: sawGateRejection,
+      strictPhaseGateApplied: strictPhaseAlignment,
+      rejectedByPhaseGate: sawPhaseGateRejection,
+    },
   };
   if (debug) {
     payload.attempts = attemptsSummary;

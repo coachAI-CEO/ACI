@@ -2,10 +2,15 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent } from "react";
+import { useState } from "react";
+import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 
 export default function SessionFormWithLoading({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,6 +28,12 @@ export default function SessionFormWithLoading({ children }: { children: React.R
       }
     });
 
+    // Hard UI guardrail: grassroots generation always runs as beginner players.
+    const coachLevel = String(formData.get("coachLevel") || "");
+    if (coachLevel === "GRASSROOTS") {
+      params.set("playerLevel", "BEGINNER");
+    }
+
     if (selectedMode === "series") {
       params.append("series", "true");
       const numberOfSessions = formData.get("numberOfSessions") || "3";
@@ -31,13 +42,42 @@ export default function SessionFormWithLoading({ children }: { children: React.R
       params.append("series", "false");
     }
 
-    router.push(`/demo/session?${params.toString()}`);
+    const numberOfSessions = Number(formData.get("numberOfSessions") || "3");
+    const confirmMessage =
+      selectedMode === "series"
+        ? `Generate a new ${numberOfSessions}-session series with these settings?`
+        : "Generate a new session with these settings?";
+    // Ensure generation runs even when form values are unchanged.
+    params.set("_run", String(Date.now()));
+    const nextUrl = `/demo/session?${params.toString()}`;
+    setPendingUrl(nextUrl);
+    setConfirmMessage(confirmMessage);
+    setConfirmOpen(true);
   };
 
   return (
-    <form onSubmit={handleSubmit} method="GET">
-      {children}
-    </form>
+    <>
+      <form onSubmit={handleSubmit} method="GET">
+        {children}
+      </form>
+      <ThemedConfirmModal
+        open={confirmOpen}
+        title="Start Generation"
+        message={confirmMessage}
+        confirmLabel="Generate"
+        cancelLabel="Cancel"
+        onCancel={() => {
+          setConfirmOpen(false);
+          setPendingUrl(null);
+        }}
+        onConfirm={() => {
+          if (pendingUrl) {
+            router.push(pendingUrl);
+          }
+          setConfirmOpen(false);
+          setPendingUrl(null);
+        }}
+      />
+    </>
   );
 }
-

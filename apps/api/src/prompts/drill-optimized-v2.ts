@@ -197,6 +197,112 @@ function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: 
   }
 }
 
+function getGameModelGuidance(gameModelId: string, phase: string, zone: string): string {
+  const common = [
+    "MODEL-LOCK RULES (MANDATORY):",
+    `- gameModelId=${gameModelId} must change drill behavior, not just labels.`,
+    `- phase=${phase} and zone=${zone} must appear in setup, constraints, and coaching points.`,
+    "- Include at least 3 model-specific cues in coachingPoints and at least 2 in constraints/progressions.",
+    "- Diagram arrows and annotations must represent the model's decision moments.",
+  ];
+
+  if (gameModelId === "POSSESSION") {
+    return [
+      ...common,
+      "POSSESSION REQUIREMENTS:",
+      "- Emphasize creating overloads, third-man support, and controlled circulation.",
+      "- Constraints should reward pass count, line breaks, switch of play, or positional support.",
+      "- Coaching points must include scanning, body orientation, and tempo control.",
+      "- Diagram should show support triangles/diamonds and circulation lanes.",
+      "- Avoid transition-chaos framing as the core objective.",
+    ].join("\n");
+  }
+
+  if (gameModelId === "PRESSING") {
+    return [
+      ...common,
+      "PRESSING REQUIREMENTS:",
+      "- Emphasize pressing triggers (bad touch/back pass/closed body shape), cover shadow, and compactness.",
+      "- Constraints should reward regains in target windows/zones and punish passive retreat.",
+      "- Coaching points must include press angle, second/third defender roles, and rest defense.",
+      "- Diagram should show pressing runs, trap zones, and nearest support rotations.",
+      "- Avoid passive block-only behavior unless explicitly part of the press trap.",
+    ].join("\n");
+  }
+
+  if (gameModelId === "TRANSITION") {
+    return [
+      ...common,
+      "TRANSITION REQUIREMENTS:",
+      "- Emphasize immediate reaction after regain/loss (first 3-6 seconds).",
+      "- Constraints should reward fast counter/secure-first-pass after regain and immediate counterpress after loss.",
+      "- Coaching points must include first action quality, supporting runs, and reaction speed.",
+      "- Diagram should show regain events, counter lanes, and recovery/counterpress movement.",
+      "- Avoid long settled-possession phases as the main objective.",
+    ].join("\n");
+  }
+
+  return [
+    ...common,
+    "COACHAI REQUIREMENTS:",
+    "- Use a balanced profile across possession, pressing, and transition moments.",
+    "- Constraints should include at least one trigger from each moment type.",
+    "- Coaching points must connect when to keep the ball vs when to attack quickly vs when to press.",
+    "- Diagram should show mixed moments (build, loss, regain, finish).",
+  ].join("\n");
+}
+
+function getPhaseGuidance(phase: string, zone: string): string {
+  const base = [
+    `PHASE LOCK RULES (MANDATORY): phase=${phase}, zone=${zone}`,
+    "- Add at least 2 phase-specific constraints and 2 phase-specific coaching cues.",
+    "- Diagram arrows must include at least one phase-defining action sequence.",
+  ];
+
+  if (phase === "ATTACKING") {
+    return [
+      ...base,
+      "ATTACKING REQUIREMENTS:",
+      "- Focus on progression, chance creation, and final action quality.",
+      "- Include cues for support depth/width and timing of final-third actions.",
+    ].join("\n");
+  }
+
+  if (phase === "DEFENDING") {
+    return [
+      ...base,
+      "DEFENDING REQUIREMENTS:",
+      "- Focus on compactness, delay/channel, pressure-cover-balance, and protection of key space.",
+      "- Include cues for line distances and deny/force direction.",
+    ].join("\n");
+  }
+
+  if (phase === "TRANSITION_TO_ATTACK") {
+    return [
+      ...base,
+      "TRANSITION_TO_ATTACK REQUIREMENTS:",
+      "- Focus on first action after regain (0-6 seconds): secure then exploit space quickly.",
+      "- Include cues for support runs, first forward pass quality, and fast decision timing.",
+    ].join("\n");
+  }
+
+  if (phase === "TRANSITION_TO_DEFEND") {
+    return [
+      ...base,
+      "TRANSITION_TO_DEFEND REQUIREMENTS:",
+      "- Focus on immediate reaction after loss (0-6 seconds): counterpress or recover shape.",
+      "- Include cues for nearest-player pressure and second-line recovery responsibilities.",
+    ].join("\n");
+  }
+
+  return [
+    ...base,
+    "TRANSITION REQUIREMENTS:",
+    "- Include both regain-to-attack and loss-to-defend moments in repeated cycles.",
+    "- Enforce rapid decision-making around role switches.",
+  ].join("\n");
+}
+
 /**
  * Optimized generator prompt - conservative 35% reduction while maintaining quality
  */
@@ -205,6 +311,12 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
 
   // Build drill type-specific guidance
   const drillTypeGuidance = getDrillTypeGuidance(input.drillType, input.ageGroup, input.playerLevel);
+  const gameModelGuidance = getGameModelGuidance(
+    input.gameModelId,
+    input.phase,
+    input.zone
+  );
+  const phaseGuidance = getPhaseGuidance(input.phase, input.zone);
 
   return [
     "SYSTEM: Output ONE JSON object matching the structure below.",
@@ -216,11 +328,20 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "- annotations MUST include fontSize, color (rgba), and fontWeight.",
     "- diagram.pitch.showZones MUST be false (avoid auto-zone overlap).",
     "- Do NOT wrap JSON in markdown or add comments.",
+    "- constraints MUST be non-empty (2-5 items) and include model-specific behavior for gameModelId.",
     "",
     "INPUT:", ctx,
     "",
     "⚠️ DRILL TYPE: " + input.drillType + " - This SIGNIFICANTLY changes the drill structure and content:",
     drillTypeGuidance,
+    "",
+    "⚠️ GAME MODEL LOCK:",
+    gameModelGuidance,
+    "",
+    "⚠️ PHASE LOCK:",
+    phaseGuidance,
+    "",
+    "IMPORTANT: Example below is for STRUCTURE only. Do NOT copy possession behavior unless gameModelId=POSSESSION.",
     "",
     "EXAMPLE OUTPUT (copy this structure EXACTLY - this scores Structure=4, Clarity=4+):",
     JSON.stringify({
@@ -305,6 +426,19 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "11. diagram.players MUST include EVERY player described in organization.setupSteps (no partial scenario diagrams).",
     "12. diagram.pitch.showZones MUST be false.",
     "13. diagram.pitch.orientation MUST match the data: goals on top/bottom => VERTICAL, goals on left/right => HORIZONTAL.",
+    "14. gameModelId MUST be visible in behaviors:",
+    "   - POSSESSION: circulation/overloads/line breaks dominate.",
+    "   - PRESSING: triggers/angles/compact regains dominate.",
+    "   - TRANSITION: regain-loss reaction windows dominate.",
+    "   - COACHAI: balanced moments with explicit switching logic.",
+    "   If these are missing, this is a gameModel failure.",
+    "15. constraints MUST be 2-5 concrete rules and include at least one explicit gameModel cue.",
+    "16. phase MUST be visible in drill behavior:",
+    "   - ATTACKING: progression/chance creation/finishing cues.",
+    "   - DEFENDING: compactness/channeling/protection cues.",
+    "   - TRANSITION_TO_ATTACK: first action after regain cues.",
+    "   - TRANSITION_TO_DEFEND: immediate reaction after loss cues.",
+    "   - TRANSITION: both transition directions in the same drill flow.",
     "",
     "REQUIRED FIELDS:",
     "{",
@@ -396,7 +530,7 @@ export function buildQAReviewerPrompt(drill: any): string {
     "Review this drill JSON and return ONLY JSON:",
     "{",
     '  "pass": boolean,',
-    '  "scores": {"structure": number, "gameModel": number, "psych": number, "clarity": number, "realism": number, "constraints": number, "safety": number},',
+    '  "scores": {"structure": number, "gameModel": number, "phase": number, "psych": number, "clarity": number, "realism": number, "constraints": number, "safety": number},',
     '  "summary": string,',
     '  "notes": string[]',
     "}",
@@ -407,6 +541,18 @@ export function buildQAReviewerPrompt(drill: any): string {
     "- 5: organization.setupSteps (5–8) give a complete, coachable sequence (space, numbers, roles, start/restart, rotation).",
     "- 3: some structure present but important details missing (e.g., unclear rotation or restarts).",
     "- 1–2: organization missing, string-only, or unusably vague.",
+    "",
+    "GAMEMODEL (rate alignment with drill.gameModelId):",
+    "- 5: Drill behaviors, constraints, coaching points, and diagram all clearly express the selected model.",
+    "- 4: Mostly aligned with one or two weak spots.",
+    "- 3: Mixed or generic; model label present but behaviors are weak.",
+    "- 1-2: Model mismatch (e.g., possession drill labeled PRESSING) or no model-specific cues.",
+    "",
+    "PHASE (rate alignment with drill.phase):",
+    "- 5: Drill actions and constraints clearly match phase intent and decision moments.",
+    "- 4: Mostly phase-aligned with minor drift.",
+    "- 3: Phase referenced but behavior is generic.",
+    "- 1-2: Phase mismatch (e.g., ATTACKING label but defending-first behaviors dominate).",
     "",
     "CLARITY (score based on how easy it is for a coach to run the drill):",
     "",

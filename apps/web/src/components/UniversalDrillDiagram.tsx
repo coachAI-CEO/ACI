@@ -1641,6 +1641,14 @@ const UniversalDrillDiagram = ({
           const y1 = toScreenY(arrow.from.y);
           const x2 = toScreenX(arrow.to.x);
           const y2 = toScreenY(arrow.to.y);
+          if (
+            !Number.isFinite(x1) ||
+            !Number.isFinite(y1) ||
+            !Number.isFinite(x2) ||
+            !Number.isFinite(y2)
+          ) {
+            return null;
+          }
           
           return (
             <g key={`arrow-label-${arrow.id || idx}`}>
@@ -1672,6 +1680,14 @@ const UniversalDrillDiagram = ({
           const y1 = toScreenY(arrow.from.y);
           const x2 = toScreenX(arrow.to.x);
           const y2 = toScreenY(arrow.to.y);
+          if (
+            !Number.isFinite(x1) ||
+            !Number.isFinite(y1) ||
+            !Number.isFinite(x2) ||
+            !Number.isFinite(y2)
+          ) {
+            return null;
+          }
           
           const getArrowStyle = (type: string) => {
             switch (type) {
@@ -1852,13 +1868,13 @@ const UniversalDrillDiagram = ({
             'NEUT': { color: '#fbbf24', label: 'Neutral' },
           };
           
-          return teams.map(team => {
+          return teams.map((team, teamIndex) => {
             const teamPlayers = players.filter(p => p.team === team);
             const config = teamColorMap[team] || { color: '#94a3b8', label: team };
             
             return (
               <div
-                key={team}
+                key={`${String(team)}-${teamIndex}`}
                 style={{ display: "flex", alignItems: "center", gap: isSmall ? "4px" : "8px" }}
               >
                 <div

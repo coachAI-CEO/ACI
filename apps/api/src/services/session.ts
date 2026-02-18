@@ -23,6 +23,294 @@ function parseJsonSafe(text: string) {
   }
 }
 
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const v = String(raw || "").trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
+function isGrassrootsCoachLevel(coachLevel?: string): boolean {
+  return String(coachLevel || "").toUpperCase() === "GRASSROOTS";
+}
+
+function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
+  if (!isGrassrootsCoachLevel(coachLevel)) return;
+  if (!drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
+
+  const diagram = drill.diagram;
+  diagram.pitch = diagram.pitch || {};
+  diagram.pitch.showZones = false;
+  if (diagram.pitch && typeof diagram.pitch === "object" && "zones" in diagram.pitch) {
+    delete diagram.pitch.zones;
+  }
+
+  if (Array.isArray(diagram.safeZones)) {
+    diagram.safeZones = [];
+  }
+  if (Array.isArray(diagram.arrows)) {
+    diagram.arrows = diagram.arrows.slice(0, 3);
+  }
+  if (Array.isArray(diagram.annotations)) {
+    diagram.annotations = diagram.annotations.slice(0, 1);
+  }
+}
+
+const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\bmeticulously\b/gi, "carefully"],
+  [/\bcomprehensive\b/gi, "complete"],
+  [/\btactical intelligence\b/gi, "decision-making"],
+  [/\btactical nuances?\b/gi, "key ideas"],
+  [/\bnumerical superiority\b/gi, "an extra player"],
+  [/\brest defense\b/gi, "cover behind the ball"],
+  [/\bline-breaking\b/gi, "forward"],
+  [/\bprogression lanes\b/gi, "passing lanes"],
+  [/\bverticality\b/gi, "playing forward"],
+  [/\bcounterpress(?:ing)?\b/gi, "win the ball back quickly"],
+  [/\bphase(?:s)?\b/gi, "moment"],
+  [/\bman-oriented\b/gi, "player-to-player"],
+  [/\bzonal\b/gi, "area-based"],
+  [/\bpositional superiority\b/gi, "better positioning"],
+  [/\bfunctional game application\b/gi, "real game use"],
+  [/\bcognitive scanning\b/gi, "scanning"],
+  [/\bunder high-pressure scenarios?\b/gi, "under pressure"],
+  [/\bhigh-pressure situations?\b/gi, "pressure situations"],
+  [/\bexploit(?:ing)? gaps?\b/gi, "find spaces"],
+  [/\bnuances?\b/gi, "details"],
+  [/\bincentivized\b/gi, "rewarded"],
+  [/\btertiary\b/gi, "third"],
+  [/\bstructured\b/gi, "organized"],
+  [/\bcohesive\b/gi, "clear"],
+  [/\bculminating\b/gi, "final"],
+  [/\bmanipulate\b/gi, "move"],
+  [/\bspatial awareness\b/gi, "awareness of space"],
+];
+
+function simplifyGrassrootsText(text: string): string {
+  let out = String(text || "");
+  for (const [pattern, replacement] of GRASSROOTS_LANGUAGE_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  out = out
+    .replace(/[“”]/g, '"')
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+,/g, ",")
+    .trim();
+  // Prefer shorter plain sentences while preserving core detail.
+  out = out
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => {
+      const words = sentence.split(/\s+/).filter(Boolean);
+      if (words.length <= 22) return sentence;
+      return `${words.slice(0, 22).join(" ")}.`;
+    })
+    .join(" ");
+  return out.trim();
+}
+
+function toGrassrootsCoachVoice(text: string): string {
+  let out = String(text || "").trim();
+  if (!out) return out;
+
+  out = out
+    .replace(/^this (training session|session) (is|was) (specifically )?designed to/gi, "Run this session to")
+    .replace(/^this (technical|tactical|conditioned)?\s*drill (focuses on|is designed to|is built to)/gi, "Run this drill to")
+    .replace(/\bthe primary focus is\b/gi, "Focus on")
+    .replace(/\bthe core focus is\b/gi, "Focus on")
+    .replace(/\bthe focus is on\b/gi, "Focus on")
+    .replace(/\bplayers should\b/gi, "Players")
+    .replace(/\bcoaches should\b/gi, "Coach")
+    .replace(/\bthis drill\b/gi, "The drill")
+    .replace(/\bthis session\b/gi, "The session");
+
+  // Keep wording practical and action-oriented.
+  out = out.replace(/\bwill be able to\b/gi, "can");
+
+  return out.replace(/\s{2,}/g, " ").trim();
+}
+
+function simplifyGrassrootsStringArray(values: any): any {
+  if (!Array.isArray(values)) return values;
+  return values.map((value) =>
+    typeof value === "string" ? toGrassrootsCoachVoice(simplifyGrassrootsText(value)) : value
+  );
+}
+
+function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
+  if (!isGrassrootsCoachLevel(coachLevel) || !session || typeof session !== "object") return;
+
+  if (typeof session.summary === "string") {
+    session.summary = toGrassrootsCoachVoice(simplifyGrassrootsText(session.summary));
+  }
+
+  if (!Array.isArray(session.drills)) return;
+  session.drills.forEach((drill: any) => {
+    if (!drill || typeof drill !== "object") return;
+
+    if (typeof drill.description === "string") {
+      drill.description = toGrassrootsCoachVoice(simplifyGrassrootsText(drill.description));
+    }
+    drill.coachingPoints = simplifyGrassrootsStringArray(drill.coachingPoints);
+    drill.progressions = simplifyGrassrootsStringArray(drill.progressions);
+    drill.constraints = simplifyGrassrootsStringArray(drill.constraints);
+
+    if (drill.loadNotes && typeof drill.loadNotes === "object") {
+      if (typeof drill.loadNotes.rationale === "string") {
+        drill.loadNotes.rationale = simplifyGrassrootsText(drill.loadNotes.rationale);
+      }
+      if (typeof drill.loadNotes.structure === "string") {
+        drill.loadNotes.structure = simplifyGrassrootsText(drill.loadNotes.structure);
+      }
+    }
+
+    if (drill.organization && typeof drill.organization === "object") {
+      if (Array.isArray(drill.organization.setupSteps)) {
+        drill.organization.setupSteps = simplifyGrassrootsStringArray(drill.organization.setupSteps);
+      }
+      if (typeof drill.organization.rotation === "string") {
+        drill.organization.rotation = simplifyGrassrootsText(drill.organization.rotation);
+      }
+      if (typeof drill.organization.restarts === "string") {
+        drill.organization.restarts = simplifyGrassrootsText(drill.organization.restarts);
+      }
+      if (typeof drill.organization.scoring === "string") {
+        drill.organization.scoring = simplifyGrassrootsText(drill.organization.scoring);
+      }
+    }
+
+    // Keep cues short and practical at grassroots level.
+    if (Array.isArray(drill.coachingPoints)) {
+      drill.coachingPoints = drill.coachingPoints.map((point: any) => {
+        const text = simplifyGrassrootsText(String(point || ""));
+        const coachVoice = toGrassrootsCoachVoice(text);
+        const words = coachVoice.split(/\s+/).filter(Boolean);
+        return words.length > 18 ? `${words.slice(0, 18).join(" ")}.` : coachVoice;
+      });
+    }
+  });
+}
+
+function modelConstraintDefaults(gameModelId: string, phase?: string, zone?: string): string[] {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  if (gameModelId === "POSSESSION") {
+    return [
+      `POSSESSION cue (${p}/${z}): team in possession must create a support triangle before playing the next forward pass.`,
+      `POSSESSION cue (${p}/${z}): 1 bonus point for a line-breaking pass into the next lane or half-space.`,
+    ];
+  }
+  if (gameModelId === "PRESSING") {
+    return [
+      `PRESSING cue (${p}/${z}): immediate press trigger on bad first touch, back pass, or closed body shape.`,
+      `PRESSING cue (${p}/${z}): regain in the target pressing zone within 6 seconds = bonus point.`,
+    ];
+  }
+  if (gameModelId === "TRANSITION") {
+    return [
+      `TRANSITION cue (${p}/${z}): first action within 3 seconds after regain must be forward or to a clear support option.`,
+      `TRANSITION cue (${p}/${z}): on loss, nearest 3 players counterpress for 3-5 seconds before recovering shape.`,
+    ];
+  }
+  return [
+    `COACHAI cue (${p}/${z}): choose between keep-ball circulation or vertical attack based on pressure and space.`,
+    `COACHAI cue (${p}/${z}): on loss, immediate pressure by nearest players, then recover compact shape if press is broken.`,
+  ];
+}
+
+function phaseConstraintDefaults(phase?: string, zone?: string): string[] {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  if (p === "ATTACKING") {
+    return [
+      `PHASE cue (${p}/${z}): create progression lanes with width/depth before final action.`,
+      `PHASE cue (${p}/${z}): finishing action should follow timed support and penetration decisions.`,
+    ];
+  }
+  if (p === "DEFENDING") {
+    return [
+      `PHASE cue (${p}/${z}): protect central areas and force play wide or backward.`,
+      `PHASE cue (${p}/${z}): maintain pressure-cover-balance distances before stepping to challenge.`,
+    ];
+  }
+  if (p === "TRANSITION_TO_ATTACK") {
+    return [
+      `PHASE cue (${p}/${z}): first action within 3-6 seconds after regain should exploit forward space or secure support.`,
+      `PHASE cue (${p}/${z}): immediate support-run structure must provide at least two options after regain.`,
+    ];
+  }
+  if (p === "TRANSITION_TO_DEFEND") {
+    return [
+      `PHASE cue (${p}/${z}): immediate reaction after loss: nearest players counterpress for 3-5 seconds.`,
+      `PHASE cue (${p}/${z}): if press fails, recover compact shape with clear role recovery lanes.`,
+    ];
+  }
+  return [
+    `PHASE cue (${p}/${z}): include repeated regain-to-attack and loss-to-defend cycles.`,
+    `PHASE cue (${p}/${z}): enforce fast role switching on every possession change.`,
+  ];
+}
+
+function hasModelSpecificConstraint(constraints: string[], gameModelId: string): boolean {
+  const text = constraints.join(" ").toLowerCase();
+  if (gameModelId === "POSSESSION") {
+    return /(possession|circulation|line[- ]?break|overload|support triangle|free man)/i.test(text);
+  }
+  if (gameModelId === "PRESSING") {
+    return /(press|pressing|trigger|counterpress|regain|trap|compact)/i.test(text);
+  }
+  if (gameModelId === "TRANSITION") {
+    return /(transition|regain|on loss|counterpress|first action|3 seconds|5 seconds|fast attack|counter)/i.test(text);
+  }
+  return /(possession|press|transition|counterpress|regain|circulation|switch)/i.test(text);
+}
+
+function hasPhaseSpecificConstraint(constraints: string[], phase?: string): boolean {
+  const text = constraints.join(" ").toLowerCase();
+  const p = phase || "ATTACKING";
+  if (p === "ATTACKING") {
+    return /(attacking|penetrat|finish|final action|create chance|width|depth)/i.test(text);
+  }
+  if (p === "DEFENDING") {
+    return /(defend|compact|deny|channel|pressure|cover|balance|protect)/i.test(text);
+  }
+  if (p === "TRANSITION_TO_ATTACK") {
+    return /(regain|first action|3-6|counter|forward|support run|exploit)/i.test(text);
+  }
+  if (p === "TRANSITION_TO_DEFEND") {
+    return /(loss|counterpress|recover shape|nearest|immediate reaction|3-5)/i.test(text);
+  }
+  return /(transition|regain|loss|switch role|counterpress|recover)/i.test(text);
+}
+
+function enforceModelConstraintsOnDrill(
+  drill: any,
+  input: { gameModelId: string; phase?: string; zone?: string }
+) {
+  const current = Array.isArray(drill?.constraints) ? drill.constraints : [];
+  const cleaned = uniqueNonEmpty(current.map((c: any) => String(c)));
+  const modelDefaults = modelConstraintDefaults(input.gameModelId, input.phase, input.zone);
+  const phaseDefaults = phaseConstraintDefaults(input.phase, input.zone);
+
+  let next = cleaned;
+  if (next.length < 2) {
+    next = uniqueNonEmpty([...next, ...modelDefaults, ...phaseDefaults]);
+  }
+  if (!hasModelSpecificConstraint(next, input.gameModelId)) {
+    next = uniqueNonEmpty([...modelDefaults, ...next]);
+  }
+  if (!hasPhaseSpecificConstraint(next, input.phase)) {
+    next = uniqueNonEmpty([...phaseDefaults, ...next]);
+  }
+  drill.constraints = next.slice(0, 5);
+}
+
 /**
  * Main generator + QA pipeline for sessions.
  *
@@ -33,8 +321,13 @@ function parseJsonSafe(text: string) {
  */
 export async function generateAndReviewSession(
   input: Parameters<typeof buildSessionPrompt>[0],
-  userId?: string
+  userId?: string,
+  options?: {
+    isCancelled?: () => boolean;
+  }
 ) {
+  const isCancelled = () => Boolean(options?.isCancelled?.());
+
   // Set metrics context for tracking
   setMetricsContext({
     operationType: "session",
@@ -48,6 +341,7 @@ export async function generateAndReviewSession(
     const prompt = buildSessionPrompt(input);
     console.log(`[SESSION] Starting generation with ${prompt.length} char prompt...`);
     const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
+    if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Log raw response for debugging (first 5000 chars to see diagram structure)
   const rawPreview = genText.substring(0, 5000);
@@ -59,6 +353,7 @@ export async function generateAndReviewSession(
   
   let session: any = parseJsonSafe(genText);
   if (!session) throw new Error("LLM returned non-JSON session");
+  if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Log parsed session structure
   console.log(`[SESSION] Parsed session structure:`, {
@@ -104,6 +399,12 @@ export async function generateAndReviewSession(
   // Normalize diagram format: convert elements to players if needed
   if (session.drills && Array.isArray(session.drills)) {
     session.drills.forEach((drill: any, index: number) => {
+      enforceModelConstraintsOnDrill(drill, {
+        gameModelId: input.gameModelId,
+        phase: input.phase,
+        zone: input.zone,
+      });
+
       if (drill.drillType !== "COOLDOWN" && drill.diagram) {
         const inferOrientation = (diagram: any) => {
           const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
@@ -203,6 +504,7 @@ export async function generateAndReviewSession(
         if (!Array.isArray(drill.diagram.goals)) {
           drill.diagram.goals = [];
         }
+        applyCoachLevelDiagramProfile(drill, input.coachLevel);
         
         // Validate players array is populated
         if (drill.diagram.players.length === 0) {
@@ -227,9 +529,11 @@ export async function generateAndReviewSession(
           players: [],
           goals: []
         };
+        applyCoachLevelDiagramProfile(drill, input.coachLevel);
       }
     });
   }
+  applyCoachLevelLanguageProfile(session, input.coachLevel);
 
   // 2) QA Review - update metrics context
   setMetricsContext({
@@ -242,6 +546,7 @@ export async function generateAndReviewSession(
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[SESSION] Starting QA with ${qaPrompt.length} char prompt...`);
   const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+  if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error("LLM returned non-JSON QA");
 
@@ -263,10 +568,12 @@ export async function generateAndReviewSession(
 
   // Generate unique reference code for the session
   const sessionRefCode = await generateRefCode("session");
+  if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Add ref codes to embedded drills in the session JSON and persist as standalone records
   const drillsWithRefCodes = finalSession.drills ? await Promise.all(
     finalSession.drills.map(async (drill: any) => {
+      if (isCancelled()) throw new Error("REQUEST_CANCELLED");
       try {
         if (needsDiagramEnrichment(drill?.diagram)) {
           const reenriched = await reenrichDiagramFromDrillJson(drill);
@@ -325,6 +632,35 @@ export async function generateAndReviewSession(
       };
     })
   ) : [];
+
+  // Final grassroots enforcement after any re-enrichment mutations.
+  if (Array.isArray(drillsWithRefCodes)) {
+    drillsWithRefCodes.forEach((drill: any) =>
+      applyCoachLevelDiagramProfile(drill, input.coachLevel)
+    );
+  }
+  finalSession.drills = drillsWithRefCodes;
+  applyCoachLevelLanguageProfile(finalSession, input.coachLevel);
+
+  // Persist final post-processed drill JSON so later drill lookups match what session view shows.
+  if (Array.isArray(finalSession.drills)) {
+    await Promise.all(
+      finalSession.drills.map(async (drill: any) => {
+        if (!drill?.refCode) return;
+        try {
+          await prisma.drill.update({
+            where: { refCode: drill.refCode },
+            data: {
+              json: drill,
+              coachLevel: input.coachLevel as any,
+            },
+          });
+        } catch (err: any) {
+          console.error(`[SESSION] Failed to persist final post-processed drill ${drill.refCode}:`, err?.message);
+        }
+      })
+    );
+  }
 
   // JSON we persist to the DB
   const jsonForDb = {

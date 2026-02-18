@@ -4697,7 +4697,7 @@ export default function AdminDashboard() {
                       <div
                         className="h-full bg-purple-500 rounded-r"
                         style={{ width: `${Math.max(1, (day.skillFocus / Math.max(...timeline.map(t => t.calls)) * 30))}%` }}
-                        title={`${day.skillFocus} skill focus`}
+                        title={`${day.skillFocus} coaching emphasis`}
                       />
                     </div>
                     <div className="w-16 text-right text-xs text-slate-400">
@@ -4708,7 +4708,7 @@ export default function AdminDashboard() {
                 <div className="flex gap-4 text-xs text-slate-500 mt-3 pt-2 border-t border-slate-700">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded" /> Sessions</span>
                   <span className="flex items-center gap-1"><span className="w-2 h-2 bg-blue-500 rounded" /> QA</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 bg-purple-500 rounded" /> Skill Focus</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 bg-purple-500 rounded" /> Coaching Emphasis</span>
                 </div>
               </div>
             ) : (

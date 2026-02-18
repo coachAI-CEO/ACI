@@ -16,7 +16,7 @@ r.use(authenticate);
 r.post("/player-plans/from-session/:sessionId", requireFeature('canCreatePlayerPlans'), async (req: AuthRequest, res) => {
   try {
     const { sessionId } = req.params;
-    const { durationMin, focus, sourceRefCode } = req.body || {};
+    const { durationMin, focus, sourceRefCode, playerLevel } = req.body || {};
 
     // Normalise the session identifier. Some frontends have been sending the
     // literal string "undefined" in the path segment; treat that as missing.
@@ -33,9 +33,24 @@ r.post("/player-plans/from-session/:sessionId", requireFeature('canCreatePlayerP
       return res.status(400).json({ ok: false, error: "Missing session identifier (id or refCode)" });
     }
 
+    const normalizedDuration = durationMin ? Number(durationMin) : undefined;
+    if (normalizedDuration !== undefined && normalizedDuration !== 30 && normalizedDuration !== 45) {
+      return res.status(400).json({ ok: false, error: "durationMin must be 30 or 45" });
+    }
+    const normalizedPlayerLevel = playerLevel ? String(playerLevel).toUpperCase() : undefined;
+    if (
+      normalizedPlayerLevel !== undefined &&
+      normalizedPlayerLevel !== "BEGINNER" &&
+      normalizedPlayerLevel !== "INTERMEDIATE" &&
+      normalizedPlayerLevel !== "ADVANCED"
+    ) {
+      return res.status(400).json({ ok: false, error: "playerLevel must be BEGINNER, INTERMEDIATE, or ADVANCED" });
+    }
+
     const result = await generatePlayerPlanFromSession(sessionIdentifier, req.userId, {
-      durationMin: durationMin ? Number(durationMin) : undefined,
+      durationMin: normalizedDuration as 30 | 45 | undefined,
       focus: focus ? String(focus) : undefined,
+      playerLevel: normalizedPlayerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined,
     });
 
     return res.json({
@@ -60,18 +75,33 @@ r.post("/player-plans/from-session/:sessionId", requireFeature('canCreatePlayerP
 r.post("/player-plans/from-series/:seriesId", requireFeature('canCreatePlayerPlans'), async (req: AuthRequest, res) => {
   try {
     const { seriesId } = req.params;
-    const { sessionNumbers, durationMin, focus } = req.body || {};
+    const { sessionNumbers, durationMin, focus, playerLevel } = req.body || {};
 
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: "Authentication required" });
+    }
+
+    const normalizedDuration = durationMin ? Number(durationMin) : undefined;
+    if (normalizedDuration !== undefined && normalizedDuration !== 30 && normalizedDuration !== 45) {
+      return res.status(400).json({ ok: false, error: "durationMin must be 30 or 45" });
+    }
+    const normalizedPlayerLevel = playerLevel ? String(playerLevel).toUpperCase() : undefined;
+    if (
+      normalizedPlayerLevel !== undefined &&
+      normalizedPlayerLevel !== "BEGINNER" &&
+      normalizedPlayerLevel !== "INTERMEDIATE" &&
+      normalizedPlayerLevel !== "ADVANCED"
+    ) {
+      return res.status(400).json({ ok: false, error: "playerLevel must be BEGINNER, INTERMEDIATE, or ADVANCED" });
     }
 
     const result = await generatePlayerPlanFromSeries(seriesId, req.userId, {
       sessionNumbers: Array.isArray(sessionNumbers)
         ? sessionNumbers.map((n) => Number(n)).filter((n) => Number.isFinite(n))
         : undefined,
-      durationMin: durationMin ? Number(durationMin) : undefined,
+      durationMin: normalizedDuration as 30 | 45 | undefined,
       focus: focus ? String(focus) : undefined,
+      playerLevel: normalizedPlayerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | undefined,
     });
 
     return res.json({

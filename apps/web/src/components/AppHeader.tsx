@@ -89,8 +89,8 @@ export default function AppHeader() {
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  const expanded = !collapsed || hovering;
-  const showLabels = isDesktop ? expanded : true;
+  const expanded = !isDesktop || !collapsed || hovering;
+  const showLabels = expanded;
 
   return (
     <>
@@ -122,8 +122,8 @@ export default function AppHeader() {
       <aside
       onMouseEnter={() => collapsed && setHovering(true)}
       onMouseLeave={() => setHovering(false)}
-      className={`sidebar-root fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/[0.06] bg-[#0a0f1a]/95 backdrop-blur-2xl transition-all duration-300 ease-[cubic-bezier(.4,0,.2,1)] w-72 lg:w-auto ${
-        expanded ? "lg:w-56" : "lg:w-[4.25rem]"
+      className={`sidebar-root fixed inset-y-0 left-0 z-50 flex flex-col border-r border-white/[0.06] bg-[#0a0f1a]/95 backdrop-blur-2xl transition-all duration-300 ease-[cubic-bezier(.4,0,.2,1)] ${
+        expanded ? "w-72 lg:w-56" : "w-[4.25rem]"
       } ${mobileOpen || isDesktop ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
     >
       {/* Logo area */}

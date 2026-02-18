@@ -13,6 +13,8 @@ import DrillDiagramCard from "@/components/DrillDiagramCard";
 import TopicSelect from "@/components/TopicSelect";
 import CoachChat from "@/components/CoachChat";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
+import ThemedConfirmModal from "@/components/ThemedConfirmModal";
+import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
 import type { DiagramV1 } from "@/types/diagram";
@@ -61,6 +63,7 @@ type SessionApiResponse = {
     gameModelId: string;
     phase?: string;
     zone?: string;
+    coachLevel?: string;
     ageGroup?: string;
     durationMin?: number;
     summary?: string;
@@ -139,6 +142,13 @@ type SkillFocus = {
   createdAt?: string;
 };
 
+type PlayerPlanStatus = {
+  id: string;
+  refCode?: string | null;
+  title?: string | null;
+  createdAt?: string;
+};
+
 type SessionConfig = {
   gameModelId: string;
   ageGroup: string;
@@ -175,6 +185,150 @@ const zoneLabel: Record<string, string> = {
   ATTACKING_THIRD: "Attacking third",
 };
 
+const coachLevelLabel: Record<string, string> = {
+  GRASSROOTS: "Grassroots",
+  USSF_C: "USSF C",
+  USSF_B_PLUS: "USSF B+",
+};
+const coachLevelOptions = [
+  { key: "GRASSROOTS", label: "Grassroots" },
+  { key: "USSF_C", label: "USSF C" },
+  { key: "USSF_B_PLUS", label: "USSF B+" },
+] as const;
+
+function normalizeCoachLevel(value?: string): string {
+  const v = String(value || "").toUpperCase();
+  if (v === "USSF_B_PLUS" || v === "USSF B+" || v === "USSF_B") return "USSF_B_PLUS";
+  if (v === "USSF_C" || v === "USSF C") return "USSF_C";
+  if (v === "GRASSROOTS") return "GRASSROOTS";
+  return v;
+}
+
+function getLanguageLevelBadge(coachLevel?: string) {
+  const key = normalizeCoachLevel(coachLevel);
+  if (key === "GRASSROOTS") {
+    return {
+      label: "Language: Grassroots",
+      className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+    };
+  }
+  if (key === "USSF_C") {
+    return {
+      label: "Language: USSF C",
+      className: "border-cyan-500/40 bg-cyan-500/10 text-cyan-300",
+    };
+  }
+  if (key === "USSF_B_PLUS") {
+    return {
+      label: "Language: USSF B+",
+      className: "border-violet-500/40 bg-violet-500/10 text-violet-300",
+    };
+  }
+  return {
+    label: "Language: Standard",
+    className: "border-slate-600/60 bg-slate-800/60 text-slate-300",
+  };
+}
+
+const PHASE_OPTIONS: Phase[] = ["ATTACKING", "DEFENDING", "TRANSITION"];
+const ZONE_OPTIONS: Zone[] = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"];
+const SESSION_DIVERSITY_KEY = "te_session_combo_history_v1";
+const SESSION_DIVERSITY_MAX = 120;
+const SESSION_DIVERSITY_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+
+type SessionComboHistoryEntry = {
+  phase: string;
+  zone: string;
+  topic: string;
+  ts: number;
+};
+
+function readSessionComboHistory(): SessionComboHistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(SESSION_DIVERSITY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => ({
+        phase: String(entry.phase || ""),
+        zone: String(entry.zone || ""),
+        topic: String(entry.topic || ""),
+        ts: Number(entry.ts || 0),
+      }))
+      .filter((entry) => entry.phase && entry.zone && Number.isFinite(entry.ts))
+      .filter((entry) => now - entry.ts <= SESSION_DIVERSITY_WINDOW_MS)
+      .slice(-SESSION_DIVERSITY_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function writeSessionComboHistory(history: SessionComboHistoryEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SESSION_DIVERSITY_KEY, JSON.stringify(history.slice(-SESSION_DIVERSITY_MAX)));
+  } catch {
+    // Ignore localStorage write errors (private mode/quota)
+  }
+}
+
+function recordSessionComboUsage(config: SessionConfig) {
+  if (!config?.phase || !config?.zone) return;
+  const history = readSessionComboHistory();
+  history.push({
+    phase: String(config.phase),
+    zone: String(config.zone),
+    topic: String(config.topic || ""),
+    ts: Date.now(),
+  });
+  writeSessionComboHistory(history);
+}
+
+function getBalancedDefaultCombo(coachLevel: string): { phase: Phase; zone: Zone; topic: string } {
+  const history = readSessionComboHistory();
+  const comboStats = PHASE_OPTIONS.flatMap((phase) =>
+    ZONE_OPTIONS.map((zone) => {
+      const key = `${phase}|${zone}`;
+      const entries = history.filter((h) => `${h.phase}|${h.zone}` === key);
+      const count = entries.length;
+      const lastUsed = entries.length ? Math.max(...entries.map((e) => e.ts)) : -1;
+      return { phase, zone, count, lastUsed };
+    })
+  );
+
+  comboStats.sort((a, b) => {
+    if (a.count !== b.count) return a.count - b.count;
+    return a.lastUsed - b.lastUsed;
+  });
+
+  const chosen = comboStats[0] || { phase: "ATTACKING" as Phase, zone: "ATTACKING_THIRD" as Zone };
+  const topics = getTopicsForPhaseAndZone(chosen.phase, chosen.zone, coachLevel);
+  const topicCounts = new Map<string, number>();
+  for (const h of history) {
+    if (h.phase === chosen.phase && h.zone === chosen.zone && h.topic) {
+      topicCounts.set(h.topic, (topicCounts.get(h.topic) || 0) + 1);
+    }
+  }
+  const topic =
+    topics.length > 0
+      ? topics.slice().sort((a, b) => (topicCounts.get(a) || 0) - (topicCounts.get(b) || 0))[0]
+      : "";
+
+  return { phase: chosen.phase, zone: chosen.zone, topic };
+}
+
+function humanizeSessionText(text?: string | null): string {
+  if (!text) return "";
+  return text
+    .replace(/\bPRESSING\b/g, "Pressing")
+    .replace(/\bATTACKING\b/g, "Attacking")
+    .replace(/\bMIDDLE_THIRD\b/g, "Middle third");
+}
+
 const drillTypeLabel: Record<string, string> = {
   WARMUP: "Warmup",
   TECHNICAL: "Technical",
@@ -209,10 +363,12 @@ function getDefaultFormation(ageGroup: string): string {
 
 function getDefaultConfig(): SessionConfig {
   const ageGroup = "U12";
-  const phase: Phase = "ATTACKING";
-  const zone: Zone = "ATTACKING_THIRD";
   const coachLevel = "GRASSROOTS";
-  const defaultTopic = getRandomTopic(phase, zone, coachLevel);
+  const balanced = getBalancedDefaultCombo(coachLevel);
+  const phase: Phase = balanced.phase;
+  const zone: Zone = balanced.zone;
+  const defaultTopic =
+    balanced.topic || getRandomTopic(phase, zone, coachLevel);
   return {
     gameModelId: "POSSESSION",
     ageGroup,
@@ -220,7 +376,7 @@ function getDefaultConfig(): SessionConfig {
     zone,
     formationAttacking: getDefaultFormation(ageGroup),
     formationDefending: getDefaultFormation(ageGroup),
-    playerLevel: "INTERMEDIATE",
+    playerLevel: "BEGINNER",
     coachLevel: "GRASSROOTS",
     numbersMin: 10,
     numbersMax: 14,
@@ -255,6 +411,10 @@ function getConfigFromSearchParams(
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
   const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
+  const guardedPlayerLevelDefault =
+    coachLevel === "GRASSROOTS" ? "BEGINNER" : defaults.playerLevel;
+  const rawPlayerLevel = parseStringOrDefault(searchParams.get("playerLevel"), guardedPlayerLevelDefault);
+  const playerLevel = coachLevel === "GRASSROOTS" ? "BEGINNER" : rawPlayerLevel;
   
   // Get topic from params, or default to first topic for the phase/zone + coach level combination
   const topicParam = searchParams.get("topic");
@@ -275,7 +435,7 @@ function getConfigFromSearchParams(
       searchParams.get("formationDefending"),
       getDefaultFormation(parseStringOrDefault(searchParams.get("ageGroup"), defaults.ageGroup))
     ),
-    playerLevel: parseStringOrDefault(searchParams.get("playerLevel"), defaults.playerLevel),
+    playerLevel,
     coachLevel: parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel),
     numbersMin: parseNumberOrDefault(searchParams.get("numbersMin"), defaults.numbersMin),
     numbersMax: parseNumberOrDefault(searchParams.get("numbersMax"), defaults.numbersMax),
@@ -288,7 +448,9 @@ function getConfigFromSearchParams(
 
 async function fetchSession(
   config: SessionConfig,
-  skipRecommendation: boolean = false
+  skipRecommendation: boolean = false,
+  signal?: AbortSignal,
+  generationId?: string
 ): Promise<SessionApiResponse> {
   const perfStart = Date.now();
   
@@ -301,6 +463,7 @@ async function fetchSession(
   const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...(getUserHeaders() as Record<string, string>),
   };
   if (accessToken) {
     headers["Authorization"] = `Bearer ${accessToken}`;
@@ -309,8 +472,12 @@ async function fetchSession(
   const res = await fetch(url, {
     method: "POST",
     headers,
+    signal,
     cache: "no-store",
-    body: JSON.stringify(config),
+    body: JSON.stringify({
+      ...config,
+      ...(generationId ? { generationId } : {}),
+    }),
   });
 
   const apiTime = Date.now() - apiStart;
@@ -367,7 +534,8 @@ async function fetchSession(
 async function fetchProgressiveSeries(
   config: SessionConfig,
   numberOfSessions: number,
-  skipRecommendation: boolean = false
+  skipRecommendation: boolean = false,
+  signal?: AbortSignal
 ): Promise<ProgressiveSeriesApiResponse> {
   const perfStart = Date.now();
   
@@ -377,14 +545,19 @@ async function fetchProgressiveSeries(
   // Use Next.js API route to avoid CORS issues
   const url = `/api/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
   
+  const seriesAccessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const seriesHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(getUserHeaders() as Record<string, string>),
+  };
+  if (seriesAccessToken) {
+    seriesHeaders["Authorization"] = `Bearer ${seriesAccessToken}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(typeof window !== "undefined" && localStorage.getItem("accessToken")
-        ? { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
-        : {}),
-    },
+    headers: seriesHeaders,
+    signal,
     body: JSON.stringify({
       baseInput: config,
       numberOfSessions,
@@ -524,6 +697,26 @@ async function generateSkillFocusForSeries(input: { seriesId?: string; sessionId
   return data.focus;
 }
 
+async function fetchPlayerPlanForSessionId(sessionId: string): Promise<PlayerPlanStatus | null> {
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  if (!accessToken) return null;
+
+  const res = await fetch(`/api/player-plans/by-source/SESSION/${encodeURIComponent(sessionId)}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data?.ok || !data?.exists || !data?.plan?.id) return null;
+  return {
+    id: data.plan.id,
+    refCode: data.plan.refCode || null,
+    title: data.plan.title || null,
+    createdAt: data.plan.createdAt,
+  };
+}
+
 function SessionDemoPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -559,6 +752,14 @@ function SessionDemoPageContent() {
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
   const [generatingSeriesSkillFocus, setGeneratingSeriesSkillFocus] = useState(false);
+  const [sessionPlayerPlan, setSessionPlayerPlan] = useState<PlayerPlanStatus | null>(null);
+  const [checkingPlayerPlan, setCheckingPlayerPlan] = useState(false);
+  const [coachLevelSessionCache, setCoachLevelSessionCache] = useState<Record<string, SessionApiResponse>>({});
+  const [regeneratingCoachLevel, setRegeneratingCoachLevel] = useState<string | null>(null);
+  const [confirmCoachLevelModal, setConfirmCoachLevelModal] = useState<{ open: boolean; level: string | null }>({
+    open: false,
+    level: null,
+  });
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
@@ -568,11 +769,72 @@ function SessionDemoPageContent() {
     sessionRefCode?: string | null;
     durationMin?: number;
   } | null>(null);
+  const [createPlayerPlanModal, setCreatePlayerPlanModal] = useState<{
+    sourceType: "SESSION";
+    sourceId: string;
+    sourceRefCode?: string | null;
+  } | null>(null);
+  const generationAbortRef = useRef<AbortController | null>(null);
+  const generationIdRef = useRef<string | null>(null);
 
   const config = getConfigFromSearchParams(searchParams);
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  const isAbortError = (err: any) => {
+    const message = String(err?.message || "").toLowerCase();
+    return err?.name === "AbortError" || message.includes("aborted");
+  };
+
+  const startGenerationAbortController = () => {
+    if (generationAbortRef.current) {
+      generationAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    generationAbortRef.current = controller;
+    return controller;
+  };
+
+  const clearGenerationAbortController = (controller?: AbortController) => {
+    if (!controller || generationAbortRef.current === controller) {
+      generationAbortRef.current = null;
+    }
+  };
+
+  const createGenerationId = () =>
+    `gen_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const cancelGenerationOnServer = async () => {
+    const generationId = generationIdRef.current;
+    if (!generationId) return;
+    try {
+      await fetch("/api/cancel-generation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(getUserHeaders() as Record<string, string>),
+          ...(typeof window !== "undefined" && localStorage.getItem("accessToken")
+            ? { Authorization: `Bearer ${localStorage.getItem("accessToken")}` }
+            : {}),
+        },
+        body: JSON.stringify({ generationId }),
+      });
+    } catch {
+      // Best-effort cancellation
+    }
+  };
+
+  const cancelGeneration = () => {
+    if (generationAbortRef.current) {
+      generationAbortRef.current.abort();
+      generationAbortRef.current = null;
+    }
+    void cancelGenerationOnServer();
+    setLoading(false);
+    setProgressInfo(null);
+    setRegeneratingCoachLevel(null);
+  };
 
   useEffect(() => {
     // Fetch user features
@@ -583,8 +845,8 @@ function SessionDemoPageContent() {
     if (!diagram) return true;
     const arrows = Array.isArray(diagram.arrows) ? diagram.arrows.length : 0;
     const annotations = Array.isArray(diagram.annotations) ? diagram.annotations.length : 0;
-    const safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones.length : 0;
-    return arrows === 0 || annotations === 0 || safeZones === 0;
+    // safeZones can intentionally be empty for simplified grassroots diagrams.
+    return arrows === 0 || annotations === 0;
   };
 
   useEffect(() => {
@@ -593,6 +855,7 @@ function SessionDemoPageContent() {
     drills.forEach((drill: any) => {
       const refCode = drill.refCode;
       if (!refCode) return;
+      if (data?.session?.coachLevel === "GRASSROOTS") return;
       if (diagramOverrides[refCode]) return;
       if (diagramFetchInFlight.current.has(refCode)) return;
       const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
@@ -623,6 +886,14 @@ function SessionDemoPageContent() {
         });
     });
   }, [data, diagramOverrides]);
+
+  useEffect(() => {
+    return () => {
+      if (generationAbortRef.current) {
+        generationAbortRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const sessionId = searchParams.get("sessionId");
@@ -845,12 +1116,15 @@ function SessionDemoPageContent() {
       
       setLoading(true);
       
-      // If autoGenerate is true (from chat), skip recommendations
-      const skipRecommendation = autoGenerate;
+      // Always skip recommendation gating for direct generation from this page.
+      // User can still discover existing sessions in Vault manually.
+      const skipRecommendation = true;
       
       if (isSeries) {
+        const controller = startGenerationAbortController();
+        generationIdRef.current = createGenerationId();
         const generationStartTime = Date.now();
-        fetchProgressiveSeries(config, numberOfSessions, skipRecommendation)
+        fetchProgressiveSeries(config, numberOfSessions, skipRecommendation, controller.signal)
           .then((result) => {
             console.log("[SESSION_PAGE] Progressive series result:", {
               ok: result.ok,
@@ -874,6 +1148,7 @@ function SessionDemoPageContent() {
               setSeriesData(result);
               setData(null);
               setSelectedSeriesTab(0);
+              recordSessionComboUsage(config);
               setShowRecommendations(false);
               setRecommendations([]);
               // Series is auto-saved to vault now
@@ -884,6 +1159,9 @@ function SessionDemoPageContent() {
             }
           })
           .catch((e) => {
+            if (isAbortError(e)) {
+              return;
+            }
             console.error("[SESSION_PAGE] Progressive series error:", e);
             const errorMsg = e?.message || String(e);
             // If it's a timeout/connection error, start polling for the series
@@ -907,12 +1185,17 @@ function SessionDemoPageContent() {
             setRecommendations([]);
           })
           .finally(() => {
+            clearGenerationAbortController(controller);
+            generationIdRef.current = null;
             setLoading(false);
             setProgressInfo(null);
           });
       } else {
+        const controller = startGenerationAbortController();
+        const generationId = createGenerationId();
+        generationIdRef.current = generationId;
         setProgressInfo({ isSeries: false });
-        fetchSession(config, skipRecommendation)
+        fetchSession(config, skipRecommendation, controller.signal, generationId)
           .then((result) => {
             // Check if we got recommendations (only if not auto-generating)
             if (!autoGenerate && result.hasRecommendations && result.recommendations) {
@@ -923,18 +1206,24 @@ function SessionDemoPageContent() {
             } else {
               setData(result);
               setSkillFocus(result.session?.skillFocus || null);
+              recordSessionComboUsage(config);
               setSeriesData(null);
               setShowRecommendations(false);
               setRecommendations([]);
             }
           })
           .catch((e) => {
+            if (isAbortError(e)) {
+              return;
+            }
             setError(e?.message || String(e));
             setData(null);
             setSeriesData(null);
             setShowRecommendations(false);
           })
           .finally(() => {
+            clearGenerationAbortController(controller);
+            generationIdRef.current = null;
             setLoading(false);
             setProgressInfo(null);
           });
@@ -1128,6 +1417,34 @@ function SessionDemoPageContent() {
     }
   }, [resolvedSessionId]);
 
+  useEffect(() => {
+    if (!userFeatures?.canCreatePlayerPlans) {
+      setSessionPlayerPlan(null);
+      return;
+    }
+    if (!resolvedSessionId) {
+      setSessionPlayerPlan(null);
+      return;
+    }
+
+    let mounted = true;
+    setCheckingPlayerPlan(true);
+    fetchPlayerPlanForSessionId(resolvedSessionId)
+      .then((plan) => {
+        if (mounted) setSessionPlayerPlan(plan);
+      })
+      .catch(() => {
+        if (mounted) setSessionPlayerPlan(null);
+      })
+      .finally(() => {
+        if (mounted) setCheckingPlayerPlan(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedSessionId, userFeatures?.canCreatePlayerPlans]);
+
   async function checkFavoriteStatus(sessionId: string) {
     try {
       const res = await fetch("/api/favorites", {
@@ -1171,6 +1488,126 @@ function SessionDemoPageContent() {
   const zoneText = session?.zone
     ? zoneLabel[session.zone] ?? session.zone.toLowerCase().replace(/_/g, " ")
     : "N/A";
+  const coachLevelText = session?.coachLevel
+    ? coachLevelLabel[session.coachLevel] ?? session.coachLevel
+    : config?.coachLevel
+    ? coachLevelLabel[config.coachLevel] ?? config.coachLevel
+    : "N/A";
+  const currentCoachLevelKey = normalizeCoachLevel(session?.coachLevel || config?.coachLevel);
+  const languageLevelBadge = getLanguageLevelBadge(currentCoachLevelKey);
+
+  const buildRegenerateConfigForLevel = (targetCoachLevel: string): SessionConfig => ({
+    ...config,
+    gameModelId: session?.gameModelId || config.gameModelId,
+    ageGroup: session?.ageGroup || config.ageGroup,
+    phase: session?.phase || config.phase,
+    zone: session?.zone || config.zone,
+    durationMin: session?.durationMin || config.durationMin,
+    coachLevel: normalizeCoachLevel(targetCoachLevel),
+  });
+
+  const getCoachVariantBaseKey = (cfg: SessionConfig): string =>
+    JSON.stringify({
+      gameModelId: cfg.gameModelId,
+      ageGroup: cfg.ageGroup,
+      phase: cfg.phase,
+      zone: cfg.zone,
+      topic: cfg.topic,
+      formationAttacking: cfg.formationAttacking,
+      formationDefending: cfg.formationDefending,
+      playerLevel: cfg.playerLevel,
+      numbersMin: cfg.numbersMin,
+      numbersMax: cfg.numbersMax,
+      goalsAvailable: cfg.goalsAvailable,
+      spaceConstraint: cfg.spaceConstraint,
+      durationMin: cfg.durationMin,
+    });
+
+  const getCoachVariantCacheKey = (cfg: SessionConfig, coachLevel: string): string =>
+    `${getCoachVariantBaseKey(cfg)}|${normalizeCoachLevel(coachLevel)}`;
+
+  const getAvailableCoachLevelKeys = (): string[] => {
+    const allLevels = coachLevelOptions.map((o) => o.key);
+    const baseConfig = buildRegenerateConfigForLevel(currentCoachLevelKey || config.coachLevel);
+    return allLevels.filter((level) =>
+      Boolean(coachLevelSessionCache[getCoachVariantCacheKey(baseConfig, level)])
+    );
+  };
+
+  useEffect(() => {
+    if (!data?.session) return;
+    const level = normalizeCoachLevel(data.session.coachLevel || config.coachLevel);
+    if (!level) return;
+    const cfg = buildRegenerateConfigForLevel(level);
+    const cacheKey = getCoachVariantCacheKey(cfg, level);
+    setCoachLevelSessionCache((prev) => (prev[cacheKey] ? prev : { ...prev, [cacheKey]: data }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.session?.id]);
+
+  const runCoachLevelRegeneration = async (nextLevel: string) => {
+    const regenerateConfig = buildRegenerateConfigForLevel(nextLevel);
+    const cacheKey = getCoachVariantCacheKey(regenerateConfig, nextLevel);
+
+    try {
+      const controller = startGenerationAbortController();
+      const generationId = createGenerationId();
+      generationIdRef.current = generationId;
+      setRegeneratingCoachLevel(nextLevel);
+      setLoading(true);
+      setProgressInfo({ isSeries: false });
+      setError(null);
+      setShowRecommendations(false);
+      setRecommendations([]);
+
+      const result = await fetchSession(regenerateConfig, true, controller.signal, generationId);
+      const nextVariant: SessionApiResponse = {
+        ...result,
+        session: {
+          ...result.session,
+          coachLevel: result.session?.coachLevel || nextLevel,
+        },
+      };
+      setData(nextVariant);
+      setCoachLevelSessionCache((prev) => ({ ...prev, [cacheKey]: nextVariant }));
+      setSeriesData(null);
+      setSessionMode("single");
+      setSkillFocus(result.session?.skillFocus || null);
+      recordSessionComboUsage(regenerateConfig);
+    } catch (e: any) {
+      if (isAbortError(e)) {
+        return;
+      }
+      setError(e?.message || String(e));
+      setData(null);
+      setSeriesData(null);
+    } finally {
+      clearGenerationAbortController();
+      generationIdRef.current = null;
+      setRegeneratingCoachLevel(null);
+      setLoading(false);
+      setProgressInfo(null);
+    }
+  };
+
+  const regenerateForCoachLevel = async (nextCoachLevel: string) => {
+    if (loading) return;
+
+    const nextLevel = normalizeCoachLevel(nextCoachLevel);
+    if (!nextLevel || nextLevel === currentCoachLevelKey) return;
+
+    const regenerateConfig = buildRegenerateConfigForLevel(nextLevel);
+    const cacheKey = getCoachVariantCacheKey(regenerateConfig, nextLevel);
+    const cachedVariant = coachLevelSessionCache[cacheKey];
+    if (cachedVariant?.session) {
+      setData(cachedVariant);
+      setSeriesData(null);
+      setSessionMode("single");
+      setSkillFocus(cachedVariant.session?.skillFocus || null);
+      return;
+    }
+
+    setConfirmCoachLevelModal({ open: true, level: nextLevel });
+  };
 
   // Show/hide series count input based on mode
   useEffect(() => {
@@ -1226,8 +1663,26 @@ function SessionDemoPageContent() {
           isSeries={progressInfo?.isSeries || false}
           totalSessions={progressInfo?.totalSessions}
           currentSession={progressInfo?.currentSession}
+          onCancel={cancelGeneration}
         />
       )}
+      <ThemedConfirmModal
+        open={confirmCoachLevelModal.open}
+        title="Generate Coach-Level Version"
+        message={`Generate a new ${
+          coachLevelLabel[confirmCoachLevelModal.level || ""] || confirmCoachLevelModal.level || "coach-level"
+        } version for this session context?`}
+        confirmLabel="Generate"
+        cancelLabel="Cancel"
+        onCancel={() => setConfirmCoachLevelModal({ open: false, level: null })}
+        onConfirm={() => {
+          const level = confirmCoachLevelModal.level;
+          setConfirmCoachLevelModal({ open: false, level: null });
+          if (level) {
+            void runCoachLevelRegeneration(level);
+          }
+        }}
+      />
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <header className="space-y-1">
@@ -1270,224 +1725,217 @@ function SessionDemoPageContent() {
           <SessionForm>
             <SessionFormWithLoading>
               <div className="space-y-5 text-[11px] sm:text-xs text-slate-200">
-                {/* Row 1: 6 fields */}
-                <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-                  {/* Game model */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Game model
-                    </label>
-                    <select
-                      name="gameModelId"
-                      defaultValue={config.gameModelId}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="POSSESSION">Possession</option>
-                      <option value="PRESSING">Pressing</option>
-                      <option value="TRANSITION">Transition</option>
-                      <option value="COACHAI">Balanced (CoachAI)</option>
-                    </select>
+                <div className="space-y-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+                    Core Generation Settings
                   </div>
+                  <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9">
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Game model
+                      </label>
+                      <select
+                        name="gameModelId"
+                        defaultValue={config.gameModelId}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="POSSESSION">Possession</option>
+                        <option value="PRESSING">Pressing</option>
+                        <option value="TRANSITION">Transition</option>
+                        <option value="COACHAI">Balanced (CoachAI)</option>
+                      </select>
+                    </div>
 
-                  {/* Phase */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Phase
-                    </label>
-                    <select
-                      name="phase"
-                    id="phase"
-                      defaultValue={config.phase}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="ATTACKING">Attacking</option>
-                      <option value="DEFENDING">Defending</option>
-                      <option value="TRANSITION">Transition</option>
-                    </select>
-                  </div>
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Phase
+                      </label>
+                      <select
+                        name="phase"
+                        id="phase"
+                        defaultValue={config.phase}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="ATTACKING">Attacking</option>
+                        <option value="DEFENDING">Defending</option>
+                        <option value="TRANSITION">Transition</option>
+                      </select>
+                    </div>
 
-                  {/* Zone */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Where (zone)
-                    </label>
-                    <select
-                      name="zone"
-                    id="zone"
-                      defaultValue={config.zone}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="DEFENSIVE_THIRD">Defensive third</option>
-                      <option value="MIDDLE_THIRD">Middle third</option>
-                      <option value="ATTACKING_THIRD">Attacking third</option>
-                    </select>
-                  </div>
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Where (zone)
+                      </label>
+                      <select
+                        name="zone"
+                        id="zone"
+                        defaultValue={config.zone}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="DEFENSIVE_THIRD">Defensive third</option>
+                        <option value="MIDDLE_THIRD">Middle third</option>
+                        <option value="ATTACKING_THIRD">Attacking third</option>
+                      </select>
+                    </div>
 
-                  {/* Topic */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Topic
-                    </label>
-                    <TopicSelect
-                      key={`${config.phase}-${config.zone}-${config.coachLevel}`}
-                      phase={config.phase as Phase}
-                      zone={config.zone as Zone}
-                      coachLevel={config.coachLevel}
-                      defaultValue={config.topic}
-                      name="topic"
-                      id="topic"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    />
-                  </div>
+                    <div className="space-y-1 xl:col-span-2">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Topic
+                      </label>
+                      <TopicSelect
+                        key={`${config.phase}-${config.zone}-${config.coachLevel}`}
+                        phase={config.phase as Phase}
+                        zone={config.zone as Zone}
+                        coachLevel={config.coachLevel}
+                        defaultValue={config.topic}
+                        name="topic"
+                        id="topic"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      />
+                    </div>
 
-                  {/* Age group */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Age group
-                    </label>
-                    <select
-                      name="ageGroup"
-                      id="ageGroup"
-                      defaultValue={config.ageGroup}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="U8">U8</option>
-                      <option value="U9">U9</option>
-                      <option value="U10">U10</option>
-                      <option value="U11">U11</option>
-                      <option value="U12">U12</option>
-                      <option value="U13">U13</option>
-                      <option value="U14">U14</option>
-                      <option value="U15">U15</option>
-                      <option value="U16">U16</option>
-                      <option value="U17">U17</option>
-                      <option value="U18">U18</option>
-                    </select>
-                  </div>
+                    <div className="space-y-1 xl:max-w-[110px]">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Age group
+                      </label>
+                      <select
+                        name="ageGroup"
+                        id="ageGroup"
+                        defaultValue={config.ageGroup}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="U8">U8</option>
+                        <option value="U9">U9</option>
+                        <option value="U10">U10</option>
+                        <option value="U11">U11</option>
+                        <option value="U12">U12</option>
+                        <option value="U13">U13</option>
+                        <option value="U14">U14</option>
+                        <option value="U15">U15</option>
+                        <option value="U16">U16</option>
+                        <option value="U17">U17</option>
+                        <option value="U18">U18</option>
+                      </select>
+                    </div>
 
-                  {/* Session Duration */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Duration
-                    </label>
-                    <select
-                      name="durationMin"
-                      defaultValue={config.durationMin}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value={60}>60 minutes</option>
-                      <option value={90}>90 minutes</option>
-                    </select>
-                  </div>
-                </div>
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Duration
+                      </label>
+                      <select
+                        name="durationMin"
+                        defaultValue={config.durationMin}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value={60}>60 minutes</option>
+                        <option value={90}>90 minutes</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Coach Level
+                      </label>
+                      <select
+                        name="coachLevel"
+                        id="coachLevel"
+                        defaultValue={config.coachLevel}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="GRASSROOTS">Grassroots</option>
+                        <option value="USSF_C">USSF C</option>
+                        <option value="USSF_B_PLUS">USSF B+</option>
+                      </select>
+                    </div>
 
-                {/* Row 2: 5 fields */}
-                <div className="grid gap-4 sm:grid-cols-5">
-                  {/* Attacking Formation */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Attacking Formation
-                    </label>
-                    <FormationSelect
-                      ageGroup={config.ageGroup}
-                      defaultValue={config.formationAttacking}
-                      name="formationAttacking"
-                      id="formationAttacking"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    />
-                  </div>
-
-                  {/* Defending Formation */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Defending Formation
-                    </label>
-                    <FormationSelect
-                      ageGroup={config.ageGroup}
-                      defaultValue={config.formationDefending}
-                      name="formationDefending"
-                      id="formationDefending"
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    />
-                  </div>
-
-                  {/* Player Level */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Player Level
-                    </label>
-                    <select
-                      name="playerLevel"
-                      defaultValue={config.playerLevel}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="BEGINNER">Beginner</option>
-                      <option value="INTERMEDIATE">Intermediate</option>
-                      <option value="ADVANCED">Advanced</option>
-                    </select>
-                  </div>
-
-                  {/* Coach Level */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Coach Level
-                    </label>
-                    <select
-                      name="coachLevel"
-                      id="coachLevel"
-                      defaultValue={config.coachLevel}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="GRASSROOTS">Grassroots</option>
-                      <option value="USSF_C">USSF C</option>
-                      <option value="USSF_B_PLUS">USSF B+</option>
-                    </select>
-                  </div>
-
-                  {/* Space constraint */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Space constraint
-                    </label>
-                    <select
-                      name="spaceConstraint"
-                      defaultValue={config.spaceConstraint}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    >
-                      <option value="FULL">Full pitch</option>
-                      <option value="HALF">Half pitch</option>
-                      <option value="THIRD">Third</option>
-                      <option value="QUARTER">Quarter</option>
-                    </select>
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-400">
+                        Player Level
+                      </label>
+                      <select
+                        name="playerLevel"
+                        id="playerLevel"
+                        defaultValue={config.playerLevel}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
+                      >
+                        <option value="BEGINNER">Beginner</option>
+                        <option value="INTERMEDIATE">Intermediate</option>
+                        <option value="ADVANCED">Advanced</option>
+                      </select>
+                      <p id="playerLevelGuardrailHint" className="min-h-[14px] text-[10px] text-amber-300" />
+                    </div>
                   </div>
                 </div>
 
-                {/* Row 3: 3 fields */}
-                <div className="grid gap-4 sm:grid-cols-5">
-                  {/* Goals available */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Goals available
-                    </label>
-                    <input
-                      type="number"
-                      name="goalsAvailable"
-                      defaultValue={config.goalsAvailable}
-                      min={0}
-                      max={4}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                    />
+                <div className="rounded-xl border border-slate-800/80 bg-slate-950/40 p-4 space-y-3 text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Optional Fine-Tuning (Lower Weight)
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-500">
+                        Attacking Formation
+                      </label>
+                      <FormationSelect
+                        ageGroup={config.ageGroup}
+                        defaultValue={config.formationAttacking}
+                        name="formationAttacking"
+                        id="formationAttacking"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1.5 text-[11px] text-slate-300"
+                      />
+                    </div>
 
-                  {/* Numbers min/max */}
-                  <div className="space-y-1">
-                    <label className="block uppercase tracking-wide text-[10px] text-slate-400">
-                      Players (min–max)
-                    </label>
-                    <PlayerCountInputs
-                      minDefault={config.numbersMin}
-                      maxDefault={config.numbersMax}
-                    />
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-500">
+                        Defending Formation
+                      </label>
+                      <FormationSelect
+                        ageGroup={config.ageGroup}
+                        defaultValue={config.formationDefending}
+                        name="formationDefending"
+                        id="formationDefending"
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1.5 text-[11px] text-slate-300"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-500">
+                        Space constraint
+                      </label>
+                      <select
+                        name="spaceConstraint"
+                        defaultValue={config.spaceConstraint}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1.5 text-[11px] text-slate-300"
+                      >
+                        <option value="FULL">Full pitch</option>
+                        <option value="HALF">Half pitch</option>
+                        <option value="THIRD">Third</option>
+                        <option value="QUARTER">Quarter</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-500">
+                        Goals available
+                      </label>
+                      <input
+                        type="number"
+                        name="goalsAvailable"
+                        defaultValue={config.goalsAvailable}
+                        min={0}
+                        max={4}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-2 py-1.5 text-[11px] text-slate-300"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block uppercase tracking-wide text-[10px] text-slate-500">
+                        Players (min-max)
+                      </label>
+                      <PlayerCountInputs
+                        minDefault={config.numbersMin}
+                        maxDefault={config.numbersMax}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1522,7 +1970,11 @@ function SessionDemoPageContent() {
                   </div>
                   
                   {/* Number of Sessions (shown when series is selected) */}
-                  <div className="space-y-1" id="seriesCountContainer" style={{ display: hasParams && searchParams.get("series") === "true" ? "block" : "none" }}>
+                  <div
+                    className="space-y-1 w-full sm:max-w-[180px]"
+                    id="seriesCountContainer"
+                    style={{ display: hasParams && searchParams.get("series") === "true" ? "block" : "none" }}
+                  >
                     <label className="block uppercase tracking-wide text-[10px] text-slate-400">
                       Number of Sessions
                     </label>
@@ -1594,7 +2046,9 @@ function SessionDemoPageContent() {
                   if (isSeries) {
                     // Generate progressive series with skipRecommendation
                     setProgressInfo({ isSeries: true, totalSessions: numberOfSessions, currentSession: 1 });
-                    fetchProgressiveSeries(config, numberOfSessions, true)
+                    const controller = startGenerationAbortController();
+                    generationIdRef.current = createGenerationId();
+                    fetchProgressiveSeries(config, numberOfSessions, true, controller.signal)
                       .then((result) => {
                         if (result.series && Array.isArray(result.series) && result.series.length > 0) {
                           setSeriesData(result);
@@ -1607,27 +2061,40 @@ function SessionDemoPageContent() {
                         }
                       })
                       .catch((e) => {
+                        if (isAbortError(e)) {
+                          return;
+                        }
                         setError(e?.message || String(e));
                         setSeriesData(null);
                         setData(null);
                       })
                       .finally(() => {
+                        clearGenerationAbortController(controller);
+                        generationIdRef.current = null;
                         setLoading(false);
                         setProgressInfo(null);
                       });
                   } else {
                     // Generate single session with skipRecommendation
                     setProgressInfo({ isSeries: false });
-                    fetchSession(config, true)
+                    const controller = startGenerationAbortController();
+                    const generationId = createGenerationId();
+                    generationIdRef.current = generationId;
+                    fetchSession(config, true, controller.signal, generationId)
                       .then((result) => {
                         setData(result);
                         setSeriesData(null);
                       })
                       .catch((e) => {
+                        if (isAbortError(e)) {
+                          return;
+                        }
                         setError(e?.message || String(e));
                         setData(null);
                       })
                       .finally(() => {
+                        clearGenerationAbortController(controller);
+                        generationIdRef.current = null;
                         setLoading(false);
                         setProgressInfo(null);
                       });
@@ -1766,7 +2233,7 @@ function SessionDemoPageContent() {
                         {session.title}
                       </h4>
                       <p className="text-xs text-emerald-300/70 mt-2">
-                        {session.ageGroup} • {session.phase} • {session.durationMin} min
+                        {session.ageGroup} • {(phaseLabel[session.phase] ?? String(session.phase).toLowerCase().replace(/_/g, " "))} • {session.durationMin} min
                       </p>
                       <Link
                         href={`/demo/session?sessionId=${session.id}`}
@@ -1930,7 +2397,7 @@ function SessionDemoPageContent() {
                       const focus = await generateSkillFocusForSeries({ sessionIds });
                       setSeriesSkillFocus(focus);
                     } catch (e: any) {
-                      alert("Error generating series skill focus: " + e.message);
+                      alert("Error generating series coaching emphasis: " + e.message);
                     } finally {
                       setGeneratingSeriesSkillFocus(false);
                     }
@@ -1945,8 +2412,8 @@ function SessionDemoPageContent() {
                   {generatingSeriesSkillFocus
                     ? "⚡ Generating Focus..."
                     : seriesSkillFocus
-                    ? "✓ Series Skill Focus"
-                    : "🎯 Series Skill Focus"}
+                    ? "✓ Series Coaching Emphasis"
+                    : "🎯 Series Coaching Emphasis"}
                 </button>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-sm font-medium">
                   <span>✓</span>
@@ -1964,7 +2431,7 @@ function SessionDemoPageContent() {
             })()}
             {seriesSkillFocus && (
               <div className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                <div className="text-xs text-emerald-300 uppercase tracking-widest">Series Skill Focus</div>
+                <div className="text-xs text-emerald-300 uppercase tracking-widest">Series Coaching Emphasis</div>
                 <h3 className="mt-2 text-sm font-semibold text-emerald-100">{seriesSkillFocus.title}</h3>
                 {seriesSkillFocus.summary && (
                   <p className="mt-2 text-sm text-emerald-100/80">{seriesSkillFocus.summary}</p>
@@ -2073,6 +2540,16 @@ function SessionDemoPageContent() {
                       {seriesItem.refCode || seriesItem.session?.refCode}
                     </span>
                   )}
+                  {(() => {
+                    const badge = getLanguageLevelBadge(seriesItem.session?.coachLevel || config.coachLevel);
+                    return (
+                      <span
+                        className={`ml-2 inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}
+                      >
+                        {badge.label.replace("Language: ", "")}
+                      </span>
+                    );
+                  })()}
                   {seriesItem.qaScore && (
                     <span className="ml-2 text-xs opacity-60">
                       QA: {seriesItem.qaScore.toFixed(1)}
@@ -2094,75 +2571,144 @@ function SessionDemoPageContent() {
           <>
             {/* Session Overview */}
             <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 px-6 py-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-lg font-semibold">{session.title}</h2>
-                  {session.refCode && (
-                    <button
-                      onClick={() => navigator.clipboard.writeText(session.refCode!)}
-                      className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
-                      title="Click to copy reference code"
-                    >
-                      {session.refCode}
-                    </button>
-                  )}
-                  {session.creator && (
-                    <div className="text-xs text-slate-400 mt-2">
-                      Created by: <span className="text-slate-300">{session.creator.name || session.creator.email || 'Unknown'}</span>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-semibold leading-tight">{session.title}</h2>
+                      {session.refCode && (
+                        <button
+                          onClick={() => navigator.clipboard.writeText(session.refCode!)}
+                          className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                          title="Click to copy reference code"
+                        >
+                          {session.refCode}
+                        </button>
+                      )}
+                      <span
+                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${languageLevelBadge.className}`}
+                      >
+                        {languageLevelBadge.label}
+                      </span>
                     </div>
-                  )}
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-xs font-medium">
-                    <span>✓</span>
-                    <span>In Vault</span>
-                  </span>
-                  <button
-                    onClick={toggleFavorite}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      isFavorited
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
-                        : "bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-emerald-500/10 hover:text-emerald-400"
-                    }`}
-                    title={isFavorited ? "Remove from favorites" : "Add to favorites"}
-                  >
-                    <span className="text-xs font-bold">■</span>
-                    <span>{isFavorited ? "Favorited" : "Favorite"}</span>
-                  </button>
+                    {session.creator && (
+                      <div className="text-xs text-slate-400">
+                        Created by: <span className="text-slate-300">{session.creator.name || session.creator.email || "Unknown"}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-xs font-medium">
+                      <span>✓</span>
+                      <span>In Vault</span>
+                    </span>
+                    <button
+                      onClick={toggleFavorite}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                        isFavorited
+                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50"
+                          : "bg-slate-700/50 text-slate-400 border border-slate-600/50 hover:bg-emerald-500/10 hover:text-emerald-400"
+                      }`}
+                      title={isFavorited ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <span className="text-xs font-bold">■</span>
+                      <span>{isFavorited ? "Favorited" : "Favorite"}</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-4 text-sm text-slate-300">
-                  <div>
+
+                <div className="flex flex-wrap gap-2 text-xs sm:text-sm">
+                  <div className="rounded-full border border-slate-700/70 bg-slate-800/60 px-3 py-1 text-slate-300">
                     <span className="text-slate-400">Game Model: </span>
                     <span className="font-semibold">{gmText}</span>
                   </div>
                   {session.phase && (
-                    <div>
+                    <div className="rounded-full border border-slate-700/70 bg-slate-800/60 px-3 py-1 text-slate-300">
                       <span className="text-slate-400">Phase: </span>
                       <span className="font-semibold">{phaseText}</span>
                     </div>
                   )}
                   {session.zone && (
-                    <div>
+                    <div className="rounded-full border border-slate-700/70 bg-slate-800/60 px-3 py-1 text-slate-300">
                       <span className="text-slate-400">Zone: </span>
                       <span className="font-semibold">{zoneText}</span>
                     </div>
                   )}
-                  <div>
+                  <div className="rounded-full border border-slate-700/70 bg-slate-800/60 px-3 py-1 text-slate-300">
+                    <span className="text-slate-400">Coach Level: </span>
+                    <span className="font-semibold">{coachLevelText}</span>
+                  </div>
+                  <div className="rounded-full border border-slate-700/70 bg-slate-800/60 px-3 py-1 text-slate-300">
                     <span className="text-slate-400">Duration: </span>
                     <span className="font-semibold">{session.durationMin} min</span>
                   </div>
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] uppercase tracking-wide text-slate-400">Regenerate as</span>
+                  <span className="text-[11px] text-slate-500">
+                    Available:{" "}
+                    {(() => {
+                      const available = getAvailableCoachLevelKeys();
+                      if (available.length === 0) return "current only";
+                      return available
+                        .map((key) => coachLevelLabel[key] || key)
+                        .join(", ");
+                    })()}
+                  </span>
+                  {coachLevelOptions.map((option) => {
+                    const isActive = currentCoachLevelKey === option.key;
+                    const isBusy =
+                      loading ||
+                      !!regeneratingCoachLevel ||
+                      generatingSkillFocus ||
+                      sessionMode === "series";
+                    const optionConfig = buildRegenerateConfigForLevel(option.key);
+                    const hasSavedVariant = Boolean(
+                      coachLevelSessionCache[getCoachVariantCacheKey(optionConfig, option.key)]
+                    );
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        onClick={() => regenerateForCoachLevel(option.key)}
+                        disabled={isActive || isBusy}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed ${
+                          isActive
+                            ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                            : "border border-slate-700/80 bg-slate-800/60 text-slate-300 hover:bg-slate-700/70"
+                        } ${isBusy && !isActive ? "opacity-60" : ""}`}
+                        title={
+                          sessionMode === "series"
+                            ? "Open a single session to regenerate by coach level."
+                            : hasSavedVariant
+                            ? `Open existing ${option.label} version`
+                            : `Generate a new ${option.label} version`
+                        }
+                      >
+                        {regeneratingCoachLevel === option.key
+                          ? "Generating..."
+                          : hasSavedVariant && !isActive
+                          ? `● ${option.label}`
+                          : option.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {session.summary && (
-                <p className="text-sm text-slate-300 leading-relaxed">{session.summary}</p>
+                <p className="text-sm text-slate-300 leading-relaxed">{humanizeSessionText(session.summary)}</p>
               )}
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-1 border-t border-slate-700/60">
                 <Link
                   href="/vault"
-                  className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
+                  className="inline-flex h-9 items-center rounded-full border border-slate-600/60 bg-slate-800/55 px-3.5 text-[13px] font-medium text-slate-200 hover:bg-slate-700/60 transition-colors"
                 >
-                  📂 View in Vault
+                  View in Vault
                 </Link>
                 {resolvedSessionId && session && (
                   <button
@@ -2175,9 +2721,9 @@ function SessionDemoPageContent() {
                         durationMin: session.durationMin ?? 90,
                       })
                     }
-                    className="inline-flex items-center rounded-full border border-slate-600/50 bg-slate-800/50 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-700/50 transition-all"
+                    className="inline-flex h-9 items-center rounded-full border border-slate-600/60 bg-slate-800/55 px-3.5 text-[13px] font-medium text-slate-200 hover:bg-slate-700/60 transition-colors"
                   >
-                    📅 Add to Calendar
+                    Add to Calendar
                   </button>
                 )}
                 <button
@@ -2191,24 +2737,52 @@ function SessionDemoPageContent() {
                       const focus = await generateSkillFocusForSessionId(resolvedSessionId);
                       setSkillFocus(focus);
                     } catch (e: any) {
-                      alert("Error generating skill focus: " + e.message);
+                      alert("Error generating coaching emphasis: " + e.message);
                     } finally {
                       setGeneratingSkillFocus(false);
                     }
                   }}
                   disabled={generatingSkillFocus || !session.id}
-                  className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                  className={`inline-flex h-9 items-center rounded-full px-3.5 text-[13px] font-medium transition-colors disabled:opacity-50 ${
                     skillFocus
                       ? "border border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
                       : "border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700"
                   }`}
                 >
                   {generatingSkillFocus
-                    ? "⚡ Generating Skill Focus..."
+                    ? "Generating Coaching Emphasis..."
                     : skillFocus
-                    ? "✓ Skill Focus Ready"
-                    : "🎯 Generate Skill Focus"}
+                    ? "Coaching Emphasis Ready"
+                    : "Generate Coaching Emphasis"}
                 </button>
+                {userFeatures?.canCreatePlayerPlans && resolvedSessionId && (
+                  <>
+                    {!sessionPlayerPlan?.id && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCreatePlayerPlanModal({
+                            sourceType: "SESSION",
+                            sourceId: resolvedSessionId,
+                            sourceRefCode: session.refCode ?? null,
+                          })
+                        }
+                        disabled={checkingPlayerPlan}
+                        className="inline-flex h-9 items-center rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3.5 text-[13px] font-medium text-cyan-300 hover:bg-cyan-500/20 transition-colors disabled:opacity-60"
+                      >
+                        {checkingPlayerPlan ? "Checking Player Version..." : "Create Player Version"}
+                      </button>
+                    )}
+                    {sessionPlayerPlan?.id && !checkingPlayerPlan && (
+                      <Link
+                        href={`/player-plans/${sessionPlayerPlan.id}`}
+                        className="inline-flex h-9 items-center rounded-full border border-slate-600/70 bg-slate-800/60 px-3.5 text-[13px] font-medium text-slate-200 hover:bg-slate-700 transition-colors"
+                      >
+                        View Player Version
+                      </Link>
+                    )}
+                  </>
+                )}
                 {userFeatures?.canExportPDF && (
                   <button
                     onClick={async () => {
@@ -2275,9 +2849,9 @@ function SessionDemoPageContent() {
                         alert("Error exporting PDF: " + e.message);
                       }
                     }}
-                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
+                    className="inline-flex h-9 items-center rounded-full bg-emerald-500 px-3.5 text-[13px] font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
                   >
-                    📄 Export PDF
+                    Export PDF
                   </button>
                 )}
               </div>
@@ -2318,7 +2892,7 @@ function SessionDemoPageContent() {
 
               {skillFocus && (
                 <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-                  <div className="text-xs text-emerald-300 uppercase tracking-widest">Player Skill Focus</div>
+                  <div className="text-xs text-emerald-300 uppercase tracking-widest">Player Coaching Emphasis</div>
                   <h3 className="mt-2 text-sm font-semibold text-emerald-100">{skillFocus.title}</h3>
                   {skillFocus.summary && (
                     <p className="mt-2 text-sm text-emerald-100/80">{skillFocus.summary}</p>
@@ -2467,7 +3041,7 @@ function SessionDemoPageContent() {
                     </div>
 
                     {drill.description && (
-                      <p className="text-sm text-slate-300 leading-relaxed">{drill.description}</p>
+                      <p className="text-sm text-slate-300 leading-relaxed">{humanizeSessionText(drill.description)}</p>
                     )}
 
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
@@ -2479,7 +3053,7 @@ function SessionDemoPageContent() {
                             phase={session.phase || "ATTACKING"}
                             zone={session.zone || "ATTACKING_THIRD"}
                             diagram={diagram}
-                            description={drill.description}
+                            description={humanizeSessionText(drill.description)}
                             organization={organizationObj ?? undefined}
                           />
                         </div>
@@ -2685,6 +3259,22 @@ function SessionDemoPageContent() {
           sessionDurationMin={scheduleModalSession.durationMin}
           onClose={() => setScheduleModalSession(null)}
           onScheduled={() => setScheduleModalSession(null)}
+        />
+      )}
+      {createPlayerPlanModal && (
+        <CreatePlayerPlanModal
+          sourceType={createPlayerPlanModal.sourceType}
+          sourceId={createPlayerPlanModal.sourceId}
+          sourceRefCode={createPlayerPlanModal.sourceRefCode}
+          onClose={() => setCreatePlayerPlanModal(null)}
+          onPlanCreated={(planId) => {
+            setSessionPlayerPlan((prev) => ({
+              id: planId,
+              refCode: prev?.refCode || null,
+              title: prev?.title || null,
+              createdAt: prev?.createdAt,
+            }));
+          }}
         />
       )}
     </main>

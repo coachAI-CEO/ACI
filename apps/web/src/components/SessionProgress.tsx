@@ -6,6 +6,7 @@ type Props = {
   isSeries: boolean;
   totalSessions?: number;
   currentSession?: number;
+  onCancel?: () => void;
 };
 
 const COACH_FLOW_STEPS = [
@@ -58,7 +59,12 @@ const COACH_FLOW_STEPS = [
 
 const STEP_WINDOWS = [2, 5, 9, 13, 18];
 
-export default function SessionProgress({ isSeries, totalSessions = 0, currentSession = 0 }: Props) {
+export default function SessionProgress({
+  isSeries,
+  totalSessions = 0,
+  currentSession = 0,
+  onCancel,
+}: Props) {
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const [detailIndex, setDetailIndex] = useState(0);
@@ -98,8 +104,19 @@ export default function SessionProgress({ isSeries, totalSessions = 0, currentSe
       <div className="w-full max-w-4xl rounded-3xl border border-slate-700/70 bg-gradient-to-br from-slate-900/95 to-slate-950/95 p-6 text-slate-50 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">{currentLabel}</h2>
-          <div className="text-xs text-slate-400">
-            {elapsedSeconds}s elapsed
+          <div className="flex items-center gap-3">
+            <div className="text-xs text-slate-400">
+              {elapsedSeconds}s elapsed
+            </div>
+            {onCancel && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/20"
+              >
+                Cancel Generation
+              </button>
+            )}
           </div>
         </div>
 

@@ -16,10 +16,16 @@ function parseJsonSafe(text: string) {
 
 function buildSessionContext(session: any): SkillFocusContext {
   const json = session.json || {};
+  const coachLevel = String(session.coachLevel || json.coachLevel || "").toUpperCase() || null;
+  const playerLevelRaw = String(session.playerLevel || json.playerLevel || "").toUpperCase();
+  const playerLevel =
+    coachLevel === "GRASSROOTS" ? "BEGINNER" : playerLevelRaw || null;
   return {
     title: session.title,
     ageGroup: session.ageGroup,
     gameModelId: session.gameModelId,
+    coachLevel,
+    playerLevel,
     phase: session.phase || null,
     zone: session.zone || null,
     durationMin: session.durationMin,
@@ -37,10 +43,17 @@ function buildSessionContext(session: any): SkillFocusContext {
 function buildSeriesContext(sessions: any[]): SkillFocusContext {
   if (sessions.length === 0) return {};
   const first = sessions[0];
+  const firstJson = first.json || {};
+  const coachLevel = String(first.coachLevel || firstJson.coachLevel || "").toUpperCase() || null;
+  const playerLevelRaw = String(first.playerLevel || firstJson.playerLevel || "").toUpperCase();
+  const playerLevel =
+    coachLevel === "GRASSROOTS" ? "BEGINNER" : playerLevelRaw || null;
   return {
     title: `Series: ${first.title}`,
     ageGroup: first.ageGroup,
     gameModelId: first.gameModelId,
+    coachLevel,
+    playerLevel,
     phase: first.phase || null,
     zone: first.zone || null,
     durationMin: first.durationMin,
@@ -75,7 +88,7 @@ async function generateSkillFocus(context: SkillFocusContext) {
     const raw = await generateText(prompt, { timeout: 45000, retries: 0 });
     const parsed = parseJsonSafe(raw);
     if (!parsed) {
-      throw new Error("LLM returned non-JSON skill focus");
+      throw new Error("LLM returned non-JSON coaching emphasis");
     }
     return parsed;
   } finally {
@@ -97,7 +110,7 @@ export async function generateSkillFocusForSession(sessionId: string) {
   const created = await prisma.skillFocus.create({
     data: {
       sessionId,
-      title: focus.title || "Skill Focus",
+      title: focus.title || "Coaching Emphasis",
       summary: focus.summary || null,
       keySkills: focus.keySkills || [],
       coachingPoints: focus.coachingPoints || [],
@@ -107,7 +120,7 @@ export async function generateSkillFocusForSession(sessionId: string) {
     },
   });
 
-  // Persist skill focus into the session JSON for easy retrieval
+  // Persist coaching emphasis into the session JSON for easy retrieval
   const sessionJson = (session.json as any) || {};
   await prisma.session.update({
     where: { id: sessionId },
@@ -169,7 +182,7 @@ export async function generateSkillFocusForSeries(input: { seriesId?: string; se
     data: {
       seriesId: resolvedSeriesId,
       sessionIds: sessions.map((s) => s.id),
-      title: focus.title || "Series Skill Focus",
+      title: focus.title || "Series Coaching Emphasis",
       summary: focus.summary || null,
       keySkills: focus.keySkills || [],
       coachingPoints: focus.coachingPoints || [],

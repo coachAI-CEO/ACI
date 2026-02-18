@@ -18,11 +18,126 @@ export interface SessionPromptInput {
   focus?: string; // e.g., "technical", "tactical", "match_preparation"
 }
 
+function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?: string): string {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  const common = [
+    "MODEL-LOCK RULES (MANDATORY):",
+    `- gameModelId=${gameModelId} must shape every drill, not just the tactical drill title.`,
+    `- phase=${p} and zone=${z} must appear in setup, constraints, and coaching language.`,
+    "- Across the session, include at least 8 model-specific cues (coaching points + constraints + progressions).",
+    "- CONDITIONED_GAME must explicitly test the same game model decisions trained earlier.",
+  ];
+
+  if (gameModelId === "POSSESSION") {
+    return [
+      ...common,
+      "POSSESSION PROFILE:",
+      "- Session theme: ball security + positional support + line-breaking options.",
+      "- WARMUP/TECHNICAL should build receiving shape and support angles.",
+      "- TACTICAL/CONDITIONED_GAME should reward circulation, overloads, and switch timing.",
+      "- Avoid transition-chaos as the dominant pattern.",
+    ].join("\n");
+  }
+
+  if (gameModelId === "PRESSING") {
+    return [
+      ...common,
+      "PRESSING PROFILE:",
+      "- Session theme: coordinated regains via triggers, compactness, and pressing angles.",
+      "- WARMUP/TECHNICAL should prime press footwork/approach and lock-side behavior.",
+      "- TACTICAL/CONDITIONED_GAME should reward regains in target zones/time windows.",
+      "- Avoid passive block or pure-possession themes as the dominant pattern.",
+    ].join("\n");
+  }
+
+  if (gameModelId === "TRANSITION") {
+    return [
+      ...common,
+      "TRANSITION PROFILE:",
+      "- Session theme: first action after regain/loss in 3-6 second windows.",
+      "- WARMUP/TECHNICAL should build first touch + first pass speed under pressure.",
+      "- TACTICAL/CONDITIONED_GAME should reward quick attack after regain and immediate counterpress after loss.",
+      "- Avoid long settled phases as the core objective.",
+    ].join("\n");
+  }
+
+  return [
+    ...common,
+    "COACHAI PROFILE:",
+    "- Session theme: balanced moments (possession, pressing, transition) with clear switching cues.",
+    "- Each main drill must include at least one cue from each moment type.",
+    "- CONDITIONED_GAME should test when to keep, when to press, and when to attack fast.",
+  ].join("\n");
+}
+
+function getSessionPhaseGuidance(phase?: string, zone?: string): string {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  const common = [
+    `PHASE LOCK RULES (MANDATORY): phase=${p}, zone=${z}`,
+    "- Every non-COOLDOWN drill should include at least one phase-specific coaching cue.",
+    "- At least two drills must include explicit phase-specific constraints.",
+  ];
+
+  if (p === "ATTACKING") {
+    return [
+      ...common,
+      "ATTACKING PROFILE:",
+      "- Session should build from secure progression to chance creation and finishing quality.",
+      "- Include width/depth support and final-third timing cues.",
+    ].join("\n");
+  }
+  if (p === "DEFENDING") {
+    return [
+      ...common,
+      "DEFENDING PROFILE:",
+      "- Session should build pressing/containment structure, compactness, and deny-space priorities.",
+      "- Include pressure-cover-balance and line-distance cues.",
+    ].join("\n");
+  }
+  if (p === "TRANSITION_TO_ATTACK") {
+    return [
+      ...common,
+      "TRANSITION_TO_ATTACK PROFILE:",
+      "- Session should emphasize first action quality after regain in 0-6 second windows.",
+      "- Include immediate support-run and forward-pass decisions.",
+    ].join("\n");
+  }
+  if (p === "TRANSITION_TO_DEFEND") {
+    return [
+      ...common,
+      "TRANSITION_TO_DEFEND PROFILE:",
+      "- Session should emphasize immediate reaction after loss: counterpress or recover shape.",
+      "- Include nearest-player pressure and second-line recovery decisions.",
+    ].join("\n");
+  }
+  return [
+    ...common,
+    "TRANSITION PROFILE:",
+    "- Session should include both regain-to-attack and loss-to-defend cycles.",
+    "- Include role-switch decision speed and communication cues.",
+  ].join("\n");
+}
+
 /**
  * Build session prompt - generates a full practice session with multiple drills
  */
 export function buildSessionPrompt(input: SessionPromptInput): string {
   const ctx = JSON.stringify(input, null, 2);
+  const gameModelGuidance = getSessionGameModelGuidance(
+    input.gameModelId,
+    input.phase,
+    input.zone
+  );
+  const phaseGuidance = getSessionPhaseGuidance(input.phase, input.zone);
+  const isGrassroots = input.coachLevel === "GRASSROOTS";
+  const isUssfCorB =
+    input.coachLevel === "USSF_C" || input.coachLevel === "USSF_B_PLUS";
+  const diagramDetailLabel = isGrassroots ? "SIMPLE" : "FULL";
+  const arrowRange = isGrassroots ? "2-4" : "7-10";
+  const annotationRange = isGrassroots ? "1-2" : "4-6";
+  const safeZoneRange = isGrassroots ? "0-1" : "1-3";
   
   const sessionDuration = input.durationMin || 90;
   const is60Min = sessionDuration === 60;
@@ -37,6 +152,26 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
   return [
     "SYSTEM: Output ONE JSON object matching the structure below for a complete training session.",
     "A session is a full practice (60 or 90 minutes) containing multiple drills organized by type.",
+    `DIAGRAM DETAIL PROFILE: ${diagramDetailLabel} (coachLevel=${input.coachLevel}).`,
+    isGrassroots
+      ? "- For GRASSROOTS, diagrams must be simple and coach-friendly: no pitch zone overlays, fewer arrows, fewer annotations, and optional safe zones."
+      : "- For USSF_C and USSF_B_PLUS, use full tactical diagram detail with richer movement, annotations, and safe-zone context.",
+    ...(isUssfCorB
+      ? ["- USSF_C and USSF_B_PLUS share the same diagram structure and detail level."]
+      : []),
+    "COACH LANGUAGE PROFILE (MANDATORY):",
+    isGrassroots
+      ? "- GRASSROOTS: use clear, practical language that a grassroots coach can run immediately. Keep terms simple and direct."
+      : "- USSF_C / USSF_B_PLUS: tactical language is allowed, but instructions must still be clear and executable.",
+    isGrassroots
+      ? "- Avoid heavy jargon and abstract wording (e.g., numerical superiority, tactical nuances, rest defense). Use plain alternatives."
+      : "- Use tactical vocabulary where helpful, tied to concrete actions and coaching cues.",
+    isGrassroots
+      ? "- Grassroots quality target: same detail level and structure, but simpler words and more direct action cues."
+      : "- Keep advanced detail, while staying coach-friendly and session-ready.",
+    ...(isUssfCorB
+      ? ["- For USSF_C and USSF_B_PLUS, keep tactical terminology and detail; do not rewrite into grassroots-style simplified language."]
+      : []),
     "",
     "🚨🚨🚨 CRITICAL DIAGRAM REQUIREMENT 🚨🚨🚨",
     "",
@@ -72,9 +207,10 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "2. Create diagram.players array with that many player objects",
     "3. Each player object needs: id, number, team, role, x, y, facingAngle",
     "4. Position players according to formation=" + input.formationAttacking + " (ATT) and " + input.formationDefending + " (DEF)",
-    "5. Add diagram.arrows array (7-10 arrows) and diagram.annotations array (4-6 annotations with fontSize, color, fontWeight)",
+    "5. Add diagram.arrows array (" + arrowRange + " arrows) and diagram.annotations array (" + annotationRange + " annotations with fontSize, color, fontWeight)",
     "6. diagram.players MUST include EVERY player described in organization.setupSteps (no partial scenario diagrams).",
     "7. diagram.pitch.showZones MUST be false.",
+    "8. diagram.safeZones should include " + safeZoneRange + " entries.",
     "",
     "Diagrams REQUIRED for: WARMUP, TECHNICAL, TACTICAL, CONDITIONED_GAME",
     "Diagrams OPTIONAL for: COOLDOWN only",
@@ -86,9 +222,16 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "- Total duration of all drills should approximately equal session duration (" + sessionDuration + " minutes)",
     "- Use 'diagram' (NOT 'diagramV1') for each drill",
     "- Use 'progressions' array (NOT 'progression') for each drill",
+    "- Every non-COOLDOWN drill MUST include constraints array with 2-5 non-empty, model-specific rules.",
     "- Do NOT wrap JSON in markdown or add comments.",
     "",
     "INPUT:", ctx,
+    "",
+    "⚠️ GAME MODEL LOCK:",
+    gameModelGuidance,
+    "",
+    "⚠️ PHASE LOCK:",
+    phaseGuidance,
     "",
     "SESSION STRUCTURE FOR " + sessionDuration + "-MINUTE SESSION:",
     "",
@@ -131,6 +274,7 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "   - Focus: Light jogging, static stretching, team discussion",
     "",
     "⚠️ BEFORE YOU START: Read ALL diagram requirements below. Every drill MUST have diagram.players array with player objects (NOT empty []).",
+    "IMPORTANT: Example below is for STRUCTURE only. Do NOT copy possession-specific content unless gameModelId=POSSESSION.",
     "",
     "EXAMPLE OUTPUT STRUCTURE:",
     JSON.stringify({
@@ -449,6 +593,7 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "- SHORT OR BRIEF CONTENT IS NOT ACCEPTABLE - provide thorough, professional-level explanations",
     "",
     "1. Each drill in the drills array MUST have complete organization object with setupSteps, area (numeric lengthYards/widthYards), rotation, restarts, scoring",
+    "1b. Each non-COOLDOWN drill MUST include constraints (2-5 items) and at least one explicit gameModel cue.",
     "2. Each drill MUST have a diagram field with proper structure (pitch, players array with player objects, goals, etc.)",
     "   ⚠️ diagram.players MUST be populated array with player objects matching organization.setupSteps (NOT empty [])",
     "3. Drill durations should sum to approximately " + sessionDuration + " minutes",
@@ -542,7 +687,7 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "Review this training session JSON and return ONLY JSON:",
     "{",
     '  "pass": boolean,',
-    '  "scores": {"structure": number, "gameModel": number, "psych": number, "clarity": number, "realism": number, "constraints": number, "safety": number, "progression": number},',
+    '  "scores": {"structure": number, "gameModel": number, "phase": number, "psych": number, "clarity": number, "realism": number, "constraints": number, "safety": number, "progression": number},',
     '  "summary": string,',
     '  "notes": string[]',
     "}",
@@ -598,6 +743,15 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "- 5: All drills align with gameModelId, tactical drill clearly demonstrates game model principles",
     "- 3: Some alignment but could be stronger",
     "- 1-2: Drills don't align with gameModelId",
+    "- For POSSESSION: expect support angles, circulation, overloads, line breaks.",
+    "- For PRESSING: expect triggers, compactness, coordinated regains, trap behavior.",
+    "- For TRANSITION: expect 3-6 second reactions after regain/loss, fast attack/counterpress choices.",
+    "- For COACHAI: expect explicit switching logic across all three moments.",
+    "",
+    "PHASE (rate alignment with phase/zone intent):",
+    "- 5: Drill behaviors and constraints clearly match the requested phase and zone moments.",
+    "- 3: Some phase cues present but generic flow dominates.",
+    "- 1-2: Session behavior mismatches phase intent.",
     "",
     "REALISM (rate realistic nature of session):",
     "- 5: Session is realistic, achievable, appropriate for age group and player level",

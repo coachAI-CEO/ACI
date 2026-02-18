@@ -19,6 +19,7 @@ export default function CreatePlayerPlanModal({
   onPlanCreated,
 }: CreatePlayerPlanModalProps) {
   const [durationMin, setDurationMin] = useState<number>(45);
+  const [playerLevel, setPlayerLevel] = useState<string>("");
   const [focus, setFocus] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,9 @@ export default function CreatePlayerPlanModal({
       };
       if (focus) {
         body.focus = focus;
+      }
+      if (playerLevel) {
+        body.playerLevel = playerLevel;
       }
       if (sourceRefCode) {
         body.sourceRefCode = sourceRefCode;
@@ -221,7 +225,23 @@ export default function CreatePlayerPlanModal({
             >
               <option value={30}>30 minutes</option>
               <option value={45}>45 minutes</option>
-              <option value={60}>60 minutes</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+              Player Level
+            </label>
+            <select
+              value={playerLevel}
+              onChange={(e) => setPlayerLevel(e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200"
+              disabled={loading}
+            >
+              <option value="">Use source level</option>
+              <option value="BEGINNER">Beginner</option>
+              <option value="INTERMEDIATE">Intermediate</option>
+              <option value="ADVANCED">Advanced</option>
             </select>
           </div>
 

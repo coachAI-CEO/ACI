@@ -7,7 +7,7 @@ import { Check, Sparkles } from "lucide-react";
 const plans = [
   {
     accountType: "Starter Coach",
-    price: "$20",
+    price: "$10",
     period: "/month",
     description: "Best for individual coaches getting organized with smart planning.",
     features: [
@@ -24,7 +24,7 @@ const plans = [
   },
   {
     accountType: "Club Pro",
-    price: "$80",
+    price: "$40",
     period: "/month",
     description: "Built for serious clubs with up to 5 coaches and shared standards.",
     features: [

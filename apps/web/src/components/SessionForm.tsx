@@ -33,22 +33,24 @@ export default function SessionForm({ children }: { children: React.ReactNode })
   useEffect(() => {
     // Wait for DOM to be fully ready
     const init = () => {
-      const ageGroupSelect = document.getElementById("ageGroup") as HTMLSelectElement;
-      const formationAttackingSelect = document.getElementById("formationAttacking") as HTMLSelectElement;
-      const formationDefendingSelect = document.getElementById("formationDefending") as HTMLSelectElement;
-      const phaseSelect = document.getElementById("phase") as HTMLSelectElement;
-      const zoneSelect = document.getElementById("zone") as HTMLSelectElement;
-      const coachLevelSelect = document.getElementById("coachLevel") as HTMLSelectElement;
-      const topicSelect = document.getElementById("topic") as HTMLSelectElement;
+      const ageGroupSelect = document.getElementById("ageGroup");
+      const formationAttackingSelect = document.getElementById("formationAttacking");
+      const formationDefendingSelect = document.getElementById("formationDefending");
+      const phaseSelect = document.getElementById("phase");
+      const zoneSelect = document.getElementById("zone");
+      const playerLevelSelect = document.getElementById("playerLevel");
+      const coachLevelSelect = document.getElementById("coachLevel");
+      const topicSelect = document.getElementById("topic");
 
       if (
-        !ageGroupSelect ||
-        !formationAttackingSelect ||
-        !formationDefendingSelect ||
-        !phaseSelect ||
-        !zoneSelect ||
-        !coachLevelSelect ||
-        !topicSelect
+        !(ageGroupSelect instanceof HTMLSelectElement) ||
+        !(formationAttackingSelect instanceof HTMLSelectElement) ||
+        !(formationDefendingSelect instanceof HTMLSelectElement) ||
+        !(phaseSelect instanceof HTMLSelectElement) ||
+        !(zoneSelect instanceof HTMLSelectElement) ||
+        !(playerLevelSelect instanceof HTMLSelectElement) ||
+        !(coachLevelSelect instanceof HTMLSelectElement) ||
+        !(topicSelect instanceof HTMLSelectElement)
       ) {
         // Retry if elements not found yet
         setTimeout(init, 50);
@@ -146,21 +148,60 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         }
       };
 
+      const updatePlayerLevelGuardrail = () => {
+        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
+        const isGrassroots = coachLevel === "GRASSROOTS";
+        const playerOptions = Array.from(playerLevelSelect.options);
+
+        playerLevelSelect.disabled = isGrassroots;
+
+        playerOptions.forEach((option) => {
+          option.disabled = isGrassroots && option.value !== "BEGINNER";
+        });
+
+        if (isGrassroots && playerLevelSelect.value !== "BEGINNER") {
+          playerLevelSelect.value = "BEGINNER";
+          playerLevelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+
+        const hint = document.getElementById("playerLevelGuardrailHint");
+        if (hint) {
+          hint.textContent = isGrassroots
+            ? "Grassroots guardrail: player level is locked to Beginner."
+            : "";
+        }
+      };
+      const enforcePlayerLevelGuardrail = () => {
+        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
+        if (coachLevel === "GRASSROOTS" && playerLevelSelect.value !== "BEGINNER") {
+          playerLevelSelect.value = "BEGINNER";
+          const hint = document.getElementById("playerLevelGuardrailHint");
+          if (hint) {
+            hint.textContent = "Grassroots guardrail: player level is fixed to Beginner.";
+          }
+        }
+      };
+
       // Run once immediately to fix any mismatches
       updateFormations();
       updateTopics();
+      updatePlayerLevelGuardrail();
       
       // Listen for changes that should impact formations/topics
       ageGroupSelect.addEventListener("change", updateFormations);
       phaseSelect.addEventListener("change", updateTopics);
       zoneSelect.addEventListener("change", updateTopics);
       coachLevelSelect.addEventListener("change", updateTopics);
+      coachLevelSelect.addEventListener("change", updatePlayerLevelGuardrail);
+      playerLevelSelect.addEventListener("change", enforcePlayerLevelGuardrail);
       
       return () => {
         ageGroupSelect.removeEventListener("change", updateFormations);
         phaseSelect.removeEventListener("change", updateTopics);
         zoneSelect.removeEventListener("change", updateTopics);
         coachLevelSelect.removeEventListener("change", updateTopics);
+        coachLevelSelect.removeEventListener("change", updatePlayerLevelGuardrail);
+        playerLevelSelect.removeEventListener("change", enforcePlayerLevelGuardrail);
       };
     };
 
@@ -174,4 +215,3 @@ export default function SessionForm({ children }: { children: React.ReactNode })
 
   return <>{children}</>;
 }
-

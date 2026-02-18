@@ -1,4 +1,5 @@
 import express from "express";
+import type { SessionPromptInput } from "./prompts/session";
 import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { findSimilarSessions } from "./services/vault";
@@ -8,8 +9,47 @@ import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, requireFeature, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
 import { canGenerateSessions } from "./services/access-permissions";
+import {
+  clearGenerationCancelled,
+  isGenerationCancelled,
+  markGenerationCancelled,
+} from "./services/generation-cancel";
 
 const r = express.Router();
+
+function normalizeCoachLevel(value: unknown): string {
+  const v = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_C") return "USSF_C";
+  if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
+  return v;
+}
+
+function applyCoachLevelGuardrails<T extends { coachLevel?: unknown; playerLevel?: unknown }>(input: T): T {
+  const next = { ...(input || {}) } as T;
+  const coachLevel = normalizeCoachLevel(next.coachLevel);
+
+  if (coachLevel === "GRASSROOTS" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
+    next.coachLevel = coachLevel;
+  }
+  if (coachLevel === "GRASSROOTS") {
+    next.playerLevel = "BEGINNER";
+  }
+
+  return next as T;
+}
+
+r.post("/ai/cancel-generation", authenticate, async (req: AuthRequest, res) => {
+  const generationId = String(req.body?.generationId || "").trim();
+  if (!generationId) {
+    return res.status(400).json({ ok: false, error: "generationId is required" });
+  }
+  markGenerationCancelled(generationId);
+  console.log(`[SESSION] Cancel requested for generationId=${generationId}`);
+  return res.json({ ok: true, cancelled: true, generationId });
+});
 
 // AI Chat endpoint for coaching assistant
 r.post("/ai/chat", async (req, res) => {
@@ -107,15 +147,44 @@ Please help the user with their request, using the context of the referenced ite
 
 r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
   const debug = String(req.query.debug || "") === "1";
+  const strictGameModelAlignment = process.env.STRICT_GAME_MODEL_ALIGNMENT === "1";
+  const minGameModelScoreEnv = Number(process.env.MIN_GAME_MODEL_SCORE || "4");
+  const minGameModelScore = Number.isFinite(minGameModelScoreEnv) ? minGameModelScoreEnv : 4;
+  const strictPhaseAlignment = process.env.STRICT_PHASE_ALIGNMENT === "1";
+  const minPhaseScoreEnv = Number(process.env.MIN_PHASE_SCORE || "4");
+  const minPhaseScore = Number.isFinite(minPhaseScoreEnv) ? minPhaseScoreEnv : 4;
   if (debug) {
     const authHeader = req.headers.authorization || req.headers.Authorization;
     console.log("[SESSION] debug=1 authHeader present:", Boolean(authHeader));
   }
 
+  const generationId = String(req.body?.generationId || "").trim() || undefined;
+  if (generationId) {
+    console.log(`[SESSION] generationId=${generationId}`);
+  }
+
+  let requestCancelled = false;
+  const markCancelled = (source: string) => {
+    if (requestCancelled) return;
+    requestCancelled = true;
+    console.log(`[SESSION] Request cancelled by client (${source})`);
+  };
+  req.on("aborted", () => markCancelled("aborted"));
+  req.on("close", () => {
+    if (!res.writableEnded) markCancelled("close");
+  });
+
+  if (generationId && isGenerationCancelled(generationId)) {
+    console.log(`[SESSION] generationId=${generationId} already cancelled before start`);
+    clearGenerationCancelled(generationId);
+    return res.status(499).json({ ok: false, error: "Request cancelled" });
+  }
+
   try {
+    const body = applyCoachLevelGuardrails((req.body || {}) as SessionPromptInput);
+
     // Check access permissions
     if (req.userId) {
-      const body = req.body || {};
       const ageGroup = body.ageGroup;
       
       if (ageGroup) {
@@ -153,11 +222,49 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
     // -------------------------------
     // Normal pipeline: real generator
     // -------------------------------
-    const result = await generateAndReviewSession(req.body || {}, req.userId);
+    const result = await generateAndReviewSession(body, req.userId, {
+      isCancelled: () =>
+        requestCancelled || (generationId ? isGenerationCancelled(generationId) : false),
+    });
     const session = result.session;
     const qa = result.qa;
 
     const fixDecision = result.fixDecision;
+    const gameModelScore = Number(qa?.scores?.gameModel ?? 0);
+    const phaseScore = Number(qa?.scores?.phase ?? 0);
+
+    if (strictGameModelAlignment && gameModelScore < minGameModelScore) {
+      return res.status(422).json({
+        ok: false,
+        error: "SESSION_GAME_MODEL_ALIGNMENT_FAILED",
+        message: `Session gameModel score ${gameModelScore} is below required ${minGameModelScore}.`,
+        scores: qa?.scores || null,
+        telemetry: {
+          gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
+          phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,
+          strictGateApplied: strictGameModelAlignment,
+          rejectedByGate: true,
+          strictPhaseGateApplied: strictPhaseAlignment,
+          rejectedByPhaseGate: false,
+        },
+      });
+    }
+    if (strictPhaseAlignment && phaseScore < minPhaseScore) {
+      return res.status(422).json({
+        ok: false,
+        error: "SESSION_PHASE_ALIGNMENT_FAILED",
+        message: `Session phase score ${phaseScore} is below required ${minPhaseScore}.`,
+        scores: qa?.scores || null,
+        telemetry: {
+          gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
+          phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,
+          strictGateApplied: strictGameModelAlignment,
+          rejectedByGate: false,
+          strictPhaseGateApplied: strictPhaseAlignment,
+          rejectedByPhaseGate: true,
+        },
+      });
+    }
 
     // Increment usage after successful generation
     if (req.userId) {
@@ -169,6 +276,14 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       session,
       qa,
       fixDecision,
+      telemetry: {
+        gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
+        phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,
+        strictGateApplied: strictGameModelAlignment,
+        rejectedByGate: false,
+        strictPhaseGateApplied: strictPhaseAlignment,
+        rejectedByPhaseGate: false,
+      },
     };
 
     if (debug) {
@@ -177,9 +292,22 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
 
     return res.json(payload);
   } catch (e: any) {
+    if (e?.message === "REQUEST_CANCELLED") {
+      if (generationId) {
+        clearGenerationCancelled(generationId);
+      }
+      if (!res.headersSent) {
+        return res.status(499).json({ ok: false, error: "Request cancelled" });
+      }
+      return;
+    }
     return res
       .status(500)
       .json({ ok: false, error: e?.message || String(e) });
+  } finally {
+    if (generationId) {
+      clearGenerationCancelled(generationId);
+    }
   }
 });
 
@@ -190,7 +318,7 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
 
   try {
     const body = req.body || {};
-    const baseInput = body.baseInput || body;
+    const baseInput = applyCoachLevelGuardrails((body.baseInput || body) as SessionPromptInput);
     const numberOfSessions = Number(body.numberOfSessions) || 3;
 
     if (numberOfSessions < 2 || numberOfSessions > 10) {

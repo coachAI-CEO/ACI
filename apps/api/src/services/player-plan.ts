@@ -1,6 +1,9 @@
 import { prisma } from "../prisma";
 import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
-import { buildPlayerPlanAdaptationPrompt } from "../prompts/player-plan";
+import {
+  buildPlayerPlanAdaptationPrompt,
+  buildPlayerPlanFromSessionPrompt,
+} from "../prompts/player-plan";
 import { generateRefCode } from "../utils/ref-code";
 
 /**
@@ -28,8 +31,9 @@ export async function generatePlayerPlanFromSession(
   sessionId: string,
   userId: string,
   options?: {
-    durationMin?: number;
+    durationMin?: 30 | 45;
     focus?: string;
+    playerLevel?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
   }
 ): Promise<{ plan: any; id: string; refCode: string }> {
   // Load source session - try by ID first, then by refCode if it looks like a refCode
@@ -76,9 +80,10 @@ export async function generatePlayerPlanFromSession(
   }
 
   // Extract playerLevel from session (check both fields)
-  const playerLevel = (session.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
-                      (sessionJson.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
-                      null;
+  const sourcePlayerLevel = (session.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
+                            (sessionJson.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
+                            null;
+  const playerLevel = options?.playerLevel || sourcePlayerLevel;
 
   // Set metrics context
   setMetricsContext({
@@ -88,50 +93,48 @@ export async function generatePlayerPlanFromSession(
   });
 
   try {
-    // Adapt each drill using AI
-    const adaptedDrills: any[] = [];
+    const requestedDuration: 30 | 45 = options?.durationMin === 30 ? 30 : 45;
+    const expectedActivities = requestedDuration === 30 ? 2 : 3;
+    const sourceDrills = Array.isArray(drills)
+      ? drills.map((d: any) => ({
+          title: d?.title,
+          drillType: d?.drillType,
+          focus: d?.focus || d?.coachingFocus || d?.objective,
+          coachingPoints: Array.isArray(d?.coachingPoints) ? d.coachingPoints.slice(0, 4) : [],
+        }))
+      : [];
+
+    const prompt = buildPlayerPlanFromSessionPrompt({
+      sessionTitle: session.title,
+      sessionSummary: sessionJson.summary || null,
+      sourceDrills,
+      ageGroup: session.ageGroup,
+      playerLevel,
+      durationMin: requestedDuration,
+      focus: options?.focus,
+    });
+
+    console.log(`[PLAYER_PLAN] Generating complementary player plan (${requestedDuration}min, ${expectedActivities} activities)`);
+    const adaptedText = await generateText(prompt, { timeout: 45000, retries: 0 });
+    const parsedPlan = parseJsonSafe(adaptedText);
+    const adaptedDrillsRaw = Array.isArray(parsedPlan?.drills) ? parsedPlan.drills : [];
+    const adaptedDrills = adaptedDrillsRaw.slice(0, expectedActivities);
+
+    if (adaptedDrills.length !== expectedActivities) {
+      throw new Error(`Expected ${expectedActivities} solo activities, got ${adaptedDrills.length}`);
+    }
+
     const equipmentSet = new Set<string>();
-
-    for (const originalDrill of drills) {
-      try {
-        const prompt = buildPlayerPlanAdaptationPrompt({
-          originalDrill,
-          ageGroup: session.ageGroup,
-          playerLevel,
-          focus: options?.focus,
-        });
-
-        console.log(`[PLAYER_PLAN] Adapting drill: ${originalDrill.title || originalDrill.drillType}`);
-        const adaptedText = await generateText(prompt, { timeout: 30000, retries: 0 });
-        const adaptedDrill = parseJsonSafe(adaptedText);
-
-        if (!adaptedDrill) {
-          console.warn(`[PLAYER_PLAN] Failed to parse adapted drill, skipping`);
-          continue;
-        }
-
-        // Collect equipment from adapted drill
-        if (adaptedDrill.organization?.equipment && Array.isArray(adaptedDrill.organization.equipment)) {
-          adaptedDrill.organization.equipment.forEach((eq: string) => equipmentSet.add(eq));
-        }
-
-        adaptedDrills.push(adaptedDrill);
-      } catch (error: any) {
-        console.error(`[PLAYER_PLAN] Error adapting drill:`, error);
-        // Continue with other drills even if one fails
+    adaptedDrills.forEach((drill: any) => {
+      if (drill?.organization?.equipment && Array.isArray(drill.organization.equipment)) {
+        drill.organization.equipment.forEach((eq: string) => equipmentSet.add(eq));
       }
-    }
+    });
 
-    if (adaptedDrills.length === 0) {
-      throw new Error("Failed to adapt any drills for player plan");
-    }
-
-    // Calculate total duration (use provided or estimate from adapted drills)
-    const totalDuration = options?.durationMin ||
-      adaptedDrills.reduce((sum, d) => sum + (d.durationMin || 10), 0);
-
-    // Generate objectives summary
-    const objectives = `Solo training plan adapted from "${session.title}". Focus: ${options?.focus || "All aspects"}. ${adaptedDrills.length} exercises designed for ${playerLevel || "intermediate"} level players.`;
+    const totalDuration = requestedDuration;
+    const objectives =
+      parsedPlan?.objectives ||
+      `Solo plan that complements "${session.title}" with ${adaptedDrills.length} targeted activities for ${playerLevel || "intermediate"} players.`;
 
     // Generate reference code
     const refCode = await generateRefCode("player-plan");
@@ -144,7 +147,7 @@ export async function generatePlayerPlanFromSession(
         sourceType: "SESSION",
         sourceId: sessionId,
         sourceRefCode: session.refCode,
-        title: `${session.title} - Player Version`,
+        title: parsedPlan?.title || `${session.title} - Player Version`,
         ageGroup: session.ageGroup,
         playerLevel: playerLevel as any,
         objectives,
@@ -179,8 +182,9 @@ export async function generatePlayerPlanFromSeries(
   userId: string,
   options?: {
     sessionNumbers?: number[];
-    durationMin?: number;
+    durationMin?: 30 | 45;
     focus?: string;
+    playerLevel?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
   }
 ): Promise<{ plan: any; id: string; refCode: string }> {
   // Load sessions in the series
@@ -218,9 +222,10 @@ export async function generatePlayerPlanFromSeries(
   // Use first session for metadata
   const firstSession = targetSessions[0];
   const sessionJson = (firstSession.json as any) || {};
-  const playerLevel = (firstSession.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
-                      (sessionJson.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
-                      null;
+  const sourcePlayerLevel = (firstSession.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
+                            (sessionJson.playerLevel as "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null) ||
+                            null;
+  const playerLevel = options?.playerLevel || sourcePlayerLevel;
 
   setMetricsContext({
     operationType: "player_plan",

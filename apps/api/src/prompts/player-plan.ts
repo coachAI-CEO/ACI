@@ -9,6 +9,21 @@ export interface PlayerPlanAdaptationInput {
   focus?: string; // Optional focus area (e.g., "First Touch", "Finishing", "Fitness")
 }
 
+export interface PlayerPlanSessionInput {
+  sessionTitle: string;
+  sessionSummary?: string | null;
+  sourceDrills: Array<{
+    title?: string;
+    drillType?: string;
+    focus?: string;
+    coachingPoints?: string[];
+  }>;
+  ageGroup: string;
+  playerLevel: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null;
+  durationMin: 30 | 45;
+  focus?: string;
+}
+
 /**
  * Build AI prompt to adapt a team drill into a solo player exercise
  */
@@ -86,6 +101,92 @@ export function buildPlayerPlanAdaptationPrompt(
     "- Do NOT include diagrams (solo exercises don't need complex diagrams)",
     "",
     "Do NOT wrap JSON in markdown. Output ONLY the JSON object.",
+  ].join("\n");
+}
+
+/**
+ * Build AI prompt to generate a SOLO player plan that complements a full session
+ */
+export function buildPlayerPlanFromSessionPrompt(input: PlayerPlanSessionInput): string {
+  const { sessionTitle, sessionSummary, sourceDrills, ageGroup, playerLevel, durationMin, focus } = input;
+  const levelGuidance = getPlayerLevelGuidance(playerLevel);
+  const focusGuidance = focus ? getFocusGuidance(focus) : "";
+  const activityCount = durationMin === 30 ? 2 : 3;
+  const sourceContext = JSON.stringify(
+    {
+      sessionTitle,
+      sessionSummary: sessionSummary || null,
+      sourceDrills,
+      ageGroup,
+      playerLevel: playerLevel || "INTERMEDIATE",
+      requestedDurationMin: durationMin,
+      requestedActivityCount: activityCount,
+      focus: focus || null,
+    },
+    null,
+    2
+  );
+
+  return [
+    "SYSTEM: Create a SOLO player version that COMPLEMENTS the team session needs.",
+    "Do NOT copy the same team drill structure. Build a complementary individual plan that helps the player execute the team session better.",
+    "",
+    "CRITICAL CONSTRAINTS:",
+    "- 1 player only (no teammates, no opponents).",
+    "- Minimal equipment only: ball, cones, wall (optional), small goal/target (optional).",
+    "- Keep setup practical for home/park training.",
+    "- Must complement the session theme and what players need from that session.",
+    "- Include explicit reps/time/rest in every activity.",
+    "- Use clear, numbered setup steps and self-coaching cues.",
+    "- OUTPUT must be ONE JSON object only (no markdown).",
+    "",
+    `DURATION RULE (HARD): ${durationMin} minutes total.`,
+    `ACTIVITY COUNT RULE (HARD): exactly ${activityCount} activities.`,
+    "- If 30 minutes: exactly 2 activities.",
+    "- If 45 minutes: exactly 3 activities.",
+    "- Activities can be TECHNICAL, TACTICAL, CONDITIONED_GAME, or WARMUP/COOLDOWN when useful, but keep them solo.",
+    "",
+    `PLAYER LEVEL: ${playerLevel || "INTERMEDIATE"}`,
+    levelGuidance,
+    "",
+    focusGuidance ? `FOCUS AREA: ${focus}\n${focusGuidance}\n` : "",
+    "SOURCE SESSION CONTEXT:",
+    sourceContext,
+    "",
+    "OUTPUT JSON FORMAT:",
+    JSON.stringify(
+      {
+        title: "Session Title - Player Version",
+        objectives: "1-2 sentences on how this solo plan complements the session demands",
+        durationMin,
+        drills: [
+          {
+            drillType: "TECHNICAL",
+            title: "Activity title",
+            durationMin: 15,
+            description: "What the player does and how it supports session needs",
+            organization: {
+              setupSteps: ["Step 1", "Step 2", "Step 3"],
+              area: { lengthYards: 12, widthYards: 10, notes: "Small space" },
+              equipment: ["ball", "cones"],
+              reps: "3 sets of 90 seconds",
+              rest: "30 seconds between sets",
+            },
+            coachingPoints: ["Self-cue 1", "Self-cue 2", "Self-cue 3"],
+            progressions: ["Progression 1", "Progression 2"],
+          },
+        ],
+      },
+      null,
+      2
+    ),
+    "",
+    "QUALITY REQUIREMENTS:",
+    "- Keep activities complementary to session objectives (not duplicates).",
+    "- Make each activity executable alone and measurable.",
+    "- Ensure total time is close to requested duration.",
+    "- Keep language clear and practical.",
+    "- Do NOT include diagrams.",
   ].join("\n");
 }
 

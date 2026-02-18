@@ -1931,7 +1931,7 @@ export default function VaultPage() {
 
                 {skillFocus && (
                   <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
-                    <h3 className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-2">Player Skill Focus</h3>
+                    <h3 className="text-xs font-semibold text-emerald-300 uppercase tracking-wide mb-2">Player Coaching Emphasis</h3>
                     <div className="text-sm font-semibold text-emerald-100">{skillFocus.title}</div>
                     {skillFocus.summary && (
                       <p className="mt-2 text-sm text-emerald-100/80">{skillFocus.summary}</p>
@@ -2114,13 +2114,13 @@ export default function VaultPage() {
                         });
                         if (!response.ok) {
                           const error = await response.json();
-                          alert("Error generating skill focus: " + (error.error || "Unknown error"));
+                          alert("Error generating coaching emphasis: " + (error.error || "Unknown error"));
                           return;
                         }
                         const data = await response.json();
                         setSkillFocus(data.focus || null);
                       } catch (e: any) {
-                        alert("Error generating skill focus: " + e.message);
+                        alert("Error generating coaching emphasis: " + e.message);
                       } finally {
                         setGeneratingSkillFocus(false);
                       }
@@ -2135,8 +2135,8 @@ export default function VaultPage() {
                     {generatingSkillFocus
                       ? "⚡ Generating..."
                       : skillFocus
-                      ? "✓ Skill Focus Ready"
-                      : "🎯 Skill Focus"}
+                      ? "✓ Coaching Emphasis Ready"
+                      : "🎯 Coaching Emphasis"}
                   </button>
                   <Link
                     href={`/demo/session?sessionId=${selectedSession.id}`}

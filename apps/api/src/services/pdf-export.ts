@@ -344,7 +344,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
     doc.moveDown();
   }
 
-  // Store skill focus for later (will be rendered after drills)
+  // Store coaching emphasis for later (will be rendered after drills)
   const skillFocus = session.skillFocus || session.json?.skillFocus;
 
   if (Array.isArray(session.drills)) {
@@ -493,7 +493,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
     });
   }
 
-  // Skill Focus section (if available) - placed after drills
+  // Coaching Emphasis section (if available) - placed after drills
   if (skillFocus) {
     // Check if we need a new page
     if (doc.y > doc.page.height - 250) {
@@ -501,7 +501,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
     }
     
     doc.moveDown(1);
-    doc.fontSize(12).fillColor("black").text("Skill Focus", { underline: true });
+    doc.fontSize(12).fillColor("black").text("Coaching Emphasis", { underline: true });
     doc.moveDown(0.5);
     
     // Title

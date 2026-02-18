@@ -320,6 +320,134 @@ function parseJsonSafe(text: string) {
   }
 }
 
+function uniqueNonEmpty(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const v = String(raw || "").trim();
+    if (!v) continue;
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out;
+}
+
+function modelConstraintDefaults(gameModelId: string, phase?: string, zone?: string): string[] {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  if (gameModelId === "POSSESSION") {
+    return [
+      `POSSESSION cue (${p}/${z}): create a support triangle before the next forward action.`,
+      `POSSESSION cue (${p}/${z}): bonus for line-breaking pass into next lane/half-space.`,
+    ];
+  }
+  if (gameModelId === "PRESSING") {
+    return [
+      `PRESSING cue (${p}/${z}): trigger press on bad touch, back pass, or closed body shape.`,
+      `PRESSING cue (${p}/${z}): bonus for regain in target zone within 6 seconds.`,
+    ];
+  }
+  if (gameModelId === "TRANSITION") {
+    return [
+      `TRANSITION cue (${p}/${z}): first action in 3 seconds after regain must be forward or to support.`,
+      `TRANSITION cue (${p}/${z}): on loss, nearest 3 players counterpress for 3-5 seconds before recovery.`,
+    ];
+  }
+  return [
+    `COACHAI cue (${p}/${z}): switch between controlled circulation and direct attack based on pressure.`,
+    `COACHAI cue (${p}/${z}): on loss, immediate pressure first, then recover compact shape if press is broken.`,
+  ];
+}
+
+function phaseConstraintDefaults(phase?: string, zone?: string): string[] {
+  const p = phase || "ATTACKING";
+  const z = zone || "ATTACKING_THIRD";
+  if (p === "ATTACKING") {
+    return [
+      `PHASE cue (${p}/${z}): create and use width/depth to progress into final action zones.`,
+      `PHASE cue (${p}/${z}): final action must come from a timed support/penetration sequence.`,
+    ];
+  }
+  if (p === "DEFENDING") {
+    return [
+      `PHASE cue (${p}/${z}): protect central lanes; force play away from goal-facing channels.`,
+      `PHASE cue (${p}/${z}): pressure-cover-balance distances must stay compact before challenge.`,
+    ];
+  }
+  if (p === "TRANSITION_TO_ATTACK") {
+    return [
+      `PHASE cue (${p}/${z}): first action within 3-6 seconds after regain must exploit forward space or secure support.`,
+      `PHASE cue (${p}/${z}): support runs must provide at least two immediate options after regain.`,
+    ];
+  }
+  if (p === "TRANSITION_TO_DEFEND") {
+    return [
+      `PHASE cue (${p}/${z}): immediate reaction after loss: nearest players counterpress for 3-5 seconds.`,
+      `PHASE cue (${p}/${z}): if press fails, recover compact shape with clear line responsibilities.`,
+    ];
+  }
+  return [
+    `PHASE cue (${p}/${z}): include both regain-to-attack and loss-to-defend transitions in repeated cycles.`,
+    `PHASE cue (${p}/${z}): decision timing must switch roles immediately on possession change.`,
+  ];
+}
+
+function hasModelSpecificConstraint(constraints: string[], gameModelId: string): boolean {
+  const text = constraints.join(" ").toLowerCase();
+  if (gameModelId === "POSSESSION") {
+    return /(possession|circulation|line[- ]?break|overload|support triangle|free man)/i.test(text);
+  }
+  if (gameModelId === "PRESSING") {
+    return /(press|pressing|trigger|counterpress|regain|trap|compact)/i.test(text);
+  }
+  if (gameModelId === "TRANSITION") {
+    return /(transition|regain|on loss|counterpress|first action|3 seconds|5 seconds|fast attack|counter)/i.test(text);
+  }
+  return /(possession|press|transition|counterpress|regain|circulation|switch)/i.test(text);
+}
+
+function hasPhaseSpecificConstraint(constraints: string[], phase?: string): boolean {
+  const text = constraints.join(" ").toLowerCase();
+  const p = phase || "ATTACKING";
+  if (p === "ATTACKING") {
+    return /(attacking|penetrat|finish|final action|create chance|width|depth)/i.test(text);
+  }
+  if (p === "DEFENDING") {
+    return /(defend|compact|deny|channel|pressure|cover|balance|protect)/i.test(text);
+  }
+  if (p === "TRANSITION_TO_ATTACK") {
+    return /(regain|first action|3-6|counter|forward|support run|exploit)/i.test(text);
+  }
+  if (p === "TRANSITION_TO_DEFEND") {
+    return /(loss|counterpress|recover shape|nearest|immediate reaction|3-5)/i.test(text);
+  }
+  return /(transition|regain|loss|switch role|counterpress|recover)/i.test(text);
+}
+
+function enforceModelConstraints(
+  drill: any,
+  input: { gameModelId: string; phase?: string; zone?: string }
+) {
+  const current = Array.isArray(drill?.constraints) ? drill.constraints : [];
+  const cleaned = uniqueNonEmpty(current.map((c: any) => String(c)));
+  const modelDefaults = modelConstraintDefaults(input.gameModelId, input.phase, input.zone);
+  const phaseDefaults = phaseConstraintDefaults(input.phase, input.zone);
+
+  let next = cleaned;
+  if (next.length < 2) {
+    next = uniqueNonEmpty([...next, ...modelDefaults, ...phaseDefaults]);
+  }
+  if (!hasModelSpecificConstraint(next, input.gameModelId)) {
+    next = uniqueNonEmpty([...modelDefaults, ...next]);
+  }
+  if (!hasPhaseSpecificConstraint(next, input.phase)) {
+    next = uniqueNonEmpty([...phaseDefaults, ...next]);
+  }
+  drill.constraints = next.slice(0, 5);
+}
+
 /**
  * Main generator + QA (+ decision) pipeline.
  *
@@ -359,6 +487,11 @@ export async function generateAndReviewDrill(
 
   // Youth guards / structural guards.
   applyYouthGuards(drill, input);
+  enforceModelConstraints(drill, {
+    gameModelId: input.gameModelId,
+    phase: input.phase,
+    zone: input.zone,
+  });
 
   // Ensure coaching points array exists + GK coaching point if goalsAvailable >= 1
   if (!Array.isArray(drill.coachingPoints)) drill.coachingPoints = [];

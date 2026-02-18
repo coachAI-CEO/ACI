@@ -2,6 +2,8 @@ export type SkillFocusContext = {
   title?: string;
   ageGroup?: string;
   gameModelId?: string;
+  coachLevel?: string | null;
+  playerLevel?: string | null;
   phase?: string | null;
   zone?: string | null;
   durationMin?: number | null;
@@ -16,13 +18,17 @@ export type SkillFocusContext = {
 
 export function buildSkillFocusPrompt(context: SkillFocusContext): string {
   const ctx = JSON.stringify(context, null, 2);
+  const coachLevel = String(context.coachLevel || "").toUpperCase();
+  const playerLevel = String(context.playerLevel || "").toUpperCase();
+  const isGrassroots = coachLevel === "GRASSROOTS";
+
   return [
     "SYSTEM: You are a soccer coach assistant.",
-    "Return ONE JSON object ONLY (no markdown) for a player skill focus tied to this session or series.",
+    "Return ONE JSON object ONLY (no markdown) for a player coaching emphasis tied to this session or series.",
     "",
     "Output JSON format:",
     "{",
-    '  "title": "Short skill focus title",',
+    '  "title": "Short coaching emphasis title",',
     '  "summary": "1-2 sentences on why this focus fits the session",',
     '  "keySkills": ["Skill 1", "Skill 2", "Skill 3"],',
     '  "coachingPoints": ["Point 1", "Point 2", "Point 3"],',
@@ -42,6 +48,16 @@ export function buildSkillFocusPrompt(context: SkillFocusContext): string {
     "Constraints:",
     "- Make it age-appropriate.",
     "- Tailor the psychology guidance to skill level, age group, and game model.",
+    `- Input coachLevel=${coachLevel || "UNKNOWN"}, playerLevel=${playerLevel || "UNKNOWN"} MUST be respected.`,
+    isGrassroots
+      ? "- GRASSROOTS PROFILE: use simple, positive, fun-first language. Corrections must be encouraging, short, and easy to execute."
+      : "- USSF_C / USSF_B_PLUS PROFILE: use specific tactical/technical coaching language with clear corrective detail.",
+    isGrassroots
+      ? "- For corrections in GRASSROOTS: use 'try this', 'next rep', 'great idea, now...' style phrasing. Avoid harsh/negative tone."
+      : "- For corrections in USSF_C/USSF_B_PLUS: include precise details (body shape, trigger, spacing, timing, pressing cue, cover angle).",
+    isGrassroots
+      ? "- For GRASSROOTS: prioritize confidence, enjoyment, repetition quality, and simple decision cues over dense tactical language."
+      : "- For USSF_C/USSF_B_PLUS: keep cues specific to game moments and tactical consequences.",
     "- Keep it specific to the session theme and drills.",
     "- Use 3-5 keySkills and 3-5 coachingPoints.",
     "- Provide 2-4 psychology.good and 2-4 psychology.bad items.",
