@@ -2,19 +2,27 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ComponentType } from "react";
 import AuthButton from "@/components/AuthButton";
 
-const navItems = [
+type SidebarItem = {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  beta?: boolean;
+};
+
+const navItems: SidebarItem[] = [
   { href: "/app", label: "Home", icon: HomeIcon },
   { href: "/demo/drill", label: "Drill Generator", icon: DrillIcon },
   { href: "/demo/session", label: "Session Builder", icon: SessionIcon },
   { href: "/vault", label: "Vault", icon: VaultIcon },
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { href: "/video-analysis", label: "Video Analysis", icon: VideoAnalysisIcon, beta: true },
 ];
 
-const bottomItems = [
+const bottomItems: SidebarItem[] = [
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
@@ -176,16 +184,23 @@ export default function AppHeader() {
                   active ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"
                 }`}
               />
-              <span
-                className={`whitespace-nowrap transition-opacity duration-200 ${
-                  showLabels ? "opacity-100" : "opacity-0 pointer-events-none"
-                }`}
-              >
-                {item.label}
-              </span>
-            </Link>
-          );
-        })}
+                <span
+                  className={`whitespace-nowrap transition-opacity duration-200 ${
+                    showLabels ? "opacity-100" : "opacity-0 pointer-events-none"
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.beta ? (
+                      <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
+                        Beta
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
       </nav>
 
       {/* Bottom section */}
@@ -255,7 +270,14 @@ export default function AppHeader() {
                   showLabels ? "opacity-100" : "opacity-0 pointer-events-none"
                 }`}
               >
-                {item.label}
+                <span className="inline-flex items-center gap-2">
+                  <span>{item.label}</span>
+                  {item.beta ? (
+                    <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
+                      Beta
+                    </span>
+                  ) : null}
+                </span>
               </span>
             </Link>
           );
@@ -312,6 +334,15 @@ function DrillIcon({ className }: { className?: string }) {
       <path d="M8.5 8.5l7 7" />
       <path d="M15 6h3v3" />
       <path d="M6 15v3h3" />
+    </svg>
+  );
+}
+
+function VideoAnalysisIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
+      <path d="M10 9.5l5 2.5-5 2.5v-5z" />
     </svg>
   );
 }

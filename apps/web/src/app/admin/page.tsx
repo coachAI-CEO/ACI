@@ -1328,6 +1328,10 @@ export default function AdminDashboard() {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(1)}s`;
   };
+  const getOperationLabel = (type: string) => {
+    if (type === "unknown") return "Unattributed (legacy)";
+    return type.replace(/_/g, " ");
+  };
   const calculateRowCost = (promptTokens: number | null, completionTokens: number | null) => {
     const input = promptTokens || 0;
     const output = completionTokens || 0;
@@ -4652,10 +4656,11 @@ export default function AdminDashboard() {
                         op.type === "qa_review" ? "bg-blue-500" :
                         op.type === "skill_focus" ? "bg-purple-500" :
                         op.type === "series" ? "bg-amber-500" :
+                        op.type === "video_analysis" ? "bg-lime-500" :
                         op.type === "chat" ? "bg-pink-500" :
                         op.type === "fixer" ? "bg-orange-500" : "bg-slate-500"
                       }`} />
-                      <span className="capitalize text-slate-300">{op.type.replace(/_/g, " ")}</span>
+                      <span className="capitalize text-slate-300">{getOperationLabel(op.type)}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-cyan-400 font-medium">{formatNumber(op.avgTokens)}</span>
@@ -4733,7 +4738,7 @@ export default function AdminDashboard() {
                         op.type === "chat" ? "bg-pink-500" :
                         op.type === "fixer" ? "bg-orange-500" : "bg-slate-500"
                       }`} />
-                      <span className="text-sm capitalize">{op.type.replace(/_/g, " ")}</span>
+                      <span className="text-sm capitalize">{getOperationLabel(op.type)}</span>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium">{formatNumber(op.count)} calls</div>
@@ -5115,7 +5120,7 @@ export default function AdminDashboard() {
                       <td className="py-2 pr-4 text-slate-400">
                         {new Date(m.createdAt).toLocaleTimeString()}
                       </td>
-                      <td className="py-2 pr-4 capitalize">{m.operationType.replace("_", " ")}</td>
+                      <td className="py-2 pr-4 capitalize">{getOperationLabel(m.operationType)}</td>
                       <td className="py-2 pr-4 text-xs text-slate-500">
                         {m.model.replace("gemini-", "").replace("-preview", "")}
                       </td>

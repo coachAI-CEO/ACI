@@ -302,6 +302,62 @@ model ApiMetrics {
   @@index([userId])
 }
 
+model VideoAnalysisCache {
+  id                      String   @id @default(uuid())
+  cacheKey                String   @unique
+  sourceFileUri           String
+  sourceFileUriNormalized String
+  model                   String
+  ageGroup                String
+  playerLevel             String
+  coachLevel              String
+  gameModelId             String
+  phase                   String
+  zone                    String
+  focusTeamColor          String
+  opponentTeamColor       String
+  minItems                Int
+  maxItems                Int
+  contract                Json
+  analysis                Json
+  fileUriUsed             String?
+  hits                    Int      @default(0)
+  lastHitAt               DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([sourceFileUriNormalized])
+  @@index([createdAt])
+  @@index([model])
+}
+
+model VideoAnalysisVault {
+  id                String   @id @default(uuid())
+  refCode           String?  @unique
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title             String
+  ageGroup          String
+  playerLevel       String
+  coachLevel        String
+  gameModelId       String
+  phase             String
+  zone              String
+  focusTeamColor    String
+  opponentTeamColor String
+  sourceFileUri     String?
+  fileUriUsed       String?
+  model             String?
+  analysis          Json
+  context           Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([gameModelId, phase, zone])
+}
+
 // Daily aggregated metrics for fast dashboard queries
 model DailyMetrics {
   id              String   @id @default(uuid())
@@ -392,6 +448,7 @@ model User {
   generatedSessions      Session[] @relation("GeneratedSessions")
   generatedDrills        Drill[] @relation("GeneratedDrills")
   apiMetrics             ApiMetrics[]
+  videoAnalysisVaultItems VideoAnalysisVault[]
   playerPlans            PlayerPlan[]
   calendarEvents         CalendarEvent[]
   accessPermissions      AccessPermission[]

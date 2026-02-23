@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { buildWeeklySummaryPrompt } from "../prompts/weekly-summary";
 
 export interface WeeklySummaryInput {
@@ -181,9 +181,16 @@ export async function generateWeeklySummary(
       });
 
       console.log(`[WEEKLY_SUMMARY] Generating AI summary with ${prompt.length} char prompt...`);
-      aiSummary = await generateText(prompt, { timeout: 60000, retries: 1 });
-      if (aiSummary) {
-        console.log(`[WEEKLY_SUMMARY] AI summary generated (${aiSummary.length} chars)`);
+      setMetricsContext({
+        operationType: "weekly_summary",
+      });
+      try {
+        aiSummary = await generateText(prompt, { timeout: 60000, retries: 1 });
+        if (aiSummary) {
+          console.log(`[WEEKLY_SUMMARY] AI summary generated (${aiSummary.length} chars)`);
+        }
+      } finally {
+        clearMetricsContext();
       }
     } catch (error: any) {
       console.error("[WEEKLY_SUMMARY] Error generating AI summary:", error);

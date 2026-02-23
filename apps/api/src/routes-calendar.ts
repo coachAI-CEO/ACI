@@ -25,7 +25,9 @@ const r = express.Router();
 // All routes require authentication (accessible to all authenticated users: COACH, ADMIN, CLUB, etc.)
 // Note: Calendar is NOT restricted to admin users - any authenticated user can schedule sessions
 r.use((req, res, next) => {
-  console.log(`[CALENDAR_ROUTER] ${req.method} ${req.path} - Using authenticate middleware (NOT requireAdmin)`);
+  if (req.path.startsWith("/calendar/")) {
+    console.log(`[CALENDAR_ROUTER] ${req.method} ${req.path} - Using authenticate middleware (NOT requireAdmin)`);
+  }
   next();
 });
 r.use(authenticate);

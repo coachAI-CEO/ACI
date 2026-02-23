@@ -18,6 +18,7 @@ import playerPlanRoutes from "./routes-player-plan";
 import calendarRoutes from "./routes-calendar";
 import organizationRoutes from "./routes-organization";
 import billingRoutes from "./routes-billing";
+import videoAnalysisRoutes from "./routes-video-analysis";
 
 const app = express();
 
@@ -73,5 +74,6 @@ app.use(billingRoutes); // Stripe checkout, portal, and webhook routes
 app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)
+app.use(videoAnalysisRoutes); // Video analysis routes
 
 export default app;
