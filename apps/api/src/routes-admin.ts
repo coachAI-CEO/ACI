@@ -52,9 +52,11 @@ const stripJobStatus = {
   lastError: null as string | null,
 };
 
-// Gemini 2.0 Flash pricing (per 1M tokens)
-const GEMINI_INPUT_PRICE_PER_1M = 0.10;  // $0.10 per 1M input tokens
-const GEMINI_OUTPUT_PRICE_PER_1M = 0.40; // $0.40 per 1M output tokens
+// Primary model pricing defaults (per 1M tokens).
+// Keep configurable so analytics stay aligned with deployed model choices.
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3-flash-preview";
+const GEMINI_INPUT_PRICE_PER_1M = Number(process.env.GEMINI_INPUT_PRICE_PER_1M) || 0.50;
+const GEMINI_OUTPUT_PRICE_PER_1M = Number(process.env.GEMINI_OUTPUT_PRICE_PER_1M) || 3.00;
 
 function calculateCost(promptTokens: number, completionTokens: number): number {
   const inputCost = (promptTokens / 1_000_000) * GEMINI_INPUT_PRICE_PER_1M;
@@ -284,7 +286,7 @@ r.get("/admin/stats", requireAdminPermission('canAccessAdminDashboard'), async (
         pricing: {
           inputPer1M: GEMINI_INPUT_PRICE_PER_1M,
           outputPer1M: GEMINI_OUTPUT_PRICE_PER_1M,
-          model: "gemini-2.0-flash",
+          model: GEMINI_PRIMARY_MODEL,
         },
       },
     });

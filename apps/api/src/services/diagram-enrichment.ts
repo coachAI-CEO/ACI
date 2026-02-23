@@ -1,4 +1,4 @@
-import { generateText } from "../gemini";
+import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 
 function parseJsonSafe(text: string) {
   try {
@@ -52,7 +52,18 @@ export function buildDiagramEnrichmentPrompt(drillJson: any) {
 
 export async function reenrichDiagramFromDrillJson(drillJson: any) {
   const prompt = buildDiagramEnrichmentPrompt(drillJson);
-  const text = await generateText(prompt, { timeout: 60000, retries: 0 });
+  setMetricsContext({
+    operationType: "diagram_enrichment",
+    ageGroup: typeof drillJson?.ageGroup === "string" ? drillJson.ageGroup : undefined,
+    gameModelId: typeof drillJson?.gameModelId === "string" ? drillJson.gameModelId : undefined,
+    phase: typeof drillJson?.phase === "string" ? drillJson.phase : undefined,
+  });
+  let text = "";
+  try {
+    text = await generateText(prompt, { timeout: 60000, retries: 0 });
+  } finally {
+    clearMetricsContext();
+  }
   const parsed = parseJsonSafe(text);
   const diagram = parsed?.diagram || parsed;
   if (!diagram || typeof diagram !== "object") return null;
