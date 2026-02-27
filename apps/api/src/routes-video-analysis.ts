@@ -206,21 +206,45 @@ function isGeminiFileUri(uri: string): boolean {
 }
 
 async function uploadExternalVideoToGemini(sourceUrl: string, apiKey: string): Promise<string> {
+  const MAX_FALLBACK_BYTES = 200 * 1024 * 1024; // 200 MB
+
   const sourceRes = await fetch(sourceUrl);
   if (!sourceRes.ok) {
     throw new Error(`SOURCE_VIDEO_FETCH_FAILED (${sourceRes.status})`);
   }
 
   const contentType = sourceRes.headers.get("content-type") || "video/mp4";
-  const bytes = Buffer.from(await sourceRes.arrayBuffer());
   const fileName = sourceUrl.split("/").pop() || "video_input.mp4";
+
+  // Determine content length before consuming the body.
+  const rawCL = sourceRes.headers.get("content-length");
+  const parsedCL = rawCL ? parseInt(rawCL, 10) : null;
+
+  let knownLength: number;
+  let uploadBody: ReadableStream | Uint8Array;
+
+  if (parsedCL !== null && Number.isFinite(parsedCL) && parsedCL > 0) {
+    // Happy path: stream directly without buffering.
+    knownLength = parsedCL;
+    uploadBody = sourceRes.body!;
+  } else {
+    // Fallback: no content-length header — buffer, but guard against OOM.
+    const ab = await sourceRes.arrayBuffer();
+    if (ab.byteLength > MAX_FALLBACK_BYTES) {
+      throw new Error(
+        `SOURCE_VIDEO_TOO_LARGE_FOR_FALLBACK (${ab.byteLength} bytes > ${MAX_FALLBACK_BYTES})`
+      );
+    }
+    knownLength = ab.byteLength;
+    uploadBody = new Uint8Array(ab);
+  }
 
   const startRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
     method: "POST",
     headers: {
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
-      "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+      "X-Goog-Upload-Header-Content-Length": String(knownLength),
       "X-Goog-Upload-Header-Content-Type": contentType,
       "Content-Type": "application/json",
     },
@@ -241,14 +265,15 @@ async function uploadExternalVideoToGemini(sourceUrl: string, apiKey: string): P
     throw new Error("GEMINI_UPLOAD_URL_MISSING");
   }
 
-  const finalizeRes = await fetch(uploadUrl, {
+  const finalizeRes = await (fetch as any)(uploadUrl, {
     method: "POST",
     headers: {
-      "Content-Length": String(bytes.length),
+      "Content-Length": String(knownLength),
       "X-Goog-Upload-Offset": "0",
       "X-Goog-Upload-Command": "upload, finalize",
     },
-    body: bytes,
+    body: uploadBody,
+    duplex: "half",
   });
 
   const finalizePayload: any = await finalizeRes.json().catch(() => ({}));
@@ -298,6 +323,13 @@ function clampCoord(value: unknown): number {
   return Number(n.toFixed(2));
 }
 
+function abbreviateRole(role: string): string {
+  const words = String(role || "").trim().split(/\s+/).filter((w) => w.length > 0);
+  if (words.length === 0) return "P";
+  const abbrev = words.map((w) => w[0].toUpperCase()).join("").replace(/[^A-Z0-9]/g, "");
+  return abbrev.length > 0 ? abbrev : "P";
+}
+
 function normalizeDiagramFrames(rawFrames: unknown): any[] {
   if (!Array.isArray(rawFrames)) return [];
   return rawFrames
@@ -309,14 +341,21 @@ function normalizeDiagramFrames(rawFrames: unknown): any[] {
         : "HORIZONTAL";
       const players = Array.isArray(f?.players)
         ? f.players
-            .map((p: any, pidx: number) => ({
-              id: String(p?.id || `p_${idx + 1}_${pidx + 1}`),
-              team: String(p?.team || "A").toUpperCase() === "B" ? "B" : "A",
-              role: String(p?.role || "player"),
-              jersey: null,
-              x: clampCoord(p?.x),
-              y: clampCoord(p?.y),
-            }))
+            .map((p: any, pidx: number) => {
+              const team = String(p?.team || "A").toUpperCase() === "B" ? "B" : "A";
+              const role = String(p?.role || "player");
+              const stableId = p?.id
+                ? String(p.id)
+                : `${team}_${abbreviateRole(role)}_${pidx + 1}`;
+              return {
+                id: stableId,
+                team,
+                role,
+                jersey: null,
+                x: clampCoord(p?.x),
+                y: clampCoord(p?.y),
+              };
+            })
             .slice(0, 30)
         : [];
       const ball = {
@@ -411,12 +450,20 @@ function scrubAnalysisNumberBias(analysis: any): any {
       const next = { ...frame };
       if (typeof next.notes === "string") next.notes = stripJerseyNumberMentions(next.notes);
       if (Array.isArray(next.players)) {
-        next.players = next.players.map((player: any, idx: number) => ({
-          ...player,
-          id: player?.id ? String(player.id) : `p_${idx + 1}`,
-          role: stripJerseyNumberMentions(player?.role || "player"),
-          jersey: null,
-        }));
+        next.players = next.players.map((player: any, pidx: number) => {
+          const team = String(player?.team || "A").toUpperCase() === "B" ? "B" : "A";
+          const role = String(player?.role || "player");
+          const stableId = player?.id
+            ? String(player.id)
+            : `${team}_${abbreviateRole(role)}_${pidx + 1}`;
+          return {
+            ...player,
+            id: stableId,
+            team,
+            role: stripJerseyNumberMentions(role),
+            jersey: null,
+          };
+        });
       }
       return next;
     });
@@ -1292,6 +1339,47 @@ r.get("/vault/video-analysis", async (req: AuthRequest, res) => {
         createdAt: item.createdAt,
       })),
     });
+  } catch (e: any) {
+    return res.status(500).json({
+      ok: false,
+      error: e?.message || String(e),
+    });
+  }
+});
+
+// DELETE /vault/video-analysis/:id - Delete a video analysis from vault
+r.delete("/vault/video-analysis/:id", async (req: AuthRequest, res) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const { id } = req.params;
+
+    if (!id || typeof id !== 'string') {
+      return res.status(400).json({ ok: false, error: "Invalid analysis ID" });
+    }
+
+    // Support delete by DB id (preferred) and by refCode (fallback)
+    const existing = await prisma.videoAnalysisVault.findFirst({
+      where: {
+        userId: userId,
+        OR: [{ id }, { refCode: id }],
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Analysis not found" });
+    }
+
+    // Delete the analysis
+    await prisma.videoAnalysisVault.delete({
+      where: { id: existing.id },
+    });
+
+    return res.json({ ok: true });
   } catch (e: any) {
     return res.status(500).json({
       ok: false,
