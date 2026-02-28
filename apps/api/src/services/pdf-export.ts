@@ -1,5 +1,7 @@
 import PDFDocument from "pdfkit";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type DiagramTeamCode = "ATT" | "DEF" | "NEUTRAL";
 
 type DiagramV1 = {
@@ -16,12 +18,7 @@ type DiagramV1 = {
     x: number;
     y: number;
   }>;
-  goals?: Array<{
-    x: number;
-    y: number;
-    width?: number;
-    height?: number;
-  }>;
+  goals?: Array<{ x: number; y: number; width?: number; height?: number }>;
   arrows?: Array<{
     from: { x?: number; y?: number; playerId?: string };
     to: { x?: number; y?: number; playerId?: string };
@@ -30,1175 +27,1819 @@ type DiagramV1 = {
   }>;
 };
 
-function drawDiagram(doc: PDFKit.PDFDocument, rawDiagram: any, options?: { width?: number; position?: 'left' | 'center'; startX?: number }): { width: number; height: number; startX: number; startY: number } | null {
-  try {
-    if (!rawDiagram || typeof rawDiagram !== "object") {
-      console.log("[PDF] No diagram object found or invalid type:", typeof rawDiagram);
-      return null;
+// ─── Design System ────────────────────────────────────────────────────────────
+
+const BRAND = {
+  navy:      "#0f172a",
+  blue:      "#2563eb",
+  surface:   "#f8fafc",
+  separator: "#e2e8f0",
+  muted:     "#64748b",
+  white:     "#ffffff",
+  black:     "#000000",
+};
+
+interface DrillTypeStyle {
+  border: string;
+  bg: string;
+  badgeBg: string;
+  badgeText: string;
+  label: string;
+}
+
+const DRILL_TYPE_CONFIG: Record<string, DrillTypeStyle> = {
+  WARMUP:           { border: "#f97316", bg: "#fff7ed", badgeBg: "#ffedd5", badgeText: "#c2410c", label: "Warmup" },
+  TECHNICAL:        { border: "#7c3aed", bg: "#f5f3ff", badgeBg: "#ede9fe", badgeText: "#5b21b6", label: "Technical" },
+  TACTICAL:         { border: "#2563eb", bg: "#eff6ff", badgeBg: "#dbeafe", badgeText: "#1e40af", label: "Tactical" },
+  CONDITIONED_GAME: { border: "#059669", bg: "#f0fdf4", badgeBg: "#dcfce7", badgeText: "#166534", label: "Cond. Game" },
+  FULL_GAME:        { border: "#0ea5e9", bg: "#f0f9ff", badgeBg: "#e0f2fe", badgeText: "#0c4a6e", label: "Full Game" },
+  COOLDOWN:         { border: "#64748b", bg: "#f8fafc", badgeBg: "#f1f5f9", badgeText: "#334155", label: "Cooldown" },
+};
+
+const SECTION_PHRASE_COLORS: Record<string, string> = {
+  warmup:           "#f97316",
+  technical:        "#7c3aed",
+  tactical:         "#2563eb",
+  conditioned_game: "#059669",
+  cooldown:         "#64748b",
+};
+
+const GAME_MODEL_LABELS: Record<string, string> = {
+  POSSESSION: "Possession",
+  PRESSING:   "Pressing",
+  TRANSITION: "Transition",
+  COACHAI:    "Balanced model",
+  TACTICAL:   "Tactical",
+};
+
+const PHASE_LABELS: Record<string, string> = {
+  ATTACKING:  "Attacking phase",
+  DEFENDING:  "Defending phase",
+  TRANSITION: "Transition phase",
+};
+
+const ZONE_LABELS: Record<string, string> = {
+  DEFENSIVE_THIRD: "Defensive third",
+  MIDDLE_THIRD:    "Middle third",
+  ATTACKING_THIRD: "Attacking third",
+};
+
+const COACH_LEVEL_LABELS: Record<string, string> = {
+  GRASSROOTS:   "Grassroots",
+  USSF_C:       "USSF C",
+  USSF_B_PLUS:  "USSF B+",
+};
+
+// Returns { label, color } for the "Language" badge derived from coachLevel
+function getLanguageBadge(coachLevel?: string): { label: string; color: string } {
+  const key = String(coachLevel || "").toUpperCase();
+  if (key === "GRASSROOTS") return { label: "Language: Grassroots", color: "#059669" };
+  if (key === "USSF_C")     return { label: "Language: USSF C",     color: "#0ea5e9" };
+  if (key === "USSF_B_PLUS") return { label: "Language: USSF B+",   color: "#7c3aed" };
+  return { label: "Language: Standard", color: "#64748b" };
+}
+
+function getDrillConfig(drillType?: string): DrillTypeStyle {
+  return DRILL_TYPE_CONFIG[(drillType || "").toUpperCase()] || DRILL_TYPE_CONFIG.TACTICAL;
+}
+
+// ─── Data Normalization ───────────────────────────────────────────────────────
+
+function normalizeDrill(drill: any) {
+  const json = drill.json || {};
+  return {
+    title:          drill.title          || json.title          || "Drill",
+    drillType:      drill.drillType      || json.drillType      || "N/A",
+    duration:       drill.duration       ?? drill.durationMin   ?? json.durationMin ?? json.duration ?? "?",
+    description:    drill.description    || json.description    || "",
+    organization:   drill.organization   || json.organization,
+    coachingPoints: drill.coachingPoints || json.coachingPoints || [],
+    progressions:   drill.progressions   || json.progressions   || [],
+    diagram:        drill.diagram || drill.diagramV1 || json.diagram || json.diagramV1 || null,
+  };
+}
+
+function buildOrgText(org: any): string[] {
+  if (!org) return [];
+  if (typeof org === "string") return [org];
+  const lines: string[] = [];
+  if (Array.isArray(org.setupSteps) && org.setupSteps.length > 0) {
+    lines.push(...org.setupSteps);
+  }
+  if (org.area) {
+    if (org.area.lengthYards && org.area.widthYards) {
+      lines.push(`Area: ${org.area.lengthYards} x ${org.area.widthYards} yards`);
     }
-    
+    if (org.area.notes) lines.push(org.area.notes);
+  }
+  if (org.rotation) lines.push(`Rotation: ${org.rotation}`);
+  if (org.restarts) lines.push(`Restarts: ${org.restarts}`);
+  if (org.scoring)  lines.push(`Scoring: ${org.scoring}`);
+  return lines;
+}
+
+/**
+ * Splits org data into setup steps (numbered) and constraints (compact info line).
+ * Used by the session drill blocks for better visual hierarchy.
+ */
+function buildOrgSections(org: any): { setupSteps: string[]; constraints: string[] } {
+  if (!org) return { setupSteps: [], constraints: [] };
+  if (typeof org === "string") return { setupSteps: [org], constraints: [] };
+  const setupSteps: string[] = Array.isArray(org.setupSteps) ? org.setupSteps : [];
+  const constraints: string[] = [];
+  if (org.area) {
+    if (org.area.lengthYards && org.area.widthYards)
+      constraints.push(`${org.area.lengthYards} x ${org.area.widthYards} yards`);
+    if (org.area.notes) constraints.push(org.area.notes);
+  }
+  if (org.rotation) constraints.push(`Rotation: ${org.rotation}`);
+  if (org.restarts) constraints.push(`Restarts: ${org.restarts}`);
+  if (org.scoring)  constraints.push(`Scoring: ${org.scoring}`);
+  return { setupSteps, constraints };
+}
+
+/**
+ * Strips leading Unicode symbols / arrows / bullets that don't render correctly
+ * in PDFKit's built-in Helvetica (WinAnsi encoding). Applies to AI-generated
+ * progression text which often starts with → ⚡ ! or similar characters.
+ */
+function cleanText(text: string): string {
+  return String(text || "").replace(/^[^a-zA-Z0-9"'([\-]+/, "").trim();
+}
+
+// ─── Low-Level Drawing Helpers ────────────────────────────────────────────────
+
+/**
+ * Draw a filled rounded-rectangle badge and return its width so the caller
+ * can chain multiple badges horizontally.
+ */
+function drawBadge(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  x: number,
+  y: number,
+  opts: { bgColor: string; textColor: string; fontSize?: number; padX?: number; padY?: number; borderColor?: string }
+): number {
+  const fontSize = opts.fontSize ?? 7.5;
+  const padX = opts.padX ?? 7;
+  const padY = opts.padY ?? 3;
+  doc.font("Helvetica-Bold").fontSize(fontSize);
+  const tw = doc.widthOfString(text);
+  const bw = tw + padX * 2;
+  const bh = fontSize + padY * 2;
+  doc.save();
+  doc.roundedRect(x, y, bw, bh, 3).fill(opts.bgColor);
+  if (opts.borderColor) {
+    doc.roundedRect(x, y, bw, bh, 3).lineWidth(0.75).stroke(opts.borderColor);
+  }
+  doc.fillColor(opts.textColor).text(text, x + padX, y + padY, { lineBreak: false });
+  doc.restore();
+  return bw;
+}
+
+/**
+ * Footer: thin separator line + "TacticalEdge · <title>" left, "Page N" right.
+ * Temporarily zeroes doc.page.margins.bottom so PDFKit does not auto-add a new
+ * page while we draw in the footer zone (below the normal content boundary).
+ */
+function drawPageDecor(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  pageNum: number
+): void {
+  const { width, height } = doc.page;
+  const margin = 45;
+  const footerY = height - 28;
+  const savedX = doc.x;
+  const savedY = doc.y;
+
+  const pageMargins = (doc.page as any).margins;
+  const savedBottom = pageMargins.bottom;
+  pageMargins.bottom = 0;
+
+  doc.save();
+
+  doc.strokeColor(BRAND.separator).lineWidth(0.4)
+    .moveTo(margin, footerY - 6).lineTo(width - margin, footerY - 6).stroke();
+
+  doc.font("Helvetica").fontSize(7).fillColor("#94a3b8");
+  doc.text(`TacticalEdge  ·  ${title}`, margin, footerY, {
+    width: (width - margin * 2) * 0.65,
+    align: "left",
+    lineBreak: false,
+  });
+  doc.text(`Page ${pageNum}`, margin, footerY, {
+    width: width - margin * 2,
+    align: "right",
+    lineBreak: false,
+  });
+
+  doc.restore();
+  pageMargins.bottom = savedBottom;
+  doc.x = savedX;
+  doc.y = savedY;
+}
+
+/**
+ * Section heading with a 3pt coloured left accent bar.
+ * Reads and advances doc.y — caller should not pass explicit y.
+ */
+function drawSectionHeader(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  x: number,
+  color: string = BRAND.blue
+): void {
+  doc.fillColor(color).rect(x, doc.y, 3, 16).fill();
+  doc.fontSize(13).fillColor(BRAND.navy).font("Helvetica-Bold")
+    .text(title, x + 10, doc.y, { lineBreak: false });
+  doc.moveDown(1.1);
+}
+
+// ─── Diagram Renderer ─────────────────────────────────────────────────────────
+
+/**
+ * Render a DiagramV1 onto the current page.
+ *
+ * IMPORTANT: doc.page.margins.bottom is zeroed for the entire call to prevent
+ * PDFKit's auto-page-break from firing when player labels at low y-values
+ * (near the top of the pitch) cause the cursor to appear to go "backwards".
+ */
+function drawDiagram(
+  doc: PDFKit.PDFDocument,
+  rawDiagram: any,
+  options?: { width?: number; position?: "left" | "center"; startX?: number }
+): { width: number; height: number; startX: number; startY: number } | null {
+  const pageMargins = (doc.page as any).margins;
+  const savedBottom = pageMargins.bottom;
+  pageMargins.bottom = 0;
+
+  try {
+    if (!rawDiagram || typeof rawDiagram !== "object") return null;
+
     const diagram: DiagramV1 = rawDiagram;
     const players = diagram.players || [];
-    const goals = diagram.goals || [];
-    const arrows = diagram.arrows || [];
-    
-    if (!Array.isArray(players) || players.length === 0) {
-      console.log("[PDF] Diagram has no players array or it's empty", {
-        hasPlayers: !!diagram.players,
-        playersLength: players.length,
-        diagramKeys: Object.keys(diagram),
-        diagramString: JSON.stringify(diagram).substring(0, 200),
-      });
-      return null;
-    }
-    console.log(`[PDF] Drawing diagram with ${players.length} players`);
+    const arrows  = diagram.arrows  || [];
 
-    // Make diagram much smaller to fit on left side
-    const margin = 50;
-    const diagramWidth = options?.width || 150; // Small width for left side
-    const variant = diagram.pitch?.variant || "HALF";
-    const orientation = diagram.pitch?.orientation || "HORIZONTAL";
-    
-    // For horizontal: wider than tall (1.5:1 ratio)
-    // For vertical: taller than wide (1:1.5 ratio)
+    if (!Array.isArray(players) || players.length === 0) return null;
+
+    const margin      = 45;
+    const diagramWidth = options?.width || 160;
+    const orientation  = diagram.pitch?.orientation || "HORIZONTAL";
+
     let boxWidth: number;
     let boxHeight: number;
-    
     if (orientation === "VERTICAL") {
-      // Vertical: height is the limiting factor
       boxHeight = diagramWidth * 1.5;
-      boxWidth = diagramWidth;
+      boxWidth  = diagramWidth;
     } else {
-      // Horizontal: width is the limiting factor
-      boxWidth = diagramWidth;
-      boxHeight = boxWidth / 1.5; // Maintain 1.5:1 aspect ratio
+      boxWidth  = diagramWidth;
+      boxHeight = boxWidth / 1.5;
     }
-    
-    // Position on left side (use provided startX or default to margin)
-    const startX = options?.startX ?? margin;
-    let startY = doc.y; // Use current Y position directly (no extra spacing)
 
+    let startX: number;
+    if (options?.startX !== undefined) {
+      startX = options.startX;
+    } else if (options?.position === "center") {
+      startX = (doc.page.width - boxWidth) / 2;
+    } else {
+      startX = margin;
+    }
+
+    const startY = doc.y;
     doc.save();
-    
-    // Match web version: viewBox 0-100, field at x=2, y=5, width=96, height=90
-    // Scale factors to convert 0-100 viewBox to PDF coordinates
-    const scaleX = boxWidth / 100;
+
+    const scaleX = boxWidth  / 100;
     const scaleY = boxHeight / 100;
-    
-    // Helper to convert viewBox coords to PDF coords
     const toX = (vx: number) => startX + vx * scaleX;
     const toY = (vy: number) => startY + vy * scaleY;
-    
-    // Draw field background - darker green like the web version
-    doc
-      .fillColor("#022c22") // Dark green (matches web pitchBackground)
-      .rect(startX, startY, boxWidth, boxHeight)
-      .fill();
-    
-    const lineColor = "#e5e7eb";
-    
-    // Outer pitch border (matching web: x=2, y=5, width=96, height=90)
-    doc
-      .lineWidth(0.9)
-      .strokeColor(lineColor)
-      .rect(toX(2), toY(5), 96 * scaleX, 90 * scaleY)
-      .stroke();
-    
-    // Halfway line (y=50 in viewBox)
-    doc
-      .lineWidth(0.5)
-      .strokeColor(lineColor)
-      .opacity(0.7)
-      .moveTo(toX(2), toY(50))
-      .lineTo(toX(98), toY(50))
-      .stroke()
-      .opacity(1);
-    
-    // Penalty box at top (x=30, y=5, width=40, height=18)
-    doc
-      .lineWidth(0.75)
-      .strokeColor(lineColor)
-      .rect(toX(30), toY(5), 40 * scaleX, 18 * scaleY)
-      .stroke();
-    
-    // Goal box inside penalty area (x=40, y=5, width=20, height=7)
-    doc
-      .lineWidth(0.65)
-      .strokeColor(lineColor)
-      .rect(toX(40), toY(5), 20 * scaleX, 7 * scaleY)
-      .stroke();
-    
-    // Goal line (thicker white line at top center)
-    doc
-      .lineWidth(1.2)
-      .strokeColor(lineColor)
-      .moveTo(toX(45), toY(5))
-      .lineTo(toX(55), toY(5))
-      .stroke();
-    
-    // Center circle arc (semicircle at y=50)
-    const circleRadius = 9 * Math.min(scaleX, scaleY);
-    const centerX = toX(50);
-    const centerY = toY(50);
-    doc
-      .lineWidth(0.5)
-      .strokeColor(lineColor)
-      .opacity(0.6);
-    // Draw semicircle arc (top half)
-    doc.path(`M ${centerX - circleRadius} ${centerY} A ${circleRadius} ${circleRadius} 0 0 0 ${centerX + circleRadius} ${centerY}`)
-      .stroke()
+
+    // Pitch background
+    doc.fillColor("#064e3b").rect(startX, startY, boxWidth, boxHeight).fill();
+
+    const lc = "#94a3b8"; // pitch line color
+
+    // Outer border
+    doc.lineWidth(1).strokeColor(lc)
+      .rect(toX(2), toY(5), 96 * scaleX, 90 * scaleY).stroke();
+
+    // Halfway line
+    doc.lineWidth(0.5).strokeColor(lc).opacity(0.65)
+      .moveTo(toX(2), toY(50)).lineTo(toX(98), toY(50)).stroke().opacity(1);
+
+    // Penalty boxes (top + bottom)
+    doc.lineWidth(0.75).strokeColor(lc)
+      .rect(toX(30), toY(5),  40 * scaleX, 18 * scaleY).stroke()
+      .rect(toX(30), toY(77), 40 * scaleX, 18 * scaleY).stroke();
+
+    // Goal boxes (top + bottom)
+    doc.lineWidth(0.6).strokeColor(lc)
+      .rect(toX(40), toY(5),  20 * scaleX, 7 * scaleY).stroke()
+      .rect(toX(40), toY(88), 20 * scaleX, 7 * scaleY).stroke();
+
+    // Goal lines (bright white, top + bottom)
+    doc.lineWidth(1.8).strokeColor("#ffffff").opacity(0.9)
+      .moveTo(toX(45), toY(4)).lineTo(toX(55), toY(4)).stroke()
+      .moveTo(toX(45), toY(96)).lineTo(toX(55), toY(96)).stroke()
       .opacity(1);
 
-    // Helper to map team -> color (matching web version)
+    // Center circle
+    const cr = 10 * Math.min(scaleX, scaleY);
+    doc.lineWidth(0.5).strokeColor(lc).opacity(0.6)
+      .circle(toX(50), toY(50), cr).stroke().opacity(1);
+
+    // Center spot + penalty spots
+    doc.fillColor(lc).opacity(0.8)
+      .circle(toX(50), toY(50), 1.5).fill()
+      .circle(toX(50), toY(17), 1.5).fill()
+      .circle(toX(50), toY(83), 1.5).fill()
+      .opacity(1);
+
+    // Corner arcs
+    const cR = 3 * Math.min(scaleX, scaleY);
+    doc.lineWidth(0.5).strokeColor(lc).opacity(0.5);
+    [
+      [toX(2),  toY(5),  1,  1],
+      [toX(98), toY(5),  -1, 1],
+      [toX(98), toY(95), -1, -1],
+      [toX(2),  toY(95), 1,  -1],
+    ].forEach(([px, py, dx, dy]) => {
+      doc.path(
+        `M ${px + dx * cR} ${py} A ${cR} ${cR} 0 0 ${dx * dy > 0 ? 1 : 0} ${px} ${py + dy * cR}`
+      ).stroke();
+    });
+    doc.opacity(1);
+
+    // ── Players ──────────────────────────────────────────────────────────────
     const teamColor = (team?: DiagramTeamCode): string => {
-      if (team === "ATT") return "#2563eb"; // blue (matches web)
-      if (team === "DEF") return "#ef4444"; // red (matches web)
-      return "#6b7280"; // neutral / gray
+      if (team === "ATT") return "#3b82f6";
+      if (team === "DEF") return "#ef4444";
+      return "#9ca3af";
     };
 
-    // Calculate player size based on field size (proportional)
-    const baseRadius = Math.min(boxWidth, boxHeight) * 0.025; // 2.5% of smaller dimension
-    const radius = Math.max(6, Math.min(10, baseRadius)); // Clamp between 6-10 points
+    const baseRadius = Math.min(boxWidth, boxHeight) * 0.03;
+    const radius = Math.max(7, Math.min(11, baseRadius));
 
-    // Draw players as circles with numbers
+    const toPdf = (vx: number, vy: number): { x: number; y: number } => {
+      if (orientation === "VERTICAL") {
+        return {
+          x: startX + (Math.min(Math.max(vy, 0), 100) / 100) * boxWidth,
+          y: startY + (Math.min(Math.max(vx, 0), 100) / 100) * boxHeight,
+        };
+      }
+      return {
+        x: startX + (Math.min(Math.max(vx, 0), 100) / 100) * boxWidth,
+        y: startY + (Math.min(Math.max(vy, 0), 100) / 100) * boxHeight,
+      };
+    };
+
     players.forEach((p) => {
       if (typeof p.x !== "number" || typeof p.y !== "number") return;
-
-      // Map 0-100 coordinates to field positions
-      // For horizontal: x is width, y is height
-      // For vertical: x is height, y is width (swapped)
-      let px: number, py: number;
-      
-      if (orientation === "VERTICAL") {
-        // Vertical: x maps to height, y maps to width
-        px = startX + (Math.min(Math.max(p.y, 0), 100) / 100) * boxWidth;
-        py = startY + (Math.min(Math.max(p.x, 0), 100) / 100) * boxHeight;
-      } else {
-        // Horizontal: x maps to width, y maps to height
-        px = startX + (Math.min(Math.max(p.x, 0), 100) / 100) * boxWidth;
-        py = startY + (Math.min(Math.max(p.y, 0), 100) / 100) * boxHeight;
-      }
-
+      const { x: px, y: py } = toPdf(p.x, p.y);
       const fill = teamColor(p.team);
 
-      // Player circle - draw fill first, then stroke
-      // Use separate operations to ensure proper rendering
-      doc
-        .lineWidth(1.5)
-        .fillColor(fill)
-        .circle(px, py, radius)
-        .fill();
-      
-      // Stroke the circle border (white for contrast on dark field)
-      doc
-        .strokeColor("#e5e7eb")
-        .lineWidth(0.7)
-        .circle(px, py, radius)
-        .stroke();
+      // Drop shadow
+      doc.save().opacity(0.25).fillColor("#000000")
+        .circle(px + 1, py + 1.5, radius).fill().restore();
 
-      // Number or role initial (white text for dark background)
+      // Player circle
+      doc.lineWidth(1.5).fillColor(fill).circle(px, py, radius).fill();
+      doc.strokeColor("#ffffff").lineWidth(0.9).circle(px, py, radius).stroke();
+
+      // Number / role label
       const label =
         typeof p.number === "number"
           ? String(p.number)
-          : p.role
-          ? p.role.slice(0, 2).toUpperCase()
-          : "";
+          : p.role ? p.role.slice(0, 2).toUpperCase() : "";
 
       if (label) {
-        doc
-          .fontSize(Math.max(5, radius * 0.6))
-          .fillColor("white")
-          .text(label, px - radius, py - radius * 0.35, {
+        doc.fontSize(Math.max(5.5, radius * 0.65))
+          .fillColor(BRAND.white).font("Helvetica-Bold")
+          .text(label, px - radius, py - radius * 0.4, {
             width: radius * 2,
             align: "center",
           });
       }
     });
 
-    // Draw arrows (movements, passes, etc.)
+    // ── Arrows ───────────────────────────────────────────────────────────────
     if (Array.isArray(arrows) && arrows.length > 0) {
-      const getPlayerPos = (ref: { x?: number; y?: number; playerId?: string }) => {
-        if (typeof ref.x === "number" && typeof ref.y === "number") {
-          if (orientation === "VERTICAL") {
-            return {
-              x: startX + (Math.min(Math.max(ref.y, 0), 100) / 100) * boxWidth,
-              y: startY + (Math.min(Math.max(ref.x, 0), 100) / 100) * boxHeight,
-            };
-          } else {
-            return {
-              x: startX + (Math.min(Math.max(ref.x, 0), 100) / 100) * boxWidth,
-              y: startY + (Math.min(Math.max(ref.y, 0), 100) / 100) * boxHeight,
-            };
-          }
-        }
-        // Try to find by playerId
+      const getPos = (
+        ref: { x?: number; y?: number; playerId?: string } | null | undefined
+      ): { x: number; y: number } | null => {
+        if (!ref) return null;
+        if (typeof ref.x === "number" && typeof ref.y === "number")
+          return toPdf(ref.x, ref.y);
         if (ref.playerId) {
           const player = players.find((p) => p.id === ref.playerId);
-          if (player && typeof player.x === "number" && typeof player.y === "number") {
-            if (orientation === "VERTICAL") {
-              return {
-                x: startX + (Math.min(Math.max(player.y, 0), 100) / 100) * boxWidth,
-                y: startY + (Math.min(Math.max(player.x, 0), 100) / 100) * boxHeight,
-              };
-            } else {
-              return {
-                x: startX + (Math.min(Math.max(player.x, 0), 100) / 100) * boxWidth,
-                y: startY + (Math.min(Math.max(player.y, 0), 100) / 100) * boxHeight,
-              };
-            }
-          }
+          if (player && typeof player.x === "number" && typeof player.y === "number")
+            return toPdf(player.x, player.y);
         }
         return null;
       };
 
       arrows.forEach((arrow) => {
-        const from = getPlayerPos(arrow.from);
-        const to = getPlayerPos(arrow.to);
+        if (!arrow || !arrow.from || !arrow.to) return;
+        const from = getPos(arrow.from);
+        const to   = getPos(arrow.to);
         if (!from || !to) return;
 
         const arrowStyle = arrow.style || "solid";
-        const arrowType = arrow.type || "pass";
-        
-        // Determine color based on arrow type (light colors for dark background)
-        let arrowColor = "#e5e7eb"; // white/light default for passes
-        if (arrowType === "run") arrowColor = "#22c55e"; // green for runs
-        if (arrowType === "press") arrowColor = "#f97316"; // orange for press
+        const arrowType  = arrow.type  || "pass";
 
-        doc
-          .lineWidth(arrowStyle === "bold" ? 1.5 : 1)
-          .strokeColor(arrowColor);
-        
-        if (arrowStyle === "dashed") {
-          doc.dash(5, { space: 3 });
-        } else if (arrowStyle === "dotted") {
-          doc.dash(2, { space: 2 });
-        }
+        let arrowColor = "#e2e8f0";
+        if (arrowType === "run")   arrowColor = "#22c55e";
+        if (arrowType === "press") arrowColor = "#f97316";
 
-        doc
-          .moveTo(from.x, from.y)
-          .lineTo(to.x, to.y)
-          .stroke();
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) return;
 
-        if (arrowStyle !== "solid") {
-          doc.undash();
-        }
+        const aLen = Math.min(8, len * 0.3);
+        const aHW  = aLen * 0.45;
+        const ux = dx / len;
+        const uy = dy / len;
+        const bMx = to.x - ux * aLen;
+        const bMy = to.y - uy * aLen;
+
+        const lw = arrowStyle === "bold" ? 1.8 : 1;
+        doc.lineWidth(lw).strokeColor(arrowColor).fillColor(arrowColor);
+
+        if (arrowStyle === "dashed") doc.dash(5, { space: 3 });
+        else if (arrowStyle === "dotted") doc.dash(2, { space: 2 });
+
+        doc.moveTo(from.x, from.y).lineTo(bMx, bMy).stroke();
+        if (arrowStyle !== "solid") doc.undash();
+
+        // Filled arrowhead triangle
+        const perpX = -uy;
+        const perpY =  ux;
+        doc.moveTo(to.x, to.y)
+          .lineTo(bMx + perpX * aHW, bMy + perpY * aHW)
+          .lineTo(bMx - perpX * aHW, bMy - perpY * aHW)
+          .closePath().fill();
       });
     }
 
-    // Reset all colors before restoring
-    doc.fillColor("black");
-    doc.strokeColor("black");
-    
+    doc.fillColor(BRAND.black).strokeColor(BRAND.black);
     doc.restore();
-    
-    // Ensure text color is reset for subsequent content
-    doc.fillColor("black");
-
-    // Return diagram dimensions and position so caller can position text accordingly
+    pageMargins.bottom = savedBottom;
     return { width: boxWidth, height: boxHeight, startX, startY };
+
   } catch (e: any) {
     console.error("[PDF] Error drawing diagram:", e);
-    // Continue without diagram rather than breaking the PDF
+    pageMargins.bottom = savedBottom;
     doc.moveDown(0.5);
     doc.fontSize(8).fillColor("red").text("(Diagram rendering error)");
     return null;
   }
 }
 
-export async function generateSessionPdf(session: any): Promise<Buffer> {
-  console.log("[PDF] Generating PDF for session:", {
-    title: session.title,
-    drillsCount: session.drills?.length,
-    drillsWithDiagrams: session.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
-    sessionKeys: Object.keys(session || {}),
-    firstDrillSample: session.drills?.[0] ? {
-      title: session.drills[0].title,
-      keys: Object.keys(session.drills[0]),
-      hasDiagram: !!(session.drills[0].diagram || session.drills[0].diagramV1),
-    } : 'no drills',
-  });
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const chunks: Buffer[] = [];
-
-  doc.on("data", (chunk) => chunks.push(chunk));
-
-  doc.fontSize(20).fillColor("black").text(session.title || "Training Session", {
-    align: "left",
-  });
-  doc.moveDown(0.5);
-  doc
-    .fontSize(10)
-    .fillColor("gray")
-    .text(
-      `${session.gameModelId || ""}${
-        session.ageGroup ? " • " + session.ageGroup : ""
-      }`,
-      { align: "left" }
-    );
-  doc.moveDown();
-
-  if (session.summary) {
-    doc.fontSize(12).fillColor("black").text("Summary", { underline: true });
-    doc.moveDown(0.5);
-    doc.fontSize(10).text(session.summary, { align: "left" });
-    doc.moveDown();
-  }
-
-  // Store coaching emphasis for later (will be rendered after drills)
-  const skillFocus = session.skillFocus || session.json?.skillFocus;
-
-  if (Array.isArray(session.drills)) {
-    doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Drills", { underline: true });
-    doc.moveDown(0.5);
-    
-    session.drills.forEach((drill: any, idx: number) => {
-      const margin = 50;
-      const pageWidth = doc.page.width - margin * 2;
-      const diagramWidth = 160; // Slightly smaller diagram
-      const textColumnWidth = pageWidth - diagramWidth - 15; // Gap of 15
-      const textColumnX = margin + diagramWidth + 15;
-      
-      // Only add page break if very close to bottom (leave room for title + minimal content)
-      const minRemainingSpace = 120;
-      if (doc.y > doc.page.height - margin - minRemainingSpace) {
-        doc.addPage();
-      }
-      
-      // Minimal spacing between drills
-      if (idx > 0) {
-        doc.moveDown(0.5);
-      }
-      
-      // Drill title
-      doc
-        .fontSize(12)
-        .fillColor("black")
-        .font("Helvetica-Bold")
-        .text(`${idx + 1}. ${drill.title || drill.drillType || "Drill"}`, margin);
-      doc
-        .fontSize(9)
-        .fillColor("gray")
-        .font("Helvetica")
-        .text(`Type: ${drill.drillType || "N/A"} • Duration: ${drill.duration || drill.durationMin || "?"} min`, margin);
-      
-      doc.moveDown(0.5);
-      
-      // Record the Y position where content will start
-      const contentStartY = doc.y;
-      
-      // Check for diagram
-      const rawDiagram = drill.diagram || drill.diagramV1;
-      let diagramEndY = contentStartY;
-      let textStartY = contentStartY; // Where text should start
-      
-      // Draw diagram on the left
-      if (rawDiagram) {
-        const diagramInfo = drawDiagram(doc, rawDiagram, { 
-          width: diagramWidth, 
-          position: 'left',
-          startX: margin
-        });
-        if (diagramInfo) {
-          diagramEndY = diagramInfo.startY + diagramInfo.height;
-          textStartY = diagramInfo.startY; // Text starts at same Y as diagram
-        }
-      }
-      
-      // Now draw text content on the right, starting at textStartY
-      doc.x = textColumnX;
-      doc.y = textStartY;
-      
-      // Organisation section
-      let organizationText = "";
-      const org = drill.organization || drill.json?.organization;
-      
-      if (typeof org === "string") {
-        organizationText = org;
-      } else if (typeof org === "object" && org !== null) {
-        const parts: string[] = [];
-        if (Array.isArray(org.setupSteps) && org.setupSteps.length > 0) {
-          parts.push(...org.setupSteps);
-        }
-        if (org.area) {
-          const areaParts: string[] = [];
-          if (org.area.lengthYards && org.area.widthYards) {
-            areaParts.push(`${org.area.lengthYards} x ${org.area.widthYards} yards`);
-          }
-          if (org.area.notes) areaParts.push(org.area.notes);
-          if (areaParts.length > 0) parts.push(`Area: ${areaParts.join(", ")}`);
-        }
-        if (org.rotation) parts.push(`Rotation: ${org.rotation}`);
-        if (org.restarts) parts.push(`Restarts: ${org.restarts}`);
-        if (org.scoring) parts.push(`Scoring: ${org.scoring}`);
-        organizationText = parts.join(". ") + (parts.length > 0 ? "." : "");
-      }
-      
-      if (!organizationText && drill.description) {
-        organizationText = drill.description;
-      }
-      
-      if (organizationText) {
-        doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Organisation", textColumnX, doc.y);
-        doc.moveDown(0.2);
-        doc.fontSize(9).fillColor("black").font("Helvetica").text(organizationText, textColumnX, doc.y, {
-          width: textColumnWidth,
-          lineGap: 1
-        });
-        doc.moveDown(0.4);
-      }
-      
-      // Key Coaching Points
-      const coachingPoints = drill.coachingPoints || drill.json?.coachingPoints || [];
-      if (Array.isArray(coachingPoints) && coachingPoints.length > 0) {
-        doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Key Coaching Points", textColumnX, doc.y);
-        doc.moveDown(0.2);
-        coachingPoints.forEach((point: string, i: number) => {
-          doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${point}`, textColumnX, doc.y, {
-            width: textColumnWidth,
-            lineGap: 1
-          });
-        });
-        doc.moveDown(0.4);
-      }
-      
-      // Progressions
-      const progressions = drill.progressions || drill.json?.progressions || [];
-      if (Array.isArray(progressions) && progressions.length > 0) {
-        doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Progressions", textColumnX, doc.y);
-        doc.moveDown(0.2);
-        progressions.forEach((progression: string, i: number) => {
-          doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${progression}`, textColumnX, doc.y, {
-            width: textColumnWidth,
-            lineGap: 1
-          });
-        });
-        doc.moveDown(0.4);
-      }
-      
-      // Get text end Y
-      const textEndY = doc.y;
-      
-      // Move to below whichever is taller (diagram or text)
-      // Add minimal spacing - just enough to separate drills
-      const sectionEndY = Math.max(diagramEndY, textEndY) + 5;
-      doc.x = margin;
-      doc.y = sectionEndY;
-      
-      // Add a thin separator line between drills (except for the last one)
-      if (idx < session.drills.length - 1) {
-        doc.strokeColor("#cccccc").lineWidth(0.5);
-        doc.moveTo(margin, doc.y).lineTo(doc.page.width - margin, doc.y).stroke();
-        doc.moveDown(0.3);
-      }
-    });
-  }
-
-  // Coaching Emphasis section (if available) - placed after drills
-  if (skillFocus) {
-    // Check if we need a new page
-    if (doc.y > doc.page.height - 250) {
-      doc.addPage();
-    }
-    
-    doc.moveDown(1);
-    doc.fontSize(12).fillColor("black").text("Coaching Emphasis", { underline: true });
-    doc.moveDown(0.5);
-    
-    // Title
-    if (skillFocus.title) {
-      doc
-        .fontSize(11)
-        .fillColor("black")
-        .font("Helvetica-Bold")
-        .text(skillFocus.title, { align: "left" });
-      doc.moveDown(0.3);
-    }
-    
-    // Summary
-    if (skillFocus.summary) {
-      doc
-        .fontSize(10)
-        .fillColor("black")
-        .font("Helvetica")
-        .text(skillFocus.summary, { align: "left", lineGap: 2 });
-      doc.moveDown(0.5);
-    }
-    
-    // Key Skills
-    if (Array.isArray(skillFocus.keySkills) && skillFocus.keySkills.length > 0) {
-      doc
-        .fontSize(10)
-        .fillColor("black")
-        .font("Helvetica-Bold")
-        .text("Key Skills", { align: "left" });
-      doc.moveDown(0.3);
-      skillFocus.keySkills.forEach((skill: string, i: number) => {
-        doc
-          .fontSize(9)
-          .fillColor("black")
-          .font("Helvetica")
-          .text(`${i + 1}. ${skill}`, {
-            align: "left",
-            lineGap: 1.5
-          });
-      });
-      doc.moveDown(0.5);
-    }
-    
-    // Coaching Points
-    if (Array.isArray(skillFocus.coachingPoints) && skillFocus.coachingPoints.length > 0) {
-      doc
-        .fontSize(10)
-        .fillColor("black")
-        .font("Helvetica-Bold")
-        .text("Coaching Points", { align: "left" });
-      doc.moveDown(0.3);
-      skillFocus.coachingPoints.forEach((point: string, i: number) => {
-        doc
-          .fontSize(9)
-          .fillColor("black")
-          .font("Helvetica")
-          .text(`${i + 1}. ${point}`, {
-            align: "left",
-            lineGap: 1.5
-          });
-      });
-      doc.moveDown(0.5);
-    }
-    
-    // Psychology
-    if (skillFocus.psychology) {
-      const hasGood = Array.isArray(skillFocus.psychology.good) && skillFocus.psychology.good.length > 0;
-      const hasBad = Array.isArray(skillFocus.psychology.bad) && skillFocus.psychology.bad.length > 0;
-      
-      if (hasGood || hasBad) {
-        doc
-          .fontSize(10)
-          .fillColor("black")
-          .font("Helvetica-Bold")
-          .text("Psychology", { align: "left" });
-        doc.moveDown(0.3);
-        
-        if (hasGood) {
-          doc
-            .fontSize(9)
-            .fillColor("black")
-            .font("Helvetica-Bold")
-            .text("Positive Behaviors:", { align: "left" });
-          doc.moveDown(0.2);
-          skillFocus.psychology.good.forEach((item: string, i: number) => {
-            doc
-              .fontSize(9)
-              .fillColor("black")
-              .font("Helvetica")
-              .text(`• ${item}`, {
-                align: "left",
-                lineGap: 1.5
-              });
-          });
-          doc.moveDown(0.3);
-        }
-        
-        if (hasBad) {
-          doc
-            .fontSize(9)
-            .fillColor("black")
-            .font("Helvetica-Bold")
-            .text("Areas for Improvement:", { align: "left" });
-          doc.moveDown(0.2);
-          skillFocus.psychology.bad.forEach((item: string, i: number) => {
-            doc
-              .fontSize(9)
-              .fillColor("black")
-              .font("Helvetica")
-              .text(`• ${item}`, {
-                align: "left",
-                lineGap: 1.5
-              });
-          });
-          doc.moveDown(0.3);
-        }
-      }
-    }
-    
-    // Section Phrases as compact cards (matching UI layout - 2-column grid, no diagrams)
-    if (skillFocus.sectionPhrases && typeof skillFocus.sectionPhrases === "object") {
-      doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Section Phrases", { align: "left" });
-      doc.moveDown(0.5);
-      
-      const margin = 50;
-      const pageWidth = doc.page.width - margin * 2;
-      const cardWidth = (pageWidth - 20) / 2; // 2 columns with 20pt gap
-      
-      // Section labels
-      const sectionLabels: Record<string, string> = {
-        warmup: "WARMUP",
-        technical: "TECHNICAL",
-        tactical: "TACTICAL",
-        conditioned_game: "CONDITIONED GAME",
-        cooldown: "COOLDOWN",
-      };
-      
-      // Convert to array for 2-column layout
-      const sections = Object.entries(skillFocus.sectionPhrases).filter(
-        ([_, phrases]: [string, any]) => phrases && typeof phrases === "object"
-      );
-      
-      // Process sections in pairs (2-column grid)
-      for (let i = 0; i < sections.length; i += 2) {
-        // Check for page break
-        if (doc.y > doc.page.height - 150) {
-          doc.addPage();
-        }
-        
-        const rowStartY = doc.y;
-        const leftSection = sections[i];
-        const rightSection = sections[i + 1];
-        
-        // Calculate heights first by measuring content
-        const measureCard = (sectionEntry: [string, any]): number => {
-          const [section, phrases] = sectionEntry;
-          let height = 20; // Section title
-          if (Array.isArray(phrases.encourage) && phrases.encourage.length > 0) {
-            height += 15 + phrases.encourage.length * 12;
-          }
-          if (Array.isArray(phrases.correct) && phrases.correct.length > 0) {
-            height += 15 + phrases.correct.length * 12;
-          }
-          return height + 10; // padding
-        };
-        
-        const leftHeight = measureCard(leftSection);
-        const rightHeight = rightSection ? measureCard(rightSection) : 0;
-        const rowHeight = Math.max(leftHeight, rightHeight);
-        
-        // Draw left card
-        const drawCard = (sectionEntry: [string, any], cardX: number, cardY: number, height: number) => {
-          const [section, phrases] = sectionEntry;
-          const sectionLabel = sectionLabels[section.toLowerCase()] || section.toUpperCase().replace(/_/g, " ");
-          
-          // Card background
-          doc.save();
-          doc.fillColor("#f5f5f5").rect(cardX, cardY, cardWidth, height).fill();
-          doc.strokeColor("#d0d0d0").lineWidth(0.5).rect(cardX, cardY, cardWidth, height).stroke();
-          doc.restore();
-          
-          let textY = cardY + 8;
-          
-          // Section title
-          doc.fontSize(9).fillColor("black").font("Helvetica-Bold");
-          doc.text(sectionLabel, cardX + 10, textY, { width: cardWidth - 20 });
-          textY += 14;
-          
-          // Encourage
-          if (Array.isArray(phrases.encourage) && phrases.encourage.length > 0) {
-            doc.fontSize(8).fillColor("#059669").font("Helvetica-Bold");
-            doc.text("ENCOURAGE", cardX + 10, textY, { width: cardWidth - 20 });
-            textY += 11;
-            doc.fontSize(8).fillColor("#333333").font("Helvetica");
-            phrases.encourage.forEach((phrase: string) => {
-              doc.text(`• ${phrase}`, cardX + 10, textY, { width: cardWidth - 20 });
-              textY += 11;
-            });
-            textY += 4;
-          }
-          
-          // Correct
-          if (Array.isArray(phrases.correct) && phrases.correct.length > 0) {
-            doc.fontSize(8).fillColor("#dc2626").font("Helvetica-Bold");
-            doc.text("CORRECT", cardX + 10, textY, { width: cardWidth - 20 });
-            textY += 11;
-            doc.fontSize(8).fillColor("#333333").font("Helvetica");
-            phrases.correct.forEach((phrase: string) => {
-              doc.text(`• ${phrase}`, cardX + 10, textY, { width: cardWidth - 20 });
-              textY += 11;
-            });
-          }
-        };
-        
-        // Draw left card
-        drawCard(leftSection, margin, rowStartY, rowHeight);
-        
-        // Draw right card if exists
-        if (rightSection) {
-          drawCard(rightSection, margin + cardWidth + 20, rowStartY, rowHeight);
-        }
-        
-        // Move to next row
-        doc.y = rowStartY + rowHeight + 10;
-      }
-      
-      doc.x = margin;
-    }
-    
-    doc.moveDown();
-  }
-
-  doc.end();
-
-  return await new Promise((resolve) => {
-    doc.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-  });
-}
-
-export async function generateDrillPdf(drill: any): Promise<Buffer> {
-  console.log("[PDF] Generating PDF for drill:", {
-    title: drill.title,
-    hasDiagram: !!(drill.diagram || drill.diagramV1 || drill.json?.diagram || drill.json?.diagramV1),
-    drillKeys: Object.keys(drill || {}),
-  });
-  
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const chunks: Buffer[] = [];
-
-  doc.on("data", (chunk) => chunks.push(chunk));
-
-  return new Promise((resolve, reject) => {
-    doc.on("error", reject);
-
-    // Title
-    doc.fontSize(20).fillColor("black").text(drill.title || drill.json?.title || "Training Drill", {
-      align: "left",
-    });
-    doc.moveDown(0.5);
-    
-    // Metadata
-    const meta = drill.json || drill;
-    const gameModel = drill.gameModelId || meta.gameModelId || "";
-    const ageGroup = drill.ageGroup || meta.ageGroup || "";
-    const phase = drill.phase || meta.phase || "";
-    const zone = drill.zone || meta.zone || "";
-    
-    doc
-      .fontSize(10)
-      .fillColor("gray")
-      .text(
-        `${gameModel}${ageGroup ? " • " + ageGroup : ""}${phase ? " • " + phase : ""}${zone ? " • " + zone : ""}`,
-        { align: "left" }
-      );
-    doc.moveDown();
-
-    // Description
-    if (meta.description) {
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Description", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(meta.description, { align: "left" });
-      doc.moveDown();
-    }
-
-    // Diagram
-    const rawDiagram = drill.diagram || drill.diagramV1 || meta.diagram || meta.diagramV1;
-    if (rawDiagram) {
-      // Check if we need a new page for diagram
-      if (doc.y > doc.page.height - 250) {
-        doc.addPage();
-      }
-      
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Diagram", { underline: true });
-      doc.moveDown(0.5);
-      
-      const diagramInfo = drawDiagram(doc, rawDiagram, { 
-        width: 200, 
-        position: 'center',
-      });
-      
-      if (diagramInfo) {
-        doc.moveDown(1);
-      }
-    }
-
-    // Organisation
-    let organizationText = "";
-    const org = meta.organization;
-    
-    if (typeof org === "string") {
-      organizationText = org;
-    } else if (typeof org === "object" && org !== null) {
-      const parts: string[] = [];
-      if (Array.isArray(org.setupSteps) && org.setupSteps.length > 0) {
-        parts.push(...org.setupSteps);
-      }
-      if (org.area) {
-        const areaParts: string[] = [];
-        if (org.area.lengthYards && org.area.widthYards) {
-          areaParts.push(`${org.area.lengthYards} x ${org.area.widthYards} yards`);
-        }
-        if (org.area.notes) areaParts.push(org.area.notes);
-        if (areaParts.length > 0) parts.push(`Area: ${areaParts.join(", ")}`);
-      }
-      if (org.rotation) parts.push(`Rotation: ${org.rotation}`);
-      if (org.restarts) parts.push(`Restarts: ${org.restarts}`);
-      if (org.scoring) parts.push(`Scoring: ${org.scoring}`);
-      organizationText = parts.join(". ") + (parts.length > 0 ? "." : "");
-    }
-    
-    if (organizationText) {
-      if (doc.y > doc.page.height - 150) {
-        doc.addPage();
-      }
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Organisation", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(organizationText, {
-        align: "left",
-        lineGap: 2
-      });
-      doc.moveDown();
-    }
-
-    // Coaching Points
-    const coachingPoints = meta.coachingPoints || [];
-    if (Array.isArray(coachingPoints) && coachingPoints.length > 0) {
-      if (doc.y > doc.page.height - 100) {
-        doc.addPage();
-      }
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Key Coaching Points", { underline: true });
-      doc.moveDown(0.5);
-      coachingPoints.forEach((point: string, i: number) => {
-        doc.fontSize(10).fillColor("black").font("Helvetica").text(`${i + 1}. ${point}`, {
-          align: "left",
-          lineGap: 2
-        });
-      });
-      doc.moveDown();
-    }
-
-    // Progressions
-    const progressions = meta.progressions || [];
-    if (Array.isArray(progressions) && progressions.length > 0) {
-      if (doc.y > doc.page.height - 100) {
-        doc.addPage();
-      }
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Progressions", { underline: true });
-      doc.moveDown(0.5);
-      progressions.forEach((progression: string, i: number) => {
-        doc.fontSize(10).fillColor("black").font("Helvetica").text(`${i + 1}. ${progression}`, {
-          align: "left",
-          lineGap: 2
-        });
-      });
-    }
-
-    doc.end();
-
-    doc.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-  });
-}
-
-export async function generatePlayerPlanPdf(plan: any): Promise<Buffer> {
-  console.log("[PDF] Generating PDF for player plan:", {
-    title: plan.title,
-    drillsCount: plan.json?.drills?.length,
-  });
-  
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const chunks: Buffer[] = [];
-
-  doc.on("data", (chunk) => chunks.push(chunk));
-
-  return new Promise((resolve, reject) => {
-    doc.on("error", reject);
-
-    // Title
-    doc.fontSize(20).fillColor("black").text(plan.title || "Player Training Plan", {
-      align: "left",
-    });
-    doc.moveDown(0.5);
-    
-    // Metadata
-    const metadata: string[] = [];
-    if (plan.ageGroup) metadata.push(plan.ageGroup);
-    if (plan.playerLevel) metadata.push(plan.playerLevel);
-    if (plan.durationMin) metadata.push(`${plan.durationMin} min`);
-    if (plan.refCode) metadata.push(plan.refCode);
-    
-    if (metadata.length > 0) {
-      doc
-        .fontSize(10)
-        .fillColor("gray")
-        .text(metadata.join(" • "), { align: "left" });
-      doc.moveDown();
-    }
-
-    // Objectives
-    if (plan.objectives) {
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Objectives", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(plan.objectives, { align: "left" });
-      doc.moveDown();
-    }
-
-    // Equipment
-    if (plan.equipment && Array.isArray(plan.equipment) && plan.equipment.length > 0) {
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Equipment Needed", { underline: true });
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(plan.equipment.join(", "), { align: "left" });
-      doc.moveDown();
-    }
-
-    // Exercises
-    const drills = plan.json?.drills || [];
-    if (drills.length > 0) {
-      doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Exercises", { underline: true });
-      doc.moveDown(0.5);
-      
-      drills.forEach((drill: any, idx: number) => {
-        // Check if we need a new page
-        if (doc.y > doc.page.height - 200) {
-          doc.addPage();
-        }
-
-        // Drill title and type
-        const drillType = drill.drillType || "TECHNICAL";
-        doc.fontSize(11).fillColor("black").font("Helvetica-Bold").text(`${idx + 1}. ${drill.title || `Exercise ${idx + 1}`}`, {
-          align: "left",
-        });
-        doc.fontSize(9).fillColor("gray").text(`Type: ${drillType}`, { align: "left" });
-        if (drill.durationMin) {
-          doc.fontSize(9).fillColor("gray").text(`Duration: ${drill.durationMin} min`, { align: "left" });
-        }
-        doc.moveDown(0.3);
-
-        // Description
-        if (drill.description) {
-          doc.fontSize(10).fillColor("black").font("Helvetica").text(drill.description, {
-            align: "left",
-            lineGap: 2,
-          });
-          doc.moveDown(0.3);
-        }
-
-        // Setup Steps
-        if (drill.organization?.setupSteps && Array.isArray(drill.organization.setupSteps)) {
-          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Setup & Instructions:", { align: "left" });
-          drill.organization.setupSteps.forEach((step: string, i: number) => {
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${step}`, {
-              align: "left",
-              indent: 10,
-              lineGap: 1,
-            });
-          });
-          doc.moveDown(0.3);
-        }
-
-        // Area & Equipment
-        const areaInfo: string[] = [];
-        if (drill.organization?.area) {
-          if (drill.organization.area.lengthYards && drill.organization.area.widthYards) {
-            areaInfo.push(`Area: ${drill.organization.area.lengthYards} x ${drill.organization.area.widthYards} yards`);
-          }
-          if (drill.organization.area.notes) {
-            areaInfo.push(drill.organization.area.notes);
-          }
-        }
-        if (drill.organization?.equipment && Array.isArray(drill.organization.equipment) && drill.organization.equipment.length > 0) {
-          areaInfo.push(`Equipment: ${drill.organization.equipment.join(", ")}`);
-        }
-        if (areaInfo.length > 0) {
-          doc.fontSize(9).fillColor("gray").text(areaInfo.join(" • "), { align: "left" });
-          doc.moveDown(0.3);
-        }
-
-        // Reps & Rest
-        if (drill.organization?.reps || drill.organization?.rest) {
-          const repsInfo: string[] = [];
-          if (drill.organization.reps) repsInfo.push(`Reps: ${drill.organization.reps}`);
-          if (drill.organization.rest) repsInfo.push(`Rest: ${drill.organization.rest}`);
-          if (repsInfo.length > 0) {
-            doc.fontSize(9).fillColor("black").font("Helvetica-Bold").text(repsInfo.join(" • "), { align: "left" });
-            doc.moveDown(0.3);
-          }
-        }
-
-        // Coaching Points
-        if (drill.coachingPoints && Array.isArray(drill.coachingPoints) && drill.coachingPoints.length > 0) {
-          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Self-Coaching Points:", { align: "left" });
-          drill.coachingPoints.forEach((point: string) => {
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`• ${point}`, {
-              align: "left",
-              indent: 10,
-              lineGap: 1,
-            });
-          });
-          doc.moveDown(0.3);
-        }
-
-        // Progressions
-        if (drill.progressions && Array.isArray(drill.progressions) && drill.progressions.length > 0) {
-          doc.fontSize(10).fillColor("black").font("Helvetica-Bold").text("Progressions:", { align: "left" });
-          drill.progressions.forEach((prog: string, i: number) => {
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`${i + 1}. ${prog}`, {
-              align: "left",
-              indent: 10,
-              lineGap: 1,
-            });
-          });
-        }
-
-        doc.moveDown(0.8);
-      });
-    }
-
-    doc.end();
-
-    doc.on("end", () => {
-      resolve(Buffer.concat(chunks));
-    });
-  });
-}
+// ─── Coaching Emphasis Section ────────────────────────────────────────────────
 
 /**
- * Generate a PDF for a weekly summary (parent communication)
+ * Renders the skill focus / coaching emphasis block.
+ * Shared between generateSessionPdf and any other future export that needs it.
  */
-export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
+function drawCoachingEmphasis(
+  doc: PDFKit.PDFDocument,
+  skillFocus: any,
+  margin: number
+): void {
+  if (!skillFocus) return;
+
+  const pageW   = doc.page.width - margin * 2;
+  const halfW   = (pageW - 16) / 2;
+  const rightX  = margin + halfW + 16;
+
+  // Section header (purple accent — coaching/skills tone)
+  drawSectionHeader(doc, "Coaching Emphasis", margin, "#7c3aed");
+
+  // Title
+  if (skillFocus.title) {
+    doc.fontSize(12).fillColor(BRAND.navy).font("Helvetica-Bold")
+      .text(skillFocus.title, margin, doc.y);
+    doc.moveDown(0.5);
+  }
+
+  // Summary — light blue tinted box
+  if (skillFocus.summary) {
+    const boxY = doc.y;
+    doc.fontSize(9).fillColor(BRAND.muted).font("Helvetica")
+      .text(skillFocus.summary, margin + 10, boxY + 6, {
+        width: pageW - 20,
+        lineGap: 2,
+      });
+    const boxH = doc.y - boxY + 8;
+    // Draw border over the text (drawn last so it's above background)
+    doc.save();
+    const pm = (doc.page as any).margins;
+    const sb = pm.bottom;
+    pm.bottom = 0;
+    doc.fillColor("#eff6ff").rect(margin, boxY, pageW, boxH).fill();
+    doc.strokeColor("#93c5fd").lineWidth(0.5).rect(margin, boxY, pageW, boxH).stroke();
+    pm.bottom = sb;
+    doc.restore();
+    // Redraw text on top of box
+    doc.fontSize(9).fillColor(BRAND.muted).font("Helvetica")
+      .text(skillFocus.summary, margin + 10, boxY + 6, {
+        width: pageW - 20,
+        lineGap: 2,
+      });
+    doc.y = boxY + boxH + 10;
+  }
+
+  // Key Skills — pill tags
+  const keySkills: string[] = Array.isArray(skillFocus.keySkills) ? skillFocus.keySkills : [];
+  if (keySkills.length > 0) {
+    doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+      .text("Key Skills", margin, doc.y);
+    doc.moveDown(0.4);
+
+    let pillX = margin;
+    const pillY = doc.y;
+    keySkills.forEach((skill: string) => {
+      const bw = drawBadge(doc, skill, pillX, pillY, {
+        bgColor: "#dbeafe",
+        textColor: "#1e40af",
+        fontSize: 8,
+        padX: 8,
+        padY: 3.5,
+      });
+      pillX += bw + 6;
+      // Wrap to next row if needed
+      if (pillX > doc.page.width - margin - 80) {
+        pillX = margin;
+        doc.y = pillY + 20;
+      }
+    });
+    doc.y = pillY + 20;
+    doc.moveDown(0.5);
+  }
+
+  // Coaching Points
+  const coachingPoints: string[] = Array.isArray(skillFocus.coachingPoints) ? skillFocus.coachingPoints : [];
+  if (coachingPoints.length > 0) {
+    doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+      .text("Coaching Points", margin, doc.y);
+    doc.moveDown(0.3);
+    coachingPoints.forEach((pt: string, i: number) => {
+      doc.fontSize(9).fillColor(BRAND.black).font("Helvetica")
+        .text(`${i + 1}.  ${pt}`, margin, doc.y, { width: pageW, lineGap: 1.5 });
+    });
+    doc.moveDown(0.5);
+  }
+
+  // Psychology — two-column layout (positive left, corrective right)
+  const psych = skillFocus.psychology;
+  if (psych) {
+    const good: string[] = Array.isArray(psych.positiveBehaviors) ? psych.positiveBehaviors
+      : Array.isArray(psych.good) ? psych.good : [];
+    const bad: string[]  = Array.isArray(psych.areasToImprove) ? psych.areasToImprove
+      : Array.isArray(psych.bad)  ? psych.bad  : [];
+
+    if (good.length > 0 || bad.length > 0) {
+      doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+        .text("Psychology", margin, doc.y);
+      doc.moveDown(0.4);
+
+      const colStartY = doc.y;
+      let leftCurY  = colStartY;
+      let rightCurY = colStartY;
+
+      // Left column: Positive Behaviors
+      if (good.length > 0) {
+        doc.fontSize(8.5).fillColor("#059669").font("Helvetica-Bold")
+          .text("\u2713  Positive Behaviors", margin, leftCurY, { width: halfW });
+        leftCurY += doc.heightOfString("\u2713  Positive Behaviors", { width: halfW }) + 4;
+        doc.font("Helvetica").fillColor(BRAND.black);
+        good.forEach((item: string) => {
+          const h = doc.heightOfString(`\u2022  ${item}`, { width: halfW });
+          doc.fontSize(8.5).text(`\u2022  ${item}`, margin, leftCurY, { width: halfW, lineGap: 0.5 });
+          leftCurY += h + 1.5;
+        });
+      }
+
+      // Right column: Areas to Improve
+      if (bad.length > 0) {
+        doc.fontSize(8.5).fillColor("#dc2626").font("Helvetica-Bold")
+          .text("\u2717  Areas to Improve", rightX, rightCurY, { width: halfW });
+        rightCurY += doc.heightOfString("\u2717  Areas to Improve", { width: halfW }) + 4;
+        doc.font("Helvetica").fillColor(BRAND.black);
+        bad.forEach((item: string) => {
+          const h = doc.heightOfString(`\u2022  ${item}`, { width: halfW });
+          doc.fontSize(8.5).text(`\u2022  ${item}`, rightX, rightCurY, { width: halfW, lineGap: 0.5 });
+          rightCurY += h + 1.5;
+        });
+      }
+
+      doc.y = Math.max(leftCurY, rightCurY) + 8;
+      doc.x = margin;
+      doc.moveDown(0.5);
+    }
+  }
+
+  // Coaching Phrases — flat two-column layout matching the web UI:
+  // all ENCOURAGE phrases (left) | all CORRECT phrases (right),
+  // combining every section's phrases into the two shared columns.
+  const sectionPhrases = skillFocus.sectionPhrases;
+  if (sectionPhrases && typeof sectionPhrases === "object") {
+    // Flatten all encourage + correct phrases across every section
+    const allEncourage: string[] = [];
+    const allCorrect:   string[] = [];
+
+    Object.values(sectionPhrases).forEach((v: any) => {
+      if (!v || typeof v !== "object") return;
+      if (Array.isArray(v.encourage)) allEncourage.push(...v.encourage);
+      if (Array.isArray(v.correct))   allCorrect.push(...v.correct);
+    });
+
+    if (allEncourage.length > 0 || allCorrect.length > 0) {
+      const colW   = (pageW - 14) / 2;
+      const innerW = colW - 18;
+      const rightX = margin + colW + 14;
+
+      // Measure column heights BEFORE deciding whether to page-break
+      doc.font("Helvetica").fontSize(8.5);
+      const measureCol = (phrases: string[]): number => {
+        let h = 14 + 6; // label row + gap
+        phrases.forEach((p) => { h += doc.heightOfString(`\u2022  ${p}`, { width: innerW, lineGap: 1 }) + 2; });
+        return h + 14; // bottom padding
+      };
+      const lh   = allEncourage.length > 0 ? measureCol(allEncourage) : 0;
+      const rh   = allCorrect.length   > 0 ? measureCol(allCorrect)   : 0;
+      const colH = Math.max(lh, rh, 40);
+
+      // Page-break if the columns won't fit — use actual colH, not a fixed guess
+      const labelH = 22; // "Coaching Phrases" label + moveDown
+      if (doc.y + labelH + colH > doc.page.height - margin) doc.addPage();
+
+      doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+        .text("Coaching Phrases", margin, doc.y);
+      doc.moveDown(0.5);
+
+      const colY = doc.y;
+
+      // Suppress PDFKit auto-page-break while rendering explicitly-positioned
+      // text: without this, lines whose y > (page.height - margins.bottom)
+      // trigger phantom page additions, producing dozens of blank pages.
+      const pm = (doc.page as any).margins;
+      const savedBottom = pm.bottom;
+      pm.bottom = 0;
+
+      // Left column — ENCOURAGE
+      doc.fillColor(BRAND.surface).rect(margin,  colY, colW, colH).fill();
+      doc.strokeColor(BRAND.separator).lineWidth(0.4).rect(margin, colY, colW, colH).stroke();
+
+      // Right column — CORRECT
+      doc.fillColor(BRAND.surface).rect(rightX, colY, colW, colH).fill();
+      doc.strokeColor(BRAND.separator).lineWidth(0.4).rect(rightX, colY, colW, colH).stroke();
+
+      let leftCurY  = colY + 10;
+      let rightCurY = colY + 10;
+
+      if (allEncourage.length > 0) {
+        doc.fontSize(8).fillColor("#059669").font("Helvetica-Bold")
+          .text("ENCOURAGE", margin + 10, leftCurY, { width: innerW });
+        leftCurY += 14;
+        doc.font("Helvetica").fillColor(BRAND.black);
+        allEncourage.forEach((p) => {
+          const h = doc.heightOfString(`\u2022  ${p}`, { width: innerW, lineGap: 1 });
+          doc.fontSize(8.5).text(`\u2022  ${p}`, margin + 10, leftCurY, { width: innerW, lineGap: 1 });
+          leftCurY += h + 2;
+        });
+      }
+
+      if (allCorrect.length > 0) {
+        doc.fontSize(8).fillColor("#dc2626").font("Helvetica-Bold")
+          .text("CORRECT", rightX + 10, rightCurY, { width: innerW });
+        rightCurY += 14;
+        doc.font("Helvetica").fillColor(BRAND.black);
+        allCorrect.forEach((p) => {
+          const h = doc.heightOfString(`\u2022  ${p}`, { width: innerW, lineGap: 1 });
+          doc.fontSize(8.5).text(`\u2022  ${p}`, rightX + 10, rightCurY, { width: innerW, lineGap: 1 });
+          rightCurY += h + 2;
+        });
+      }
+
+      pm.bottom = savedBottom;
+
+      doc.y = colY + colH + 10;
+      doc.x = margin;
+    }
+  }
+}
+
+// ─── generateSessionPdf ───────────────────────────────────────────────────────
+
+export async function generateSessionPdf(session: any): Promise<Buffer> {
+  console.log("[PDF] Generating session PDF:", {
+    title: session.title,
+    drillsCount: session.drills?.length,
+  });
+
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50, size: "LETTER" });
+    const doc          = new PDFDocument({ size: "A4", margin: 45 });
     const chunks: Buffer[] = [];
+    const margin       = 45;
+    const sessionTitle = session.title || "Training Session";
+    let pageNum        = 1;
+    let drawingDecor   = false;
 
     doc.on("data", (chunk) => chunks.push(chunk));
     doc.on("error", reject);
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-    const { weekStart, weekEnd, events, totalSessions, totalMinutes, ageGroups, gameModels, aiSummary } = summary;
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, sessionTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
+    });
 
-    const formatDate = (date: Date) => {
-      return date.toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-    };
+    // Page 1 footer
+    drawPageDecor(doc, sessionTitle, pageNum);
 
-    const formatTime = (date: Date) => {
-      return date.toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-    };
+    // ── Header block (dark navy, full-bleed) ────────────────────────────────
+    {
+      const headerH = 100;
+      const { width } = doc.page;
 
-    // Header
-    doc.fontSize(20).fillColor("black").font("Helvetica-Bold").text("Weekly Training Schedule", { align: "center" });
-    doc.moveDown(0.5);
-    doc.fontSize(14).fillColor("gray").font("Helvetica").text(`Week of ${formatDate(weekStart)} - ${formatDate(weekEnd)}`, { align: "center" });
-    doc.moveDown(1);
+      // Background rect
+      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
+      // Blue accent bar at the bottom
+      doc.fillColor(BRAND.blue).rect(0, headerH - 4, width, 4).fill();
 
-    // Summary Statistics
-    doc.fontSize(12).fillColor("black").font("Helvetica-Bold").text("Summary", { align: "left" });
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor("black").font("Helvetica").text(`Total Sessions: ${totalSessions}`, { align: "left" });
-    doc.moveDown(0.2);
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    doc.fontSize(10).fillColor("black").font("Helvetica").text(`Total Training Time: ${hours} hours ${minutes} minutes`, { align: "left" });
-    
-    if (ageGroups.length > 0) {
-      doc.moveDown(0.2);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(`Age Groups: ${ageGroups.join(", ")}`, { align: "left" });
+      // Brand label
+      doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
+        .text("TACTICALEDGE", margin, 9, { lineBreak: false });
+
+      // ── Row 1: Title + refCode badge + Language badge ──────────────────────
+      const titleY = 21;
+      // Measure how wide the title text is so we can place badges inline
+      const titleStr = sessionTitle;
+      doc.fontSize(18).font("Helvetica-Bold");
+      const titleTextW = doc.widthOfString(titleStr);
+      const maxTitleW  = width - margin * 2 - 10;
+
+      doc.fillColor(BRAND.white)
+        .text(titleStr, margin, titleY, { width: maxTitleW, lineBreak: false });
+
+      // refCode badge — placed to the right of the title on the same line
+      let badgeX = margin + Math.min(titleTextW, maxTitleW) + 10;
+      const badgeY = titleY + 2;
+      if (session.refCode) {
+        badgeX += drawBadge(doc, session.refCode, badgeX, badgeY, {
+          bgColor: "#1e293b", textColor: "#94a3b8", fontSize: 7.5,
+        }) + 6;
+      }
+      // Language badge (derived from coachLevel)
+      if (session.coachLevel) {
+        const lb = getLanguageBadge(session.coachLevel);
+        // Use a slightly transparent version of the language color as bg
+        drawBadge(doc, lb.label, badgeX, badgeY, {
+          bgColor: lb.color + "33", textColor: lb.color, fontSize: 7.5,
+          borderColor: lb.color,
+        });
+      }
+
+      // ── Row 2: Created by ──────────────────────────────────────────────────
+      const creatorName = session.creator?.name || session.creator?.email || session.generatedByName || null;
+      if (creatorName) {
+        const createdY = titleY + 20;
+        doc.fontSize(8).fillColor("#64748b").font("Helvetica")
+          .text("Created by: ", margin, createdY, { continued: true, lineBreak: false });
+        doc.fillColor("#94a3b8")
+          .text(creatorName, { lineBreak: false });
+      }
+
+      // ── Row 3: Meta chips (Game Model · Phase · Zone · Coach Level · Duration) ──
+      const chipY = headerH - 34;
+      let cx = margin;
+      const chipBg   = "#1e293b";
+      const chipText = "#94a3b8";
+      const chipFs   = 7.5;
+
+      if (session.ageGroup) {
+        cx += drawBadge(doc, session.ageGroup, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (session.gameModelId) {
+        const label = GAME_MODEL_LABELS[session.gameModelId] || session.gameModelId;
+        cx += drawBadge(doc, `Game Model: ${label}`, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (session.phase) {
+        const label = PHASE_LABELS[session.phase] || session.phase;
+        cx += drawBadge(doc, `Phase: ${label}`, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (session.zone) {
+        const label = ZONE_LABELS[session.zone] || session.zone;
+        cx += drawBadge(doc, `Zone: ${label}`, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (session.coachLevel) {
+        const label = COACH_LEVEL_LABELS[session.coachLevel] || session.coachLevel;
+        cx += drawBadge(doc, `Coach Level: ${label}`, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      // Duration: prefer session.durationMin over summed drill durations
+      const sessionDuration = session.durationMin
+        ?? (Array.isArray(session.drills)
+          ? session.drills.reduce((s: number, d: any) => s + (parseInt(d.duration ?? d.durationMin ?? 0) || 0), 0)
+          : 0);
+      if (sessionDuration > 0) {
+        drawBadge(doc, `Duration: ${sessionDuration} min`, cx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        });
+      }
+
+      doc.y = headerH + 14;
+      doc.x = margin;
     }
-    
-    if (gameModels.length > 0) {
-      const gameModelLabels: Record<string, string> = {
-        POSSESSION: "Possession",
-        PRESSING: "Pressing",
-        TRANSITION: "Transition",
-        COACHAI: "Balanced",
-      };
-      doc.moveDown(0.2);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(`Focus Areas: ${gameModels.map((gm: string) => gameModelLabels[gm] || gm).join(", ")}`, { align: "left" });
+
+    // ── Session Overview table ───────────────────────────────────────────────
+    if (Array.isArray(session.drills) && session.drills.length > 0) {
+      drawSectionHeader(doc, "Session Overview", margin);
+
+      const tableTop = doc.y;
+      const tableW   = doc.page.width - margin * 2;
+      // col widths: # | name | type | duration
+      const colW = [26, tableW - 26 - 130 - 65, 130, 65] as const;
+      const rowH = 18;
+      const headers = ["#", "Drill", "Type", "Duration"];
+
+      // Header row
+      doc.fillColor(BRAND.navy).rect(margin, tableTop, tableW, rowH).fill();
+      let cx = margin;
+      headers.forEach((h, i) => {
+        doc.fontSize(7.5).fillColor(BRAND.white).font("Helvetica-Bold")
+          .text(h, cx + 5, tableTop + 5, {
+            width: colW[i] - 8,
+            lineBreak: false,
+            align: i === 3 ? "right" : "left",
+          });
+        cx += colW[i];
+      });
+
+      // Data rows
+      session.drills.forEach((drill: any, idx: number) => {
+        const norm = normalizeDrill(drill);
+        const cfg  = getDrillConfig(norm.drillType);
+        const rowY = tableTop + rowH + idx * rowH;
+
+        if (idx % 2 === 0) {
+          doc.fillColor(BRAND.surface).rect(margin, rowY, tableW, rowH).fill();
+        }
+        // Type-colour left indicator
+        doc.fillColor(cfg.border).rect(margin, rowY, 3, rowH).fill();
+
+        cx = margin;
+        doc.fontSize(8).fillColor(BRAND.muted).font("Helvetica-Bold")
+          .text(String(idx + 1), cx + 6, rowY + 5, { width: colW[0] - 8, lineBreak: false });
+        cx += colW[0];
+
+        doc.fontSize(8).fillColor(BRAND.black).font("Helvetica")
+          .text(norm.title, cx + 4, rowY + 5, { width: colW[1] - 8, lineBreak: false });
+        cx += colW[1];
+
+        drawBadge(doc, cfg.label.toUpperCase(), cx + 4, rowY + 4, {
+          bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 7, padX: 6, padY: 2,
+        });
+        cx += colW[2];
+
+        doc.fontSize(8).fillColor(BRAND.muted).font("Helvetica")
+          .text(`${norm.duration} min`, cx, rowY + 5, {
+            width: colW[3] - 8, lineBreak: false, align: "right",
+          });
+      });
+
+      const tableBottom = tableTop + rowH + session.drills.length * rowH;
+      doc.strokeColor(BRAND.separator).lineWidth(0.5)
+        .moveTo(margin, tableBottom).lineTo(margin + tableW, tableBottom).stroke();
+
+      doc.y = tableBottom + 18;
     }
 
-    doc.moveDown(1);
+    // ── About This Session ───────────────────────────────────────────────────
+    if (session.summary) {
+      drawSectionHeader(doc, "About This Session", margin);
+      doc.fontSize(9).fillColor(BRAND.muted).font("Helvetica")
+        .text(session.summary, margin, doc.y, {
+          width: doc.page.width - margin * 2,
+          lineGap: 2,
+        });
+      doc.moveDown(1.2);
+    }
 
-    // AI-Generated Summary (if available)
-    if (aiSummary) {
-      doc.fontSize(14).fillColor("black").font("Helvetica-Bold").text("Parent Communication Summary", { align: "left" });
-      doc.moveDown(0.3);
-      doc.fontSize(10).fillColor("black").font("Helvetica").text(aiSummary, {
-        align: "left",
-        lineGap: 2,
+    // ── Drills ───────────────────────────────────────────────────────────────
+    const skillFocus = session.skillFocus || session.json?.skillFocus;
+
+    if (Array.isArray(session.drills) && session.drills.length > 0) {
+      // Need room for: section header (~26pt) + first drill header (~25pt) +
+      // minimum diagram height (~133pt) + buffers = ~300pt.  A4 is 841pt tall.
+      if (doc.y > doc.page.height - margin - 300) doc.addPage();
+      drawSectionHeader(doc, "Drills", margin);
+
+      const diagramWidth = 200;
+      const pageW        = doc.page.width - margin * 2;
+      const textColW     = pageW - diagramWidth - 14;
+      const textColX     = margin + diagramWidth + 14;
+
+      session.drills.forEach((rawDrill: any, idx: number) => {
+        const drill = normalizeDrill(rawDrill);
+        const cfg   = getDrillConfig(drill.drillType);
+
+        // Dynamic page-break threshold — vertical diagrams are 1.5× taller than horizontal
+        const diagOrientation = drill.diagram?.pitch?.orientation || "HORIZONTAL";
+        const estimatedDiagH  = diagOrientation === "VERTICAL" ? diagramWidth * 1.5 : Math.round(diagramWidth / 1.5);
+        const pageBreakBuffer = estimatedDiagH + 80; // 80pt for header row + spacing
+        if (doc.y > doc.page.height - margin - pageBreakBuffer) doc.addPage();
+        if (idx > 0) doc.moveDown(0.6);
+
+        const drillBlockTopY = doc.y;
+
+        // ── Drill header row ──
+        {
+          const circX = margin + 11;
+          const circY = doc.y + 1;
+
+          // Number circle
+          doc.fillColor(cfg.border).circle(circX, circY + 8, 10).fill();
+          doc.fontSize(8).fillColor(BRAND.white).font("Helvetica-Bold")
+            .text(String(idx + 1), circX - 10, circY + 4, { width: 20, align: "center", lineBreak: false });
+
+          // Title
+          doc.fontSize(11.5).fillColor(BRAND.black).font("Helvetica-Bold")
+            .text(drill.title, margin + 26, doc.y, { lineBreak: false });
+
+          // Type badge + duration chip
+          const titleEndX = margin + 26 + doc.widthOfString(drill.title) + 10;
+          const badgeTopY = doc.y - 1;
+          const bw = drawBadge(doc, cfg.label.toUpperCase(), titleEndX, badgeTopY, {
+            bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 7.5,
+          });
+          drawBadge(doc, `${drill.duration} min`, titleEndX + bw + 6, badgeTopY, {
+            bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 7.5,
+          });
+
+          doc.moveDown(1);
+        }
+
+        const contentStartY   = doc.y;
+        const pageNumAtContent = pageNum;
+        let diagramEndY = contentStartY;
+
+        // ── Diagram (left column) ──
+        if (drill.diagram) {
+          const di = drawDiagram(doc, drill.diagram, { width: diagramWidth, startX: margin });
+          if (di) diagramEndY = di.startY + di.height;
+        }
+
+        // ── Text (right column) ──
+        doc.x = textColX;
+        doc.y = contentStartY;
+
+        // Organisation — numbered setup steps + compact constraint line
+        const { setupSteps, constraints } = buildOrgSections(drill.organization);
+        const hasOrg = setupSteps.length > 0 || constraints.length > 0;
+        const fallbackLines = !hasOrg && drill.description ? [drill.description] : [];
+
+        if (hasOrg || fallbackLines.length > 0) {
+          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Organisation", textColX, doc.y);
+          doc.moveDown(0.25);
+
+          if (fallbackLines.length > 0) {
+            fallbackLines.forEach((line) => {
+              doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
+                .text(`·  ${line}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+            });
+          } else {
+            // Numbered setup steps
+            setupSteps.forEach((step, i) => {
+              doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
+                .text(`${i + 1}.  ${step}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+            });
+            // Constraints as compact muted info line (visually distinct from setup)
+            if (constraints.length > 0) {
+              if (setupSteps.length > 0) doc.moveDown(0.3);
+              doc.fontSize(7.5).fillColor(BRAND.muted).font("Helvetica")
+                .text(constraints.join("  ·  "), textColX, doc.y, { width: textColW });
+            }
+          }
+          doc.moveDown(0.5);
+        }
+
+        // Coaching Points
+        if (Array.isArray(drill.coachingPoints) && drill.coachingPoints.length > 0) {
+          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Coaching Points", textColX, doc.y);
+          doc.moveDown(0.25);
+          drill.coachingPoints.forEach((pt: string, i: number) => {
+            doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
+              .text(`${i + 1}.  ${pt}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+          });
+          doc.moveDown(0.5);
+        }
+
+        // Progressions
+        if (Array.isArray(drill.progressions) && drill.progressions.length > 0) {
+          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Progressions", textColX, doc.y);
+          doc.moveDown(0.25);
+          drill.progressions.forEach((prog: string, i: number) => {
+            doc.fontSize(8.5).fillColor(cfg.badgeText).font("Helvetica")
+              .text(`${i + 1}.  ${cleanText(prog)}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+          });
+          doc.moveDown(0.4);
+        }
+
+        const textEndY  = doc.y;
+        // If the right-column text overflowed to a new page, diagramEndY is a
+        // y-value from the previous page and must NOT be used in Math.max —
+        // doing so would push doc.y to ~650pt (near bottom of new page).
+        const blockEndY = pageNum === pageNumAtContent
+          ? Math.max(diagramEndY, textEndY) + 6
+          : textEndY + 6;
+
+        // Draw left border (type colour) — only when entire block is on same page
+        if (pageNum === pageNumAtContent) {
+          const pm = (doc.page as any).margins;
+          const sb = pm.bottom;
+          pm.bottom = 0;
+          doc.fillColor(cfg.border).rect(margin, drillBlockTopY, 3.5, blockEndY - drillBlockTopY).fill();
+          pm.bottom = sb;
+        }
+
+        doc.x = margin;
+        doc.y = blockEndY;
+
+        // Separator between drills
+        if (idx < session.drills.length - 1) {
+          doc.strokeColor(cfg.border).lineWidth(0.3).opacity(0.35)
+            .moveTo(margin, doc.y).lineTo(doc.page.width - margin, doc.y)
+            .stroke().opacity(1);
+          doc.moveDown(0.5);
+        }
+      });
+    }
+
+    // ── Coaching Emphasis ────────────────────────────────────────────────────
+    if (skillFocus) {
+      if (doc.y > doc.page.height - margin - 260) doc.addPage();
+      doc.moveDown(1);
+      drawCoachingEmphasis(doc, skillFocus, margin);
+    }
+
+    doc.end();
+  });
+}
+
+// ─── generateCompactSessionPdf ────────────────────────────────────────────────
+// Single-page "Coach's Sheet": compact header, all drills with tiny diagrams,
+// no overview table, no session summary, no coaching emphasis.
+
+export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
+  console.log("[PDF] Generating compact session PDF:", {
+    title: session.title,
+    drillsCount: session.drills?.length,
+  });
+
+  return new Promise((resolve, reject) => {
+    const margin      = 30;
+    const doc         = new PDFDocument({ size: "A4", margin });
+    const chunks: Buffer[] = [];
+    const sessionTitle = session.title || "Training Session";
+    let drawingDecor   = false;
+    let pageNum        = 1;
+
+    doc.on("data", (c: Buffer) => chunks.push(c));
+    doc.on("end",  () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, sessionTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
+    });
+
+    drawPageDecor(doc, sessionTitle, pageNum);
+
+    const pageW = doc.page.width - margin * 2;
+
+    // ── Compact header bar ───────────────────────────────────────────────────
+    {
+      const headerH = 42;
+      const { width } = doc.page;
+      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
+      doc.fillColor(BRAND.blue).rect(0, headerH - 3, width, 3).fill();
+
+      // Brand · Title
+      doc.fontSize(7).fillColor("#94a3b8").font("Helvetica")
+        .text("TacticalEdge", margin, 8, { lineBreak: false });
+      doc.fontSize(11).fillColor(BRAND.white).font("Helvetica-Bold")
+        .text(sessionTitle, margin, 19, { lineBreak: false });
+
+      // Chips: refCode, ageGroup, duration — right side of title
+      doc.fontSize(7).font("Helvetica");
+      const titleW = doc.widthOfString(sessionTitle);
+      let cx = margin + titleW + 10;
+      const chipY = 21;
+      const chipOpts = { bgColor: "#1e293b", textColor: "#94a3b8", fontSize: 7, padX: 5, padY: 2 };
+
+      if (session.refCode) {
+        cx += drawBadge(doc, session.refCode, cx, chipY, chipOpts) + 4;
+      }
+      if (session.ageGroup) {
+        cx += drawBadge(doc, session.ageGroup, cx, chipY, chipOpts) + 4;
+      }
+      const dur = session.durationMin
+        ?? (Array.isArray(session.drills)
+          ? session.drills.reduce((s: number, d: any) => s + (parseInt(d.duration ?? d.durationMin ?? 0) || 0), 0)
+          : 0);
+      if (dur > 0) {
+        drawBadge(doc, `${dur} min`, cx, chipY, chipOpts);
+      }
+
+      doc.y = headerH + 8;
+      doc.x = margin;
+    }
+
+    // ── Drills ───────────────────────────────────────────────────────────────
+    if (Array.isArray(session.drills) && session.drills.length > 0) {
+      const diagW   = 90;  // tiny diagram width
+      const textX   = margin + diagW + 10;
+      const textW   = pageW - diagW - 10;
+
+      session.drills.forEach((rawDrill: any, idx: number) => {
+        const drill = normalizeDrill(rawDrill);
+        const cfg   = getDrillConfig(drill.drillType);
+
+        const blockTopY = doc.y;
+
+        // ── Drill header row ──
+        {
+          // Number circle
+          doc.fillColor(cfg.border).circle(margin + 9, blockTopY + 8, 9).fill();
+          doc.fontSize(7).fillColor(BRAND.white).font("Helvetica-Bold")
+            .text(String(idx + 1), margin, blockTopY + 4, { width: 18, align: "center", lineBreak: false });
+
+          // Title
+          doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica-Bold")
+            .text(drill.title, margin + 22, blockTopY, { lineBreak: false });
+
+          // Type badge + duration
+          const titleEndX = margin + 22 + doc.widthOfString(drill.title) + 8;
+          const bw = drawBadge(doc, cfg.label.toUpperCase(), titleEndX, blockTopY, {
+            bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 6.5,
+          });
+          drawBadge(doc, `${drill.duration} min`, titleEndX + bw + 5, blockTopY, {
+            bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 6.5,
+          });
+
+          doc.moveDown(0.5);
+        }
+
+        const contentY = doc.y;
+        let diagEndY   = contentY;
+
+        // ── Tiny diagram ──
+        if (drill.diagram) {
+          // Suppress auto-page-break during diagram drawing
+          const pm = (doc.page as any).margins;
+          const sb = pm.bottom;
+          pm.bottom = 0;
+          const di = drawDiagram(doc, drill.diagram, { width: diagW, startX: margin });
+          pm.bottom = sb;
+          if (di) diagEndY = di.startY + di.height;
+        }
+
+        // ── Text: 1-line org summary + up to 3 coaching points ──
+        doc.x = textX;
+        doc.y = contentY;
+
+        // Organisation — single compact line from first step or area size
+        const { setupSteps, constraints } = buildOrgSections(drill.organization);
+        const orgParts: string[] = [];
+        if (constraints.length > 0) orgParts.push(constraints[0]);
+        else if (setupSteps.length > 0) orgParts.push(setupSteps[0]);
+        if (orgParts.length > 0) {
+          doc.fontSize(7).fillColor(BRAND.muted).font("Helvetica")
+            .text(orgParts.join("  ·  "), textX, doc.y, { width: textW });
+          doc.moveDown(0.2);
+        }
+
+        // Coaching points — max 3
+        const pts = Array.isArray(drill.coachingPoints) ? drill.coachingPoints.slice(0, 3) : [];
+        pts.forEach((pt: string, i: number) => {
+          doc.fontSize(8).fillColor(BRAND.black).font("Helvetica")
+            .text(`${i + 1}.  ${pt}`, textX, doc.y, { width: textW, lineGap: 0.5 });
+        });
+
+        const textEndY  = doc.y;
+        const blockEndY = Math.max(diagEndY, textEndY) + 4;
+
+        // Left border
+        {
+          const pm = (doc.page as any).margins;
+          const sb = pm.bottom;
+          pm.bottom = 0;
+          doc.fillColor(cfg.border).rect(margin, blockTopY, 3, blockEndY - blockTopY).fill();
+          pm.bottom = sb;
+        }
+
+        doc.x = margin;
+        doc.y = blockEndY;
+
+        // Thin separator
+        if (idx < session.drills.length - 1) {
+          doc.strokeColor(BRAND.separator).lineWidth(0.4).opacity(0.6)
+            .moveTo(margin, doc.y + 3).lineTo(doc.page.width - margin, doc.y + 3)
+            .stroke().opacity(1);
+          doc.y += 8;
+        }
+      });
+    }
+
+    doc.end();
+  });
+}
+
+// ─── generateDrillPdf ─────────────────────────────────────────────────────────
+
+export async function generateDrillPdf(drill: any): Promise<Buffer> {
+  console.log("[PDF] Generating drill PDF:", { title: drill.title });
+
+  return new Promise((resolve, reject) => {
+    const doc        = new PDFDocument({ size: "A4", margin: 45 });
+    const chunks: Buffer[] = [];
+    const margin     = 45;
+    const meta       = drill.json || drill;
+    const drillTitle = drill.title || meta.title || "Training Drill";
+    const drillType  = drill.drillType || meta.drillType || "TECHNICAL";
+    const cfg        = getDrillConfig(drillType);
+    let pageNum      = 1;
+    let drawingDecor = false;
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("error", reject);
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, drillTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
+    });
+
+    drawPageDecor(doc, drillTitle, pageNum);
+
+    // ── Header block ─────────────────────────────────────────────────────────
+    {
+      const headerH = 95;
+      const { width } = doc.page;
+
+      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
+      doc.fillColor(cfg.border).rect(0, headerH - 4, width, 4).fill();
+
+      doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
+        .text("TACTICALEDGE  ·  DRILL", margin, 13, { lineBreak: false });
+
+      doc.fontSize(19).fillColor(BRAND.white).font("Helvetica-Bold")
+        .text(drillTitle, margin, 25, { width: width - margin * 2 - 10 });
+
+      // Metadata badges
+      let bx = margin;
+      const by = headerH - 30;
+      const gameModel = drill.gameModelId || meta.gameModelId;
+      const ageGroup  = drill.ageGroup    || meta.ageGroup;
+      const phase     = drill.phase       || meta.phase;
+
+      if (ageGroup) {
+        bx += drawBadge(doc, ageGroup, bx, by, {
+          bgColor: "#1e3a5f", textColor: "#93c5fd", fontSize: 7.5,
+        }) + 6;
+      }
+      if (gameModel) {
+        bx += drawBadge(doc, GAME_MODEL_LABELS[gameModel] || gameModel, bx, by, {
+          bgColor: "#1e3a5f", textColor: "#93c5fd", fontSize: 7.5,
+        }) + 6;
+      }
+      if (phase) {
+        bx += drawBadge(doc, phase.replace(/_/g, " "), bx, by, {
+          bgColor: "#1e3a5f", textColor: "#93c5fd", fontSize: 7.5,
+        }) + 6;
+      }
+      drawBadge(doc, cfg.label.toUpperCase(), bx, by, {
+        bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 7.5,
+      });
+
+      doc.y = headerH + 18;
+      doc.x = margin;
+    }
+
+    const pageW = doc.page.width - margin * 2;
+
+    // ── Description ──────────────────────────────────────────────────────────
+    if (meta.description) {
+      drawSectionHeader(doc, "Description", margin);
+      doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+        .text(meta.description, margin, doc.y, { width: pageW, lineGap: 2 });
+      doc.moveDown(1);
+    }
+
+    // ── Diagram ──────────────────────────────────────────────────────────────
+    const rawDiagram = drill.diagram || drill.diagramV1 || meta.diagram || meta.diagramV1;
+    if (rawDiagram) {
+      if (doc.y > doc.page.height - margin - 250) doc.addPage();
+      drawSectionHeader(doc, "Diagram", margin, cfg.border);
+      const di = drawDiagram(doc, rawDiagram, { width: 240, position: "center" });
+      if (di) {
+        doc.y = di.startY + di.height;
+        doc.moveDown(1.2);
+      }
+    }
+
+    // ── Organisation ─────────────────────────────────────────────────────────
+    const orgLines = buildOrgText(meta.organization);
+    if (orgLines.length > 0) {
+      if (doc.y > doc.page.height - margin - 150) doc.addPage();
+      drawSectionHeader(doc, "Organisation", margin);
+      orgLines.forEach((line) => {
+        doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+          .text(`·  ${line}`, margin, doc.y, { width: pageW, lineGap: 1.5 });
       });
       doc.moveDown(1);
     }
 
-    // Group events by date
-    const eventsByDate: Record<string, any[]> = {};
-    events.forEach((event: any) => {
-      const dateKey = new Date(event.scheduledDate).toISOString().split("T")[0];
-      if (!eventsByDate[dateKey]) {
-        eventsByDate[dateKey] = [];
-      }
-      eventsByDate[dateKey].push(event);
+    // ── Coaching Points ───────────────────────────────────────────────────────
+    const coachingPoints: string[] = Array.isArray(meta.coachingPoints) ? meta.coachingPoints : [];
+    if (coachingPoints.length > 0) {
+      if (doc.y > doc.page.height - margin - 100) doc.addPage();
+      drawSectionHeader(doc, "Key Coaching Points", margin);
+      coachingPoints.forEach((pt: string, i: number) => {
+        doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+          .text(`${i + 1}.  ${pt}`, margin, doc.y, { width: pageW, lineGap: 2 });
+      });
+      doc.moveDown(1);
+    }
+
+    // ── Progressions ──────────────────────────────────────────────────────────
+    const progressions: string[] = Array.isArray(meta.progressions) ? meta.progressions : [];
+    if (progressions.length > 0) {
+      if (doc.y > doc.page.height - margin - 100) doc.addPage();
+      drawSectionHeader(doc, "Progressions", margin, cfg.border);
+      progressions.forEach((prog: string, i: number) => {
+        doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+          .text(`${i + 1}.  ${prog}`, margin, doc.y, { width: pageW, lineGap: 2 });
+      });
+    }
+
+    doc.end();
+  });
+}
+
+// ─── generatePlayerPlanPdf ────────────────────────────────────────────────────
+
+export async function generatePlayerPlanPdf(plan: any): Promise<Buffer> {
+  console.log("[PDF] Generating player plan PDF:", { title: plan.title });
+
+  return new Promise((resolve, reject) => {
+    const doc        = new PDFDocument({ size: "A4", margin: 45 });
+    const chunks: Buffer[] = [];
+    const margin     = 45;
+    const planTitle  = plan.title || "Player Training Plan";
+    let pageNum      = 1;
+    let drawingDecor = false;
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("error", reject);
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, planTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
     });
 
-    // Format each day
-    Object.keys(eventsByDate)
-      .sort()
-      .forEach((dateKey) => {
-        const dayEvents = eventsByDate[dateKey];
-        const date = new Date(dateKey);
+    drawPageDecor(doc, planTitle, pageNum);
 
-        // Check if we need a new page
-        if (doc.y > 700) {
-          doc.addPage();
+    // ── Header block ─────────────────────────────────────────────────────────
+    {
+      const headerH = 115;
+      const { width } = doc.page;
+
+      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
+      doc.fillColor("#059669").rect(0, headerH - 4, width, 4).fill();
+
+      doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
+        .text("TACTICALEDGE  ·  PLAYER PLAN", margin, 12, { lineBreak: false });
+
+      doc.fontSize(18).fillColor(BRAND.white).font("Helvetica-Bold")
+        .text(planTitle, margin, 26, { width: width - margin * 2 - 10, lineBreak: false });
+
+      // Chips row (same dark slate style as session PDF)
+      const chipY = headerH - 34;
+      let bx = margin;
+      const chipBg   = "#1e293b";
+      const chipText = "#94a3b8";
+      const chipFs   = 7.5;
+
+      if (plan.ageGroup) {
+        bx += drawBadge(doc, plan.ageGroup, bx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (plan.playerLevel) {
+        bx += drawBadge(doc, `Level: ${plan.playerLevel}`, bx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        }) + 5;
+      }
+      if (plan.durationMin) {
+        drawBadge(doc, `Duration: ${plan.durationMin} min`, bx, chipY, {
+          bgColor: chipBg, textColor: chipText, fontSize: chipFs,
+        });
+      }
+
+      doc.y = headerH + 18;
+      doc.x = margin;
+    }
+
+    const pageW = doc.page.width - margin * 2;
+
+    // ── Objectives ───────────────────────────────────────────────────────────
+    if (plan.objectives) {
+      drawSectionHeader(doc, "Objectives", margin, "#059669");
+      doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+        .text(plan.objectives, margin, doc.y, { width: pageW, lineGap: 2 });
+      doc.moveDown(1);
+    }
+
+    // ── Equipment ────────────────────────────────────────────────────────────
+    if (Array.isArray(plan.equipment) && plan.equipment.length > 0) {
+      drawSectionHeader(doc, "Equipment", margin, "#059669");
+      let eqX = margin;
+      const eqY = doc.y;
+      plan.equipment.forEach((item: string) => {
+        const bw = drawBadge(doc, item, eqX, eqY, {
+          bgColor: BRAND.surface, textColor: BRAND.navy,
+          fontSize: 8.5, padX: 9, padY: 3.5,
+          borderColor: BRAND.separator,
+        });
+        eqX += bw + 6;
+        if (eqX > doc.page.width - margin - 80) eqX = margin;
+      });
+      doc.y = eqY + 22;
+      doc.moveDown(0.8);
+    }
+
+    // ── Exercises ─────────────────────────────────────────────────────────────
+    const drills = plan.json?.drills || [];
+    if (drills.length > 0) {
+      drawSectionHeader(doc, "Exercises", margin, "#059669");
+
+      drills.forEach((ex: any, idx: number) => {
+        if (doc.y > doc.page.height - margin - 200) doc.addPage();
+
+        const exType = ex.drillType || "TECHNICAL";
+        const cfg    = getDrillConfig(exType);
+        const blockTopY = doc.y;
+
+        // Number circle
+        const circX = margin + 11;
+        doc.fillColor(cfg.border).circle(circX, doc.y + 8, 10).fill();
+        doc.fontSize(8).fillColor(BRAND.white).font("Helvetica-Bold")
+          .text(String(idx + 1), circX - 10, doc.y + 4, { width: 20, align: "center", lineBreak: false });
+
+        // Exercise title + badges
+        doc.fontSize(11).fillColor(BRAND.black).font("Helvetica-Bold")
+          .text(ex.title || `Exercise ${idx + 1}`, margin + 26, doc.y, { lineBreak: false });
+
+        const titleEndX = margin + 26 + doc.widthOfString(ex.title || `Exercise ${idx + 1}`) + 10;
+        const by = doc.y - 1;
+        const bw = drawBadge(doc, cfg.label.toUpperCase(), titleEndX, by, {
+          bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 7.5,
+        });
+        if (ex.durationMin) {
+          drawBadge(doc, `${ex.durationMin} min`, titleEndX + bw + 6, by, {
+            bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 7.5,
+          });
+        }
+        doc.moveDown(0.8);
+
+        // Indent all body content from the left border
+        const bodyX = margin + 16;
+        const bodyW = pageW - 16;
+
+        if (ex.description) {
+          doc.fontSize(9).fillColor(BRAND.black).font("Helvetica")
+            .text(ex.description, bodyX, doc.y, { width: bodyW, lineGap: 2 });
+          doc.moveDown(0.4);
         }
 
-        // Day header
-        doc.fontSize(14).fillColor("black").font("Helvetica-Bold").text(formatDate(date), { align: "left" });
-        doc.moveDown(0.3);
-        doc.moveTo(50, doc.y).lineTo(562, doc.y).strokeColor("gray").lineWidth(0.5).stroke();
-        doc.moveDown(0.5);
-
-        dayEvents.forEach((event) => {
-          // Check if we need a new page
-          if (doc.y > 700) {
-            doc.addPage();
-          }
-
-          // Session title
-          doc.fontSize(11).fillColor("black").font("Helvetica-Bold").text(event.session?.title || "Untitled Session", { align: "left" });
+        if (Array.isArray(ex.organization?.setupSteps) && ex.organization.setupSteps.length > 0) {
+          doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Setup & Instructions", bodyX, doc.y);
           doc.moveDown(0.2);
+          ex.organization.setupSteps.forEach((step: string, i: number) => {
+            doc.fontSize(9).fillColor(BRAND.black).font("Helvetica")
+              .text(`${i + 1}.  ${step}`, bodyX, doc.y, { width: bodyW, lineGap: 1 });
+          });
+          doc.moveDown(0.3);
+        }
 
-          // Time and duration
-          doc.fontSize(9).fillColor("black").font("Helvetica").text(`Time: ${formatTime(new Date(event.scheduledDate))}`, { align: "left" });
-          doc.moveDown(0.1);
-          doc.fontSize(9).fillColor("black").font("Helvetica").text(`Duration: ${event.durationMin} minutes`, { align: "left" });
+        const areaInfo: string[] = [];
+        if (ex.organization?.area?.lengthYards && ex.organization.area.widthYards) {
+          areaInfo.push(`${ex.organization.area.lengthYards} x ${ex.organization.area.widthYards} yards`);
+        }
+        if (ex.organization?.area?.notes) areaInfo.push(ex.organization.area.notes);
+        if (Array.isArray(ex.organization?.equipment) && ex.organization.equipment.length > 0) {
+          areaInfo.push(`Equipment: ${ex.organization.equipment.join(", ")}`);
+        }
+        if (areaInfo.length > 0) {
+          doc.fontSize(8).fillColor(BRAND.muted).font("Helvetica")
+            .text(areaInfo.join("  ·  "), bodyX, doc.y, { width: bodyW });
+          doc.moveDown(0.3);
+        }
 
-          // Optional fields
-          if (event.location) {
-            doc.moveDown(0.1);
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Location: ${event.location}`, { align: "left" });
-          }
-          if (event.teamName) {
-            doc.moveDown(0.1);
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Team: ${event.teamName}`, { align: "left" });
-          }
-          if (event.session?.ageGroup) {
-            doc.moveDown(0.1);
-            doc.fontSize(9).fillColor("black").font("Helvetica").text(`Age Group: ${event.session.ageGroup}`, { align: "left" });
-          }
-          if (event.notes) {
-            doc.moveDown(0.1);
-            doc.fontSize(9).fillColor("gray").font("Helvetica").text(`Notes: ${event.notes}`, { align: "left" });
-          }
-          if (event.sessionRefCode) {
-            doc.moveDown(0.1);
-            doc.fontSize(8).fillColor("gray").font("Helvetica").text(`Reference: ${event.sessionRefCode}`, { align: "left" });
-          }
+        if (ex.organization?.reps || ex.organization?.rest) {
+          const reps = [
+            ex.organization.reps ? `Reps: ${ex.organization.reps}` : "",
+            ex.organization.rest ? `Rest: ${ex.organization.rest}` : "",
+          ].filter(Boolean).join("  ·  ");
+          doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text(reps, bodyX, doc.y, { width: bodyW });
+          doc.moveDown(0.3);
+        }
 
+        if (Array.isArray(ex.coachingPoints) && ex.coachingPoints.length > 0) {
+          doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Self-Coaching Points", bodyX, doc.y);
+          doc.moveDown(0.2);
+          ex.coachingPoints.forEach((pt: string) => {
+            doc.fontSize(9).fillColor(BRAND.black).font("Helvetica")
+              .text(`\u2022  ${pt}`, bodyX, doc.y, { width: bodyW, lineGap: 1 });
+          });
+          doc.moveDown(0.3);
+        }
+
+        if (Array.isArray(ex.progressions) && ex.progressions.length > 0) {
+          doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Progressions", bodyX, doc.y);
+          doc.moveDown(0.2);
+          ex.progressions.forEach((prog: string, i: number) => {
+            doc.fontSize(9).fillColor(cfg.badgeText).font("Helvetica")
+              .text(`${i + 1}.  ${cleanText(prog)}`, bodyX, doc.y, { width: bodyW, lineGap: 1 });
+          });
+          doc.moveDown(0.3);
+        }
+
+        const blockEndY = doc.y + 4;
+
+        // Left border
+        {
+          const pm = (doc.page as any).margins;
+          const sb = pm.bottom;
+          pm.bottom = 0;
+          doc.fillColor(cfg.border).rect(margin, blockTopY, 3.5, blockEndY - blockTopY).fill();
+          pm.bottom = sb;
+        }
+
+        doc.x = margin;
+        doc.y = blockEndY;
+
+        if (idx < drills.length - 1) {
+          doc.strokeColor(BRAND.separator).lineWidth(0.4)
+            .moveTo(margin, doc.y).lineTo(doc.page.width - margin, doc.y).stroke();
           doc.moveDown(0.5);
-        });
+        }
+      });
+    }
 
+    doc.end();
+  });
+}
+
+// ─── generateWeeklySummaryPdf ─────────────────────────────────────────────────
+
+export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc        = new PDFDocument({ margin: 45, size: "LETTER" });
+    const chunks: Buffer[] = [];
+    const margin     = 45;
+    const docTitle   = "Weekly Training Schedule";
+    let pageNum      = 1;
+    let drawingDecor = false;
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("error", reject);
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, docTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
+    });
+
+    drawPageDecor(doc, docTitle, pageNum);
+
+    const {
+      weekStart,
+      weekEnd,
+      events,
+      totalSessions,
+      totalMinutes,
+      ageGroups,
+      gameModels,
+      aiSummary,
+    } = summary;
+
+    const formatDate = (date: Date) =>
+      date.toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      });
+
+    const formatTime = (date: Date) =>
+      date.toLocaleTimeString("en-US", {
+        hour: "numeric", minute: "2-digit", hour12: true,
+      });
+
+    const pageW = doc.page.width - margin * 2;
+
+    // ── Header block ─────────────────────────────────────────────────────────
+    {
+      const headerH = 100;
+      const { width } = doc.page;
+
+      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
+      doc.fillColor(BRAND.blue).rect(0, headerH - 4, width, 4).fill();
+
+      doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
+        .text("TACTICALEDGE  ·  WEEKLY SCHEDULE", margin, 13, { lineBreak: false });
+
+      doc.fontSize(20).fillColor(BRAND.white).font("Helvetica-Bold")
+        .text(docTitle, margin, 26, { width: width - margin * 2 - 10 });
+
+      doc.fontSize(8.5).fillColor("#94a3b8").font("Helvetica")
+        .text(
+          `${formatDate(weekStart)}  –  ${formatDate(weekEnd)}`,
+          margin, 56, { width: width - margin * 2, lineBreak: false }
+        );
+
+      doc.y = headerH + 18;
+      doc.x = margin;
+    }
+
+    // ── Stats summary strip ──────────────────────────────────────────────────
+    {
+      const hours   = Math.floor(totalMinutes / 60);
+      const mins    = totalMinutes % 60;
+      const stats   = [
+        { label: "Sessions",       value: String(totalSessions) },
+        { label: "Training Time",  value: `${hours}h ${mins}m` },
+        { label: "Age Groups",     value: (ageGroups || []).join(", ") || "—" },
+        { label: "Focus Areas",
+          value: (gameModels || []).map((gm: string) => GAME_MODEL_LABELS[gm] || gm).join(", ") || "—" },
+      ];
+
+      const stripY = doc.y;
+      const statW  = pageW / stats.length;
+      const stripH = 42;
+
+      doc.fillColor(BRAND.surface).rect(margin, stripY, pageW, stripH).fill();
+      doc.strokeColor(BRAND.separator).lineWidth(0.4).rect(margin, stripY, pageW, stripH).stroke();
+
+      stats.forEach((s, i) => {
+        const sx = margin + i * statW;
+        doc.fontSize(14).fillColor(BRAND.navy).font("Helvetica-Bold")
+          .text(s.value, sx + 8, stripY + 8, { width: statW - 16, lineBreak: false });
+        doc.fontSize(7.5).fillColor(BRAND.muted).font("Helvetica")
+          .text(s.label, sx + 8, stripY + 26, { width: statW - 16, lineBreak: false });
+        if (i > 0) {
+          doc.strokeColor(BRAND.separator).lineWidth(0.4)
+            .moveTo(sx, stripY + 8).lineTo(sx, stripY + stripH - 8).stroke();
+        }
+      });
+
+      doc.y = stripY + stripH + 16;
+    }
+
+    // ── AI summary ──────────────────────────────────────────────────────────
+    if (aiSummary) {
+      drawSectionHeader(doc, "Parent Communication Summary", margin);
+      doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica")
+        .text(aiSummary, margin, doc.y, { width: pageW, lineGap: 2 });
+      doc.moveDown(1.2);
+    }
+
+    // ── Schedule by date ─────────────────────────────────────────────────────
+    drawSectionHeader(doc, "Schedule", margin);
+
+    const eventsByDate: Record<string, any[]> = {};
+    (events || []).forEach((event: any) => {
+      const key = new Date(event.scheduledDate).toISOString().split("T")[0];
+      if (!eventsByDate[key]) eventsByDate[key] = [];
+      eventsByDate[key].push(event);
+    });
+
+    const threshold = doc.page.height - margin - 80;
+
+    Object.keys(eventsByDate).sort().forEach((dateKey) => {
+      const dayEvents = eventsByDate[dateKey];
+      const date      = new Date(dateKey);
+
+      if (doc.y > threshold) doc.addPage();
+
+      // Day header
+      doc.fillColor(BRAND.navy).rect(margin, doc.y, pageW, 20).fill();
+      doc.fontSize(9).fillColor(BRAND.white).font("Helvetica-Bold")
+        .text(formatDate(date), margin + 8, doc.y + 6, { width: pageW - 16, lineBreak: false });
+      doc.y += 24;
+
+      dayEvents.forEach((event) => {
+        if (doc.y > threshold) doc.addPage();
+
+        const eventTopY = doc.y;
+
+        // Session title
+        doc.fontSize(10.5).fillColor(BRAND.black).font("Helvetica-Bold")
+          .text(event.session?.title || "Untitled Session", margin + 8, doc.y);
+        doc.moveDown(0.2);
+
+        // Time + duration
+        const timeLine = [
+          formatTime(new Date(event.scheduledDate)),
+          event.durationMin ? `${event.durationMin} min` : null,
+          event.location || null,
+          event.teamName ? `Team: ${event.teamName}` : null,
+          event.session?.ageGroup || null,
+        ].filter(Boolean).join("  ·  ");
+
+        doc.fontSize(8.5).fillColor(BRAND.muted).font("Helvetica")
+          .text(timeLine, margin + 8, doc.y, { width: pageW - 16, lineGap: 1 });
+        doc.moveDown(0.2);
+
+        if (event.notes) {
+          doc.fontSize(8.5).fillColor(BRAND.muted).font("Helvetica")
+            .text(`Notes: ${event.notes}`, margin + 8, doc.y, { width: pageW - 16 });
+          doc.moveDown(0.2);
+        }
+
+        if (event.sessionRefCode) {
+          doc.fontSize(8).fillColor(BRAND.muted).font("Helvetica")
+            .text(`Ref: ${event.sessionRefCode}`, margin + 8, doc.y, { width: pageW - 16 });
+          doc.moveDown(0.2);
+        }
+
+        const eventEndY = doc.y + 6;
+
+        // Left accent bar (blue for schedule events)
+        {
+          const pm = (doc.page as any).margins;
+          const sb = pm.bottom;
+          pm.bottom = 0;
+          doc.fillColor(BRAND.blue).rect(margin, eventTopY, 3, eventEndY - eventTopY).fill();
+          pm.bottom = sb;
+        }
+
+        doc.y = eventEndY;
+        doc.x = margin;
+
+        // Thin separator between events
+        doc.strokeColor(BRAND.separator).lineWidth(0.3)
+          .moveTo(margin, doc.y).lineTo(margin + pageW, doc.y).stroke();
         doc.moveDown(0.5);
       });
 
-    doc.end();
-
-    doc.on("end", () => {
-      resolve(Buffer.concat(chunks));
+      doc.moveDown(0.3);
     });
+
+    doc.end();
   });
 }

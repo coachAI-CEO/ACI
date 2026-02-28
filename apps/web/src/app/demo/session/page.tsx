@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useCallback, useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import SessionForm from "@/components/SessionForm";
@@ -459,44 +459,119 @@ async function fetchSession(
   
   const url = `/api/generate-session${skipRecommendation ? "?skipRecommendation=1" : ""}`;
   
-  // Get auth token from localStorage for authenticated requests
-  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(getUserHeaders() as Record<string, string>),
-  };
-  if (accessToken) {
-    headers["Authorization"] = `Bearer ${accessToken}`;
-  }
-  
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    signal,
-    cache: "no-store",
-    body: JSON.stringify({
-      ...config,
-      ...(generationId ? { generationId } : {}),
-    }),
+  const requestBody = JSON.stringify({
+    ...config,
+    ...(generationId ? { generationId } : {}),
   });
+
+  const buildHeaders = (token: string | null): Record<string, string> => {
+    const requestHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(getUserHeaders() as Record<string, string>),
+    };
+    if (token) {
+      requestHeaders["Authorization"] = `Bearer ${token}`;
+    }
+    return requestHeaders;
+  };
+
+  const parseErrorMessage = async (response: Response): Promise<string> => {
+    const rawText = await response.text().catch(() => "");
+    if (!rawText) {
+      const statusText = response.statusText ? ` ${response.statusText}` : "";
+      return `API error: ${response.status}${statusText}`;
+    }
+    try {
+      const errorData = JSON.parse(rawText);
+      return errorData?.error || errorData?.message || `API error: ${response.status}`;
+    } catch {
+      return rawText;
+    }
+  };
+
+  const tryRefreshAccessToken = async (): Promise<string | null> => {
+    if (typeof window === "undefined") return null;
+    const refreshToken = localStorage.getItem("refreshToken");
+    if (!refreshToken) return null;
+
+    const refreshRes = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => null);
+
+    if (!refreshRes?.ok) return null;
+    const refreshData = await refreshRes.json().catch(() => ({}));
+    if (!refreshData?.accessToken) return null;
+    localStorage.setItem("accessToken", refreshData.accessToken);
+    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    return refreshData.accessToken as string;
+  };
+
+  const clearAuthState = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    window.dispatchEvent(new Event("userLogin"));
+  };
+
+  let accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: buildHeaders(accessToken),
+      signal,
+      cache: "no-store",
+      body: requestBody,
+    });
+  } catch (fetchError: any) {
+    if (fetchError?.name === "AbortError") {
+      throw fetchError;
+    }
+    throw new Error(fetchError?.message || "Network error while generating session");
+  }
 
   const apiTime = Date.now() - apiStart;
   console.log(`[PERF] API call completed in ${(apiTime / 1000).toFixed(2)}s`);
   console.log(`[SESSION_GEN] Response status: ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
-    const rawText = await res.text().catch(() => "");
-    let errorData: any = {};
-    if (rawText) {
-      try {
-        errorData = JSON.parse(rawText);
-      } catch {
-        errorData = { raw: rawText };
+    let errorMessage = await parseErrorMessage(res);
+    const isInvalidToken = res.status === 401 && /invalid token|unauthorized/i.test(errorMessage);
+
+    if (isInvalidToken && accessToken) {
+      const refreshedToken = await tryRefreshAccessToken();
+      if (refreshedToken) {
+        accessToken = refreshedToken;
+      } else {
+        clearAuthState();
+        accessToken = null;
+      }
+
+      res = await fetch(url, {
+        method: "POST",
+        headers: buildHeaders(accessToken),
+        signal,
+        cache: "no-store",
+        body: requestBody,
+      });
+
+      if (!res.ok) {
+        errorMessage = await parseErrorMessage(res);
       }
     }
-    console.error(`[SESSION_GEN] Error response:`, errorData);
-    const errorMessage = errorData?.error || errorData?.message || errorData?.raw || `API error: ${res.status}`;
-    throw new Error(errorMessage);
+
+    if (!res.ok) {
+      console.warn("[SESSION_GEN] Error response", {
+        status: res.status,
+        statusText: res.statusText,
+        error: errorMessage,
+      });
+      throw new Error(errorMessage);
+    }
   }
 
   const parseStart = Date.now();
@@ -545,25 +620,67 @@ async function fetchProgressiveSeries(
   // Use Next.js API route to avoid CORS issues
   const url = `/api/generate-progressive-series${skipRecommendation ? "?skipRecommendation=1" : ""}`;
   
-  const seriesAccessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  const seriesHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(getUserHeaders() as Record<string, string>),
-  };
-  if (seriesAccessToken) {
-    seriesHeaders["Authorization"] = `Bearer ${seriesAccessToken}`;
-  }
+  const requestBody = JSON.stringify({
+    baseInput: config,
+    numberOfSessions,
+  });
 
-  const res = await fetch(url, {
+  const buildHeaders = (token: string | null): Record<string, string> => {
+    const requestHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(getUserHeaders() as Record<string, string>),
+    };
+    if (token) requestHeaders["Authorization"] = `Bearer ${token}`;
+    return requestHeaders;
+  };
+
+  const parseErrorMessage = async (response: Response): Promise<string> => {
+    const errorText = await response.text().catch(() => "");
+    if (!errorText) return `API error: ${response.status}`;
+    try {
+      const parsed = JSON.parse(errorText);
+      return parsed?.error || parsed?.message || `API error: ${response.status}`;
+    } catch {
+      return errorText;
+    }
+  };
+
+  const tryRefreshAccessToken = async (): Promise<string | null> => {
+    if (typeof window === "undefined") return null;
+    const refreshToken = localStorage.getItem("refreshToken");
+    if (!refreshToken) return null;
+
+    const refreshRes = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => null);
+    if (!refreshRes?.ok) return null;
+
+    const refreshData = await refreshRes.json().catch(() => ({}));
+    if (!refreshData?.accessToken) return null;
+    localStorage.setItem("accessToken", refreshData.accessToken);
+    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    return refreshData.accessToken as string;
+  };
+
+  const clearAuthState = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
+    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    window.dispatchEvent(new Event("userLogin"));
+  };
+
+  let seriesAccessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  let res = await fetch(url, {
     method: "POST",
-    headers: seriesHeaders,
+    headers: buildHeaders(seriesAccessToken),
     signal,
-    body: JSON.stringify({
-      baseInput: config,
-      numberOfSessions,
-    }),
+    body: requestBody,
   }).catch((fetchError: any) => {
-    console.error("[PROGRESSIVE_SERIES] Fetch error:", fetchError);
+    console.warn("[PROGRESSIVE_SERIES] Fetch error:", fetchError);
     if (fetchError.message?.includes('fetch failed') || fetchError.code === 'ECONNREFUSED') {
       throw new Error("Cannot connect to server. Please refresh the page and try again.");
     }
@@ -575,29 +692,48 @@ async function fetchProgressiveSeries(
   console.log(`[PROGRESSIVE_SERIES] Response status: ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
-    const errorText = await res.text().catch(() => "");
-    console.error(`[PROGRESSIVE_SERIES] Error response (${res.status}):`, errorText);
-    
-    let errorData: any = {};
-    try {
-      errorData = errorText ? JSON.parse(errorText) : {};
-    } catch {
-      errorData = { error: errorText || `API error: ${res.status}` };
-    }
-    
-    let errorMessage = errorData?.error || `API error: ${res.status}`;
-    
-    // Make connection errors more helpful
-    if (res.status === 503) {
-      if (errorMessage.includes("Cannot connect") || errorMessage.includes("ECONNREFUSED")) {
-        errorMessage = "Backend server is not running. Please start the API server on port 4000.";
+    let errorMessage = await parseErrorMessage(res);
+    const isInvalidToken = res.status === 401 && /invalid token|unauthorized/i.test(errorMessage);
+
+    if (isInvalidToken && seriesAccessToken) {
+      const refreshedToken = await tryRefreshAccessToken();
+      if (refreshedToken) {
+        seriesAccessToken = refreshedToken;
       } else {
-        errorMessage = "Connection interrupted during generation. Your sessions may still be generating - check the Vault in a few minutes to see if they appear.";
+        clearAuthState();
+        seriesAccessToken = null;
       }
-    } else if (res.status === 504) {
-      errorMessage = "Request timed out. The sessions may still be generating - check the Vault.";
+
+      res = await fetch(url, {
+        method: "POST",
+        headers: buildHeaders(seriesAccessToken),
+        signal,
+        body: requestBody,
+      });
+      if (!res.ok) {
+        errorMessage = await parseErrorMessage(res);
+      }
     }
-    throw new Error(errorMessage);
+
+    if (!res.ok) {
+      if (res.status === 503 || res.status === 504) {
+        console.warn(`[PROGRESSIVE_SERIES] Error response (${res.status}):`, errorMessage);
+      } else {
+        console.error(`[PROGRESSIVE_SERIES] Error response (${res.status}):`, errorMessage);
+      }
+    
+      // Make connection errors more helpful
+      if (res.status === 503) {
+        if (errorMessage.includes("Cannot connect") || errorMessage.includes("ECONNREFUSED")) {
+          errorMessage = "Backend server is not running. Please start the API server on port 4000.";
+        } else {
+          errorMessage = "Connection interrupted during generation. Your sessions may still be generating - check the Vault in a few minutes to see if they appear.";
+        }
+      } else if (res.status === 504) {
+        errorMessage = "Request timed out. The sessions may still be generating - check the Vault.";
+      }
+      throw new Error(errorMessage);
+    }
   }
 
   const parseStart = Date.now();
@@ -722,7 +858,7 @@ function SessionDemoPageContent() {
   const router = useRouter();
   const [data, setData] = useState<SessionApiResponse | null>(null);
   const [seriesData, setSeriesData] = useState<ProgressiveSeriesApiResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => searchParams.get("autoGenerate") === "true");
   const [progressInfo, setProgressInfo] = useState<{
     isSeries: boolean;
     totalSessions?: number;
@@ -748,6 +884,11 @@ function SessionDemoPageContent() {
   } | null>(null);
   const [foundPendingSeries, setFoundPendingSeries] = useState<any[] | null>(null);
   const [checkingForSeries, setCheckingForSeries] = useState(false);
+  const [liveSeriesSessions, setLiveSeriesSessions] = useState<Array<{
+    id: string;
+    title?: string;
+    seriesNumber?: number | null;
+  }>>([]);
   const [skillFocus, setSkillFocus] = useState<SkillFocus | null>(null);
   const [seriesSkillFocus, setSeriesSkillFocus] = useState<SkillFocus | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
@@ -776,11 +917,34 @@ function SessionDemoPageContent() {
   } | null>(null);
   const generationAbortRef = useRef<AbortController | null>(null);
   const generationIdRef = useRef<string | null>(null);
+  const activeSeriesGenerationRef = useRef<{
+    startTime: number;
+    config: SessionConfig;
+    seriesId: string | null;
+  } | null>(null);
+  const pendingSeriesIdRef = useRef<string | null>(null);
 
   const config = getConfigFromSearchParams(searchParams);
+  const normalizeCoachLevelForGeneration = (value?: string) => {
+    const v = String(value || "").toUpperCase();
+    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_C") return "USSF_C";
+    if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
+    if (v === "USSF_D") return "GRASSROOTS";
+    return undefined;
+  };
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  useEffect(() => {
+    // Ensure the generating overlay appears immediately for AI/chat-triggered runs.
+    if (searchParams.get("autoGenerate") === "true" && !data && !seriesData) {
+      setLoading(true);
+    }
+    // Intentionally keyed to URL query updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParamsString]);
 
   const isAbortError = (err: any) => {
     const message = String(err?.message || "").toLowerCase();
@@ -804,6 +968,93 @@ function SessionDemoPageContent() {
 
   const createGenerationId = () =>
     `gen_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const getClientAuthHeaders = useCallback((): Record<string, string> => {
+    const headers: Record<string, string> = {
+      ...(getUserHeaders() as Record<string, string>),
+    };
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+    }
+    return headers;
+  }, []);
+
+  const getMatchingSeriesSessions = useCallback((
+    sessions: any[],
+    startTime: number,
+    seriesConfig: SessionConfig
+  ) => {
+    const clientServerClockSkewToleranceMs = 10 * 60 * 1000;
+    return sessions.filter((s: any) => {
+      if (!s?.isSeries) return false;
+      const createdAt = new Date(s.createdAt).getTime();
+      if (createdAt + clientServerClockSkewToleranceMs < startTime) return false;
+      if (seriesConfig.ageGroup && s.ageGroup !== seriesConfig.ageGroup) return false;
+      if (seriesConfig.gameModelId && s.gameModelId !== seriesConfig.gameModelId) return false;
+      if (seriesConfig.phase && s.phase !== seriesConfig.phase) return false;
+      return true;
+    });
+  }, []);
+
+  const mapSeriesSessionsForProgress = useCallback((sessions: any[]) => {
+    return sessions
+      .slice()
+      .sort((a: any, b: any) => {
+        const aNumber = Number(a?.seriesNumber || 0);
+        const bNumber = Number(b?.seriesNumber || 0);
+        if (aNumber && bNumber && aNumber !== bNumber) return aNumber - bNumber;
+        const aCreated = new Date(a?.createdAt || 0).getTime();
+        const bCreated = new Date(b?.createdAt || 0).getTime();
+        return aCreated - bCreated;
+      })
+      .map((s: any, idx: number) => ({
+        id: String(s?.id || `${s?.seriesId || "series"}-${idx}`),
+        title: s?.title || undefined,
+        seriesNumber: Number.isFinite(Number(s?.seriesNumber)) ? Number(s?.seriesNumber) : null,
+      }));
+  }, []);
+
+  const pickActiveSeriesSessions = useCallback((
+    sessions: any[],
+    lockedSeriesId: string | null
+  ): { sessions: any[]; seriesId: string | null } => {
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      return { sessions: [], seriesId: lockedSeriesId };
+    }
+
+    if (lockedSeriesId) {
+      const locked = sessions.filter((s: any) => s?.seriesId === lockedSeriesId);
+      return { sessions: locked, seriesId: lockedSeriesId };
+    }
+
+    const bySeries = new Map<string, any[]>();
+    for (const s of sessions) {
+      const sid = s?.seriesId;
+      if (!sid) continue;
+      if (!bySeries.has(sid)) bySeries.set(sid, []);
+      bySeries.get(sid)!.push(s);
+    }
+
+    if (bySeries.size === 0) {
+      return { sessions, seriesId: null };
+    }
+
+    const ranked = Array.from(bySeries.entries())
+      .map(([seriesId, list]) => ({
+        seriesId,
+        list,
+        latestCreatedAt: Math.max(...list.map((s: any) => new Date(s?.createdAt || 0).getTime())),
+      }))
+      .sort((a, b) => {
+        if (b.latestCreatedAt !== a.latestCreatedAt) return b.latestCreatedAt - a.latestCreatedAt;
+        return b.list.length - a.list.length;
+      });
+
+    return { sessions: ranked[0].list, seriesId: ranked[0].seriesId };
+  }, []);
 
   const cancelGenerationOnServer = async () => {
     const generationId = generationIdRef.current;
@@ -833,6 +1084,7 @@ function SessionDemoPageContent() {
     void cancelGenerationOnServer();
     setLoading(false);
     setProgressInfo(null);
+    setLiveSeriesSessions([]);
     setRegeneratingCoachLevel(null);
   };
 
@@ -1110,8 +1362,10 @@ function SessionDemoPageContent() {
       // Set progress info BEFORE setting loading to true, so it shows immediately
       if (isSeries) {
         setProgressInfo({ isSeries: true, totalSessions: numberOfSessions, currentSession: 1 });
+        setLiveSeriesSessions([]);
       } else {
         setProgressInfo({ isSeries: false });
+        setLiveSeriesSessions([]);
       }
       
       setLoading(true);
@@ -1124,6 +1378,11 @@ function SessionDemoPageContent() {
         const controller = startGenerationAbortController();
         generationIdRef.current = createGenerationId();
         const generationStartTime = Date.now();
+        activeSeriesGenerationRef.current = {
+          startTime: generationStartTime,
+          config,
+          seriesId: null,
+        };
         fetchProgressiveSeries(config, numberOfSessions, skipRecommendation, controller.signal)
           .then((result) => {
             console.log("[SESSION_PAGE] Progressive series result:", {
@@ -1145,6 +1404,13 @@ function SessionDemoPageContent() {
               setData(null);
             } else if (result.series && Array.isArray(result.series) && result.series.length > 0) {
               console.log("[SESSION_PAGE] Series generated successfully");
+              setLiveSeriesSessions(
+                mapSeriesSessionsForProgress(result.series.map((item: any) => ({
+                  id: item?.id || item?.session?.id,
+                  title: item?.session?.title,
+                  seriesNumber: item?.sessionNumber || item?.session?.seriesNumber,
+                })))
+              );
               setSeriesData(result);
               setData(null);
               setSelectedSeriesTab(0);
@@ -1162,10 +1428,18 @@ function SessionDemoPageContent() {
             if (isAbortError(e)) {
               return;
             }
-            console.error("[SESSION_PAGE] Progressive series error:", e);
             const errorMsg = e?.message || String(e);
+            const isBackgroundGeneration =
+              errorMsg.includes("interrupted") ||
+              errorMsg.includes("timeout") ||
+              errorMsg.includes("503");
+            if (isBackgroundGeneration) {
+              console.warn("[SESSION_PAGE] Progressive series still generating in background:", errorMsg);
+            } else {
+              console.error("[SESSION_PAGE] Progressive series error:", e);
+            }
             // If it's a timeout/connection error, start polling for the series
-            if (errorMsg.includes("interrupted") || errorMsg.includes("timeout") || errorMsg.includes("503")) {
+            if (isBackgroundGeneration) {
               setError(
                 "GENERATION_IN_PROGRESS: The connection timed out, but your sessions are being generated in the background. " +
                 "Checking the Vault for your series..."
@@ -1174,8 +1448,9 @@ function SessionDemoPageContent() {
               setPendingSeriesCheck({
                 startTime: generationStartTime,
                 expectedCount: numberOfSessions,
-                config: config,
+                config,
               });
+              pendingSeriesIdRef.current = null;
             } else {
               setError(errorMsg);
             }
@@ -1187,8 +1462,11 @@ function SessionDemoPageContent() {
           .finally(() => {
             clearGenerationAbortController(controller);
             generationIdRef.current = null;
+            activeSeriesGenerationRef.current = null;
+            pendingSeriesIdRef.current = null;
             setLoading(false);
             setProgressInfo(null);
+            setLiveSeriesSessions([]);
           });
       } else {
         const controller = startGenerationAbortController();
@@ -1226,11 +1504,13 @@ function SessionDemoPageContent() {
             generationIdRef.current = null;
             setLoading(false);
             setProgressInfo(null);
+            setLiveSeriesSessions([]);
           });
       }
     } else {
       setData(null);
       setSeriesData(null);
+      setLiveSeriesSessions([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParamsString]);
@@ -1247,28 +1527,34 @@ function SessionDemoPageContent() {
       setCheckingForSeries(true);
       try {
         // Query vault for sessions created after startTime with matching parameters
-        const res = await fetch("/api/vault/sessions");
-        if (!res.ok) throw new Error("Failed to fetch vault");
+        const res = await fetch("/api/vault/sessions?excludeSeries=false", {
+          headers: getClientAuthHeaders(),
+        });
+        if (!res.ok) {
+          const vaultError = await res.text().catch(() => "");
+          console.warn(`[POLL] Vault check unavailable (${res.status})`, vaultError || res.statusText);
+          setError(
+            "GENERATION_IN_PROGRESS: Sessions are still being generated. " +
+            "Vault status is temporarily unavailable, but we will keep checking automatically."
+          );
+          setCheckingForSeries(false);
+          return false;
+        }
         const data = await res.json();
         
         if (data.ok && data.sessions) {
           // Find sessions created after our start time with matching parameters
-          const matchingSessions = data.sessions.filter((s: any) => {
-            const createdAt = new Date(s.createdAt).getTime();
-            // Session created after we started generating
-            if (createdAt < startTime) return false;
-            // Match key parameters
-            if (config.ageGroup && s.ageGroup !== config.ageGroup) return false;
-            if (config.gameModelId && s.gameModelId !== config.gameModelId) return false;
-            if (config.phase && s.phase !== config.phase) return false;
-            return true;
-          });
+          const matchingSessions = getMatchingSeriesSessions(data.sessions, startTime, config);
+          const picked = pickActiveSeriesSessions(matchingSessions, pendingSeriesIdRef.current);
+          pendingSeriesIdRef.current = picked.seriesId;
+          const activeSessions = picked.sessions;
+          setLiveSeriesSessions(mapSeriesSessionsForProgress(activeSessions));
           
-          console.log("[POLL] Found matching sessions:", matchingSessions.length, "expected:", expectedCount);
+          console.log("[POLL] Found matching sessions:", activeSessions.length, "expected:", expectedCount);
           
-          if (matchingSessions.length >= expectedCount) {
+          if (activeSessions.length >= expectedCount) {
             // Found all sessions!
-            setFoundPendingSeries(matchingSessions.slice(0, expectedCount));
+            setFoundPendingSeries(activeSessions.slice(0, expectedCount));
             setPendingSeriesCheck(null);
             setCheckingForSeries(false);
             setError(
@@ -1277,15 +1563,19 @@ function SessionDemoPageContent() {
             return true; // Stop polling
           }
           
-          if (matchingSessions.length > 0) {
+          if (activeSessions.length > 0) {
             // Found some sessions, update the message
             setError(
-              `GENERATION_IN_PROGRESS: Found ${matchingSessions.length}/${expectedCount} sessions so far. Still generating...`
+              `GENERATION_IN_PROGRESS: Found ${activeSessions.length}/${expectedCount} sessions so far. Still generating...`
             );
           }
         }
-      } catch (err) {
-        console.error("[POLL] Error checking vault:", err);
+      } catch (err: any) {
+        console.warn("[POLL] Error checking vault, will retry:", err?.message || String(err));
+        setError(
+          "GENERATION_IN_PROGRESS: Sessions are still being generated. " +
+          "Could not reach Vault just now, retrying automatically."
+        );
       }
       setCheckingForSeries(false);
       return false; // Continue polling
@@ -1315,7 +1605,60 @@ function SessionDemoPageContent() {
     }, 10000); // Poll every 10 seconds
     
     return () => clearInterval(intervalId);
+  // Intentionally keyed by pendingSeriesCheck only; helper callbacks are stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSeriesCheck]);
+
+  // Update the series progress graphic using sessions already persisted to Vault.
+  useEffect(() => {
+    if (!loading || !progressInfo?.isSeries || !progressInfo.totalSessions) return;
+    if (!activeSeriesGenerationRef.current) return;
+
+    const syncProgress = async () => {
+      const activeGeneration = activeSeriesGenerationRef.current;
+      if (!activeGeneration) return;
+      try {
+        const res = await fetch("/api/vault/sessions?excludeSeries=false", {
+          headers: getClientAuthHeaders(),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data?.ok || !Array.isArray(data.sessions)) return;
+        const matchingSessions = getMatchingSeriesSessions(
+          data.sessions,
+          activeGeneration.startTime,
+          activeGeneration.config
+        );
+        const picked = pickActiveSeriesSessions(matchingSessions, activeGeneration.seriesId);
+        if (activeSeriesGenerationRef.current) {
+          activeSeriesGenerationRef.current.seriesId = picked.seriesId;
+        }
+        const activeSessions = picked.sessions;
+        setLiveSeriesSessions(mapSeriesSessionsForProgress(activeSessions));
+        const completedCount = activeSessions.length;
+        setProgressInfo((prev) => {
+          if (!prev?.isSeries || !prev.totalSessions) return prev;
+          const nextCurrent = Math.min(prev.totalSessions, Math.max(1, completedCount + 1));
+          if (prev.currentSession === nextCurrent) return prev;
+          return {
+            ...prev,
+            currentSession: nextCurrent,
+          };
+        });
+      } catch {
+        // Best effort only.
+      }
+    };
+
+    void syncProgress();
+    const intervalId = setInterval(() => {
+      void syncProgress();
+    }, 7000);
+
+    return () => clearInterval(intervalId);
+  // Intentionally keyed by generation/loading state; helper callbacks are stable.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, progressInfo?.isSeries, progressInfo?.totalSessions]);
 
   // Get current session (single mode or selected tab from series)
   const seriesList = seriesData?.series ?? [];
@@ -1663,6 +2006,7 @@ function SessionDemoPageContent() {
           isSeries={progressInfo?.isSeries || false}
           totalSessions={progressInfo?.totalSessions}
           currentSession={progressInfo?.currentSession}
+          readySeriesSessions={liveSeriesSessions}
           onCancel={cancelGeneration}
         />
       )}
@@ -2046,11 +2390,25 @@ function SessionDemoPageContent() {
                   if (isSeries) {
                     // Generate progressive series with skipRecommendation
                     setProgressInfo({ isSeries: true, totalSessions: numberOfSessions, currentSession: 1 });
+                    setLiveSeriesSessions([]);
                     const controller = startGenerationAbortController();
                     generationIdRef.current = createGenerationId();
+                    const generationStartTime = Date.now();
+                    activeSeriesGenerationRef.current = {
+                      startTime: generationStartTime,
+                      config,
+                      seriesId: null,
+                    };
                     fetchProgressiveSeries(config, numberOfSessions, true, controller.signal)
                       .then((result) => {
                         if (result.series && Array.isArray(result.series) && result.series.length > 0) {
+                          setLiveSeriesSessions(
+                            mapSeriesSessionsForProgress(result.series.map((item: any) => ({
+                              id: item?.id || item?.session?.id,
+                              title: item?.session?.title,
+                              seriesNumber: item?.sessionNumber || item?.session?.seriesNumber,
+                            })))
+                          );
                           setSeriesData(result);
                           setData(null);
                           setSelectedSeriesTab(0);
@@ -2064,19 +2422,41 @@ function SessionDemoPageContent() {
                         if (isAbortError(e)) {
                           return;
                         }
-                        setError(e?.message || String(e));
+                        const errorMsg = e?.message || String(e);
+                        const isBackgroundGeneration =
+                          errorMsg.includes("interrupted") ||
+                          errorMsg.includes("timeout") ||
+                          errorMsg.includes("503");
+                        if (isBackgroundGeneration) {
+                          setError(
+                            "GENERATION_IN_PROGRESS: The connection timed out, but your sessions are being generated in the background. " +
+                            "Checking the Vault for your series..."
+                          );
+                          setPendingSeriesCheck({
+                            startTime: generationStartTime,
+                            expectedCount: numberOfSessions,
+                            config,
+                          });
+                        } else {
+                          setError(errorMsg);
+                        }
                         setSeriesData(null);
                         setData(null);
+                        setShowRecommendations(false);
+                        setRecommendations([]);
                       })
                       .finally(() => {
                         clearGenerationAbortController(controller);
                         generationIdRef.current = null;
+                        activeSeriesGenerationRef.current = null;
                         setLoading(false);
                         setProgressInfo(null);
+                        setLiveSeriesSessions([]);
                       });
                   } else {
                     // Generate single session with skipRecommendation
                     setProgressInfo({ isSeries: false });
+                    setLiveSeriesSessions([]);
                     const controller = startGenerationAbortController();
                     const generationId = createGenerationId();
                     generationIdRef.current = generationId;
@@ -3236,7 +3616,8 @@ function SessionDemoPageContent() {
               if (params.formationAttacking) queryParams.set("formationAttacking", params.formationAttacking);
               if (params.formationDefending) queryParams.set("formationDefending", params.formationDefending);
               if (params.playerLevel) queryParams.set("playerLevel", params.playerLevel);
-              if (params.coachLevel) queryParams.set("coachLevel", params.coachLevel);
+              const normalizedCoachLevel = normalizeCoachLevelForGeneration(params.coachLevel);
+              if (normalizedCoachLevel) queryParams.set("coachLevel", normalizedCoachLevel);
               if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) queryParams.set("goalsAvailable", String(params.goalsAvailable));
               // Series mode
               if (params.numberOfSessions && params.numberOfSessions > 1) {
@@ -3245,8 +3626,21 @@ function SessionDemoPageContent() {
               }
               // Flag to skip recommendations and auto-generate
               queryParams.set("autoGenerate", "true");
+              queryParams.set("requestId", String(Date.now()));
               setChatOpen(false);
-              router.push(`/demo/session?${queryParams.toString()}`);
+              const targetUrl = `/demo/session?${queryParams.toString()}`;
+              const before = typeof window !== "undefined"
+                ? `${window.location.pathname}${window.location.search}`
+                : "";
+              router.push(targetUrl);
+              if (typeof window !== "undefined") {
+                window.setTimeout(() => {
+                  const after = `${window.location.pathname}${window.location.search}`;
+                  if (after === before) {
+                    window.location.assign(targetUrl);
+                  }
+                }, 350);
+              }
             }}
           />
         </div>

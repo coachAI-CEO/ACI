@@ -176,6 +176,9 @@ r.get("/vault/sessions", authenticate, async (req: AuthRequest, res) => {
       ageGroup: req.query.ageGroup as string | undefined,
       phase: req.query.phase as string | undefined,
       zone: req.query.zone as string | undefined,
+      excludeSeries: req.query.excludeSeries === undefined
+        ? undefined
+        : String(req.query.excludeSeries).toLowerCase() !== "false",
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
       offset: req.query.offset ? parseInt(req.query.offset as string) : undefined,
     };

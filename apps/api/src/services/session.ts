@@ -327,6 +327,8 @@ export async function generateAndReviewSession(
   }
 ) {
   const isCancelled = () => Boolean(options?.isCancelled?.());
+  const SESSION_GENERATION_TIMEOUT_MS = Number(process.env.SESSION_GENERATION_TIMEOUT_MS || 150000);
+  const SESSION_QA_TIMEOUT_MS = Number(process.env.SESSION_QA_TIMEOUT_MS || 90000);
 
   // Set metrics context for tracking
   setMetricsContext({
@@ -340,7 +342,7 @@ export async function generateAndReviewSession(
     // 1) Generate (longer timeout for sessions - more complex than drills)
     const prompt = buildSessionPrompt(input);
     console.log(`[SESSION] Starting generation with ${prompt.length} char prompt...`);
-    const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
+    const genText = await generateText(prompt, { timeout: SESSION_GENERATION_TIMEOUT_MS, retries: 0 });
     if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Log raw response for debugging (first 5000 chars to see diagram structure)
@@ -545,7 +547,7 @@ export async function generateAndReviewSession(
   
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[SESSION] Starting QA with ${qaPrompt.length} char prompt...`);
-  const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+  const qaText = await generateText(qaPrompt, { timeout: SESSION_QA_TIMEOUT_MS, retries: 0 });
   if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error("LLM returned non-JSON QA");

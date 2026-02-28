@@ -9,8 +9,17 @@ export async function GET(
   const { sessionId } = await params;
   const url = `${API_URL}/vault/sessions/${encodeURIComponent(sessionId)}`;
   const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const cookieToken = request.cookies.get("accessToken")?.value;
+  const userIdHeader = request.headers.get("x-user-id");
   const headers: HeadersInit = {};
-  if (authHeader) headers["Authorization"] = authHeader;
+  if (authHeader) {
+    headers["Authorization"] = authHeader;
+  } else if (cookieToken) {
+    headers["Authorization"] = `Bearer ${cookieToken}`;
+  }
+  if (userIdHeader) {
+    headers["x-user-id"] = userIdHeader;
+  }
 
   try {
     const controller = new AbortController();

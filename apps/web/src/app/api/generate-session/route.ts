@@ -32,6 +32,8 @@ function getApiBaseCandidates(): string[] {
   if (isDev) {
     candidates.push("http://127.0.0.1:4000");
     candidates.push("http://localhost:4000");
+    // Useful when Next.js runs in a container and API runs on host machine.
+    candidates.push("http://host.docker.internal:4000");
   }
   return Array.from(new Set(candidates.filter(Boolean)));
 }
@@ -109,9 +111,17 @@ export async function POST(request: NextRequest) {
     const data = await res.json();
     return NextResponse.json(data);
   } catch (e: any) {
+    const message = e?.message || String(e);
+    const isBackendUnreachable =
+      /fetch failed|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|network/i.test(message);
     return NextResponse.json(
-      { ok: false, error: e?.message || String(e) },
-      { status: 500 }
+      {
+        ok: false,
+        error: isBackendUnreachable
+          ? "Backend API unreachable. Ensure API server is running on port 4000 and reachable from the web process."
+          : message,
+      },
+      { status: isBackendUnreachable ? 503 : 500 }
     );
   }
 }

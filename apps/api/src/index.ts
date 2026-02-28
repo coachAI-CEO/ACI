@@ -1,6 +1,8 @@
+import './config/load-env';
 import app from "./app";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
+const HOST = process.env.HOST ?? "127.0.0.1";
 
 console.log("Starting server...");
 
@@ -15,9 +17,11 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`ACI API listening on 0.0.0.0:${PORT}`);
+const server = app.listen(PORT, HOST, () => {
+  console.log(`ACI API listening on ${HOST}:${PORT}`);
   console.log("Server is running, event loop active");
+  const smtpConfigured = Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  console.log(`[EMAIL] Delivery mode: ${smtpConfigured ? 'SMTP' : 'CONSOLE_ONLY (SMTP not configured)'}`);
   
   // Test database connection
   import("./prisma").then(({ prisma }) => {
@@ -35,8 +39,12 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("Server address:", server.address());
 });
 
-// Set server timeout to 3 minutes (180s) to handle slow LLM responses
-server.timeout = 180000;
+// Allow long-running generation requests to complete without socket timeout drops.
+// Progressive series can exceed 3 minutes because each session includes generation + QA.
+server.timeout = 0;
+server.requestTimeout = 0;
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
 
 // Debug: Log when server closes
 server.on('close', () => {

@@ -87,6 +87,10 @@ export type UniversalDrillDiagramProps = {
   autoSpacing?: boolean;
   spacingMode?: "simple" | "advanced";
   showSpacingWarning?: boolean;
+  /** Enable enhanced visual effects (shadows, gradients) - default: true for large, false for small */
+  enhancedVisuals?: boolean;
+  /** Highlight specific player IDs for focus */
+  highlightedPlayers?: string[];
 };
 
 /** Zone configuration for automatic detection */
@@ -271,7 +275,11 @@ const UniversalDrillDiagram = ({
   autoSpacing,
   spacingMode,
   showSpacingWarning,
+  enhancedVisuals,
+  highlightedPlayers = [],
 }: UniversalDrillDiagramProps) => {
+  // Default enhancedVisuals based on size
+  const isEnhanced = enhancedVisuals ?? size === "large";
   const isAutoSpacing = true;
   const resolvedSpacingMode = spacingMode ?? "advanced";
   const shouldWarnOnSpacing = showSpacingWarning ?? false;
@@ -767,6 +775,13 @@ const UniversalDrillDiagram = ({
             <stop offset="50%" style={{ stopColor: "#265c45", stopOpacity: 1 }} />
             <stop offset="100%" style={{ stopColor: "#1e4d3a", stopOpacity: 1 }} />
           </linearGradient>
+          
+          {/* Enhanced player shadow filter - used when enhancedVisuals is true */}
+          {isEnhanced && (
+            <filter id={`playerShadow-${uid}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="2" stdDeviation="2" floodOpacity="0.4" />
+            </filter>
+          )}
           
           {/* Arrowhead markers for different arrow types */}
           <marker
@@ -1810,7 +1825,7 @@ const UniversalDrillDiagram = ({
                           (player.number ? `${player.number}` : "");
 
           return (
-            <g key={player.id ?? idx}>
+            <g key={player.id ?? idx} filter={isEnhanced ? `url(#playerShadow-${uid})` : undefined}>
               <circle
                 cx={px}
                 cy={py}

@@ -21,6 +21,7 @@ function getApiBaseCandidates(): string[] {
   if (isDev) {
     candidates.push("http://127.0.0.1:4000");
     candidates.push("http://localhost:4000");
+    candidates.push("http://host.docker.internal:4000");
   }
   return Array.from(new Set(candidates.filter(Boolean)));
 }

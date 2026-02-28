@@ -3,9 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 // Helper to get auth headers
 function getAuthHeaders(request: NextRequest): HeadersInit {
   const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const cookieToken = request.cookies.get("accessToken")?.value;
+  const userIdHeader = request.headers.get("x-user-id");
   const headers: HeadersInit = {};
   if (authHeader) {
     headers.Authorization = authHeader;
+  } else if (cookieToken) {
+    headers.Authorization = `Bearer ${cookieToken}`;
+  }
+  if (userIdHeader) {
+    headers["x-user-id"] = userIdHeader;
   }
   return headers;
 }

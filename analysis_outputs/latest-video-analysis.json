@@ -1,0 +1,1821 @@
+{
+  "id": "b828edd7-e2d9-4be4-997e-33942926dcf2",
+  "refCode": "VA-CQU9",
+  "userId": "e9751a18-c6ac-46b8-99ea-ac90784c4c8e",
+  "title": "U10 Video Analysis • Balanced / Defending / Defensive Third • 2026-02-22",
+  "ageGroup": "U10",
+  "playerLevel": "INTERMEDIATE",
+  "coachLevel": "USSF_C",
+  "gameModelId": "COACHAI",
+  "phase": "DEFENDING",
+  "zone": "DEFENSIVE_THIRD",
+  "focusTeamColor": "blue",
+  "opponentTeamColor": "white",
+  "sourceFileUri": "https://go.traceup.com/api/teams/usnzmp0i/games/usnzmp0i-5383793/trace_moment_1065325907_home_25_a9aa5d28.MP4",
+  "fileUriUsed": "https://generativelanguage.googleapis.com/v1beta/files/f37a0zhhq4yg",
+  "model": "gemini-3-flash-preview",
+  "analysis": {
+    "context": {
+      "zone": "DEFENSIVE_THIRD",
+      "phase": "DEFENDING",
+      "ageGroup": "U10",
+      "coachLevel": "USSF_C",
+      "gameModelId": "COACHAI",
+      "playerLevel": "INTERMEDIATE",
+      "formationUsed": "2-3-1",
+      "focusTeamColor": "blue",
+      "opponentTeamColor": "white"
+    },
+    "overall": {
+      "summary": "The primary tactical mission was to maintain defensive organization and protect the central areas within the defensive third using the 2-3-1 structure. Team A struggled with vertical compactness, allowing Team B to exploit gaps between the midfield and defensive lines. While individual effort was high, the lack of coordinated pressure and covering shadows led to several high-quality chances for the opponent.",
+      "scopeSummary": "Approximately 75% of the analysis focuses on defensive actions within the defensive third. Team A's adherence to the COACHAI model for 'Protecting the Goal' was inconsistent, particularly in tracking secondary runners and maintaining a compact back two.",
+      "topPriorities": [
+        "Improve vertical compactness between the midfield trio and the defensive pair to deny central penetration.",
+        "Train the 'Pressure-Cover' relationship between the two defenders to prevent 1v1 isolation.",
+        "Develop 'scanning' habits for the central midfielder to identify and track late runners into the box.",
+        "Refine body orientation for fullbacks to force play wide rather than allowing inside cuts.",
+        "Establish clear communication triggers for when the goalkeeper should claim the ball versus defenders clearing."
+      ],
+      "videoQualityRisks": [
+        "Occasional motion blur during rapid transitions.",
+        "Wide-angle perspective makes depth perception of the defensive line height challenging at times."
+      ]
+    },
+    "analysisArray": [
+      {
+        "id": "A1",
+        "title": "Lack of Vertical Compactness",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:02",
+        "confidence": 0.9,
+        "coachingCue": "Midfielders, drop to touch the 'invisible string' connecting you to the defenders.",
+        "whatHappened": "Team A's midfield line is positioned too far from the defensive pair, creating a large gap in the central defensive third.",
+        "whyItMatters": "In the COACHAI model, compactness is essential to force play wide and prevent high-probability central shots.",
+        "u10Adaptation": "Use the 'rubber band' analogy: if the defenders move back, the midfielders must snap back with them.",
+        "diagramFrameIds": [
+          "F1"
+        ],
+        "microCorrection": "The Central Midfielder should drop 5 yards deeper to close the passing lane to the opponent striker.",
+        "teamAImplication": "This allows Team B's central players to receive the ball and turn without immediate pressure."
+      },
+      {
+        "id": "A2",
+        "title": "Body Orientation on Wide Engagement",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:06",
+        "confidence": 0.85,
+        "coachingCue": "Surfer stance: show them the sideline, not the goal.",
+        "whatHappened": "Team A Left Back approaches the ball carrier with a flat body shape, facing directly toward the sideline.",
+        "whyItMatters": "Proper body shape (side-on) allows the defender to dictate the direction of play and react faster to changes in pace.",
+        "u10Adaptation": "Tell the player to 'point their toes' where they want the attacker to go.",
+        "diagramFrameIds": [
+          "F2"
+        ],
+        "microCorrection": "Drop the lead foot and angle the hips toward the corner flag to force the attacker wide.",
+        "teamAImplication": "The defender is vulnerable to a quick cut inside toward the goal."
+      },
+      {
+        "id": "A3",
+        "title": "Delayed Pressure on Ball Carrier",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:10",
+        "confidence": 0.92,
+        "coachingCue": "Closest player goes! Don't wait for the ball to come to you.",
+        "whatHappened": "Team A Central Midfielder hesitates to engage the ball carrier at the edge of the defensive third.",
+        "whyItMatters": "Passive defending in the defensive third leads to uncontested crosses and shots.",
+        "u10Adaptation": "Play 'Red Light, Green Light' to teach closing speed and controlled deceleration.",
+        "diagramFrameIds": [
+          "F3"
+        ],
+        "microCorrection": "Sprint to close the space as the ball is in flight, then slow down as you reach the attacker.",
+        "teamAImplication": "Team B is given time to pick out a penetrative pass into the penalty area."
+      },
+      {
+        "id": "A4",
+        "title": "Recovery Sprint Intensity",
+        "category": "physical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:15",
+        "confidence": 0.8,
+        "coachingCue": "Race to the goal! Don't watch the ball, watch the runners.",
+        "whatHappened": "Team A Right Midfielder is jogging back while Team B initiates a cross from the opposite flank.",
+        "whyItMatters": "Defensive transitions require 100% effort to ensure numerical parity in the box.",
+        "u10Adaptation": "Reward 'track-back' sprints during practice to emphasize their value.",
+        "diagramFrameIds": [
+          "F4"
+        ],
+        "microCorrection": "Turn and sprint to the back post area as soon as the ball moves wide.",
+        "teamAImplication": "The far-side runner for Team B is left unmarked at the back post."
+      },
+      {
+        "id": "A5",
+        "title": "Failure to Track Secondary Runner",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "critical",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:20",
+        "confidence": 0.95,
+        "coachingCue": "Check your shoulder! Find the player, not just the ball.",
+        "whatHappened": "Team A defenders are ball-watching, allowing a Team B midfielder to run into the box completely unmarked.",
+        "whyItMatters": "COACHAI defending requires 'scanning' to identify threats outside the immediate ball zone.",
+        "u10Adaptation": "Ask players 'Who are you guarding?' during stoppages to build awareness.",
+        "diagramFrameIds": [
+          "F5"
+        ],
+        "microCorrection": "The Right Back must tuck inside and pick up the runner entering the central channel.",
+        "teamAImplication": "This creates a 2v1 situation against the goalkeeper if the cross is successful."
+      },
+      {
+        "id": "A6",
+        "title": "Ineffective Block Attempt",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:25",
+        "confidence": 0.88,
+        "coachingCue": "Eyes on the ball, chest to the play.",
+        "whatHappened": "Team A Left Back turns their back while attempting to block a cross.",
+        "whyItMatters": "Defenders must stay 'big' and keep eyes on the ball to remain active in the play.",
+        "u10Adaptation": "Teach 'bravery' by showing how to use the shin guards to block safely.",
+        "diagramFrameIds": [
+          "F6"
+        ],
+        "microCorrection": "Stay square and use the lead leg to block the path of the ball without turning the body.",
+        "teamAImplication": "The defender loses sight of the ball and cannot react to a deflection or a second-chance ball."
+      },
+      {
+        "id": "A7",
+        "title": "Goalkeeper Positioning on Close-Range Shot",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:30",
+        "confidence": 0.9,
+        "coachingCue": "Come out and get big! Cut the pie.",
+        "whatHappened": "Team A Goalkeeper stays on the goal line rather than coming out to narrow the angle for the striker.",
+        "whyItMatters": "Closing the angle significantly reduces the scoring probability for the attacker.",
+        "u10Adaptation": "Use a 'rope' from the ball to the posts to show how moving forward covers more space.",
+        "diagramFrameIds": [
+          "F7"
+        ],
+        "microCorrection": "Take two steps forward and get into a low 'set' position as the striker prepares to shoot.",
+        "teamAImplication": "The striker has the entire goal to aim at from a very close distance."
+      },
+      {
+        "id": "A8",
+        "title": "Fatigue Impact on Defensive Shape",
+        "category": "physical",
+        "scopeTag": "SUPPORTING",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:35",
+        "confidence": 0.75,
+        "coachingCue": "Deep breath, reset your shape.",
+        "whatHappened": "Team A players appear slow to react after the goal is scored, showing signs of physical and mental fatigue.",
+        "whyItMatters": "Maintaining focus and physical readiness is key to defensive resilience.",
+        "u10Adaptation": "Use a 'reset button' gesture to help kids move past a mistake or a goal.",
+        "diagramFrameIds": [
+          "F8"
+        ],
+        "microCorrection": "Encourage a quick huddle to refocus on the 2-3-1 structure.",
+        "teamAImplication": "Slow restarts or continued defensive lapses could lead to consecutive goals."
+      },
+      {
+        "id": "A9",
+        "title": "Opponent Overload in Wide Areas",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_B",
+        "timestamp": "00:06",
+        "confidence": 0.85,
+        "coachingCue": "Slide together! If the LB goes out, the RB must move to the center.",
+        "whatHappened": "Team B uses their wingers to pull Team A's defenders out of position, creating space in the middle.",
+        "whyItMatters": "Team A must learn to shift as a unit rather than chasing individual players.",
+        "u10Adaptation": "Practice 'sliding' across the field while holding a long rope to maintain spacing.",
+        "diagramFrameIds": [
+          "F2"
+        ],
+        "microCorrection": "The Right Back should move to the midline of the pitch when the ball is on the opposite flank.",
+        "teamAImplication": "Team A's back two are forced to split, leaving the central area vulnerable."
+      },
+      {
+        "id": "A10",
+        "title": "Poor Clearance Direction",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:12",
+        "confidence": 0.82,
+        "coachingCue": "High and wide! Put it in the 'safe' zones.",
+        "whatHappened": "Team A defender clears the ball into the 'danger zone' (central area) rather than wide or long.",
+        "whyItMatters": "Clearances must be directed away from the central axis to allow the team to push out.",
+        "u10Adaptation": "Tell them to 'kick it to the parents' on the sidelines when in trouble.",
+        "diagramFrameIds": [
+          "F3"
+        ],
+        "microCorrection": "Use the laces to drive the ball toward the touchline.",
+        "teamAImplication": "Team B immediately regains possession in a prime shooting position."
+      },
+      {
+        "id": "A11",
+        "title": "Indecision Between Defender and GK",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:22",
+        "confidence": 0.88,
+        "coachingCue": "Call it loud! 'Keeper's' or 'Away!'",
+        "whatHappened": "Both the Left Back and Goalkeeper hesitate on a loose ball in the box, allowing Team B to poke it free.",
+        "whyItMatters": "Clear communication and 'ownership' of the ball are vital in the defensive third.",
+        "u10Adaptation": "Play games where players must shout their name before touching the ball.",
+        "diagramFrameIds": [
+          "F5"
+        ],
+        "microCorrection": "The Goalkeeper must be the loudest player on the pitch, demanding the ball when it enters the 6-yard box.",
+        "teamAImplication": "A simple defensive action turns into a chaotic scramble."
+      },
+      {
+        "id": "A12",
+        "title": "Midfield 'Shadow' Positioning",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:04",
+        "confidence": 0.8,
+        "coachingCue": "See the ball, see your player, stay in the middle.",
+        "whatHappened": "Team A midfielders are standing behind Team B players rather than between them and the goal.",
+        "whyItMatters": "Defensive positioning should always prioritize being 'goal-side'.",
+        "u10Adaptation": "Use the 'sandwich' rule: always keep yourself between the attacker and your goal.",
+        "diagramFrameIds": [
+          "F1"
+        ],
+        "microCorrection": "Adjust position by 2 yards to the left to cut off the diagonal pass.",
+        "teamAImplication": "They are not blocking passing lanes, making it easy for Team B to progress."
+      },
+      {
+        "id": "A13",
+        "title": "First Touch Under Pressure",
+        "category": "technical",
+        "scopeTag": "SUPPORTING",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:18",
+        "confidence": 0.85,
+        "coachingCue": "Soft feet, cushion the ball away from the opponent.",
+        "whatHappened": "Team A Central Midfielder has a heavy first touch when trying to clear the ball from the edge of the box.",
+        "whyItMatters": "Clean technical execution is required to transition from defending to attacking.",
+        "u10Adaptation": "Practice 'egg catches' with the feet to develop a soft touch.",
+        "diagramFrameIds": [
+          "F4"
+        ],
+        "microCorrection": "Angle the first touch toward open space rather than back into traffic.",
+        "teamAImplication": "The ball is immediately turned over, keeping the pressure on the defense."
+      },
+      {
+        "id": "A14",
+        "title": "Strength in 1v1 Duel",
+        "category": "physical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:28",
+        "confidence": 0.78,
+        "coachingCue": "Get your shoulder in! Be the first to the space.",
+        "whatHappened": "Team A Right Back is easily pushed off the ball by the Team B striker near the goal line.",
+        "whyItMatters": "Defenders must use their body effectively to shield the ball or disrupt the attacker.",
+        "u10Adaptation": "Play 'sumo' wrestling games (safely) to teach using body weight.",
+        "diagramFrameIds": [
+          "F6"
+        ],
+        "microCorrection": "Lower the center of gravity and lean into the attacker to maintain balance.",
+        "teamAImplication": "The striker gains a clear path to goal."
+      },
+      {
+        "id": "A15",
+        "title": "Striker's Defensive Contribution",
+        "category": "decision-making",
+        "scopeTag": "OUT_OF_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:08",
+        "confidence": 0.7,
+        "coachingCue": "Stay connected! Don't be an island.",
+        "whatHappened": "Team A Striker remains high up the pitch while the rest of the team is defending deep.",
+        "whyItMatters": "Even the striker has a role in the defensive phase, usually by pressuring the opponent's deep midfielders.",
+        "u10Adaptation": "Tell the striker they are the 'first line of defense'.",
+        "diagramFrameIds": [
+          "F2"
+        ],
+        "microCorrection": "Drop to the center circle to provide an outlet and disrupt the opponent's build-up.",
+        "teamAImplication": "Team A is effectively playing with one less defender, making it harder to win the ball back."
+      },
+      {
+        "id": "A16",
+        "title": "Covering the 'D' Area",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:14",
+        "confidence": 0.9,
+        "coachingCue": "Midfielders, protect the 'D'!",
+        "whatHappened": "The area at the top of the penalty box (the 'D') is left completely vacant by Team A.",
+        "whyItMatters": "This is a high-value area for second balls and rebounds.",
+        "u10Adaptation": "Call it the 'No-Entry Zone' for the other team.",
+        "diagramFrameIds": [
+          "F3"
+        ],
+        "microCorrection": "The Central Midfielder must prioritize this zone when the ball is wide.",
+        "teamAImplication": "Team B can recycle the ball easily or take long-range shots."
+      },
+      {
+        "id": "A17",
+        "title": "Tackling Technique",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:24",
+        "confidence": 0.86,
+        "coachingCue": "Wait for the heavy touch, then step in.",
+        "whatHappened": "Team A defender lunges in with one foot, missing the ball and the player.",
+        "whyItMatters": "Controlled tackling (jockeying first) is safer and more effective than lunging.",
+        "u10Adaptation": "Teach 'patience' - the defender wins if the attacker has to stop.",
+        "diagramFrameIds": [
+          "F5"
+        ],
+        "microCorrection": "Keep feet moving and stay balanced; only tackle when you are 100% sure of winning the ball.",
+        "teamAImplication": "The defender is completely bypassed, leaving a gap in the line."
+      },
+      {
+        "id": "A18",
+        "title": "Opponent Exploitation of Gaps",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_B",
+        "timestamp": "00:11",
+        "confidence": 0.92,
+        "coachingCue": "Pinch in! Stay as wide as the goal posts.",
+        "whatHappened": "Team B identifies the gap between Team A's LB and RB and plays a through ball.",
+        "whyItMatters": "Team A must recognize when they are being 'stretched' and pinch in.",
+        "u10Adaptation": "Imagine there is a magnet between the two defenders.",
+        "diagramFrameIds": [
+          "F3"
+        ],
+        "microCorrection": "The two defenders should never be more than 15 yards apart.",
+        "teamAImplication": "Team A's defense is split, forcing a desperate recovery run."
+      },
+      {
+        "id": "A19",
+        "title": "Agility in Change of Direction",
+        "category": "physical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:07",
+        "confidence": 0.8,
+        "coachingCue": "Stay on your toes, ready to pivot.",
+        "whatHappened": "Team A Left Midfielder is slow to turn when the ball is switched to the other side.",
+        "whyItMatters": "Defensive agility allows for rapid shifting to maintain the block.",
+        "u10Adaptation": "Incorporate 'ladder drills' into the warm-up to improve foot speed.",
+        "diagramFrameIds": [
+          "F2"
+        ],
+        "microCorrection": "Use small, quick steps to adjust positioning as the ball travels.",
+        "teamAImplication": "The switch of play is successful because the pressure is late."
+      },
+      {
+        "id": "A20",
+        "title": "Communication on the Shift",
+        "category": "tactical",
+        "scopeTag": "SUPPORTING",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:05",
+        "confidence": 0.75,
+        "coachingCue": "Talk to your teammates! Tell them where the danger is.",
+        "whatHappened": "Team A players are silent as Team B moves the ball across the midfield.",
+        "whyItMatters": "Communication is the 'glue' of a good defense.",
+        "u10Adaptation": "Give points for the loudest team during practice games.",
+        "diagramFrameIds": [
+          "F1"
+        ],
+        "microCorrection": "The Goalkeeper or the deepest defender must direct the midfield shift.",
+        "teamAImplication": "Players are unsure who should step up and who should drop."
+      },
+      {
+        "id": "A21",
+        "title": "Heading/Aerial Contests",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:21",
+        "confidence": 0.7,
+        "coachingCue": "Attack the ball at its highest point.",
+        "whatHappened": "Team A defender waits for the ball to bounce rather than attacking it in the air.",
+        "whyItMatters": "Winning the first ball or at least disrupting the header is crucial in the box.",
+        "u10Adaptation": "Use soft balls to practice heading without fear.",
+        "diagramFrameIds": [
+          "F5"
+        ],
+        "microCorrection": "Judge the flight early and move toward the ball's landing spot.",
+        "teamAImplication": "The bounce allows the attacker to get under the ball and gain control."
+      },
+      {
+        "id": "A22",
+        "title": "When to Drop vs. When to Step",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:13",
+        "confidence": 0.85,
+        "coachingCue": "Trust your teammate! Stay in your house.",
+        "whatHappened": "Team A Right Back steps up to a player who is already marked, leaving their zone open.",
+        "whyItMatters": "Discipline in holding the line is more important than individual pressing in the defensive third.",
+        "u10Adaptation": "Mark out 'zones' on the field that players must stay in while defending.",
+        "diagramFrameIds": [
+          "F3"
+        ],
+        "microCorrection": "Hold your position and only step if the ball enters your immediate 5-yard radius.",
+        "teamAImplication": "A simple pass around the defender creates a 1v0 with the keeper."
+      },
+      {
+        "id": "A23",
+        "title": "Defensive Triangle Formation",
+        "category": "tactical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:03",
+        "confidence": 0.82,
+        "coachingCue": "One up, two back! Create the triangle.",
+        "whatHappened": "The CM, LB, and RB fail to form a supportive triangle, instead standing in a flat line.",
+        "whyItMatters": "Triangles provide depth and multiple layers of defense.",
+        "u10Adaptation": "Draw a triangle on the whiteboard to show the shape.",
+        "diagramFrameIds": [
+          "F1"
+        ],
+        "microCorrection": "The CM should be the 'point' of the triangle, slightly ahead of the two defenders.",
+        "teamAImplication": "One pass can beat all three players simultaneously."
+      },
+      {
+        "id": "A24",
+        "title": "Passing Accuracy from the Back",
+        "category": "technical",
+        "scopeTag": "SUPPORTING",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:32",
+        "confidence": 0.8,
+        "coachingCue": "Find a blue shirt! Look before you kick.",
+        "whatHappened": "After a brief recovery, the LB passes the ball directly to a Team B player.",
+        "whyItMatters": "The first pass after winning the ball is the most important for transition.",
+        "u10Adaptation": "Play 'keep-away' games to emphasize possession after a turnover.",
+        "diagramFrameIds": [
+          "F7"
+        ],
+        "microCorrection": "Open the hips and use the inside of the foot for a more accurate pass.",
+        "teamAImplication": "Immediate loss of possession prevents the team from exiting the defensive third."
+      },
+      {
+        "id": "A25",
+        "title": "Explosive Step to Intercept",
+        "category": "physical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:19",
+        "confidence": 0.76,
+        "coachingCue": "Read the eyes, then explode!",
+        "whatHappened": "Team A Left Midfielder is slow to react to a predictable pass, missing the chance for an interception.",
+        "whyItMatters": "Interceptions are the cleanest way to end an opponent's attack.",
+        "u10Adaptation": "Play 'interception' games where defenders get points for cutting off passes.",
+        "diagramFrameIds": [
+          "F4"
+        ],
+        "microCorrection": "Anticipate the pass and start the movement before the ball is kicked.",
+        "teamAImplication": "Team B continues their attack unopposed."
+      },
+      {
+        "id": "A26",
+        "title": "Transition to Attack Mentality",
+        "category": "tactical",
+        "scopeTag": "OUT_OF_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:27",
+        "confidence": 0.7,
+        "coachingCue": "Win it and spread out! Get big.",
+        "whatHappened": "When Team A briefly wins the ball, the wingers do not push wide to provide an outlet.",
+        "whyItMatters": "Defending is only half the battle; the team must be ready to exploit space once the ball is won.",
+        "u10Adaptation": "Use the 'explosion' analogy: when we win the ball, we explode outward.",
+        "diagramFrameIds": [
+          "F6"
+        ],
+        "microCorrection": "The LM and RM should sprint to the touchlines as soon as possession is gained.",
+        "teamAImplication": "The ball carrier is forced to kick it long, usually resulting in another turnover."
+      },
+      {
+        "id": "A27",
+        "title": "Opponent's Use of Width",
+        "category": "decision-making",
+        "scopeTag": "IN_SCOPE",
+        "severity": "major",
+        "teamFocus": "TEAM_B",
+        "timestamp": "00:09",
+        "confidence": 0.9,
+        "coachingCue": "Let them have the wide areas, protect the house!",
+        "whatHappened": "Team B's wingers stay very wide, stretching Team A's 2-3-1 formation to its limits.",
+        "whyItMatters": "Team A must decide whether to follow the wingers or stay compact in the middle.",
+        "u10Adaptation": "Tell them the 'goal is in the middle, so we stay in the middle'.",
+        "diagramFrameIds": [
+          "F2"
+        ],
+        "microCorrection": "Prioritize the central 30 yards of the pitch; only engage wide when the ball is there.",
+        "teamAImplication": "Team A's midfielders are forced to cover too much ground laterally."
+      },
+      {
+        "id": "A28",
+        "title": "Goalkeeper Handling",
+        "category": "technical",
+        "scopeTag": "IN_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:31",
+        "confidence": 0.84,
+        "coachingCue": "Catch it or push it wide!",
+        "whatHappened": "The Goalkeeper parries a shot back into the center of the box rather than out for a corner or catching it.",
+        "whyItMatters": "Rebound control is a fundamental skill for goalkeepers to prevent 'cheap' goals.",
+        "u10Adaptation": "Practice catching 'sticky' balls to build confidence in handling.",
+        "diagramFrameIds": [
+          "F7"
+        ],
+        "microCorrection": "Use the 'W' hand position to catch, or palms to deflect toward the corner flags.",
+        "teamAImplication": "This leads directly to the second-chance goal."
+      },
+      {
+        "id": "A29",
+        "title": "Pressure on the Ball in Midfield",
+        "category": "tactical",
+        "scopeTag": "SUPPORTING",
+        "severity": "minor",
+        "teamFocus": "TEAM_A",
+        "timestamp": "00:01",
+        "confidence": 0.8,
+        "coachingCue": "Don't let them look up! Pressure the ball.",
+        "whatHappened": "Team A allows Team B to build up from the back without any pressure from the striker or midfielders.",
+        "whyItMatters": "Early pressure can disrupt the opponent's rhythm and force errors far from goal.",
+        "u10Adaptation": "Play 'mosquito' - the striker should be annoying to the ball carrier.",
+        "diagramFrameIds": [
+          "F1"
+        ],
+        "microCorrection": "The Striker should angle their run to force the ball to one side of the pitch.",
+        "teamAImplication": "Team B enters the defensive third with full control and momentum."
+      },
+      {
+        "id": "A30",
+        "title": "Opponent Clinical Finishing",
+        "category": "decision-making",
+        "scopeTag": "OUT_OF_SCOPE",
+        "severity": "minor",
+        "teamFocus": "TEAM_B",
+        "timestamp": "00:34",
+        "confidence": 0.95,
+        "coachingCue": "Every second counts! Don't switch off until the whistle.",
+        "whatHappened": "Team B striker remains calm and places the ball in the corner of the net.",
+        "whyItMatters": "Shows the importance of every defensive action; one mistake can lead to a goal.",
+        "u10Adaptation": "Remind them that 'the game isn't over until it's over'.",
+        "diagramFrameIds": [
+          "F8"
+        ],
+        "microCorrection": "Defenders must stay active and try to block the shot even if they are beaten.",
+        "teamAImplication": "Team A's defensive lapses are punished by a high-quality finish."
+      }
+    ],
+    "diagramFrames": [
+      {
+        "ball": {
+          "x": 45,
+          "y": 50
+        },
+        "notes": "Team B initiates an attack into Team A's defensive third.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 30,
+              "y": 20
+            },
+            "from": {
+              "x": 45,
+              "y": 50
+            },
+            "team": "B",
+            "type": "PASS"
+          }
+        ],
+        "frameId": "F1",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 30,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 70,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 25,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 50,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 75,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 50,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 70,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 70,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 55,
+            "y": 75,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 45,
+            "y": 50,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 55,
+            "y": 25,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 40,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:02",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 30,
+          "y": 20
+        },
+        "notes": "Team A Left Back engages the ball carrier in the defensive third.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 30,
+              "y": 20
+            },
+            "from": {
+              "x": 22,
+              "y": 25
+            },
+            "team": "A",
+            "type": "PRESS"
+          }
+        ],
+        "frameId": "F2",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 22,
+            "y": 25,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 65,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 30,
+            "y": 20,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 32,
+            "y": 45,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 70,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 45,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 65,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 65,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 40,
+            "y": 75,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 40,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 30,
+            "y": 20,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 45,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:06",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 25,
+          "y": 40
+        },
+        "notes": "Team B Central Midfielder looks for a pass to the Striker.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 10,
+              "y": 50
+            },
+            "from": {
+              "x": 15,
+              "y": 45
+            },
+            "team": "B",
+            "type": "RUN"
+          }
+        ],
+        "frameId": "F3",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 25,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 18,
+            "y": 60,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 20,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 28,
+            "y": 40,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 30,
+            "y": 65,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 40,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 60,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 60,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 70,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 40,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 25,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 45,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:10",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 20,
+          "y": 60
+        },
+        "notes": "Team B Left Midfielder crosses into the box.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 10,
+              "y": 50
+            },
+            "from": {
+              "x": 20,
+              "y": 60
+            },
+            "team": "B",
+            "type": "PASS"
+          }
+        ],
+        "frameId": "F4",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 30,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 65,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 25,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 22,
+            "y": 45,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 70,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 55,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 55,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 60,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 50,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 20,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:15",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 15,
+          "y": 30
+        },
+        "notes": "Team A Left Back attempts to block the cross.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 15,
+              "y": 30
+            },
+            "from": {
+              "x": 10,
+              "y": 35
+            },
+            "team": "A",
+            "type": "PRESS"
+          }
+        ],
+        "frameId": "F5",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 35,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 60,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 18,
+            "y": 30,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 50,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 22,
+            "y": 70,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 30,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 50,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 50,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 30,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 45,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 20,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 8,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:20",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 10,
+          "y": 50
+        },
+        "notes": "Team B Right Midfielder passes to the Striker in the 6-yard box.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 6,
+              "y": 50
+            },
+            "from": {
+              "x": 10,
+              "y": 50
+            },
+            "team": "B",
+            "type": "PASS"
+          }
+        ],
+        "frameId": "F6",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 8,
+            "y": 40,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 55,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 35,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 18,
+            "y": 50,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 65,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 25,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 45,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 45,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 45,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 50,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 50,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 6,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:25",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 5,
+          "y": 50
+        },
+        "notes": "Team B Striker takes a shot from close range.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [
+          {
+            "to": {
+              "x": 2,
+              "y": 50
+            },
+            "from": {
+              "x": 5,
+              "y": 50
+            },
+            "team": "B",
+            "type": "PASS"
+          }
+        ],
+        "frameId": "F7",
+        "players": [
+          {
+            "x": 5,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 6,
+            "y": 45,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 8,
+            "y": 55,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 40,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 50,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 18,
+            "y": 60,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 22,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 40,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 40,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 50,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 50,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 8,
+            "y": 50,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 5,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:30",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      },
+      {
+        "ball": {
+          "x": 2,
+          "y": 50
+        },
+        "notes": "Goal scored by Team B.",
+        "pitch": {
+          "orientation": "HORIZONTAL"
+        },
+        "arrows": [],
+        "frameId": "F8",
+        "players": [
+          {
+            "x": 3,
+            "y": 50,
+            "id": "A_GK",
+            "role": "Goalkeeper",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 5,
+            "y": 48,
+            "id": "A_LB",
+            "role": "Left Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 5,
+            "y": 52,
+            "id": "A_RB",
+            "role": "Right Back",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 45,
+            "id": "A_LM",
+            "role": "Left Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 12,
+            "y": 50,
+            "id": "A_CM",
+            "role": "Central Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 15,
+            "y": 55,
+            "id": "A_RM",
+            "role": "Right Midfielder",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 20,
+            "y": 50,
+            "id": "A_ST",
+            "role": "Striker",
+            "team": "A",
+            "jersey": null
+          },
+          {
+            "x": 95,
+            "y": 50,
+            "id": "B_GK",
+            "role": "Goalkeeper",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 70,
+            "id": "B_LB",
+            "role": "Left Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 35,
+            "y": 30,
+            "id": "B_RB",
+            "role": "Right Back",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 8,
+            "y": 50,
+            "id": "B_LM",
+            "role": "Left Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 10,
+            "y": 50,
+            "id": "B_CM",
+            "role": "Central Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 6,
+            "y": 50,
+            "id": "B_RM",
+            "role": "Right Midfielder",
+            "team": "B",
+            "jersey": null
+          },
+          {
+            "x": 4,
+            "y": 50,
+            "id": "B_ST",
+            "role": "Striker",
+            "team": "B",
+            "jersey": null
+          }
+        ],
+        "timestamp": "00:35",
+        "coordinateSystem": {
+          "unit": "PERCENT_0_100",
+          "origin": "TOP_LEFT"
+        }
+      }
+    ],
+    "teamDefinition": {
+      "focusTeam": {
+        "color": "blue",
+        "label": "Team A",
+        "formation": "2-3-1"
+      },
+      "matchFormat": "7v7",
+      "namingPolicy": "No personal names. Use team labels and role descriptions only (no jersey numbers).",
+      "opponentTeam": {
+        "color": "white",
+        "label": "Team B",
+        "formation": "2-3-1"
+      }
+    },
+    "sessionRecommendations": [
+      {
+        "focus": "Defensive Compactness and Shifting",
+        "objective": "Teach the 2-3-1 unit how to move together to deny central space.",
+        "constraints": [
+          "7v7 on a half pitch",
+          "Defending team gets points for forcing the ball wide"
+        ],
+        "durationMin": 20,
+        "successCriteria": [
+          "No passes through the central channel",
+          "Defenders maintain a 10-15 yard distance"
+        ]
+      },
+      {
+        "focus": "Pressure and Cover (1v1/2v2)",
+        "objective": "Develop the relationship between the first and second defender.",
+        "constraints": [
+          "2v2 in a 20x20 yard box",
+          "Attacker must dribble through a gate"
+        ],
+        "durationMin": 15,
+        "successCriteria": [
+          "Defender 1 forces attacker one way",
+          "Defender 2 provides clear cover"
+        ]
+      },
+      {
+        "focus": "Tracking Runners in the Box",
+        "objective": "Improve scanning and marking of secondary threats during crosses.",
+        "constraints": [
+          "Crosses coming from wide areas",
+          "3 attackers vs 2 defenders + GK"
+        ],
+        "durationMin": 15,
+        "successCriteria": [
+          "Defenders identify and touch the runner before the ball arrives",
+          "No unmarked shots from the 'D'"
+        ]
+      }
+    ]
+  },
+  "context": {
+    "autoSaved": true,
+    "savedFrom": "video-analysis-page",
+    "scopeSummary": "Approximately 75% of the analysis focuses on defensive actions within the defensive third. Team A's adherence to the COACHAI model for 'Protecting the Goal' was inconsistent, particularly in tracking secondary runners and maintaining a compact back two.",
+    "formationUsed": "2-3-1"
+  },
+  "createdAt": "2026-02-22T20:48:58.010Z",
+  "updatedAt": "2026-02-22T20:48:58.010Z"
+}

@@ -97,7 +97,7 @@ const LoginSchema = z.object({
 });
 
 const ForgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
 });
 
 const ResetPasswordSchema = z.object({

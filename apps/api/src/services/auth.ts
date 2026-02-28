@@ -481,8 +481,14 @@ export async function changePassword(
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { email },
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findFirst({
+    where: {
+      email: {
+        equals: normalizedEmail,
+        mode: 'insensitive',
+      },
+    },
   });
 
   // Always return success-like behaviour to avoid leaking whether an email exists

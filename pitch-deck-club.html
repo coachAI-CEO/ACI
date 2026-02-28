@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TacticalEdge — For Clubs</title>
+  <style>
+    /* ── Reset ──────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --lime:   #ADFF2F;
+      --lime-d: #8fd622;
+      --black:  #050605;
+      --dark:   #060a13;
+      --panel:  rgba(255,255,255,0.04);
+      --panel2: rgba(255,255,255,0.07);
+      --border: rgba(255,255,255,0.08);
+      --text:   #f1f5f9;
+      --muted:  #94a3b8;
+      --red:    #f87171;
+      --amber:  #fbbf24;
+      --blue:   #60a5fa;
+      --purple: #c084fc;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--black);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    /* ── Deck ───────────────────────────────────────────── */
+    #deck { width: 100vw; height: 100vh; position: relative; }
+
+    .slide {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      padding: 44px 64px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .45s ease, transform .45s ease;
+      transform: translateX(56px);
+    }
+    .slide.active { opacity: 1; pointer-events: all; transform: translateX(0); }
+    .slide.exit   { opacity: 0; transform: translateX(-56px); }
+
+    /* grid bg */
+    .slide::before {
+      content: "";
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(173,255,47,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(173,255,47,.035) 1px, transparent 1px);
+      background-size: 52px 52px;
+      pointer-events: none;
+    }
+    /* corner glow */
+    .slide::after {
+      content: "";
+      position: absolute; top: 0; left: 0;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle at top left, rgba(173,255,47,.10), transparent 68%);
+      pointer-events: none;
+    }
+
+    /* ── Nav ────────────────────────────────────────────── */
+    #nav {
+      position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 14px;
+      z-index: 100;
+      background: rgba(6,10,19,.85); backdrop-filter: blur(14px);
+      border: 1px solid var(--border); border-radius: 9999px;
+      padding: 9px 20px;
+    }
+    #nav button {
+      background: none; border: none; color: var(--muted);
+      cursor: pointer; font-size: 17px; padding: 4px 10px;
+      border-radius: 6px; transition: color .2s, background .2s;
+    }
+    #nav button:hover { color: var(--lime); background: rgba(173,255,47,.08); }
+    #dots { display: flex; gap: 6px; align-items: center; }
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--border); cursor: pointer;
+      transition: background .3s, width .3s;
+    }
+    .dot.active { background: var(--lime); width: 20px; border-radius: 3px; }
+    #slide-counter { font-size: 11px; color: var(--muted); min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+
+    #hint { position: fixed; top: 18px; right: 22px; font-size: 11px; color: rgba(148,163,184,.35); z-index: 100; letter-spacing:.05em; }
+
+    #progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--lime); transition: width .4s ease; z-index: 200; box-shadow: 0 0 10px var(--lime); }
+
+    /* ── Shared components ──────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(173,255,47,.1); border: 1px solid rgba(173,255,47,.25);
+      border-radius: 9999px; padding: 4px 14px;
+      font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--lime); margin-bottom: 20px;
+    }
+    .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }
+
+    h1 { font-size: clamp(34px, 5vw, 62px); font-weight: 900; line-height: 1.08; letter-spacing: -.02em; }
+    h2 { font-size: clamp(26px, 3.2vw, 46px); font-weight: 900; line-height: 1.1; letter-spacing: -.02em; }
+    h3 { font-size: clamp(13px, 1.3vw, 16px); font-weight: 700; }
+
+    .accent { color: var(--lime); }
+    .muted  { color: var(--muted); }
+    .lead {
+      font-size: clamp(14px, 1.5vw, 18px); color: var(--muted);
+      line-height: 1.65; max-width: 640px;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; padding: 20px 22px;
+    }
+    .logo-img {
+      width: 68px; height: 68px; object-fit: contain;
+      margin-bottom: 18px;
+      filter: drop-shadow(0 0 16px rgba(173,255,47,.4));
+    }
+
+    .btn-primary {
+      background: var(--lime); color: #000;
+      font-weight: 800; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+      border: none; border-radius: 8px; padding: 12px 26px; cursor: pointer;
+    }
+    .btn-outline {
+      background: none; color: var(--lime);
+      font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+      border: 1px solid rgba(173,255,47,.35); border-radius: 8px; padding: 12px 26px; cursor: pointer;
+    }
+
+    /* ────────────────────────────────────────────────────
+       SLIDE-SPECIFIC
+    ──────────────────────────────────────────────────── */
+
+    /* S1 Cover */
+    #s1 { text-align: center; }
+    #s1 h1 { margin-bottom: 18px; }
+    #s1 .lead { margin: 0 auto 30px; }
+    #s1 .cta-row { display: flex; gap: 12px; justify-content: center; }
+    .sub-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.25);
+      border-radius: 9999px; padding: 4px 14px; margin-bottom: 14px;
+      font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--blue);
+    }
+
+    /* S2 – Pain */
+    #s2 .pain-layout {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 20px; width: 100%; max-width: 900px; margin-top: 24px;
+    }
+    .pain-card {
+      background: rgba(239,68,68,.05); border: 1px solid rgba(239,68,68,.15);
+      border-radius: 14px; padding: 20px 22px;
+      display: flex; gap: 14px; align-items: flex-start;
+    }
+    .pain-icon {
+      width: 38px; height: 38px; flex-shrink: 0;
+      border-radius: 9px; background: rgba(239,68,68,.12);
+      border: 1px solid rgba(239,68,68,.25);
+      display: flex; align-items: center; justify-content: center; font-size: 17px;
+    }
+    .pain-card strong { display: block; font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .pain-card p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .chaos-banner {
+      width: 100%; max-width: 900px;
+      background: rgba(239,68,68,.07); border: 1px solid rgba(239,68,68,.18);
+      border-radius: 10px; padding: 14px 20px; margin-top: 16px;
+      display: flex; align-items: center; gap: 12px;
+      font-size: 14px; font-weight: 600;
+    }
+    .chaos-banner::before { content: "⚠"; font-size: 18px; }
+
+    /* S3 – Scale paradox */
+    #s3 .scale-wrap { display: flex; gap: 28px; width: 100%; max-width: 900px; margin-top: 24px; align-items: flex-start; }
+    .scale-col { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+    .scale-col-head {
+      font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      padding: 6px 12px; border-radius: 6px; margin-bottom: 4px;
+    }
+    .head-bad  { background: rgba(239,68,68,.12); color: #f87171; border: 1px solid rgba(239,68,68,.2); }
+    .head-good { background: rgba(173,255,47,.10); color: var(--lime); border: 1px solid rgba(173,255,47,.2); }
+    .scale-item {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .scale-item .si-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .scale-item strong { display: block; font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+    .scale-item p { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .vs-divider {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 0 4px; color: var(--muted); font-size: 12px; font-weight: 800; gap: 8px;
+    }
+    .vs-divider::before, .vs-divider::after {
+      content: ""; width: 2px; flex: 1;
+      background: linear-gradient(to bottom, transparent, var(--border), transparent);
+    }
+
+    /* S4 – Platform architecture */
+    #s4 { justify-content: flex-start; padding-top: 50px; }
+    #s4 .top { text-align: center; margin-bottom: 24px; width: 100%; }
+    .arch-wrap { width: 100%; max-width: 920px; }
+    .arch-row {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 12px; margin-bottom: 12px;
+    }
+    .arch-row.top-row { grid-template-columns: 1fr; }
+    .arch-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px;
+    }
+    .arch-card.full { display: flex; align-items: center; gap: 16px; }
+    .arch-card .ac-icon { font-size: 20px; margin-bottom: 6px; }
+    .arch-card h3 { font-size: 13px; font-weight: 800; margin-bottom: 3px; color: var(--text); }
+    .arch-card p  { font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .arch-card.lime-border { border-color: rgba(173,255,47,.3); background: rgba(173,255,47,.05); }
+    .arch-card.blue-border { border-color: rgba(96,165,250,.25); background: rgba(96,165,250,.04); }
+    .arch-card.purple-border { border-color: rgba(192,132,252,.25); background: rgba(192,132,252,.04); }
+    .layer-label {
+      font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 6px; padding-left: 2px;
+    }
+    .conn-arrow {
+      text-align: center; color: rgba(173,255,47,.4); font-size: 18px;
+      line-height: 1; margin: 2px 0;
+    }
+
+    /* S5 – 5-phase */
+    #s5 { justify-content: flex-start; padding-top: 50px; }
+    #s5 .top { text-align: center; margin-bottom: 24px; width: 100%; }
+    .phase-track {
+      display: flex; gap: 0; width: 100%; max-width: 920px;
+      position: relative;
+    }
+    .phase-block {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      position: relative;
+    }
+    .phase-block:not(:last-child)::after {
+      content: "→";
+      position: absolute; right: -10px; top: 28px;
+      color: rgba(173,255,47,.5); font-size: 16px; font-weight: 900; z-index: 2;
+    }
+    .phase-num {
+      width: 52px; height: 52px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 900; letter-spacing: .06em;
+      margin-bottom: 10px;
+    }
+    .ph1 { background: rgba(96,165,250,.15); border: 2px solid rgba(96,165,250,.4); color: var(--blue); }
+    .ph2 { background: rgba(173,255,47,.12); border: 2px solid rgba(173,255,47,.4); color: var(--lime); }
+    .ph3 { background: rgba(192,132,252,.12); border: 2px solid rgba(192,132,252,.4); color: var(--purple); }
+    .ph4 { background: rgba(251,191,36,.12); border: 2px solid rgba(251,191,36,.4); color: var(--amber); }
+    .ph5 { background: rgba(52,211,153,.12); border: 2px solid rgba(52,211,153,.4); color: #34d399; }
+    .phase-name { font-size: 13px; font-weight: 800; margin-bottom: 4px; }
+    .phase-dur  { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+    .phase-card-inner {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; width: calc(100% - 16px);
+      font-size: 11px; color: var(--muted); line-height: 1.5;
+    }
+    .why-standard {
+      width: 100%; max-width: 920px; margin-top: 16px;
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 10px;
+    }
+    .ws-card {
+      background: rgba(173,255,47,.05); border: 1px solid rgba(173,255,47,.12);
+      border-radius: 10px; padding: 12px 14px; text-align: center;
+    }
+    .ws-card .ws-ico { font-size: 18px; margin-bottom: 6px; }
+    .ws-card p { font-size: 11px; color: var(--muted); line-height: 1.45; }
+    .ws-card strong { font-size: 12px; display: block; margin-bottom: 3px; }
+
+    /* S6 – Coach daily workflow */
+    #s6 .daily-wrap { display: flex; gap: 20px; width: 100%; max-width: 900px; margin-top: 24px; align-items: flex-start; }
+    .daily-col { flex: 1; }
+    .daily-col-title {
+      font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      padding: 5px 12px; border-radius: 6px; margin-bottom: 10px; display: inline-block;
+    }
+    .col-before { background: rgba(239,68,68,.1); color: #f87171; border: 1px solid rgba(239,68,68,.2); }
+    .col-after  { background: rgba(173,255,47,.1); color: var(--lime); border: 1px solid rgba(173,255,47,.2); }
+    .daily-item {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .daily-item .di-tag {
+      font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 4px;
+      white-space: nowrap; flex-shrink: 0; margin-top: 1px; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .tag-bad  { background: rgba(239,68,68,.15); color: #f87171; }
+    .tag-good { background: rgba(173,255,47,.15); color: var(--lime); }
+    .daily-item p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .daily-divider {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 0 4px; font-size: 20px; color: var(--lime);
+    }
+
+    /* S7 – Club-level features */
+    #s7 { justify-content: flex-start; padding-top: 50px; }
+    #s7 .top { text-align: center; margin-bottom: 22px; width: 100%; }
+    .club-feat-grid {
+      display: grid; grid-template-columns: repeat(2,1fr);
+      gap: 12px; width: 100%; max-width: 900px;
+    }
+    .cf-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 13px; padding: 18px 20px;
+      display: flex; gap: 14px; align-items: flex-start;
+    }
+    .cf-icon {
+      width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 19px;
+    }
+    .cfi-lime   { background: rgba(173,255,47,.1); border: 1px solid rgba(173,255,47,.2); }
+    .cfi-blue   { background: rgba(96,165,250,.1);  border: 1px solid rgba(96,165,250,.2); }
+    .cfi-purple { background: rgba(192,132,252,.1); border: 1px solid rgba(192,132,252,.2); }
+    .cfi-amber  { background: rgba(251,191,36,.1);  border: 1px solid rgba(251,191,36,.2); }
+    .cfi-green  { background: rgba(52,211,153,.1);  border: 1px solid rgba(52,211,153,.2); }
+    .cfi-red    { background: rgba(239,68,68,.1);   border: 1px solid rgba(239,68,68,.2); }
+    .cf-card strong { display: block; font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .cf-card p      { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* S8 – Video analysis */
+    #s8 { justify-content: flex-start; padding-top: 50px; }
+    #s8 .top { text-align: center; margin-bottom: 22px; width: 100%; }
+    .video-layout { display: flex; gap: 20px; width: 100%; max-width: 900px; }
+    .video-left { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .video-right { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+    .v-step {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 11px; padding: 14px 16px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .v-num {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      border: 2px solid var(--lime); background: rgba(173,255,47,.1);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 800; color: var(--lime);
+    }
+    .v-step strong { display: block; font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+    .v-step p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .obs-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .sev { font-size: 10px; font-weight: 800; letter-spacing: .08em; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+    .sev-c { background: rgba(239,68,68,.2); color: #f87171; border: 1px solid rgba(239,68,68,.3); }
+    .sev-m { background: rgba(251,146,60,.2); color: #fb923c; border: 1px solid rgba(251,146,60,.3); }
+    .sev-i { background: rgba(250,204,21,.15); color: #fbbf24; border: 1px solid rgba(250,204,21,.25); }
+    .obs-text { font-size: 11px; color: var(--muted); flex: 1; }
+    .obs-conf { font-size: 11px; color: var(--lime); font-weight: 700; }
+    .v-output {
+      background: rgba(173,255,47,.06); border: 1px solid rgba(173,255,47,.15);
+      border-radius: 10px; padding: 12px 14px;
+    }
+    .v-output strong { font-size: 13px; font-weight: 700; display: block; margin-bottom: 6px; color: var(--lime); }
+    .v-output p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* S9 – Why different */
+    #s9 .diff-grid {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 12px; width: 100%; max-width: 920px; margin-top: 22px;
+    }
+    .diff-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 13px; padding: 20px 18px;
+    }
+    .diff-card .d-icon { font-size: 24px; margin-bottom: 10px; }
+    .diff-card h3 { font-size: 14px; font-weight: 800; margin-bottom: 6px; }
+    .diff-card p { font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .diff-card .d-compare {
+      margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+      font-size: 11px;
+    }
+    .d-them { color: #f87171; display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .d-us   { color: var(--lime); display: flex; align-items: center; gap: 6px; }
+    .d-them::before { content: "✗"; font-weight: 800; }
+    .d-us::before   { content: "✓"; font-weight: 800; }
+
+    /* S10 – Getting started */
+    #s10 { text-align: center; }
+    #s10 h2 { margin: 12px 0 14px; }
+    #s10 .lead { margin: 0 auto 26px; }
+    .plan-grid-club {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 14px; width: 100%; max-width: 820px; margin-bottom: 22px;
+    }
+    .pgc-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 20px 18px; text-align: left;
+    }
+    .pgc-card.featured { border-color: rgba(173,255,47,.4); background: rgba(173,255,47,.05); }
+    .pgc-name { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 6px; }
+    .pgc-price { font-size: 30px; font-weight: 900; color: var(--text); margin-bottom: 4px; }
+    .pgc-price span { font-size: 14px; font-weight: 400; color: var(--muted); }
+    .pgc-who { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .pgc-features { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+    .pgc-features li { font-size: 12px; display: flex; gap: 8px; align-items: flex-start; }
+    .pgc-features li::before { content: "✓"; color: var(--lime); font-weight: 800; flex-shrink: 0; margin-top: 1px; }
+    .pgc-tag { display: inline-block; background: var(--lime); color: #000; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 4px; margin-bottom: 6px; }
+    .contact-strip {
+      display: flex; gap: 16px; align-items: center; justify-content: center;
+    }
+    .contact-strip a { color: var(--lime); text-decoration: none; font-size: 14px; font-weight: 700; border-bottom: 1px solid rgba(173,255,47,.3); padding-bottom: 2px; }
+    .trial-banner {
+      background: rgba(173,255,47,.07); border: 1px solid rgba(173,255,47,.18);
+      border-radius: 10px; padding: 12px 20px; margin-bottom: 20px;
+      font-size: 13px; color: var(--text); display: flex; align-items: center; gap: 10px;
+    }
+    .trial-banner::before { content: "🎯"; font-size: 18px; }
+  </style>
+</head>
+<body>
+
+<div id="progress"></div>
+<div id="hint">← → arrow keys to navigate</div>
+
+<div id="deck">
+
+  <!-- ══════════════════════════════════════════
+       S1 — COVER
+  ══════════════════════════════════════════ -->
+  <section class="slide active" id="s1">
+    <img src="apps/web/public/images/logo.png" alt="TacticalEdge" class="logo-img" />
+    <div class="sub-badge">BUILT FOR CLUBS</div>
+    <h1>One philosophy.<br />Every coach. <span class="accent">Every age group.</span></h1>
+    <p class="lead" style="margin: 18px auto 30px;">
+      TacticalEdge gives your entire coaching staff a shared platform to plan sessions, align tactics, analyze training, and communicate with parents — all under one roof.
+    </p>
+    <div class="cta-row">
+      <button class="btn-primary">Book a Club Demo</button>
+      <button class="btn-outline">tacticaledge.app</button>
+    </div>
+    <p style="margin-top:36px; font-size:13px; color:var(--muted); font-style:italic;">"One club. One philosophy. Every age group aligned. That's the edge."</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S2 — THE PROBLEM (club version)
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s2">
+    <div class="badge">WHAT CLUBS ARE DEALING WITH</div>
+    <h2>Running a multi-coach club<br />is <span class="accent">harder than it looks</span></h2>
+    <div class="pain-layout">
+      <div class="pain-card">
+        <div class="pain-icon">🗂</div>
+        <div>
+          <strong>No shared tactical language</strong>
+          <p>Your U10 coach runs a 4-3-3. Your U14 coach runs a 4-2-3-1. Your players graduate between groups with zero tactical continuity.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">⏱</div>
+        <div>
+          <strong>Coaches burning hours on planning</strong>
+          <p>A quality 90-minute session takes 1–2 hours to plan. Multiply that by 6 coaches and 3 sessions a week — that's 36+ hours gone every week.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">👁</div>
+        <div>
+          <strong>You can't see what's happening</strong>
+          <p>As a Technical Director, you have no visibility into what sessions each coach is running, what drills they're using, or whether they're aligned with the club model.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">📣</div>
+        <div>
+          <strong>Parent communication is a mess</strong>
+          <p>Every coach communicates differently. Some don't communicate at all. Parents don't understand what their kids are working on or why.</p>
+        </div>
+      </div>
+    </div>
+    <div class="chaos-banner">
+      The bigger your club gets, the worse each of these problems becomes — without the right system.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S3 — THE SCALE PARADOX
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s3">
+    <div class="badge">THE SCALE PARADOX</div>
+    <h2>More coaches = more <span class="accent">value</span><br /><span style="font-size:0.65em;font-weight:600;color:var(--muted);">(when you have the right platform)</span></h2>
+    <div class="scale-wrap">
+      <div class="scale-col">
+        <div class="scale-col-head head-bad">Without TacticalEdge</div>
+        <div class="scale-item">
+          <div class="si-icon">❌</div>
+          <div>
+            <strong>Each coach is an island</strong>
+            <p>Sessions planned individually from scratch. No sharing. Duplication everywhere.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">❌</div>
+          <div>
+            <strong>Inconsistent player experience</strong>
+            <p>A U12 player joins U14 and has to relearn basic formations and terminology.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">❌</div>
+          <div>
+            <strong>TD has no oversight</strong>
+            <p>You ask what last week's sessions covered. You get a shrug or a crumpled piece of paper.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">❌</div>
+          <div>
+            <strong>Scaling costs go up</strong>
+            <p>Adding coaches means more chaos — more planning time, more misalignment, more parent confusion.</p>
+          </div>
+        </div>
+      </div>
+      <div class="vs-divider">VS</div>
+      <div class="scale-col">
+        <div class="scale-col-head head-good">With TacticalEdge</div>
+        <div class="scale-item">
+          <div class="si-icon">✅</div>
+          <div>
+            <strong>Shared club vault</strong>
+            <p>Every drill and session is visible, searchable, and reusable across all coaches in your club.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">✅</div>
+          <div>
+            <strong>Unified tactical model</strong>
+            <p>One game model. One formation philosophy. Every age group aligned. Players level up, not restart.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">✅</div>
+          <div>
+            <strong>TD visibility dashboard</strong>
+            <p>See every session, every drill, every coach's output. Know what's happening across your entire club.</p>
+          </div>
+        </div>
+        <div class="scale-item">
+          <div class="si-icon">✅</div>
+          <div>
+            <strong>More coaches = more value</strong>
+            <p>Each new coach adds content to the shared vault. The platform gets smarter and richer for everyone.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S4 — HOW THE PLATFORM IS BUILT
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s4">
+    <div class="top">
+      <div class="badge">PLATFORM ARCHITECTURE</div>
+      <h2>How <span class="accent">TacticalEdge</span> is put together</h2>
+      <p class="lead" style="margin: 6px auto 0; font-size: 14px;">Three layers working together — AI generation, individual coach tools, and club-wide management.</p>
+    </div>
+    <div class="arch-wrap">
+
+      <div class="layer-label">🧠 AI ENGINE — powers everything below</div>
+      <div class="arch-row top-row">
+        <div class="arch-card full lime-border">
+          <div style="font-size:28px;">⚡</div>
+          <div>
+            <h3 style="color:var(--lime);">Google Gemini AI Core</h3>
+            <p>Strict schema validation on every output · QA scoring · Age &amp; level auto-adaptation · Tactical context awareness · Video understanding</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="conn-arrow">↓ ↓ ↓</div>
+
+      <div class="layer-label">🎽 COACH LAYER — what each individual coach uses</div>
+      <div class="arch-row">
+        <div class="arch-card blue-border">
+          <div class="ac-icon">⚡</div>
+          <h3>Drill Generator</h3>
+          <p>Single drills with SVG tactical diagrams, coaching cues &amp; variations</p>
+        </div>
+        <div class="arch-card blue-border">
+          <div class="ac-icon">📋</div>
+          <h3>Session Builder</h3>
+          <p>Complete 60–90 min sessions with proven 5-phase structure</p>
+        </div>
+        <div class="arch-card blue-border">
+          <div class="ac-icon">📈</div>
+          <h3>Progressive Series</h3>
+          <p>Multi-session plans with progression logic between sessions</p>
+        </div>
+        <div class="arch-card blue-border">
+          <div class="ac-icon">🎬</div>
+          <h3>Video Analysis</h3>
+          <p>Upload a clip, get severity-ranked observations + corrective session</p>
+        </div>
+        <div class="arch-card blue-border">
+          <div class="ac-icon">🏃</div>
+          <h3>Player Homework</h3>
+          <p>Individual player plans adapted by level — PDF ready for parents</p>
+        </div>
+        <div class="arch-card blue-border">
+          <div class="ac-icon">🤖</div>
+          <h3>AI Chat Assistant</h3>
+          <p>Natural language input — describe what you need in plain English</p>
+        </div>
+      </div>
+
+      <div class="conn-arrow">↓</div>
+
+      <div class="layer-label">🏟 CLUB LAYER — what the Technical Director sees</div>
+      <div class="arch-row">
+        <div class="arch-card purple-border">
+          <div class="ac-icon">🗃</div>
+          <h3>Club Vault</h3>
+          <p>All coaches' sessions in one searchable, reusable library</p>
+        </div>
+        <div class="arch-card purple-border">
+          <div class="ac-icon">🗓</div>
+          <h3>Calendar &amp; Comms</h3>
+          <p>Club-wide scheduling + AI-generated parent summaries</p>
+        </div>
+        <div class="arch-card purple-border">
+          <div class="ac-icon">📊</div>
+          <h3>Admin Dashboard</h3>
+          <p>Usage metrics, cross-coach visibility, QA analytics</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S5 — THE 5-PHASE FRAMEWORK
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s5">
+    <div class="top">
+      <div class="badge">THE STANDARD YOUR CLUB RUNS ON</div>
+      <h2>Every session built on a<br /><span class="accent">proven 5-phase structure</span></h2>
+      <p class="lead" style="margin: 6px auto 0; font-size: 14px;">Every coach on your staff generates sessions with the same scaffolding — guaranteed consistency, every time.</p>
+    </div>
+    <div class="phase-track">
+      <div class="phase-block">
+        <div class="phase-num ph1">PHASE<br/>1</div>
+        <div class="phase-name">Warmup</div>
+        <div class="phase-dur">10–15 min</div>
+        <div class="phase-card-inner">Physical activation, dynamic movement, mental focus. Sets the tone.</div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-num ph2">PHASE<br/>2</div>
+        <div class="phase-name">Technical</div>
+        <div class="phase-dur">15–20 min</div>
+        <div class="phase-card-inner">Skill repetition in low-pressure context. Reinforces fundamentals.</div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-num ph3">PHASE<br/>3</div>
+        <div class="phase-name">Tactical</div>
+        <div class="phase-dur">20–25 min</div>
+        <div class="phase-card-inner">Game model application. Shape, pressing, transitions — your club philosophy.</div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-num ph4">PHASE<br/>4</div>
+        <div class="phase-name">Game</div>
+        <div class="phase-dur">15–20 min</div>
+        <div class="phase-card-inner">Conditioned small-sided game. Constraints that reinforce the session theme.</div>
+      </div>
+      <div class="phase-block">
+        <div class="phase-num ph5">PHASE<br/>5</div>
+        <div class="phase-name">Cooldown</div>
+        <div class="phase-dur">5–10 min</div>
+        <div class="phase-card-inner">Recovery, reflection, coaching conversation. Closes the learning loop.</div>
+      </div>
+    </div>
+    <div class="why-standard">
+      <div class="ws-card">
+        <div class="ws-ico">🔁</div>
+        <strong>Club-wide consistency</strong>
+        <p>A player moving from U10 to U13 walks into a training session that feels familiar — same structure, same language.</p>
+      </div>
+      <div class="ws-card">
+        <div class="ws-ico">📐</div>
+        <strong>Built-in best practice</strong>
+        <p>Your most inexperienced volunteer coach automatically follows the same framework as your most qualified pro.</p>
+      </div>
+      <div class="ws-card">
+        <div class="ws-ico">📊</div>
+        <strong>TD can audit instantly</strong>
+        <p>Every session in the vault follows the same structure — making cross-coach review fast and meaningful.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S6 — BEFORE vs AFTER (coach daily life)
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s6">
+    <div class="badge">COACH DAY-IN-THE-LIFE</div>
+    <h2>What changes for your<br /><span class="accent">coaches on Tuesday night</span></h2>
+    <div class="daily-wrap">
+      <div class="daily-col">
+        <div class="daily-col-title col-before">Before TacticalEdge</div>
+        <div class="daily-item">
+          <div class="di-tag tag-bad">6:30pm</div>
+          <p>Coach finishes work. Opens YouTube, tries to remember a drill they saw 3 months ago.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-bad">7:15pm</div>
+          <p>Scribbles a loose plan in Notes app. No tactical diagram. No timing. Just a list of games to play.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-bad">7:55pm</div>
+          <p>Sends a vague WhatsApp to parents: "Training tomorrow, bring water." No context on what's being worked on.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-bad">Wednesday</div>
+          <p>Training session runs long on warmup. Tactical phase is rushed. No record kept of what was covered.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-bad">Next week</div>
+          <p>New session from scratch. No continuity. Players repeat the same basics they did two weeks ago.</p>
+        </div>
+      </div>
+      <div class="daily-divider">→</div>
+      <div class="daily-col">
+        <div class="daily-col-title col-after">With TacticalEdge</div>
+        <div class="daily-item">
+          <div class="di-tag tag-good">6:30pm</div>
+          <p>Coach opens TacticalEdge, types: "U12 session on pressing triggers, 4-3-3, intermediate level." Hits generate.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-good">6:34pm</div>
+          <p>Complete 90-min session with 5 phases, SVG tactical diagrams, coaching cues, and drill progressions — ready.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-good">6:36pm</div>
+          <p>Session added to calendar. AI generates a parent summary: "This week we're working on winning the ball back higher up the field..."</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-good">Wednesday</div>
+          <p>Training runs to time. Coach has the session on their phone. Every phase has a purpose and a duration.</p>
+        </div>
+        <div class="daily-item">
+          <div class="di-tag tag-good">Next week</div>
+          <p>AI generates next session in the series — built on last week's outcomes. Players progress, not repeat.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S7 — CLUB-LEVEL FEATURES
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s7">
+    <div class="top">
+      <div class="badge">FOR THE TECHNICAL DIRECTOR</div>
+      <h2>The tools that give <span class="accent">club leadership</span><br />real oversight</h2>
+    </div>
+    <div class="club-feat-grid">
+      <div class="cf-card">
+        <div class="cf-icon cfi-lime">🗃</div>
+        <div>
+          <strong>Club-Wide Content Vault</strong>
+          <p>Every drill and session from every coach in one searchable library. Reference codes (D-XXXX, S-XXXX) make content permanent and findable. Your best sessions become club IP — not lost in a coach's phone notes.</p>
+        </div>
+      </div>
+      <div class="cf-card">
+        <div class="cf-icon cfi-blue">🗺</div>
+        <div>
+          <strong>Unified Game Model Framework</strong>
+          <p>Set your club's formation, playing philosophy, and tactical principles once. Every coach's generated sessions automatically align to your model — without you reviewing each one manually.</p>
+        </div>
+      </div>
+      <div class="cf-card">
+        <div class="cf-icon cfi-purple">📊</div>
+        <div>
+          <strong>Admin Analytics Dashboard</strong>
+          <p>See how many sessions each coach has generated, which topics are being covered (and which are being ignored), and who's using the platform. No more guessing what your staff is coaching.</p>
+        </div>
+      </div>
+      <div class="cf-card">
+        <div class="cf-icon cfi-amber">📣</div>
+        <div>
+          <strong>Automated Parent Communication</strong>
+          <p>After every session is scheduled, the AI generates a parent-friendly weekly summary explaining what the team is working on and why. Consistent, professional comms from every coach on your staff.</p>
+        </div>
+      </div>
+      <div class="cf-card">
+        <div class="cf-icon cfi-green">🗓</div>
+        <div>
+          <strong>Club Calendar Planning</strong>
+          <p>Drag-and-drop scheduling across all teams. See your entire club's training load at a glance. Avoid congestion, ensure recovery, and plan tournament prep blocks across all age groups simultaneously.</p>
+        </div>
+      </div>
+      <div class="cf-card">
+        <div class="cf-icon cfi-red">🏃</div>
+        <div>
+          <strong>Player Development Plans</strong>
+          <p>Convert any team session into an individual homework plan for a specific player — adapted to their level. Give players structured reps at home. Parents get a PDF. Players get real development outside team time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S8 — VIDEO ANALYSIS
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s8">
+    <div class="top">
+      <div class="badge">NEWEST FEATURE</div>
+      <h2>From match footage<br />to <span class="accent">corrective training plan</span></h2>
+      <p class="lead" style="font-size:14px; margin: 6px auto 0;">Your coaches watch film and know what's wrong. Now they have a tool that tells them exactly how to fix it.</p>
+    </div>
+    <div class="video-layout">
+      <div class="video-left">
+        <div class="v-step">
+          <div class="v-num">1</div>
+          <div>
+            <strong>Upload a short clip (10–90 sec)</strong>
+            <p>Match footage, training video — any clip where you spotted a problem.</p>
+          </div>
+        </div>
+        <div class="v-step">
+          <div class="v-num">2</div>
+          <div>
+            <strong>Set your context</strong>
+            <p>Age group, player level, coach level — AI adapts its lens accordingly.</p>
+          </div>
+        </div>
+        <div class="v-step">
+          <div class="v-num">3</div>
+          <div>
+            <strong>Get severity-ranked observations</strong>
+            <p>Critical, Major, Minor — each with confidence scores and timestamps.</p>
+          </div>
+        </div>
+        <div class="v-step">
+          <div class="v-num">4</div>
+          <div>
+            <strong>Auto-generate a corrective session</strong>
+            <p>One click turns your analysis into a full training session targeting the exact issues found.</p>
+          </div>
+        </div>
+      </div>
+      <div class="video-right">
+        <div style="font-size:11px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:8px;">SAMPLE OUTPUT</div>
+        <div class="obs-card">
+          <span class="sev sev-c">CRITICAL</span>
+          <span class="obs-text">Defensive shape collapses in transition — no mid-field recovery runs (0:12)</span>
+          <span class="obs-conf">92%</span>
+        </div>
+        <div class="obs-card">
+          <span class="sev sev-m">MAJOR</span>
+          <span class="obs-text">Striker receiving with back to goal — body orientation needs work (0:34)</span>
+          <span class="obs-conf">88%</span>
+        </div>
+        <div class="obs-card">
+          <span class="sev sev-i">MINOR</span>
+          <span class="obs-text">Set-piece variation too predictable — defenders reading the run (0:51)</span>
+          <span class="obs-conf">76%</span>
+        </div>
+        <div class="v-output">
+          <strong>→ Auto-generated corrective session</strong>
+          <p>90-min session focused on: transition shape &amp; compactness (Phase 3), receiving posture under pressure (Phase 2), set-piece re-design (Phase 4). Age-adapted for U14, intermediate level.</p>
+        </div>
+        <div style="background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px;">
+          <p style="font-size:12px; color:var(--muted);">🔁 <strong style="color:var(--text);">Feedback loop:</strong> Re-run the analysis after 3 sessions to measure improvement. Track progress over time with timestamped observation history.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S9 — WHY DIFFERENT
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s9">
+    <div class="badge">WHY WE'RE DIFFERENT</div>
+    <h2>Not another drill library.<br />A <span class="accent">coaching operating system.</span></h2>
+    <div class="diff-grid">
+      <div class="diff-card">
+        <div class="d-icon">📋</div>
+        <h3>Structured Output, Not Suggestions</h3>
+        <p>Every session is validated against a strict schema. You get a field-ready plan — not a wall of AI text you have to interpret.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools give you inspiration</div>
+          <div class="d-us">We give you a runsheet</div>
+        </div>
+      </div>
+      <div class="diff-card">
+        <div class="d-icon">👁</div>
+        <h3>Diagrams, Not Descriptions</h3>
+        <p>Every drill includes an SVG tactical diagram — player positions, movement arrows, pressing lines, passing lanes. Coaches see it, don't just read it.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools write about drills</div>
+          <div class="d-us">We draw them for you</div>
+        </div>
+      </div>
+      <div class="diff-card">
+        <div class="d-icon">🧩</div>
+        <h3>Platform, Not Just a Tool</h3>
+        <p>Vault, calendar, analytics, parent comms, admin dashboard — TacticalEdge becomes the operating layer for your club's coaching staff.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools solve one problem</div>
+          <div class="d-us">We run your coaching ops</div>
+        </div>
+      </div>
+      <div class="diff-card">
+        <div class="d-icon">📐</div>
+        <h3>Age &amp; Level Adaptive</h3>
+        <p>Every generation auto-adjusts for U8–U18 and player level (Beginner → Elite). One platform handles your entire club pyramid — from rec to academy.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools are one-size-fits-all</div>
+          <div class="d-us">We adapt to every team you run</div>
+        </div>
+      </div>
+      <div class="diff-card">
+        <div class="d-icon">🎬</div>
+        <h3>Video → Training Plan</h3>
+        <p>No other coaching platform converts video observations into corrective training sessions automatically. This is new — and it's live now.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools ignore your footage</div>
+          <div class="d-us">We turn it into next week's session</div>
+        </div>
+      </div>
+      <div class="diff-card">
+        <div class="d-icon">🔗</div>
+        <h3>Your Club Builds IP</h3>
+        <p>Every drill and session your coaches generate is saved with a permanent reference code. Over time, your vault becomes a proprietary curriculum — yours to keep and grow.</p>
+        <div class="d-compare">
+          <div class="d-them">Other tools own the content</div>
+          <div class="d-us">You own the library you build</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════
+       S10 — GETTING STARTED
+  ══════════════════════════════════════════ -->
+  <section class="slide" id="s10">
+    <img src="apps/web/public/images/logo.png" alt="TacticalEdge" class="logo-img" />
+    <div class="badge">GET STARTED</div>
+    <h2>Ready to run your club<br />with <span class="accent">one system</span>?</h2>
+    <p class="lead" style="margin: 12px auto 20px;">
+      Start with one coach. Scale to your entire staff. The platform gets more powerful the more coaches are on it.
+    </p>
+    <div class="trial-banner">
+      Every plan includes a 7-day free trial — no credit card required. Get your whole staff generating sessions before you commit.
+    </div>
+    <div class="plan-grid-club">
+      <div class="pgc-card">
+        <div class="pgc-name">Starter Coach</div>
+        <div class="pgc-price">$10<span>/mo</span></div>
+        <div class="pgc-who">Individual coaches — try it out</div>
+        <ul class="pgc-features">
+          <li>150 drills + 40 sessions/month</li>
+          <li>Full vault &amp; calendar</li>
+          <li>AI coach assistant</li>
+          <li>Player homework plans</li>
+          <li>7-day free trial</li>
+        </ul>
+      </div>
+      <div class="pgc-card featured">
+        <div class="pgc-tag">Best for clubs</div>
+        <div class="pgc-name">Club Pro</div>
+        <div class="pgc-price">$40<span>/mo</span></div>
+        <div class="pgc-who">Up to 5 coaches under one plan</div>
+        <ul class="pgc-features">
+          <li>Unlimited drills &amp; sessions</li>
+          <li>5 coach seats included</li>
+          <li>Club-wide shared vault</li>
+          <li>Progressive series generation</li>
+          <li>Video analysis feature</li>
+          <li>Advanced club analytics</li>
+        </ul>
+      </div>
+      <div class="pgc-card">
+        <div class="pgc-name">Academy Elite</div>
+        <div class="pgc-price" style="font-size:24px;">Custom</div>
+        <div class="pgc-who">High-performance academies</div>
+        <ul class="pgc-features">
+          <li>Unlimited everything</li>
+          <li>Custom club branding</li>
+          <li>Custom game model config</li>
+          <li>Custom drill gallery</li>
+          <li>Dedicated onboarding</li>
+        </ul>
+      </div>
+    </div>
+    <div class="contact-strip">
+      <button class="btn-primary">Book a Club Demo</button>
+      <a href="mailto:admin@tacticaledge.app">admin@tacticaledge.app</a>
+      <span style="color:var(--muted); font-size:13px;">tacticaledge.app</span>
+    </div>
+    <p style="margin-top:24px; font-size:11px; color:rgba(148,163,184,.3); letter-spacing:.05em;">© 2026 TacticalEdge · Built for coaches, by coaches</p>
+  </section>
+
+</div><!-- /deck -->
+
+<!-- Nav -->
+<div id="nav">
+  <button id="prevBtn">←</button>
+  <div id="dots"></div>
+  <button id="nextBtn">→</button>
+  <div id="slide-counter">1 / 10</div>
+</div>
+
+<script>
+  const slides  = Array.from(document.querySelectorAll('.slide'));
+  const dotsEl  = document.getElementById('dots');
+  const counter = document.getElementById('slide-counter');
+  const progress= document.getElementById('progress');
+  let current = 0;
+
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', () => goTo(i));
+    dotsEl.appendChild(d);
+  });
+
+  function updateProgress() {
+    progress.style.width = ((current + 1) / slides.length * 100) + '%';
+  }
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= slides.length) return;
+    slides[current].classList.remove('active');
+    slides[current].classList.add('exit');
+    const prev = current;
+    setTimeout(() => slides[prev].classList.remove('exit'), 450);
+    current = idx;
+    slides[current].classList.add('active');
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === current));
+    counter.textContent = `${current + 1} / ${slides.length}`;
+    updateProgress();
+  }
+
+  document.getElementById('prevBtn').addEventListener('click', () => goTo(current - 1));
+  document.getElementById('nextBtn').addEventListener('click', () => goTo(current + 1));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+  });
+
+  updateProgress();
+</script>
+</body>
+</html>
