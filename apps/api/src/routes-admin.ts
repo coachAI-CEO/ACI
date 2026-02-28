@@ -2798,10 +2798,9 @@ r.post("/admin/users/:userId/resend-verification", requireAdminPermission('canMa
       console.log(`[ADMIN] Verification email resent to ${user.email}`);
     } catch (err: any) {
       console.error("[ADMIN] Failed to resend verification email:", err);
-      // Still return success but with a warning
-      return res.json({
-        ok: true,
-        message: 'Verification token created, but email sending failed. Check SMTP configuration.',
+      return res.status(502).json({
+        ok: false,
+        error: 'Failed to send verification email. Please verify SMTP settings and check server logs.',
         token: process.env.NODE_ENV === 'development' ? verificationToken : undefined, // Only show token in dev
       });
     }
