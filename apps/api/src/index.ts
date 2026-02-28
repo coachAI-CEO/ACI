@@ -2,7 +2,7 @@ import './config/load-env';
 import app from "./app";
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
-const HOST = process.env.HOST ?? "127.0.0.1";
+const HOST = process.env.HOST ?? "0.0.0.0";
 
 console.log("Starting server...");
 
