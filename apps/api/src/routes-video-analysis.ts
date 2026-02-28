@@ -191,14 +191,27 @@ async function generateVideoAnalysisRefCode(): Promise<string> {
   const prefix = "VA";
   for (let i = 0; i < 10; i++) {
     const code = `${prefix}-${generateRandomRefChunk(4)}`;
-    const existing = await prisma.$queryRawUnsafe<any[]>(
-      `SELECT "id" FROM "VideoAnalysisVault" WHERE "refCode" = $1 LIMIT 1`,
-      code
-    );
-    if (!existing || existing.length === 0) return code;
+    try {
+      const existing = await prisma.$queryRawUnsafe<any[]>(
+        `SELECT "id" FROM "VideoAnalysisVault" WHERE "refCode" = $1 LIMIT 1`,
+        code
+      );
+      if (!existing || existing.length === 0) return code;
+    } catch {
+      // If the vault table is not ready yet, return a generated code and let the caller handle persistence errors.
+      return code;
+    }
   }
   const suffix = Date.now().toString(36).toUpperCase().slice(-2);
   return `${prefix}-${generateRandomRefChunk(2)}${suffix}`;
+}
+
+function isVaultTableMissingError(error: unknown): boolean {
+  const message = String((error as any)?.message || "");
+  return (
+    (message.includes("42P01") && message.includes("VideoAnalysisVault")) ||
+    message.includes('relation "VideoAnalysisVault" does not exist')
+  );
 }
 
 function isGeminiFileUri(uri: string): boolean {
@@ -1292,6 +1305,13 @@ r.post("/vault/video-analysis/save", async (req: AuthRequest, res) => {
       },
     });
   } catch (e: any) {
+    if (isVaultTableMissingError(e)) {
+      return res.status(503).json({
+        ok: false,
+        error: "VIDEO_ANALYSIS_VAULT_NOT_INITIALIZED",
+        message: "Video Analysis Vault is not initialized. Run the latest database migrations.",
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: e?.message || String(e),
@@ -1340,6 +1360,13 @@ r.get("/vault/video-analysis", async (req: AuthRequest, res) => {
       })),
     });
   } catch (e: any) {
+    if (isVaultTableMissingError(e)) {
+      return res.status(503).json({
+        ok: false,
+        error: "VIDEO_ANALYSIS_VAULT_NOT_INITIALIZED",
+        message: "Video Analysis Vault is not initialized. Run the latest database migrations.",
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: e?.message || String(e),
@@ -1381,6 +1408,13 @@ r.delete("/vault/video-analysis/:id", async (req: AuthRequest, res) => {
 
     return res.json({ ok: true });
   } catch (e: any) {
+    if (isVaultTableMissingError(e)) {
+      return res.status(503).json({
+        ok: false,
+        error: "VIDEO_ANALYSIS_VAULT_NOT_INITIALIZED",
+        message: "Video Analysis Vault is not initialized. Run the latest database migrations.",
+      });
+    }
     return res.status(500).json({
       ok: false,
       error: e?.message || String(e),
