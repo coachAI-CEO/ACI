@@ -7,11 +7,19 @@ const SMTP_SECURE = process.env.SMTP_SECURE === 'true';
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const APP_NAME = process.env.APP_NAME || 'TacticalEdge';
-const FRONTEND_URL_RAW = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000';
+const DEFAULT_PROD_URL = 'https://tacticaledge.app';
+const FRONTEND_URL_RAW =
+  process.env.FRONTEND_URL ||
+  process.env.APP_URL ||
+  (process.env.NODE_ENV === 'production' ? DEFAULT_PROD_URL : 'http://localhost:3000');
 const FRONTEND_URL = FRONTEND_URL_RAW.replace(/\/+$/, '');
-const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/tacticaledge-emblem.png`;
+const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/logo.png`;
 const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || 'noreply@tacticaledge.app';
 const FROM_NAME = process.env.FROM_NAME || APP_NAME;
+
+if (process.env.NODE_ENV === 'production' && !process.env.FRONTEND_URL && !process.env.APP_URL) {
+  console.warn(`[EMAIL] FRONTEND_URL not set in production, defaulting to ${DEFAULT_PROD_URL}`);
+}
 
 // Create reusable transporter
 let transporter: nodemailer.Transporter | null = null;
