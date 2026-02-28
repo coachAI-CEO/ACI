@@ -83,7 +83,9 @@ export default function RegisterPage() {
 
       // Show success message with verification notice
       setError(""); // Clear any errors
-      alert("Registration successful! Please check your email to verify your account. You can continue using the platform.");
+      alert(
+        `Account created for ${normalizedEmail}.\n\nPlease verify your email to activate all features.\nIf you don't see the message in 2-3 minutes, check Spam/Junk and then use "Resend verification" after logging in.`
+      );
 
       // Redirect to home
       router.push("/app");
