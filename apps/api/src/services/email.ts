@@ -6,9 +6,12 @@ const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
 const SMTP_SECURE = process.env.SMTP_SECURE === 'true';
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
-const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || 'noreply@acitraining.com';
-const FROM_NAME = process.env.FROM_NAME || 'ACI Training Platform';
+const APP_NAME = process.env.APP_NAME || 'TacticalEdge';
+const FRONTEND_URL_RAW = process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:3000';
+const FRONTEND_URL = FRONTEND_URL_RAW.replace(/\/+$/, '');
+const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/tacticaledge-emblem.png`;
+const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || 'noreply@tacticaledge.app';
+const FROM_NAME = process.env.FROM_NAME || APP_NAME;
 
 // Create reusable transporter
 let transporter: nodemailer.Transporter | null = null;
@@ -58,6 +61,7 @@ export async function sendVerificationEmail(
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .logo { display: block; margin: 0 auto 12px; width: 72px; height: 72px; object-fit: contain; }
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
         .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
@@ -66,7 +70,8 @@ export async function sendVerificationEmail(
     <body>
       <div class="container">
         <div class="header">
-          <h1>Welcome to ACI Training Platform</h1>
+          <img src="${LOGO_URL}" alt="${APP_NAME} logo" class="logo" />
+          <h1>Welcome to ${APP_NAME}</h1>
         </div>
         <div class="content">
           <p>Hi ${name || 'there'},</p>
@@ -80,7 +85,7 @@ export async function sendVerificationEmail(
           <p>If you didn't create an account, you can safely ignore this email.</p>
         </div>
         <div class="footer">
-          <p>© ${new Date().getFullYear()} ACI Training Platform. All rights reserved.</p>
+          <p>© ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -88,7 +93,7 @@ export async function sendVerificationEmail(
   `;
 
   const text = `
-    Welcome to ACI Training Platform!
+    Welcome to ${APP_NAME}!
     
     Hi ${name || 'there'},
     
@@ -99,13 +104,13 @@ export async function sendVerificationEmail(
     
     If you didn't create an account, you can safely ignore this email.
     
-    © ${new Date().getFullYear()} ACI Training Platform. All rights reserved.
+    © ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
   `;
 
   const mailOptions = {
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
     to: email,
-    subject: 'Verify your email address - ACI Training Platform',
+    subject: `Verify your email address - ${APP_NAME}`,
     text,
     html,
   };
@@ -126,8 +131,9 @@ export async function sendVerificationEmail(
     console.log('  SMTP_PORT=587');
     console.log('  SMTP_USER=your-email@gmail.com');
     console.log('  SMTP_PASS=your-app-password');
-    console.log('  FROM_EMAIL=noreply@acitraining.com');
-    console.log('  FROM_NAME=ACI Training Platform');
+    console.log('  FROM_EMAIL=noreply@tacticaledge.app');
+    console.log(`  FROM_NAME=${APP_NAME}`);
+    console.log('  FRONTEND_URL=https://tacticaledge.app');
     console.log('═══════════════════════════════════════════════════════════\n');
     // In development, we still want to create the token so users can verify manually
     // The token is already created in the calling function, so we just return here
@@ -163,6 +169,7 @@ export async function sendPasswordResetEmail(
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .logo { display: block; margin: 0 auto 12px; width: 72px; height: 72px; object-fit: contain; }
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
         .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
@@ -171,11 +178,12 @@ export async function sendPasswordResetEmail(
     <body>
       <div class="container">
         <div class="header">
+          <img src="${LOGO_URL}" alt="${APP_NAME} logo" class="logo" />
           <h1>Reset your password</h1>
         </div>
         <div class="content">
           <p>Hi ${name || 'there'},</p>
-          <p>We received a request to reset the password for your ACI Training Platform account.</p>
+          <p>We received a request to reset the password for your ${APP_NAME} account.</p>
           <p>If you made this request, click the button below to choose a new password:</p>
           <p style="text-align: center;">
             <a href="${resetUrl}" class="button">Reset Password</a>
@@ -185,7 +193,7 @@ export async function sendPasswordResetEmail(
           <p>This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email.</p>
         </div>
         <div class="footer">
-          <p>© ${new Date().getFullYear()} ACI Training Platform. All rights reserved.</p>
+          <p>© ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -193,24 +201,24 @@ export async function sendPasswordResetEmail(
   `;
 
   const text = `
-    Reset your password - ACI Training Platform
+    Reset your password - ${APP_NAME}
 
     Hi ${name || 'there'},
 
-    We received a request to reset the password for your ACI Training Platform account.
+    We received a request to reset the password for your ${APP_NAME} account.
 
     If you made this request, visit this link to choose a new password:
     ${resetUrl}
 
     This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email.
 
-    © ${new Date().getFullYear()} ACI Training Platform. All rights reserved.
+    © ${new Date().getFullYear()} ${APP_NAME}. All rights reserved.
   `;
 
   const mailOptions = {
     from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
     to: email,
-    subject: 'Reset your password - ACI Training Platform',
+    subject: `Reset your password - ${APP_NAME}`,
     text,
     html,
   };
