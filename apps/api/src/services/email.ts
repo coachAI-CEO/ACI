@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
@@ -13,9 +15,31 @@ const FRONTEND_URL_RAW =
   process.env.APP_URL ||
   DEFAULT_PROD_URL;
 const FRONTEND_URL = FRONTEND_URL_RAW.replace(/\/+$/, '');
-const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/logo.png`;
+const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/tacticaledge-emblem.png`;
 const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || 'noreply@tacticaledge.app';
 const FROM_NAME = process.env.FROM_NAME || APP_NAME;
+const EMAIL_LOGO_CID = 'tacticaledge-logo';
+
+function getEmailLogoAttachment():
+  | { filename: string; path: string; cid: string }
+  | null {
+  const candidates = [
+    path.resolve(__dirname, '../../../web/public/images/tacticaledge-emblem.png'),
+    path.resolve(__dirname, '../../../web/public/images/TacticalEdge_Emblem.png'),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return {
+        filename: path.basename(candidate),
+        path: candidate,
+        cid: EMAIL_LOGO_CID,
+      };
+    }
+  }
+
+  return null;
+}
 
 if (!process.env.FRONTEND_URL && !process.env.APP_URL) {
   console.warn(`[EMAIL] FRONTEND_URL not set, defaulting to ${DEFAULT_PROD_URL}`);
@@ -59,6 +83,8 @@ export async function sendVerificationEmail(
   verificationToken: string
 ): Promise<void> {
   const verificationUrl = `${FRONTEND_URL}/verify-email?token=${verificationToken}`;
+  const logoAttachment = getEmailLogoAttachment();
+  const logoSrc = logoAttachment ? `cid:${EMAIL_LOGO_CID}` : LOGO_URL;
   
   const html = `
     <!DOCTYPE html>
@@ -69,7 +95,7 @@ export async function sendVerificationEmail(
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .logo { display: block; margin: 0 auto 12px; width: 72px; height: 72px; object-fit: contain; }
+        .logo { display: block; margin: 0 auto 12px; width: 96px; height: 96px; object-fit: contain; }
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
         .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
@@ -78,7 +104,7 @@ export async function sendVerificationEmail(
     <body>
       <div class="container">
         <div class="header">
-          <img src="${LOGO_URL}" alt="${APP_NAME} logo" class="logo" />
+          <img src="${logoSrc}" alt="${APP_NAME} logo" class="logo" />
           <h1>Welcome to ${APP_NAME}</h1>
         </div>
         <div class="content">
@@ -121,6 +147,7 @@ export async function sendVerificationEmail(
     subject: `Verify your email address - ${APP_NAME}`,
     text,
     html,
+    attachments: logoAttachment ? [logoAttachment] : [],
   };
 
   const mailer = getTransporter();
@@ -167,6 +194,8 @@ export async function sendPasswordResetEmail(
   resetToken: string
 ): Promise<void> {
   const resetUrl = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
+  const logoAttachment = getEmailLogoAttachment();
+  const logoSrc = logoAttachment ? `cid:${EMAIL_LOGO_CID}` : LOGO_URL;
 
   const html = `
     <!DOCTYPE html>
@@ -177,7 +206,7 @@ export async function sendPasswordResetEmail(
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
         .header { background: #10b981; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .logo { display: block; margin: 0 auto 12px; width: 72px; height: 72px; object-fit: contain; }
+        .logo { display: block; margin: 0 auto 12px; width: 96px; height: 96px; object-fit: contain; }
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
         .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
@@ -186,7 +215,7 @@ export async function sendPasswordResetEmail(
     <body>
       <div class="container">
         <div class="header">
-          <img src="${LOGO_URL}" alt="${APP_NAME} logo" class="logo" />
+          <img src="${logoSrc}" alt="${APP_NAME} logo" class="logo" />
           <h1>Reset your password</h1>
         </div>
         <div class="content">
@@ -229,6 +258,7 @@ export async function sendPasswordResetEmail(
     subject: `Reset your password - ${APP_NAME}`,
     text,
     html,
+    attachments: logoAttachment ? [logoAttachment] : [],
   };
 
   const mailer = getTransporter();
