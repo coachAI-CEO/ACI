@@ -39,11 +39,8 @@ These are the parameters needed to generate a good session. Ask about important 
 **HELPFUL CONTEXT - Ask when relevant:**
 - coachLevel: What's your coaching background?
   - GRASSROOTS: New/parent coach, basic drills
-  - USSF_D: D License, foundational knowledge
   - USSF_C: C License, intermediate tactics
-  - USSF_B: B License, advanced methodology
-  - USSF_B_PLUS: B+ License, high-level tactics
-  - USSF_A: A License, professional level
+  - USSF_B_PLUS: B+ (or higher) license, advanced/high-level tactics
 - playerLevel: BEGINNER, INTERMEDIATE, ADVANCED
 - durationMin: 60, 75, or 90 minutes
 - numbersMin/numbersMax: How many players will be at training?
@@ -76,7 +73,7 @@ Respond ONLY with valid JSON:
     "topic": "specific focus" | null,
     "numberOfSessions": 1,
     "playerLevel": "INTERMEDIATE" | null,
-    "coachLevel": "USSF_D" | null,
+    "coachLevel": "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | null,
     "durationMin": 90 | null,
     "numbersMin": 16 | null,
     "numbersMax": 20 | null,
@@ -95,6 +92,14 @@ Set "readyToGenerate": true only when you have at least: ageGroup, gameModelId, 
 Set "intent": "clarify" when you need more info.
 Set "intent": "search" when you have enough to look in the vault.
 Set "intent": "generate" when coach confirms they want a new session.`;
+
+function hasMinimumGenerationParams(params: any): boolean {
+  if (!params || typeof params !== "object") return false;
+  const hasAgeGroup = Boolean(params.ageGroup);
+  const hasGameModel = Boolean(params.gameModelId);
+  const hasPhaseOrTopic = Boolean(params.phase || params.topic);
+  return hasAgeGroup && hasGameModel && hasPhaseOrTopic;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -234,7 +239,6 @@ Analyze this request and respond in the JSON format specified above.`;
         GRASSROOTS: "Grassroots",
         USSF_C: "USSF C",
         USSF_B_PLUS: "USSF B+",
-        USSF_D: "USSF D",
       };
       return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
     };
@@ -261,6 +265,8 @@ Analyze this request and respond in the JSON format specified above.`;
       }
     }
 
+    const readyToGenerate = Boolean(parsed.readyToGenerate) || hasMinimumGenerationParams(parsed.extractedParams);
+
     return NextResponse.json({
       ok: true,
       message: responseMessage,
@@ -268,7 +274,7 @@ Analyze this request and respond in the JSON format specified above.`;
       extractedParams: parsed.extractedParams,
       recommendations,
       needsClarification: parsed.needsClarification,
-      readyToGenerate: parsed.readyToGenerate || false,
+      readyToGenerate,
     });
   } catch (e: any) {
     console.error("[COACH_CHAT] Error:", e);
@@ -395,15 +401,15 @@ function extractBasicParams(message: string): any {
   if (lower.includes("grassroot") || lower.includes("parent coach") || lower.includes("volunteer")) {
     params.coachLevel = "GRASSROOTS";
   } else if (lower.includes("d license") || lower.includes("d-license")) {
-    params.coachLevel = "USSF_D";
+    params.coachLevel = "GRASSROOTS";
   } else if (lower.includes("c license") || lower.includes("c-license")) {
     params.coachLevel = "USSF_C";
   } else if (lower.includes("b+ license") || lower.includes("b plus")) {
     params.coachLevel = "USSF_B_PLUS";
   } else if (lower.includes("b license") || lower.includes("b-license")) {
-    params.coachLevel = "USSF_B";
+    params.coachLevel = "USSF_B_PLUS";
   } else if (lower.includes("a license") || lower.includes("a-license") || lower.includes("professional")) {
-    params.coachLevel = "USSF_A";
+    params.coachLevel = "USSF_B_PLUS";
   }
 
   // Series

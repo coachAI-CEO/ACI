@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
       headers["Authorization"] = authHeader;
     }
     
-    const res = await fetch("http://localhost:4000/ai/export-session-pdf", {
+    const apiBase = process.env.API_URL || "http://localhost:4000";
+    const res = await fetch(`${apiBase}/ai/export-session-pdf`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),

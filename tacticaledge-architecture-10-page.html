@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TacticalEdge - Architecture Deep Dive (Context Version)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #040706;
+      --surface: rgba(9, 16, 13, 0.72);
+      --surface-soft: rgba(255, 255, 255, 0.03);
+      --border: rgba(255, 255, 255, 0.10);
+      --text: #e8f3d4;
+      --muted: #95a995;
+      --lime: #c6f135;
+      --lime-soft: rgba(198, 241, 53, 0.12);
+      --blue: #61bfff;
+      --purple: #b486ff;
+      --amber: #f5c842;
+      --red: #ff7272;
+      --green: #43d98e;
+      --cyan: #4adfd1;
+    }
+
+    html, body { height: 100%; }
+    body {
+      background:
+        radial-gradient(circle at 12% -8%, rgba(198,241,53,.15), transparent 30%),
+        radial-gradient(circle at 92% -12%, rgba(97,191,255,.1), transparent 30%),
+        var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    #deck { position: relative; height: 100%; }
+    .slide {
+      position: absolute;
+      inset: 0;
+      padding: 28px 30px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      opacity: 0;
+      transform: translateX(46px);
+      pointer-events: none;
+      transition: opacity .34s ease, transform .34s ease;
+      overflow: auto;
+    }
+    .slide.active {
+      opacity: 1;
+      transform: translateX(0);
+      pointer-events: auto;
+    }
+
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(198, 241, 53, 0.34);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      font-weight: 700;
+      color: var(--lime);
+      background: var(--lime-soft);
+      white-space: nowrap;
+    }
+    .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 9px var(--lime);
+    }
+    .page {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    h1 {
+      font-size: clamp(30px, 4.8vw, 52px);
+      line-height: 1.02;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    h2 {
+      font-size: clamp(22px, 3.2vw, 34px);
+      line-height: 1.08;
+      letter-spacing: -0.01em;
+      margin-bottom: 2px;
+    }
+    h3 { font-size: 16px; margin-bottom: 6px; }
+    .accent { color: var(--lime); }
+    .lead {
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 1080px;
+      margin-bottom: 4px;
+    }
+
+    .grid { display: grid; gap: 10px; }
+    .g2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .g3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--surface);
+      padding: 12px;
+    }
+    .card p { color: var(--muted); font-size: 13px; }
+
+    .mini {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 6px;
+    }
+
+    .kpi {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-soft);
+      padding: 10px;
+      text-align: center;
+    }
+    .kpi .n {
+      font-size: 24px;
+      line-height: 1;
+      color: var(--lime);
+      font-weight: 800;
+      margin-bottom: 3px;
+    }
+    .kpi .l {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    ul.clean { list-style: none; display: grid; gap: 7px; }
+    ul.clean li {
+      font-size: 13px;
+      color: #d7e2d3;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    ul.clean li::before {
+      content: ">";
+      color: var(--lime);
+      font-weight: 700;
+      margin-top: 1px;
+    }
+
+    .code {
+      margin-top: 7px;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 10px;
+      background: #0d1219;
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #cdd8cf;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+
+    .chip {
+      display: inline-block;
+      border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      padding: 3px 8px;
+      border: 1px solid;
+      margin-right: 6px;
+      margin-bottom: 4px;
+    }
+    .c-blue { color: var(--blue); border-color: rgba(97,191,255,.35); background: rgba(97,191,255,.1); }
+    .c-lime { color: var(--lime); border-color: rgba(198,241,53,.35); background: rgba(198,241,53,.1); }
+    .c-purple { color: var(--purple); border-color: rgba(180,134,255,.35); background: rgba(180,134,255,.1); }
+    .c-amber { color: var(--amber); border-color: rgba(245,200,66,.35); background: rgba(245,200,66,.1); }
+    .c-green { color: var(--green); border-color: rgba(67,217,142,.35); background: rgba(67,217,142,.1); }
+    .c-red { color: var(--red); border-color: rgba(255,114,114,.35); background: rgba(255,114,114,.1); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .node {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface-soft);
+      padding: 10px;
+      min-height: 122px;
+      position: relative;
+    }
+    .node::after {
+      content: "->";
+      position: absolute;
+      right: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(198, 241, 53, .6);
+      font-weight: 800;
+      font-size: 12px;
+    }
+    .node:last-child::after { content: ""; }
+    .node h4 { font-size: 14px; margin: 5px 0; }
+    .node p { font-size: 12px; color: var(--muted); }
+
+    .timeline {
+      border: 1px dashed rgba(198,241,53,.28);
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 9px;
+      background: rgba(198,241,53,.04);
+    }
+    .t-row { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start; }
+    .t-dot {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 1px solid rgba(198,241,53,.5);
+      background: rgba(198,241,53,.13);
+      color: var(--lime); font-size: 11px; font-weight: 700;
+      display: grid; place-items: center;
+      margin-top: 1px;
+    }
+    .t-body strong { display: block; font-size: 13px; margin-bottom: 2px; }
+    .t-body p { font-size: 12px; color: var(--muted); }
+
+    .risk {
+      border-left: 3px solid var(--amber);
+      background: rgba(245,200,66,.07);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 12px;
+      color: #ddcc99;
+    }
+
+    #nav {
+      position: fixed;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(4, 7, 6, .86);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 13px;
+      z-index: 40;
+    }
+    #nav button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+      padding: 2px 7px;
+      border-radius: 5px;
+    }
+    #nav button:hover { color: var(--lime); background: rgba(198,241,53,.1); }
+
+    .dots { display: flex; gap: 4px; }
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(255,255,255,.22);
+      cursor: pointer;
+      transition: .24s;
+    }
+    .dot.active {
+      width: 19px;
+      border-radius: 999px;
+      background: var(--lime);
+    }
+
+    @media (max-width: 1080px) {
+      .flow { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+      .node:nth-child(3)::after, .node:nth-child(6)::after { content: ""; }
+      .g4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 760px) {
+      .slide { padding: 14px 12px 80px; }
+      .g2, .g3, .g4, .flow { grid-template-columns: 1fr; }
+      .node::after {
+        content: "v";
+        top: auto;
+        right: 8px;
+        bottom: -9px;
+        transform: none;
+      }
+      .node:last-child::after { content: ""; }
+    }
+  </style>
+</head>
+<body>
+  <main id="deck">
+    <section class="slide active">
+      <div class="top"><div class="badge">TacticalEdge Context Deck</div><div class="page">Page 1 / 10</div></div>
+      <h1>Architecture Deep Dive: <span class="accent">Why Session Quality Is Repeatable</span></h1>
+      <p class="lead">This version adds context first: what coaching problem exists, what architectural choices were made, and how those choices guarantee quality outputs and coherent progressive series.</p>
+      <div class="grid g4">
+        <article class="kpi"><div class="n">3</div><div class="l">System Objectives</div></article>
+        <article class="kpi"><div class="n">6</div><div class="l">Quality Gates</div></article>
+        <article class="kpi"><div class="n">10</div><div class="l">Narrative Pages</div></article>
+        <article class="kpi"><div class="n">N</div><div class="l">Series Sessions</div></article>
+      </div>
+      <div class="grid g2">
+        <article class="card">
+          <div class="mini">Product Context</div>
+          <ul class="clean">
+            <li>Coaches need fast plans under time pressure.</li>
+            <li>Generic AI output is often tactically inconsistent.</li>
+            <li>Session quality must be stable across age groups and coach levels.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="mini">Architecture Promise</div>
+          <ul class="clean">
+            <li>Constrain generation with football-specific guardrails.</li>
+            <li>Score and gate every output before delivery.</li>
+            <li>Persist artifacts to create reusable, traceable coaching IP.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Context + Requirements</div><div class="page">Page 2 / 10</div></div>
+      <h2>What We Are Actually Optimizing</h2>
+      <p class="lead">The architecture is shaped by three non-negotiables: tactical correctness, coaching usability, and operational reliability.</p>
+      <div class="grid g3">
+        <article class="card">
+          <h3>Tactical Correctness</h3>
+          <p>Outputs must reflect game model, phase, zone, and role responsibilities without tactical contradictions.</p>
+          <div class="code">Example failure to avoid:
+high-press objective + low block drill behavior</div>
+        </article>
+        <article class="card">
+          <h3>Coaching Usability</h3>
+          <p>Instructions must be teachable in a live session context, with clear setup, cues, and progression.</p>
+          <div class="code">Coach-level adaptation:
+Grassroots -> simple language
+USSF C/B+ -> advanced tactical cues</div>
+        </article>
+        <article class="card">
+          <h3>Reliability</h3>
+          <p>System should degrade gracefully on auth/network/model issues and still preserve user momentum.</p>
+          <div class="code">Policy:
+retry -> recover -> fallback
+never silently fail</div>
+        </article>
+      </div>
+      <div class="risk">Tradeoff: tighter guardrails reduce some creative variance, but substantially improve trust and repeatability for coaches.</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">System Boundaries</div><div class="page">Page 3 / 10</div></div>
+      <h2>Platform Architecture in One View</h2>
+      <p class="lead">TacticalEdge separates concerns: UI orchestration in web layer, quality and generation logic in API layer, durable artifacts in data layer.</p>
+      <div class="grid g3">
+        <article class="card">
+          <div class="chip c-blue">Web App</div>
+          <h3>Interaction + Routing</h3>
+          <ul class="clean">
+            <li>Collect session/series config from coach.</li>
+            <li>Forward auth headers and user context.</li>
+            <li>Render outputs with stable schema assumptions.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="chip c-lime">API Core</div>
+          <h3>Generation + Quality</h3>
+          <ul class="clean">
+            <li>Normalize input and apply tactical prompts.</li>
+            <li>Execute QA scoring and fixer loop.</li>
+            <li>Return typed payloads or structured errors.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <div class="chip c-purple">Data + Vault</div>
+          <h3>Persistence + Reuse</h3>
+          <ul class="clean">
+            <li>Store sessions, series, drill refs, metadata.</li>
+            <li>Enable lookup, favorites, scheduling, sharing.</li>
+            <li>Provide auditability for generated content.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="code">browser -> next/api proxy -> express service -> prompt + qa + fixer -> prisma/postgres -> response</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Core Flow</div><div class="page">Page 4 / 10</div></div>
+      <h2>End-to-End Generation Flow (Included from Previous Version)</h2>
+      <p class="lead">This is the same flow you asked to keep, now anchored with context.</p>
+      <div class="flow">
+        <article class="node"><span class="chip c-blue">1. Input</span><h4>Normalize</h4><p>Validate enums, ranges, and tactical context.</p></article>
+        <article class="node"><span class="chip c-lime">2. Prompt</span><h4>Constrain</h4><p>Encode style, progression, and output contract.</p></article>
+        <article class="node"><span class="chip c-purple">3. Generate</span><h4>Draft JSON</h4><p>Create drills, timings, cues, and diagrams.</p></article>
+        <article class="node"><span class="chip c-amber">4. QA</span><h4>Score + Gate</h4><p>Measure tactical, pedagogical, and structural quality.</p></article>
+        <article class="node"><span class="chip c-green">5. Fixer</span><h4>Repair</h4><p>Patch failing dimensions and re-evaluate.</p></article>
+        <article class="node"><span class="chip c-lime">6. Deliver</span><h4>Persist + Return</h4><p>Store artifact and return stable payload.</p></article>
+      </div>
+      <div class="code">if qa_fail -> fixer_pass -> qa_recheck
+if qa_pass -> persist -> deliver
+else -> structured_error + fallback hint</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Prompt System</div><div class="page">Page 5 / 10</div></div>
+      <h2>Prompt and Constraint Design: Why It Matters</h2>
+      <p class="lead">Prompting is treated as architecture, not copywriting. Each parameter influences tactical framing and coach-facing language.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Input Mapping Layer</h3>
+          <ul class="clean">
+            <li><strong>gameModel/phase/zone</strong> -> tactical intent and scenario conditions.</li>
+            <li><strong>ageGroup/playerLevel</strong> -> cognitive and physical complexity envelope.</li>
+            <li><strong>coachLevel</strong> -> vocabulary and instruction granularity.</li>
+            <li><strong>duration/counts</strong> -> realistic drill budget and setup scope.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Output Contract Layer</h3>
+          <ul class="clean">
+            <li>Required fields: organization, coaching points, progressions, constraints.</li>
+            <li>Time-distribution sanity checks across session phases.</li>
+            <li>Diagram compatibility with renderer expectations.</li>
+            <li>Load notes and flow coherence checks for drill order.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="code">prompt = template
++ context(gameModel, phase, zone)
++ pedagogy(ageGroup, playerLevel, coachLevel)
++ contract(required_json_fields)
++ anti-patterns(to avoid tactical contradictions)</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Quality Engine</div><div class="page">Page 6 / 10</div></div>
+      <h2>Quality Framework and Gating Strategy</h2>
+      <p class="lead">Quality is enforced through explicit dimensions, thresholds, and a deterministic pass/fail policy.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Scoring Dimensions</h3>
+          <ul class="clean">
+            <li>Tactical coherence with selected objective.</li>
+            <li>Progression quality from drill to drill.</li>
+            <li>Age/level appropriateness and safety envelope.</li>
+            <li>Coach usability in live-session execution.</li>
+          </ul>
+          <div class="code">score_total = w1*tactical + w2*progression + w3*age_fit + w4*usability</div>
+        </article>
+        <article class="card">
+          <h3>Gate Policy</h3>
+          <ul class="clean">
+            <li>Hard schema failures -> immediate fix path.</li>
+            <li>Low tactical/progression scores -> targeted fixer.</li>
+            <li>Persistent failure -> controlled, transparent error.</li>
+            <li>No silent acceptance of weak outputs.</li>
+          </ul>
+          <div class="risk">Design decision: predictable floor quality is prioritized over occasional high-variance creativity.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Fixer + Failure Modes</div><div class="page">Page 7 / 10</div></div>
+      <h2>Auto-Fix Loop and Failure Containment</h2>
+      <p class="lead">The fixer system localizes corrections so good content is retained while failing dimensions are repaired.</p>
+      <div class="grid g3">
+        <article class="card">
+          <h3>Common Failure Modes</h3>
+          <ul class="clean">
+            <li>Weak progression narrative across drills.</li>
+            <li>Coach cues too generic for chosen level.</li>
+            <li>Time allocation imbalance in session plan.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Fixer Strategy</h3>
+          <ul class="clean">
+            <li>Use QA reasons as patch instructions.</li>
+            <li>Rewrite only failing sections.</li>
+            <li>Preserve validated tactical core.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Containment Outcome</h3>
+          <ul class="clean">
+            <li>Lower user-facing failure rate.</li>
+            <li>Higher consistency in final outputs.</li>
+            <li>Clear logs for post-incident analysis.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="code">if fail_reasons:
+  patched = fixer(original, fail_reasons)
+  validated = validate(patched)
+  return validated if pass else controlled_error</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Progressive Series</div><div class="page">Page 8 / 10</div></div>
+      <h2>How Progressive Series Works (Included and Expanded)</h2>
+      <p class="lead">A progressive series is generated as a curriculum arc with continuity constraints, not as isolated session calls.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Series Timeline Logic</h3>
+          <div class="timeline">
+            <div class="t-row"><div class="t-dot">1</div><div class="t-body"><strong>Establish Base Pattern</strong><p>Build shared tactical language and core mechanics.</p></div></div>
+            <div class="t-row"><div class="t-dot">2</div><div class="t-body"><strong>Add Constraints</strong><p>Increase decision speed and environmental pressure.</p></div></div>
+            <div class="t-row"><div class="t-dot">3</div><div class="t-body"><strong>Increase Complexity</strong><p>Introduce more dynamic tactical interactions.</p></div></div>
+            <div class="t-row"><div class="t-dot">4</div><div class="t-body"><strong>Transfer to Game</strong><p>Test objective under near-match conditions.</p></div></div>
+          </div>
+        </article>
+        <article class="card">
+          <h3>Series Integrity Checks</h3>
+          <ul class="clean">
+            <li>Progression index must trend upward by design.</li>
+            <li>Duplication control across drills and language cues.</li>
+            <li>Per-session QA still required before inclusion.</li>
+            <li>Objective alignment checked across entire series.</li>
+          </ul>
+          <div class="code">series_pass = all(session.qa_pass)
+&& progression_delta >= min
+&& duplication <= max
+&& objective_alignment >= min</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Data + Operations</div><div class="page">Page 9 / 10</div></div>
+      <h2>Persistence, Traceability, and Operational Reliability</h2>
+      <p class="lead">Durable artifacts and resilient request handling are key to repeatable coach experience.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h3>Vault Data Model Value</h3>
+          <ul class="clean">
+            <li>Session/series saved with references and metadata.</li>
+            <li>Enables lookup by ref code and audit trails.</li>
+            <li>Supports favorites, scheduling, and player-plan flows.</li>
+            <li>Creates continuity between generation and execution.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Reliability Patterns</h3>
+          <ul class="clean">
+            <li>API fallback routing for local/dev connectivity variance.</li>
+            <li>Token refresh + anonymous retry for recoverable auth errors.</li>
+            <li>Stable typed responses reduce frontend fragility.</li>
+            <li>Structured logs improve MTTR on generation incidents.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="code">on_invalid_token:
+  try_refresh_once()
+  if refresh_fail: clear_auth_state()
+  retry_request(anonymous_if_allowed)</div>
+    </section>
+
+    <section class="slide">
+      <div class="top"><div class="badge">Conclusion</div><div class="page">Page 10 / 10</div></div>
+      <h2>Why This Architecture Produces Quality Sessions Consistently</h2>
+      <p class="lead">The core advantage is orchestration discipline: constrained generation + deterministic quality gates + progressive context memory + durable artifacts.</p>
+      <div class="grid g2">
+        <article class="card">
+          <h3>What Makes It Durable</h3>
+          <ul class="clean">
+            <li>Quality is measured, not assumed.</li>
+            <li>Failures are repaired, not hidden.</li>
+            <li>Series logic enforces learning progression.</li>
+            <li>Data model preserves and reuses outcomes.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Recommended Next Moves</h3>
+          <ul class="clean">
+            <li>Expose QA sub-scores in UI for transparency.</li>
+            <li>Add series progression heatmap visualization.</li>
+            <li>Track prompt version vs quality drift over time.</li>
+            <li>Define service-level quality SLO dashboards.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="grid g4">
+        <article class="kpi"><div class="n">High</div><div class="l">Tactical Fidelity</div></article>
+        <article class="kpi"><div class="n">High</div><div class="l">Coach Usability</div></article>
+        <article class="kpi"><div class="n">Low</div><div class="l">Rework Burden</div></article>
+        <article class="kpi"><div class="n">Strong</div><div class="l">Series Coherence</div></article>
+      </div>
+      <div class="code">Architecture thesis:
+repeatable quality = constrained generation
+                   + explicit QA gates
+                   + repair loop
+                   + progression-aware orchestration
+                   + persistent artifacts</div>
+    </section>
+  </main>
+
+  <nav id="nav">
+    <button id="prev" aria-label="Previous">◀</button>
+    <div class="dots" id="dots"></div>
+    <button id="next" aria-label="Next">▶</button>
+  </nav>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const dots = document.getElementById('dots');
+    let i = 0;
+
+    function paintDots() {
+      dots.innerHTML = '';
+      slides.forEach((_, idx) => {
+        const d = document.createElement('button');
+        d.className = 'dot' + (idx === i ? ' active' : '');
+        d.setAttribute('aria-label', 'Go to page ' + (idx + 1));
+        d.onclick = () => go(idx);
+        dots.appendChild(d);
+      });
+    }
+
+    function go(next) {
+      i = (next + slides.length) % slides.length;
+      slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+      paintDots();
+    }
+
+    document.getElementById('prev').onclick = () => go(i - 1);
+    document.getElementById('next').onclick = () => go(i + 1);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') go(i + 1);
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(i - 1);
+    });
+
+    paintDots();
+  </script>
+</body>
+</html>

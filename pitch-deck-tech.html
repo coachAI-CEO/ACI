@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TacticalEdge — Technical Architecture</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --lime:#ADFF2F;--lime2:rgba(173,255,47,.12);--lime3:rgba(173,255,47,.06);--lime4:rgba(173,255,47,.04);
+  --black:#050605;--dark:#060a13;--darker:#020304;
+  --panel:rgba(255,255,255,.035);--panel2:rgba(255,255,255,.065);--panel3:rgba(255,255,255,.02);
+  --border:rgba(255,255,255,.07);--border2:rgba(255,255,255,.12);
+  --text:#f1f5f9;--muted:#94a3b8;--muted2:#64748b;
+  --blue:#60a5fa;--purple:#c084fc;--amber:#fbbf24;--green:#34d399;--red:#f87171;--orange:#fb923c;--teal:#2dd4bf;
+  --code-bg:#0d1117;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  --mono:"SF Mono","Fira Code","Cascadia Code",Consolas,monospace;
+}
+html,body{height:100%;background:var(--black);color:var(--text);font-family:var(--font);overflow:hidden}
+
+/* ── DECK ── */
+#deck{width:100vw;height:100vh;position:relative}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:38px 58px;opacity:0;pointer-events:none;transition:opacity .4s ease,transform .4s ease;transform:translateX(50px)}
+.slide.active{opacity:1;pointer-events:all;transform:translateX(0)}
+.slide.exit{opacity:0;transform:translateX(-50px)}
+.slide::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(173,255,47,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(173,255,47,.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none}
+.slide::after{content:"";position:absolute;top:0;left:0;width:300px;height:300px;background:radial-gradient(circle at top left,rgba(173,255,47,.08),transparent 68%);pointer-events:none}
+
+/* ── NAV ── */
+#nav{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;z-index:100;background:rgba(6,10,19,.9);backdrop-filter:blur(14px);border:1px solid var(--border);border-radius:9999px;padding:8px 18px}
+#nav button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:3px 9px;border-radius:5px;transition:color .2s,background .2s}
+#nav button:hover{color:var(--lime);background:rgba(173,255,47,.08)}
+#dots{display:flex;gap:5px;align-items:center}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--border);cursor:pointer;transition:background .3s,width .3s}
+.dot.active{background:var(--lime);width:20px;border-radius:3px}
+#sc{font-size:11px;color:var(--muted);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+#hint{position:fixed;top:16px;right:20px;font-size:11px;color:rgba(148,163,184,.28);z-index:100;letter-spacing:.05em}
+#prog{position:fixed;top:0;left:0;height:3px;background:var(--lime);transition:width .4s ease;z-index:200;box-shadow:0 0 10px var(--lime)}
+
+/* ── SHARED ── */
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(173,255,47,.1);border:1px solid rgba(173,255,47,.25);border-radius:9999px;padding:4px 14px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--lime);margin-bottom:16px}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px var(--lime)}
+.badge-blue{background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.25);color:var(--blue)}
+.badge-blue::before{background:var(--blue);box-shadow:none}
+.badge-purple{background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.25);color:var(--purple)}
+.badge-purple::before{background:var(--purple);box-shadow:none}
+.badge-red{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.25);color:var(--red)}
+.badge-red::before{background:var(--red);box-shadow:none}
+h1{font-size:clamp(30px,4.5vw,54px);font-weight:900;line-height:1.08;letter-spacing:-.02em}
+h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spacing:-.02em}
+.accent{color:var(--lime)}
+.muted{color:var(--muted)}
+.lead{font-size:clamp(12px,1.3vw,16px);color:var(--muted);line-height:1.65;max-width:640px}
+.logo-img{width:56px;height:56px;object-fit:contain;margin-bottom:14px;filter:drop-shadow(0 0 12px rgba(173,255,47,.4))}
+
+/* CODE BLOCKS */
+.code-block{background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px;font-family:var(--mono);font-size:11px;line-height:1.65;color:#e2e8f0;overflow:hidden;position:relative}
+.code-block::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--lime),transparent)}
+.tok-kw{color:#c084fc}   /* keywords */
+.tok-str{color:#86efac}  /* strings */
+.tok-num{color:#fbbf24}  /* numbers */
+.tok-fn{color:#60a5fa}   /* functions */
+.tok-cm{color:#6b7280;font-style:italic} /* comments */
+.tok-const{color:#f97316} /* constants */
+.tok-type{color:#2dd4bf}  /* types */
+.tok-op{color:#f87171}    /* operators */
+
+/* PILL LABELS */
+.pill{display:inline-block;padding:2px 9px;border-radius:9999px;font-size:9px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.pill-lime{background:var(--lime2);border:1px solid rgba(173,255,47,.3);color:var(--lime)}
+.pill-blue{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:var(--blue)}
+.pill-purple{background:rgba(192,132,252,.1);border:1px solid rgba(192,132,252,.25);color:var(--purple)}
+.pill-amber{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--amber)}
+.pill-red{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:var(--red)}
+.pill-green{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:var(--green)}
+.pill-teal{background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.25);color:var(--teal)}
+
+/* FLOW ARROW */
+.flow-arrow{text-align:center;color:rgba(173,255,47,.5);font-size:18px;font-weight:900;line-height:1;margin:2px 0;flex-shrink:0}
+.flow-arrow-h{color:rgba(173,255,47,.5);font-size:16px;font-weight:900}
+
+/* ═══ S1 — COVER ═══ */
+#s1{text-align:center}
+#s1 h1{margin-bottom:14px}
+#s1 .lead{margin:0 auto 28px}
+.tech-stack-row{display:flex;gap:10px;justify-content:center;margin-bottom:28px;flex-wrap:wrap}
+.ts-chip{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:7px}
+.ts-chip span{font-size:16px}
+.principle-row{display:flex;gap:14px}
+.principle{background:var(--lime3);border:1px solid rgba(173,255,47,.15);border-radius:10px;padding:12px 16px;text-align:center;flex:1}
+.principle .p-val{font-size:20px;font-weight:900;color:var(--lime)}
+.principle .p-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.09em;margin-top:3px}
+
+/* ═══ S2 — SYSTEM ARCHITECTURE ═══ */
+#s2{justify-content:flex-start;padding-top:44px}
+#s2 .top{text-align:center;margin-bottom:20px;width:100%}
+.arch-full{width:100%;max-width:960px}
+.arch-tier{margin-bottom:10px}
+.tier-label{font-size:9px;font-weight:900;letter-spacing:.15em;text-transform:uppercase;color:var(--muted2);margin-bottom:6px;padding-left:4px;display:flex;align-items:center;gap:8px}
+.tier-label::after{content:"";flex:1;height:1px;background:var(--border)}
+.tier-row{display:flex;gap:8px}
+.tier-box{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:11px 13px;display:flex;flex-direction:column;gap:4px}
+.tier-box.lime-b{border-color:rgba(173,255,47,.25);background:var(--lime3)}
+.tier-box.blue-b{border-color:rgba(96,165,250,.2);background:rgba(96,165,250,.04)}
+.tier-box.purple-b{border-color:rgba(192,132,252,.2);background:rgba(192,132,252,.04)}
+.tier-box.amber-b{border-color:rgba(251,191,36,.2);background:rgba(251,191,36,.04)}
+.tier-box h3{font-size:12px;font-weight:800}
+.tier-box p{font-size:10px;color:var(--muted);line-height:1.45}
+.tier-box .tb-icon{font-size:16px;margin-bottom:3px}
+.arch-conn{display:flex;justify-content:center;gap:8px;margin:3px 0}
+.arch-conn span{color:rgba(173,255,47,.35);font-size:13px}
+
+/* ═══ S3 — GENERATION PIPELINE ═══ */
+#s3{justify-content:flex-start;padding-top:42px}
+#s3 .top{text-align:center;margin-bottom:16px;width:100%}
+.pipeline-wrap{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.pipeline-left{width:280px;flex-shrink:0}
+.pipeline-right{flex:1}
+.pipeline-steps{display:flex;flex-direction:column}
+.ps-row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;position:relative}
+.ps-row:not(:last-child)::after{content:"";position:absolute;left:15px;top:44px;bottom:-2px;width:2px;background:linear-gradient(to bottom,rgba(173,255,47,.3),rgba(173,255,47,.05));z-index:0}
+.ps-num{width:32px;height:32px;border-radius:50%;flex-shrink:0;border:2px solid var(--lime);background:rgba(173,255,47,.1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--lime);z-index:1}
+.ps-num.red-n{border-color:var(--red);background:rgba(239,68,68,.1);color:var(--red)}
+.ps-num.blue-n{border-color:var(--blue);background:rgba(96,165,250,.1);color:var(--blue)}
+.ps-num.purple-n{border-color:var(--purple);background:rgba(192,132,252,.1);color:var(--purple)}
+.ps-num.amber-n{border-color:var(--amber);background:rgba(251,191,36,.1);color:var(--amber)}
+.ps-num.green-n{border-color:var(--green);background:rgba(52,211,153,.1);color:var(--green)}
+.ps-body{flex:1}
+.ps-body .psb-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.ps-body .psb-desc{font-size:11px;color:var(--muted);line-height:1.45}
+.ps-body .psb-timing{font-size:10px;color:var(--muted2);background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:2px 8px;margin-top:5px;display:inline-block;font-family:var(--mono)}
+.timeline-meta{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tl-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.tl-item:last-child{border-bottom:none;padding-bottom:0}
+.tl-key{font-size:11px;color:var(--muted)}
+.tl-val{font-size:12px;font-weight:700;font-family:var(--mono)}
+.tl-val.lime{color:var(--lime)}
+.tl-val.amber{color:var(--amber)}
+.tl-val.red{color:var(--red)}
+.model-fallback{background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:10px;line-height:1.7;margin-top:8px}
+
+/* ═══ S4 — PROMPT ENGINEERING ═══ */
+#s4{justify-content:flex-start;padding-top:40px}
+#s4 .top{text-align:center;margin-bottom:16px;width:100%}
+.prompt-layout{display:flex;gap:14px;width:100%;max-width:960px}
+.prompt-left{width:300px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.prompt-right{flex:1;display:flex;flex-direction:column;gap:10px}
+.pcard{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.pcard .pc-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.lock-item{display:flex;gap:8px;align-items:flex-start;margin-bottom:7px}
+.lock-item:last-child{margin-bottom:0}
+.lock-item .li-icon{font-size:13px;flex-shrink:0;margin-top:1px}
+.lock-item strong{font-size:12px;display:block;margin-bottom:2px}
+.lock-item p{font-size:11px;color:var(--muted);line-height:1.4}
+.requirement-list{display:flex;flex-direction:column;gap:4px}
+.req-row{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid var(--border)}
+.req-row:last-child{border-bottom:none}
+.req-row .rr-check{font-size:11px;flex-shrink:0;margin-top:1px}
+.req-row p{font-size:11px;color:var(--muted);line-height:1.4}
+.req-row strong{color:var(--text);font-size:11px}
+
+/* ═══ S5 — SCHEMA & VALIDATION ═══ */
+#s5{justify-content:flex-start;padding-top:40px}
+#s5 .top{text-align:center;margin-bottom:16px;width:100%}
+.schema-layout{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.schema-left{flex:1.2;display:flex;flex-direction:column;gap:10px}
+.schema-right{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.sanitize-steps{display:flex;flex-direction:column;gap:5px}
+.ss-row{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:9px 11px;display:flex;gap:9px;align-items:flex-start}
+.ss-row .sr-step{width:20px;height:20px;border-radius:50%;background:rgba(173,255,47,.12);border:1px solid rgba(173,255,47,.25);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:var(--lime);flex-shrink:0}
+.ss-row strong{font-size:12px;display:block;margin-bottom:2px}
+.ss-row p{font-size:11px;color:var(--muted);line-height:1.4}
+.critical-box{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:9px;padding:10px 13px}
+.critical-box .cb-title{font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.critical-box .cb-title::before{content:"🚨";font-size:12px}
+.critical-item{display:flex;gap:7px;align-items:flex-start;margin-bottom:5px}
+.critical-item:last-child{margin-bottom:0}
+.critical-item strong{font-size:11px;color:var(--red)}
+.critical-item p{font-size:11px;color:var(--muted);line-height:1.4}
+
+/* ═══ S6 — QA SCORING ═══ */
+#s6{justify-content:flex-start;padding-top:40px}
+#s6 .top{text-align:center;margin-bottom:16px;width:100%}
+.qa-layout{display:flex;gap:14px;width:100%;max-width:960px}
+.qa-left{flex:1;display:flex;flex-direction:column;gap:10px}
+.qa-right{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.score-grid{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.sg-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.score-row{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+.score-row:last-child{margin-bottom:0}
+.sr-name{font-size:11px;color:var(--muted);width:90px;flex-shrink:0}
+.sr-dots{display:flex;gap:3px}
+.sr-dot{width:16px;height:16px;border-radius:4px;background:var(--border)}
+.sr-dot.filled{background:var(--lime)}
+.sr-dot.filled.y4{background:var(--amber)}
+.sr-dot.filled.r2{background:var(--red)}
+.sr-label{font-size:10px;color:var(--muted);flex:1;line-height:1.4}
+.threshold-table{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.tt-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.tt-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+.tt-row:last-child{border-bottom:none;padding-bottom:0}
+.tt-code{font-family:var(--mono);font-size:11px;font-weight:800;width:110px;flex-shrink:0}
+.tt-cond{font-size:11px;color:var(--muted);flex:1;line-height:1.35}
+.tt-action{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.qa-flow{display:flex;flex-direction:column;gap:5px}
+.qf-step{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:9px 11px;display:flex;gap:8px;align-items:flex-start}
+.qf-icon{font-size:14px;flex-shrink:0}
+.qf-step strong{font-size:12px;display:block;margin-bottom:2px}
+.qf-step p{font-size:11px;color:var(--muted);line-height:1.4}
+
+/* ═══ S7 — FIXER PIPELINE ═══ */
+#s7{justify-content:flex-start;padding-top:40px}
+#s7 .top{text-align:center;margin-bottom:16px;width:100%}
+.fixer-layout{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.fixer-left{flex:1.1;display:flex;flex-direction:column;gap:10px}
+.fixer-right{width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.decision-tree{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.dt-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.dt-root{text-align:center;margin-bottom:8px}
+.dt-condition{display:inline-block;background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:7px 16px;font-family:var(--mono);font-size:11px;color:var(--text)}
+.dt-branches{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px}
+.dt-branch{display:flex;flex-direction:column;align-items:center;gap:5px}
+.dt-branch::before{content:"↓";color:rgba(173,255,47,.4);font-size:13px}
+.dt-cond-label{font-size:9px;color:var(--muted);text-align:center;line-height:1.35}
+.dt-result{padding:6px 10px;border-radius:7px;font-size:10px;font-weight:900;letter-spacing:.07em;text-align:center;width:100%}
+.dr-ok{background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);color:var(--green)}
+.dr-patch{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.25);color:var(--amber)}
+.dr-regen{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.25);color:var(--red)}
+.dr-noqa{background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+.fixer-prompt{background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px 14px}
+.fp-header{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.fp-persona{background:rgba(173,255,47,.07);border:1px solid rgba(173,255,47,.15);border-radius:6px;padding:7px 10px;font-size:11px;font-family:var(--mono);color:var(--text);margin-bottom:7px;line-height:1.5}
+.fp-constraint{font-size:11px;font-family:var(--mono);color:var(--muted);display:flex;gap:7px;margin-bottom:4px;line-height:1.4}
+.fp-constraint::before{content:"→";color:var(--lime);flex-shrink:0}
+.env-flags{display:flex;flex-direction:column;gap:5px}
+.ef-row{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:8px 11px;display:flex;justify-content:space-between;align-items:center}
+.ef-key{font-family:var(--mono);font-size:10px;color:var(--blue)}
+.ef-val{font-family:var(--mono);font-size:10px;font-weight:800}
+.ef-val.on{color:var(--green)}
+.ef-val.off{color:var(--muted2)}
+.ef-val.num{color:var(--amber)}
+.ef-desc{font-size:10px;color:var(--muted);line-height:1.35;margin-top:3px}
+
+/* ═══ S8 — COACH LEVEL ADAPTATION ═══ */
+#s8{justify-content:flex-start;padding-top:40px}
+#s8 .top{text-align:center;margin-bottom:16px;width:100%}
+.adapt-layout{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.adapt-left{flex:1;display:flex;flex-direction:column;gap:10px}
+.adapt-right{width:270px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.language-transform{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.lt-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.lt-row{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.lt-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.lt-from{font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:5px;padding:4px 8px;line-height:1.4}
+.lt-arrow{color:var(--muted2);font-size:12px;text-align:center}
+.lt-to{font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(52,211,153,.07);border:1px solid rgba(52,211,153,.15);border-radius:5px;padding:4px 8px;line-height:1.4}
+.diagram-adapt{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.da-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.da-row{display:flex;gap:12px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.da-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.da-level{font-size:10px;font-weight:800;width:80px;flex-shrink:0;margin-top:1px}
+.da-specs{display:flex;flex-wrap:wrap;gap:4px}
+.sentence-limit{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.sl-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.sl-example{background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:8px 10px;font-size:10px;font-family:var(--mono);line-height:1.55}
+
+/* ═══ S9 — DIAGRAM GENERATION ═══ */
+#s9{justify-content:flex-start;padding-top:40px}
+#s9 .top{text-align:center;margin-bottom:16px;width:100%}
+.diagram-layout{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.diagram-left{flex:1;display:flex;flex-direction:column;gap:10px}
+.diagram-right{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.coord-system{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;position:relative;overflow:hidden}
+.cs-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+/* Mini pitch coordinate diagram */
+.mini-pitch{width:100%;height:90px;background:#1a3a1a;border:1px solid rgba(255,255,255,.2);border-radius:6px;position:relative;overflow:hidden}
+.mp-line{position:absolute;background:rgba(255,255,255,.3)}
+.mp-coord{position:absolute;font-size:8px;font-family:var(--mono);color:rgba(255,255,255,.5)}
+.mp-player{position:absolute;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:900;transform:translate(-50%,-50%);border:1.5px solid rgba(255,255,255,.7)}
+.mp-att{background:#e53e3e;color:#fff}
+.mp-def{background:#3182ce;color:#fff}
+.arrow-types{display:flex;flex-direction:column;gap:5px}
+.at-row{display:flex;align-items:center;gap:10px}
+.at-row .at-visual{width:50px;flex-shrink:0}
+.at-row strong{font-size:11px;color:var(--text)}
+.at-row p{font-size:10px;color:var(--muted)}
+.enrichment-flow{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.ef-step{display:flex;gap:8px;align-items:flex-start}
+.ef-step .ef-num{width:18px;height:18px;border-radius:50%;background:rgba(173,255,47,.12);border:1px solid rgba(173,255,47,.2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:var(--lime);flex-shrink:0}
+.ef-step strong{font-size:11px;display:block;margin-bottom:2px}
+.ef-step p{font-size:10px;color:var(--muted);line-height:1.4}
+.player-schema{background:var(--code-bg);border:1px solid rgba(255,255,255,.1);border-radius:9px;padding:10px 12px;font-family:var(--mono);font-size:10px;line-height:1.65;color:#e2e8f0}
+
+/* ═══ S10 — OBSERVABILITY ═══ */
+#s10{justify-content:flex-start;padding-top:40px}
+#s10 .top{text-align:center;margin-bottom:16px;width:100%}
+.obs-layout{display:flex;gap:14px;width:100%;max-width:960px;align-items:flex-start}
+.obs-left{flex:1;display:flex;flex-direction:column;gap:10px}
+.obs-right{width:270px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.metrics-schema{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.ms-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.ms-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.ms-field{background:var(--panel3);border:1px solid var(--border);border-radius:6px;padding:5px 9px}
+.ms-field .mf-name{font-family:var(--mono);font-size:10px;color:var(--blue)}
+.ms-field .mf-type{font-size:9px;color:var(--muted)}
+.quality-gates{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.qg-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:9px}
+.qg-row{background:rgba(173,255,47,.05);border:1px solid rgba(173,255,47,.15);border-radius:8px;padding:9px 11px;margin-bottom:6px}
+.qg-row:last-child{margin-bottom:0}
+.qg-row .qgr-flag{font-family:var(--mono);font-size:10px;color:var(--amber);margin-bottom:3px}
+.qg-row p{font-size:11px;color:var(--muted);line-height:1.4}
+.error-codes{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.ec-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.ec-row{display:flex;align-items:flex-start;gap:9px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.ec-row:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.ec-code{font-family:var(--mono);font-size:10px;font-weight:800;color:var(--red);background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);border-radius:4px;padding:2px 7px;flex-shrink:0}
+.ec-row p{font-size:10px;color:var(--muted);line-height:1.4}
+.video-pipeline{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.vp-label{font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.vp-step{display:flex;gap:8px;margin-bottom:5px;align-items:flex-start}
+.vp-step .vps-num{width:18px;height:18px;border-radius:50%;background:rgba(192,132,252,.12);border:1px solid rgba(192,132,252,.2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;color:var(--purple);flex-shrink:0}
+.vp-step strong{font-size:11px;display:block;margin-bottom:2px}
+.vp-step p{font-size:10px;color:var(--muted);line-height:1.4}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<div id="hint">← → arrow keys</div>
+<div id="deck">
+
+<!-- ═══ S1 — COVER ═══ -->
+<section class="slide active" id="s1">
+  <img src="apps/web/public/images/logo.png" alt="TacticalEdge" class="logo-img"/>
+  <div class="badge">TECHNICAL ARCHITECTURE</div>
+  <h1>How TacticalEdge<br/><span class="accent">guarantees session quality</span></h1>
+  <p class="lead" style="margin:14px auto 24px;">
+    A multi-stage AI pipeline — prompt engineering, schema validation, QA scoring, automated fixing, and coach-level adaptation — engineered so that every generated session is field-ready.
+  </p>
+  <div class="tech-stack-row">
+    <div class="ts-chip"><span>🤖</span>Google Gemini (Primary: gemini-3-flash-preview)</div>
+    <div class="ts-chip"><span>🗄</span>Prisma + PostgreSQL (Supabase)</div>
+    <div class="ts-chip"><span>⚡</span>Next.js + Express TypeScript</div>
+    <div class="ts-chip"><span>✅</span>Zod Schema Validation</div>
+  </div>
+  <div class="principle-row">
+    <div class="principle"><div class="p-val">Multi-Stage</div><div class="p-lbl">Validation Pipeline</div></div>
+    <div class="principle"><div class="p-val">9-Dimension</div><div class="p-lbl">QA Scoring</div></div>
+    <div class="principle"><div class="p-val">Auto-Fix</div><div class="p-lbl">LLM Patcher</div></div>
+    <div class="principle"><div class="p-val">94+</div><div class="p-lbl">Language Adaptations</div></div>
+    <div class="principle"><div class="p-val">Strict Gates</div><div class="p-lbl">Quality Enforcement</div></div>
+  </div>
+</section>
+
+<!-- ═══ S2 — SYSTEM ARCHITECTURE ═══ -->
+<section class="slide" id="s2">
+  <div class="top">
+    <div class="badge badge-blue">SYSTEM ARCHITECTURE</div>
+    <h2>Three-tier platform —<br/><span class="accent">client, API, AI + data</span></h2>
+  </div>
+  <div class="arch-full">
+
+    <div class="arch-tier">
+      <div class="tier-label">CLIENT LAYER — Next.js 16 · React 19 · Tailwind CSS 4 · Vercel</div>
+      <div class="tier-row">
+        <div class="tier-box blue-b"><div class="tb-icon">🎨</div><h3>Coach UI</h3><p>Session builder, drill generator, vault, calendar, AI chat — all React client components</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">📄</div><h3>PDF Export</h3><p>Player plans + session runsheets rendered to PDF via server action + pdfkit</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">📊</div><h3>Admin Dashboard</h3><p>Usage metrics, QA analytics, session regeneration, user management</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">💳</div><h3>Stripe Billing</h3><p>Subscription tiers, checkout, customer portal — Stripe webhooks on API</p></div>
+      </div>
+    </div>
+
+    <div class="arch-conn"><span>↕</span><span style="font-size:10px;color:var(--muted)">HTTPS · JWT Auth · Zod-validated JSON</span><span>↕</span></div>
+
+    <div class="arch-tier">
+      <div class="tier-label">API LAYER — Express 5 · TypeScript · Node.js · Render.com</div>
+      <div class="tier-row">
+        <div class="tier-box lime-b"><div class="tb-icon">⚡</div><h3>Generation Services</h3><p>session.ts · drill.ts · progressive-series.ts · player-plan.ts · skill-focus.ts</p></div>
+        <div class="tier-box lime-b"><div class="tb-icon">🔍</div><h3>QA + Fixer</h3><p>qa.ts · fixer.ts — 9-dimension scoring, PATCHABLE/NEEDS_REGEN logic, LLM patcher</p></div>
+        <div class="tier-box lime-b"><div class="tb-icon">🗺</div><h3>Diagram Engine</h3><p>diagram.ts · diagram-enrichment.ts — SVG coordinate generation + re-enrichment</p></div>
+        <div class="tier-box lime-b"><div class="tb-icon">🎬</div><h3>Video Analysis</h3><p>routes-video-analysis.ts — video upload, Gemini multimodal, severity ranking</p></div>
+      </div>
+    </div>
+
+    <div class="arch-conn"><span>↕</span><span style="font-size:10px;color:var(--muted)">Gemini API · Prisma ORM</span><span>↕</span></div>
+
+    <div class="arch-tier">
+      <div class="tier-label">DATA + AI LAYER — Google Gemini · Supabase PostgreSQL · Supabase Storage</div>
+      <div class="tier-row">
+        <div class="tier-box purple-b"><div class="tb-icon">🤖</div><h3>Gemini (Primary)</h3><p>gemini-3-flash-preview — session gen (90s), drill gen (45s), QA review (60s), chat (30s)</p></div>
+        <div class="tier-box purple-b"><div class="tb-icon">🔄</div><h3>Gemini (Fallback)</h3><p>gemini-2.5-flash — auto-failover on transient errors with exponential backoff</p></div>
+        <div class="tier-box amber-b"><div class="tb-icon">🗄</div><h3>PostgreSQL</h3><p>Sessions · Drills · QAReports · APIMetrics · Users · Subscriptions — Prisma 6.19</p></div>
+        <div class="tier-box amber-b"><div class="tb-icon">📦</div><h3>Supabase Storage</h3><p>Video upload bucket for analysis — presigned URLs, file lifecycle management</p></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══ S3 — GENERATION PIPELINE ═══ -->
+<section class="slide" id="s3">
+  <div class="top">
+    <div class="badge">GENERATION PIPELINE</div>
+    <h2>9 stages, coach click<br/>to <span class="accent">vault-stored session</span></h2>
+  </div>
+  <div class="pipeline-wrap">
+    <div class="pipeline-left">
+      <div class="timeline-meta">
+        <div class="tl-item"><span class="tl-key">Session gen timeout</span><span class="tl-val amber">90 000 ms</span></div>
+        <div class="tl-item"><span class="tl-key">Drill gen timeout</span><span class="tl-val lime">45 000 ms</span></div>
+        <div class="tl-item"><span class="tl-key">Session QA timeout</span><span class="tl-val lime">60 000 ms</span></div>
+        <div class="tl-item"><span class="tl-key">Drill QA timeout</span><span class="tl-val lime">40 000 ms</span></div>
+        <div class="tl-item"><span class="tl-key">Chat timeout</span><span class="tl-val lime">30 000 ms</span></div>
+        <div class="tl-item"><span class="tl-key">Max retries (default)</span><span class="tl-val amber">0</span></div>
+        <div class="tl-item"><span class="tl-key">Quota error policy</span><span class="tl-val red">FAIL FAST</span></div>
+        <div class="tl-item"><span class="tl-key">Transient error policy</span><span class="tl-val lime">BACKOFF + RETRY</span></div>
+        <div class="tl-item"><span class="tl-key">Fallback model</span><span class="tl-val" style="color:var(--purple)">gemini-2.5-flash</span></div>
+      </div>
+      <div class="model-fallback">
+<span class="tok-kw">const</span> <span class="tok-fn">callGemini</span> = <span class="tok-kw">async</span> (prompt) => {<br/>
+&nbsp; <span class="tok-kw">try</span> {<br/>
+&nbsp;&nbsp;&nbsp;<span class="tok-kw">return await</span> <span class="tok-fn">primary</span>(prompt);<br/>
+&nbsp; } <span class="tok-kw">catch</span> (e) {<br/>
+&nbsp;&nbsp;&nbsp;<span class="tok-kw">if</span> (<span class="tok-fn">isQuota</span>(e)) <span class="tok-kw">throw</span> e; <span class="tok-cm">// no retry</span><br/>
+&nbsp;&nbsp;&nbsp;<span class="tok-kw">if</span> (<span class="tok-fn">isTransient</span>(e))<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="tok-kw">return await</span> <span class="tok-fn">fallback</span>(prompt);<br/>
+&nbsp;&nbsp;&nbsp;<span class="tok-kw">throw</span> e;<br/>
+&nbsp; }<br/>
+};
+      </div>
+    </div>
+    <div class="pipeline-right">
+      <div class="pipeline-steps">
+        <div class="ps-row"><div class="ps-num">1</div><div class="ps-body"><div class="psb-title">Input Validation + Auth<span class="pill pill-blue">Zod</span></div><div class="psb-desc">Validate ageGroup, gameModelId, formation, coachLevel. Check user permissions and monthly generation limits.</div></div></div>
+        <div class="ps-row"><div class="ps-num blue-n">2</div><div class="ps-body"><div class="psb-title">Build Structured Prompt<span class="pill pill-lime">Prompt Eng.</span></div><div class="psb-desc">Inject game model lock, phase lock, coach level profile, formation-derived roles, diagram complexity rules, hard constraints.</div></div></div>
+        <div class="ps-row"><div class="ps-num purple-n">3</div><div class="ps-body"><div class="psb-title">Gemini Generation Call<span class="pill pill-purple">LLM</span></div><div class="psb-desc">POST to Gemini API. Primary model first. 90s timeout (session) / 45s (drill). Fail-fast on quota, backoff on transient.</div><div class="psb-timing">gemini-3-flash-preview · 90s timeout · 0 retries</div></div></div>
+        <div class="ps-row"><div class="ps-num">4</div><div class="ps-body"><div class="psb-title">JSON Parse + Sanitize<span class="pill pill-amber">Transform</span></div><div class="psb-desc">Strip markdown fences. Merge diagramV1→diagram. Convert area dimensions string→number. Fix age mentions. Normalize progressions array.</div></div></div>
+        <div class="ps-row"><div class="ps-num">5</div><div class="ps-body"><div class="psb-title">Youth Guards + Post-Process<span class="pill pill-lime">Rules</span></div><div class="psb-desc">Apply 94+ language transforms (grassroots). Enforce game model constraints (≥8 cues). Canonicalize equipment. Infer goalMode. Align diagram orientation.</div></div></div>
+        <div class="ps-row"><div class="ps-num amber-n">6</div><div class="ps-body"><div class="psb-title">Diagram Re-enrichment<span class="pill pill-amber">Conditional LLM</span></div><div class="psb-desc">If diagram.players is empty or malformed, call Gemini again with enrichment prompt to regenerate diagram coordinates only.</div></div></div>
+        <div class="ps-row"><div class="ps-num red-n">7</div><div class="ps-body"><div class="psb-title">QA Review Call<span class="pill pill-red">LLM Grader</span></div><div class="psb-desc">Second Gemini call scores output on 9 dimensions (1–5 each). Returns structured JSON with pass/fail, scores, notes.</div><div class="psb-timing">60s timeout · 0 retries · separate LLM call</div></div></div>
+        <div class="ps-row"><div class="ps-num">8</div><div class="ps-body"><div class="psb-title">Fixer Decision + Patch<span class="pill pill-amber">Auto-fix</span></div><div class="psb-desc">Compute OK / PATCHABLE / NEEDS_REGEN from QA scores. If PATCHABLE/REGEN and USE_LLM_FIXER=1, call Gemini fixer prompt. Merge patch onto original.</div></div></div>
+        <div class="ps-row"><div class="ps-num green-n">9</div><div class="ps-body"><div class="psb-title">Persist + Return<span class="pill pill-green">Database</span></div><div class="psb-desc">Save Session + standalone Drills + QAReport + APIMetrics to PostgreSQL. Return session, qa, fixDecision, telemetry to client.</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S4 — PROMPT ENGINEERING ═══ -->
+<section class="slide" id="s4">
+  <div class="top">
+    <div class="badge">PROMPT ENGINEERING</div>
+    <h2>Structured constraints force<br/><span class="accent">deterministic, valid output</span></h2>
+  </div>
+  <div class="prompt-layout">
+    <div class="prompt-left">
+      <div class="pcard">
+        <div class="pc-label">Game Model Lock — embedded in every prompt</div>
+        <div class="lock-item"><div class="li-icon">🤝</div><div><strong>POSSESSION</strong><p>Ball security + positional support + line-breaking. Min 8 cues across session. CONDITIONED_GAME must test same decisions.</p></div></div>
+        <div class="lock-item"><div class="li-icon">⚡</div><div><strong>PRESSING</strong><p>Coordinated regains via triggers, compactness, pressing angles. Press trigger must appear in every drill's coaching points.</p></div></div>
+        <div class="lock-item"><div class="li-icon">↔</div><div><strong>TRANSITION</strong><p>First action quality after regain/loss in 3–6 sec windows. Transition cue in every drill description.</p></div></div>
+        <div class="lock-item"><div class="li-icon">🤖</div><div><strong>COACHAI</strong><p>Balanced moments with clear switching cues. Let AI decide model distribution across phases.</p></div></div>
+      </div>
+      <div class="pcard">
+        <div class="pc-label">Phase Lock — per-session context</div>
+        <div class="lock-item"><div class="li-icon">⬆</div><div><strong>ATTACKING</strong><p>"Build from secure progression to chance creation and finishing quality. Include width/depth support."</p></div></div>
+        <div class="lock-item"><div class="li-icon">⬇</div><div><strong>DEFENDING</strong><p>"Build pressing/containment structure, compactness, and deny-space priorities."</p></div></div>
+        <div class="lock-item"><div class="li-icon">⇄</div><div><strong>TRANSITION_TO_ATTACK</strong><p>"First action quality after regain in 0–6 second windows."</p></div></div>
+      </div>
+    </div>
+    <div class="prompt-right">
+      <div class="pcard">
+        <div class="pc-label">Hard Output Rules (embedded in prompt — always enforced)</div>
+        <div class="requirement-list">
+          <div class="req-row"><div class="rr-check">🚫</div><p><strong>organization MUST be object</strong> — never a string. Must contain: setupSteps[], area{}, rotation, restarts, scoring.</p></div>
+          <div class="req-row"><div class="rr-check">🔢</div><p><strong>area.lengthYards + widthYards MUST be numbers</strong> — string values → clarity score = 2 → QA FAIL</p></div>
+          <div class="req-row"><div class="rr-check">👥</div><p><strong>diagram.players MUST be populated</strong> — empty array is forbidden. Every player from setupSteps must appear.</p></div>
+          <div class="req-row"><div class="rr-check">📐</div><p><strong>diagram.pitch.showZones MUST be false</strong> — prevents auto-zone overlay collisions in renderer.</p></div>
+          <div class="req-row"><div class="rr-check">📝</div><p><strong>Use <code style="color:var(--lime)">progressions</code> array</strong> — never <code style="color:var(--red)">progression</code> (singular). Sanitizer removes forbidden key.</p></div>
+          <div class="req-row"><div class="rr-check">🎂</div><p><strong>Age consistency</strong> — ALL age mentions in drill text must exactly match input.ageGroup. Mismatches → clarity = 2.</p></div>
+          <div class="req-row"><div class="rr-check">🔢</div><p><strong>Player count consistency</strong> — description, setupSteps, numbersOnField, diagram.players.length must all agree.</p></div>
+          <div class="req-row"><div class="rr-check">📋</div><p><strong>setupSteps: 5–8 items</strong> — each must start with a verb. Checked by QA structure dimension.</p></div>
+          <div class="req-row"><div class="rr-check">💬</div><p><strong>coachingPoints ≥ 3 items</strong> — specific, actionable. Generic cues → clarity score degraded.</p></div>
+        </div>
+      </div>
+      <div class="code-block" style="margin-top:4px">
+<span class="tok-cm">// Session duration timing (hard-coded in prompt)</span><br/>
+<span class="tok-kw">const</span> durations60 = {<br/>
+&nbsp;&nbsp;WARMUP: <span class="tok-num">10</span>, TECHNICAL: <span class="tok-num">15</span>,<br/>
+&nbsp;&nbsp;TACTICAL: <span class="tok-num">20</span>, CONDITIONED_GAME: <span class="tok-num">12</span>, COOLDOWN: <span class="tok-num">3</span><br/>
+};<br/>
+<span class="tok-kw">const</span> durations90 = {<br/>
+&nbsp;&nbsp;WARMUP: <span class="tok-num">15</span>, TECHNICAL: <span class="tok-num">20</span>,<br/>
+&nbsp;&nbsp;TACTICAL: <span class="tok-num">25</span>, CONDITIONED_GAME: <span class="tok-num">25</span>, COOLDOWN: <span class="tok-num">5</span><br/>
+};
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S5 — SCHEMA & VALIDATION ═══ -->
+<section class="slide" id="s5">
+  <div class="top">
+    <div class="badge">SCHEMA VALIDATION &amp; SANITIZATION</div>
+    <h2>LLM output is <span class="accent">never trusted raw</span><br/>— every field is validated and normalized</h2>
+  </div>
+  <div class="schema-layout">
+    <div class="schema-left">
+      <div class="pcard">
+        <div class="pc-label">sanitizeDrillOutput() — 7-step normalization (runs before QA)</div>
+        <div class="sanitize-steps">
+          <div class="ss-row"><div class="sr-step">1</div><div><strong>Remove forbidden keys</strong><p>Strip <code style="color:var(--red);font-family:var(--mono);font-size:10px">diagramV1</code> and singular <code style="color:var(--red);font-family:var(--mono);font-size:10px">progression</code> — LLM sometimes uses legacy key names</p></div></div>
+          <div class="ss-row"><div class="sr-step">2</div><div><strong>Merge diagram aliases</strong><p>If only <code style="color:var(--amber);font-family:var(--mono);font-size:10px">diagramV1</code> exists, copy to <code style="color:var(--lime);font-family:var(--mono);font-size:10px">diagram</code>. If both present, <code style="color:var(--lime);font-family:var(--mono);font-size:10px">diagram</code> wins.</p></div></div>
+          <div class="ss-row"><div class="sr-step">3</div><div><strong>Coerce area dimensions to numbers</strong><p><code style="color:var(--red);font-family:var(--mono);font-size:10px">"30 yards"</code> → <code style="color:var(--lime);font-family:var(--mono);font-size:10px">30</code>. <code style="color:var(--red);font-family:var(--mono);font-size:10px">"40"</code> → <code style="color:var(--lime);font-family:var(--mono);font-size:10px">40</code>. Critical: strings fail QA clarity = 2.</p></div></div>
+          <div class="ss-row"><div class="sr-step">4</div><div><strong>Fix age mentions</strong><p>Regex-replace all age variants to exactly match <code style="color:var(--lime);font-family:var(--mono);font-size:10px">input.ageGroup</code> — "U-14", "u14", "14-year-olds" → "U14"</p></div></div>
+          <div class="ss-row"><div class="sr-step">5</div><div><strong>Normalize progressions to array</strong><p>If <code style="color:var(--amber);font-family:var(--mono);font-size:10px">progressions</code> is a string, wrap in array. Merge stray <code style="color:var(--red);font-family:var(--mono);font-size:10px">progression</code> entries into array.</p></div></div>
+          <div class="ss-row"><div class="sr-step">6</div><div><strong>Convert string organization</strong><p>If LLM returns <code style="color:var(--red);font-family:var(--mono);font-size:10px">organization: "Set up..."</code> (string), parse into object with setupSteps[] extracted.</p></div></div>
+          <div class="ss-row"><div class="sr-step">7</div><div><strong>Youth guards + game model enforcement</strong><p>Apply applyYouthGuards(). Inject model-specific constraints if array is sparse. Enforce ≥8 model cues across session.</p></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="schema-right">
+      <div class="critical-box">
+        <div class="cb-title">Critical Fail Conditions</div>
+        <div class="critical-item"><strong>area = string</strong><p>lengthYards or widthYards as string → clarity score = 2 → NEEDS_REGEN</p></div>
+        <div class="critical-item"><strong>players = []</strong><p>Empty diagram.players array → QA fail → diagram re-enrichment triggered</p></div>
+        <div class="critical-item"><strong>age mismatch</strong><p>Any mention of wrong age in drill → clarity ≤ 2 → sanitizer attempts fix first</p></div>
+        <div class="critical-item"><strong>non-JSON</strong><p>LLM returns markdown / prose → parseJsonSafe returns null → throw "LLM returned non-JSON"</p></div>
+      </div>
+      <div class="code-block">
+<span class="tok-cm">// parseJsonSafe — strips markdown fences</span><br/>
+<span class="tok-kw">function</span> <span class="tok-fn">parseJsonSafe</span>(text) {<br/>
+&nbsp; <span class="tok-kw">const</span> clean = text<br/>
+&nbsp;&nbsp;&nbsp;.<span class="tok-fn">replace</span>(<span class="tok-str">/```json\n?/g</span>, <span class="tok-str">""</span>)<br/>
+&nbsp;&nbsp;&nbsp;.<span class="tok-fn">replace</span>(<span class="tok-str">/```\n?/g</span>, <span class="tok-str">""</span>).<span class="tok-fn">trim</span>();<br/>
+&nbsp; <span class="tok-kw">const</span> i = clean.<span class="tok-fn">indexOf</span>(<span class="tok-str">"{"</span>);<br/>
+&nbsp; <span class="tok-kw">const</span> j = clean.<span class="tok-fn">lastIndexOf</span>(<span class="tok-str">"}"</span>);<br/>
+&nbsp; <span class="tok-kw">if</span> (i === <span class="tok-num">-1</span> || j === <span class="tok-num">-1</span>) <span class="tok-kw">return</span> <span class="tok-const">null</span>;<br/>
+&nbsp; <span class="tok-kw">try</span> { <span class="tok-kw">return</span> <span class="tok-fn">JSON.parse</span>(clean.<span class="tok-fn">slice</span>(i, j+<span class="tok-num">1</span>)); }<br/>
+&nbsp; <span class="tok-kw">catch</span> { <span class="tok-kw">return</span> <span class="tok-const">null</span>; }<br/>
+}
+      </div>
+      <div class="code-block" style="margin-top:0">
+<span class="tok-cm">// Number coercion for area dimensions</span><br/>
+<span class="tok-kw">if</span> (<span class="tok-kw">typeof</span> area.lengthYards === <span class="tok-str">"string"</span>) {<br/>
+&nbsp; <span class="tok-kw">const</span> n = <span class="tok-fn">parseFloat</span>(area.lengthYards);<br/>
+&nbsp; area.lengthYards = <span class="tok-fn">isNaN</span>(n) ? <span class="tok-num">30</span> : n;<br/>
+}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S6 — QA SCORING ═══ -->
+<section class="slide" id="s6">
+  <div class="top">
+    <div class="badge badge-red">QA SCORING SYSTEM</div>
+    <h2>Every output graded on<br/><span class="accent">9 independent dimensions</span> by a second LLM call</h2>
+  </div>
+  <div class="qa-layout">
+    <div class="qa-left">
+      <div class="score-grid">
+        <div class="sg-label">Scoring Dimensions — each 1–5 (LLM grader call, 60s timeout)</div>
+        <!-- STRUCTURE -->
+        <div class="score-row"><span class="sr-name">Structure</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div></div><span class="sr-label">setupSteps (5–8 verb-led), complete sequence, rotation/restarts/scoring present</span></div>
+        <!-- GAME MODEL -->
+        <div class="score-row"><span class="sr-name">Game Model</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div></div><span class="sr-label">All drills align with gameModelId. ≥8 model-specific cues across session.</span></div>
+        <!-- PHASE -->
+        <div class="score-row"><span class="sr-name">Phase</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot"></div></div><span class="sr-label">Session arc matches phase focus (attacking/defending/transition). Sessions only.</span></div>
+        <!-- CLARITY -->
+        <div class="score-row"><span class="sr-name">Clarity</span><div class="sr-dots"><div class="sr-dot filled y4"></div><div class="sr-dot filled y4"></div><div class="sr-dot filled y4"></div><div class="sr-dot filled y4"></div><div class="sr-dot"></div></div><span class="sr-label">Numeric area dims, verb-led steps, no age mismatches, consistent player counts. Session: drill desc ≥80 words.</span></div>
+        <!-- REALISM -->
+        <div class="score-row"><span class="sr-name">Realism</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div></div><span class="sr-label">Age-appropriate, game-realistic patterns. Could a real coach run this today?</span></div>
+        <!-- PSYCH -->
+        <div class="score-row"><span class="sr-name">Psychology</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot"></div></div><span class="sr-label">Psychological theme present and woven through coaching language and cues.</span></div>
+        <!-- CONSTRAINTS -->
+        <div class="score-row"><span class="sr-name">Constraints</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div></div><span class="sr-label">Goals/space constraints consistent with input. goalMode matches goalsAvailable.</span></div>
+        <!-- SAFETY -->
+        <div class="score-row"><span class="sr-name">Safety</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div></div><span class="sr-label">No age-unsafe demands. Contact appropriate for age group. Equipment safe.</span></div>
+        <!-- PROGRESSION -->
+        <div class="score-row"><span class="sr-name">Progression</span><div class="sr-dots"><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot filled"></div><div class="sr-dot"></div></div><span class="sr-label">Drill sequence builds complexity logically. Sessions only — not scored on individual drills.</span></div>
+      </div>
+    </div>
+    <div class="qa-right">
+      <div class="threshold-table">
+        <div class="tt-label">Decision Thresholds</div>
+        <div class="tt-row"><span class="tt-code" style="color:var(--green)">OK</span><span class="tt-cond">All dimensions ≥ 4</span><span class="tt-action" style="color:var(--green)">Return immediately</span></div>
+        <div class="tt-row"><span class="tt-code" style="color:var(--amber)">PATCHABLE</span><span class="tt-cond">All ≥ 3, at least one = 3</span><span class="tt-action" style="color:var(--amber)">LLM fixer if enabled</span></div>
+        <div class="tt-row"><span class="tt-code" style="color:var(--red)">NEEDS_REGEN</span><span class="tt-cond">Any dimension ≤ 2</span><span class="tt-action" style="color:var(--red)">LLM fixer or reject</span></div>
+        <div class="tt-row"><span class="tt-code" style="color:var(--muted)">NO_QA</span><span class="tt-cond">No scores returned</span><span class="tt-action" style="color:var(--muted)">Pass through</span></div>
+      </div>
+      <div class="qa-flow">
+        <div class="qf-step"><div class="qf-icon">📤</div><div><strong>QA Input</strong><p>Full session/drill JSON passed to QA reviewer prompt as context</p></div></div>
+        <div class="qf-step"><div class="qf-icon">🤖</div><div><strong>LLM Grades</strong><p>Separate Gemini call — grader role. Returns JSON with scores{} + summary + notes[]</p></div></div>
+        <div class="qf-step"><div class="qf-icon">🧮</div><div><strong>Score Normalization</strong><p>Extract all numeric values from scores object. Find min, max, check thresholds.</p></div></div>
+        <div class="qf-step"><div class="qf-icon">🚦</div><div><strong>Decision</strong><p>fixDrillDecision() / fixSessionDecision() returns code + reason string</p></div></div>
+        <div class="qf-step"><div class="qf-icon">💾</div><div><strong>QAReport Persisted</strong><p>artifactId, artifactType, pass, scores{}, summary, notes[] → DB</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S7 — FIXER PIPELINE ═══ -->
+<section class="slide" id="s7">
+  <div class="top">
+    <div class="badge badge-purple">FIXER PIPELINE</div>
+    <h2>Failed QA doesn't mean <span class="accent">start over</span><br/>— the AI patches its own output</h2>
+  </div>
+  <div class="fixer-layout">
+    <div class="fixer-left">
+      <div class="decision-tree">
+        <div class="dt-label">fixDrillDecision(scores) — exact logic from fixer.ts</div>
+        <div class="dt-root"><div class="dt-condition">min(scores) = ? max(scores) = ? hasThree = ?</div></div>
+        <div class="dt-branches">
+          <div class="dt-branch"><div class="dt-cond-label">Any dim<br/>≤ 2</div><div class="dt-result dr-regen">NEEDS_REGEN</div></div>
+          <div class="dt-branch"><div class="dt-cond-label">All ≥ 4<br/>allAtLeast4</div><div class="dt-result dr-ok">OK</div></div>
+          <div class="dt-branch"><div class="dt-cond-label">All ≥ 3<br/>one = 3</div><div class="dt-result dr-patch">PATCHABLE</div></div>
+          <div class="dt-branch"><div class="dt-cond-label">No scores<br/>present</div><div class="dt-result dr-noqa">NO_QA</div></div>
+        </div>
+      </div>
+      <div class="fixer-prompt">
+        <div class="fp-header">LLM Fixer Prompt (CoachAI-Fixer persona)</div>
+        <div class="fp-persona">"You are CoachAI-Fixer, a UEFA A-license coach and elite training-session editor. Apply only the minimum necessary fixes so the drill is runnable, realistic, and aligned with the game model and psychological intent."</div>
+        <div class="fp-constraint">Receives: original drill JSON + QA report JSON</div>
+        <div class="fp-constraint">Preserve: ageGroup, phase, zone, numbers, overall tactical idea</div>
+        <div class="fp-constraint">Returns: single JSON object — the improved drill</div>
+        <div class="fp-constraint">On parse failure: return original drill with warning</div>
+        <div class="fp-constraint">Model: same primary Gemini model</div>
+      </div>
+      <div class="code-block">
+<span class="tok-cm">// Fixer result merging strategy</span><br/>
+<span class="tok-kw">const</span> fixed = <span class="tok-fn">parseJsonSafe</span>(fixerResponse);<br/>
+<span class="tok-kw">if</span> (!fixed) {<br/>
+&nbsp; <span class="tok-fn">log</span>(<span class="tok-str">"Fixer returned invalid JSON, using original"</span>);<br/>
+&nbsp; <span class="tok-kw">return</span> { drill: original, patched: <span class="tok-const">false</span> };<br/>
+}<br/>
+<span class="tok-cm">// Deep merge: fixer output wins on changed fields</span><br/>
+<span class="tok-kw">return</span> { drill: { ...original, ...fixed }, patched: <span class="tok-const">true</span> };
+      </div>
+    </div>
+    <div class="fixer-right">
+      <div class="pcard">
+        <div class="pc-label">Environment Gates — quality enforcement</div>
+        <div class="env-flags">
+          <div class="ef-row">
+            <span class="ef-key">BYPASS_QA</span>
+            <span class="ef-val off">"0" (default)</span>
+          </div>
+          <p class="ef-desc" style="font-size:10px;color:var(--muted);padding:0 2px;line-height:1.4">When "1": all QA calls skipped, everything returns OK. Dev only.</p>
+          <div class="ef-row">
+            <span class="ef-key">USE_LLM_FIXER</span>
+            <span class="ef-val off">"0" (default)</span>
+          </div>
+          <p class="ef-desc" style="font-size:10px;color:var(--muted);padding:0 2px;line-height:1.4">When "1": PATCHABLE/NEEDS_REGEN trigger 3rd Gemini call (fixer). Disabled by default for speed.</p>
+          <div class="ef-row">
+            <span class="ef-key">STRICT_GAME_MODEL</span>
+            <span class="ef-val on">"1" (prod)</span>
+          </div>
+          <p class="ef-desc" style="font-size:10px;color:var(--muted);padding:0 2px;line-height:1.4">Rejects session if gameModel QA score &lt; MIN_GAME_MODEL_SCORE. Returns error to client.</p>
+          <div class="ef-row">
+            <span class="ef-key">MIN_GAME_MODEL_SCORE</span>
+            <span class="ef-val num">4 (default)</span>
+          </div>
+          <div class="ef-row">
+            <span class="ef-key">STRICT_PHASE_ALIGNMENT</span>
+            <span class="ef-val on">"1" (prod)</span>
+          </div>
+          <p class="ef-desc" style="font-size:10px;color:var(--muted);padding:0 2px;line-height:1.4">Rejects if phase score &lt; MIN_PHASE_SCORE. Returns SESSION_PHASE_ALIGNMENT_FAILED.</p>
+          <div class="ef-row">
+            <span class="ef-key">MIN_PHASE_SCORE</span>
+            <span class="ef-val num">4 (default)</span>
+          </div>
+        </div>
+      </div>
+      <div class="pcard" style="margin-top:0">
+        <div class="pc-label">Quality Gate Error Codes (returned to client)</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:5px;padding:5px 9px">SESSION_GAME_MODEL_ALIGNMENT_FAILED</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--red);background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:5px;padding:5px 9px">SESSION_PHASE_ALIGNMENT_FAILED</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--amber);background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.15);border-radius:5px;padding:5px 9px">REQUEST_CANCELLED (HTTP 499)</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:5px 9px">LLM returned non-JSON drill</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S8 — COACH LEVEL ADAPTATION ═══ -->
+<section class="slide" id="s8">
+  <div class="top">
+    <div class="badge">COACH LEVEL ADAPTATION ENGINE</div>
+    <h2>The same session, <span class="accent">radically different language</span><br/>— 94+ transforms run post-generation</h2>
+  </div>
+  <div class="adapt-layout">
+    <div class="adapt-left">
+      <div class="language-transform">
+        <div class="lt-label">Language Transform Map — GRASSROOTS profile (94+ regex replacements)</div>
+        <div class="lt-row"><div class="lt-from">numerical superiority</div><div class="lt-arrow">→</div><div class="lt-to">an extra player</div></div>
+        <div class="lt-row"><div class="lt-from">counterpress(ing)</div><div class="lt-arrow">→</div><div class="lt-to">win the ball back quickly</div></div>
+        <div class="lt-row"><div class="lt-from">rest defense</div><div class="lt-arrow">→</div><div class="lt-to">cover behind the ball</div></div>
+        <div class="lt-row"><div class="lt-from">tactical intelligence</div><div class="lt-arrow">→</div><div class="lt-to">decision-making</div></div>
+        <div class="lt-row"><div class="lt-from">this session is designed to</div><div class="lt-arrow">→</div><div class="lt-to">Run this session to</div></div>
+        <div class="lt-row"><div class="lt-from">players should</div><div class="lt-arrow">→</div><div class="lt-to">Players</div></div>
+        <div class="lt-row"><div class="lt-from">meticulously</div><div class="lt-arrow">→</div><div class="lt-to">carefully</div></div>
+        <div class="lt-row"><div class="lt-from">comprehensive</div><div class="lt-arrow">→</div><div class="lt-to">complete</div></div>
+      </div>
+      <div class="diagram-adapt">
+        <div class="da-label">Diagram Complexity Profile — injected into prompt + applied in post-processing</div>
+        <div class="da-row">
+          <div class="da-level" style="color:var(--green)">GRASSROOTS</div>
+          <div class="da-specs">
+            <span class="pill pill-green">2–4 arrows</span>
+            <span class="pill pill-green">1–2 annotations</span>
+            <span class="pill pill-green">0–1 safe zones</span>
+            <span class="pill pill-green">no zone overlays</span>
+            <span class="pill pill-green">first 3 arrows only (post-process)</span>
+          </div>
+        </div>
+        <div class="da-row">
+          <div class="da-level" style="color:var(--blue)">USSF D/C</div>
+          <div class="da-specs">
+            <span class="pill pill-blue">5–7 arrows</span>
+            <span class="pill pill-blue">3–4 annotations</span>
+            <span class="pill pill-blue">1–2 safe zones</span>
+            <span class="pill pill-blue">half-space optional</span>
+          </div>
+        </div>
+        <div class="da-row" style="border-bottom:none;margin-bottom:0;padding-bottom:0">
+          <div class="da-level" style="color:var(--lime)">USSF B/B+</div>
+          <div class="da-specs">
+            <span class="pill pill-lime">7–10 arrows</span>
+            <span class="pill pill-lime">4–6 annotations</span>
+            <span class="pill pill-lime">1–3 safe zones</span>
+            <span class="pill pill-lime">half-spaces</span>
+            <span class="pill pill-lime">pressing traps</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="adapt-right">
+      <div class="sentence-limit">
+        <div class="sl-label">Sentence Length Limiter (Grassroots only)</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">Post-generation: any sentence &gt; 22 words is truncated at word 22 + period added. Applied to all coaching text.</p>
+        <div class="sl-example">
+<span class="tok-cm">// Sentence length enforcement</span><br/>
+sentence.split(<span class="tok-str">" "</span>).length &gt; <span class="tok-num">22</span><br/>
+  ? sentence.split(<span class="tok-str">" "</span>)<br/>
+&nbsp;&nbsp;&nbsp;&nbsp;.slice(<span class="tok-num">0</span>, <span class="tok-num">22</span>).join(<span class="tok-str">" "</span>) + <span class="tok-str">"."</span><br/>
+  : sentence
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="pc-label">Prompt-Level Injection (buildSessionPrompt)</div>
+        <div class="code-block" style="margin-top:4px">
+<span class="tok-kw">const</span> isGrassroots =<br/>
+&nbsp; input.coachLevel === <span class="tok-str">"GRASSROOTS"</span>;<br/><br/>
+<span class="tok-cm">// These strings go INTO the prompt</span><br/>
+<span class="tok-kw">const</span> detail = isGrassroots<br/>
+&nbsp; ? <span class="tok-str">"SIMPLE"</span> : <span class="tok-str">"FULL"</span>;<br/>
+<span class="tok-kw">const</span> arrowRange = isGrassroots<br/>
+&nbsp; ? <span class="tok-str">"2-4"</span> : <span class="tok-str">"7-10"</span>;<br/>
+<span class="tok-kw">const</span> annotRange = isGrassroots<br/>
+&nbsp; ? <span class="tok-str">"1-2"</span> : <span class="tok-str">"4-6"</span>;<br/>
+<span class="tok-kw">const</span> safeRange = isGrassroots<br/>
+&nbsp; ? <span class="tok-str">"0-1"</span> : <span class="tok-str">"1-3"</span>;
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="pc-label">Post-Process Diagram Stripping (Grassroots)</div>
+        <p style="font-size:11px;color:var(--muted);line-height:1.5">After generation, applyGrassrootsProfile() runs on diagram object: removes zones object, empties safeZones[], truncates arrows[] to first 3, truncates annotations[] to first 1. Belt-and-suspenders on top of prompt constraints.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S9 — DIAGRAM GENERATION ═══ -->
+<section class="slide" id="s9">
+  <div class="top">
+    <div class="badge badge-blue">DIAGRAM GENERATION ENGINE</div>
+    <h2>LLM outputs coordinates.<br/>Rules <span class="accent">validate and align</span> them.</h2>
+  </div>
+  <div class="diagram-layout">
+    <div class="diagram-left">
+      <div class="coord-system">
+        <div class="cs-label">Coordinate System — 0–100 normalized x/y grid</div>
+        <div class="mini-pitch">
+          <!-- Pitch lines -->
+          <div class="mp-line" style="top:50%;left:0;right:0;height:1px;opacity:.4"></div>
+          <div class="mp-line" style="left:33%;top:0;bottom:0;width:1px;opacity:.25"></div>
+          <div class="mp-line" style="left:66%;top:0;bottom:0;width:1px;opacity:.25"></div>
+          <!-- Goal boxes -->
+          <div style="position:absolute;right:0;top:38%;width:8px;height:24%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4)"></div>
+          <div style="position:absolute;left:0;top:38%;width:8px;height:24%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4)"></div>
+          <!-- Players -->
+          <div class="mp-player mp-att" style="left:20%;top:50%">4</div>
+          <div class="mp-player mp-att" style="left:40%;top:35%">8</div>
+          <div class="mp-player mp-att" style="left:40%;top:65%">6</div>
+          <div class="mp-player mp-def" style="left:65%;top:50%">9</div>
+          <div class="mp-player mp-def" style="left:80%;top:35%">7</div>
+          <!-- Coord labels -->
+          <div class="mp-coord" style="left:2px;top:2px">0,0</div>
+          <div class="mp-coord" style="right:2px;top:2px">100,0</div>
+          <div class="mp-coord" style="left:2px;bottom:2px">0,100</div>
+          <div class="mp-coord" style="right:2px;bottom:2px">100,100</div>
+          <!-- SVG arrows -->
+          <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="20" y1="50" x2="40" y2="35" stroke="#ADFF2F" stroke-width=".8" stroke-dasharray="2,1.5"/>
+            <line x1="40" y1="35" x2="65" y2="50" stroke="#ADFF2F" stroke-width=".8"/>
+            <line x1="65" y1="50" x2="80" y2="35" stroke="#60a5fa" stroke-width=".8" stroke-dasharray="2,2"/>
+          </svg>
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">LLM outputs x/y as 0–100 floats. ATT players: x toward 80–100 (right goal), facingAngle: 90. DEF players: x toward 0–20, facingAngle: 270. Orientation (HORIZONTAL/VERTICAL) inferred from goal positions post-generation.</p>
+      </div>
+      <div class="pcard">
+        <div class="pc-label">Goal-Player Alignment (automatic post-processing)</div>
+        <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px">After generation, the system calculates the centroid of all ATT players. If centroid.x &gt; 50 on HORIZONTAL pitch: right goal → teamAttacks = ATT. Goal facingAngle auto-corrected to face attacking direction. Prevents misaligned "which team attacks which goal" errors.</p>
+        <div class="code-block">
+<span class="tok-kw">const</span> centX = attPlayers.<span class="tok-fn">reduce</span><br/>
+&nbsp; ((sum, p) => sum + p.x, <span class="tok-num">0</span>) / attPlayers.length;<br/><br/>
+<span class="tok-kw">if</span> (orientation === <span class="tok-str">"HORIZONTAL"</span>) {<br/>
+&nbsp; rightGoal.teamAttacks = centX &gt; <span class="tok-num">50</span><br/>
+&nbsp;&nbsp;&nbsp; ? <span class="tok-str">"ATT"</span> : <span class="tok-str">"DEF"</span>;<br/>
+}
+        </div>
+      </div>
+    </div>
+    <div class="diagram-right">
+      <div class="enrichment-flow">
+        <div style="font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Diagram Re-enrichment Flow</div>
+        <div class="ef-step"><div class="ef-num">1</div><div><strong>Check needsDiagramEnrichment()</strong><p>Is players[] empty? Is pitch missing? Is diagram null?</p></div></div>
+        <div class="ef-step"><div class="ef-num">2</div><div><strong>If needed: call reenrichDiagramFromDrillJson()</strong><p>New Gemini call with diagram-only prompt — regenerate coordinates without touching drill content</p></div></div>
+        <div class="ef-step"><div class="ef-num">3</div><div><strong>Merge enriched diagram</strong><p>Replace drill.diagram with enriched version. Preserve all non-diagram fields.</p></div></div>
+        <div class="ef-step"><div class="ef-num">4</div><div><strong>Re-run alignment</strong><p>Goal-player alignment + orientation inference runs again on enriched data</p></div></div>
+      </div>
+      <div class="player-schema">
+<span class="tok-cm">// Player schema — every token</span><br/>
+{<br/>
+&nbsp; <span class="tok-str">"id"</span>: <span class="tok-str">"A1"</span>, <span class="tok-cm">// ATT1, DEF2, etc.</span><br/>
+&nbsp; <span class="tok-str">"number"</span>: <span class="tok-num">4</span>, <span class="tok-cm">// jersey (1-11)</span><br/>
+&nbsp; <span class="tok-str">"team"</span>: <span class="tok-str">"ATT"</span>,<br/>
+&nbsp; <span class="tok-str">"role"</span>: <span class="tok-str">"CB"</span>, <span class="tok-cm">// formation-derived</span><br/>
+&nbsp; <span class="tok-str">"x"</span>: <span class="tok-num">22.5</span>, <span class="tok-str">"y"</span>: <span class="tok-num">30.0</span>,<br/>
+&nbsp; <span class="tok-str">"facingAngle"</span>: <span class="tok-num">90</span>, <span class="tok-cm">// ATT faces up</span><br/>
+&nbsp; <span class="tok-str">"labelStyle"</span>: <span class="tok-str">"number-and-role"</span><br/>
+}
+      </div>
+      <div class="pcard" style="margin-top:0">
+        <div class="pc-label">Arrow Types</div>
+        <div class="arrow-types">
+          <div class="at-row"><div class="at-visual"><svg width="50" height="10"><line x1="0" y1="5" x2="45" y2="5" stroke="#ADFF2F" stroke-width="1.5" marker-end="url(#a1)"/><defs><marker id="a1" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0,0 4,2 0,4" fill="#ADFF2F"/></marker></defs></svg></div><strong style="font-size:10px">pass</strong><p style="font-size:10px;color:var(--muted)">Solid lime — ball movement</p></div>
+          <div class="at-row"><div class="at-visual"><svg width="50" height="10"><line x1="0" y1="5" x2="45" y2="5" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="3,2"/></svg></div><strong style="font-size:10px">run</strong><p style="font-size:10px;color:var(--muted)">Dashed blue — player movement</p></div>
+          <div class="at-row"><div class="at-visual"><svg width="50" height="10"><line x1="0" y1="5" x2="45" y2="5" stroke="#f87171" stroke-width="1" stroke-dasharray="2,2"/></svg></div><strong style="font-size:10px">press</strong><p style="font-size:10px;color:var(--muted)">Dashed red — pressing action</p></div>
+          <div class="at-row"><div class="at-visual"><svg width="50" height="10"><line x1="0" y1="5" x2="45" y2="5" stroke="#c084fc" stroke-width="1" stroke-dasharray="1,1.5"/></svg></div><strong style="font-size:10px">cover</strong><p style="font-size:10px;color:var(--muted)">Dotted purple — cover shadow</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ S10 — OBSERVABILITY ═══ -->
+<section class="slide" id="s10">
+  <div class="top">
+    <div class="badge badge-purple">OBSERVABILITY, METRICS &amp; VIDEO AI</div>
+    <h2>Every LLM call is logged.<br/><span class="accent">Every token counted. Every failure tracked.</span></h2>
+  </div>
+  <div class="obs-layout">
+    <div class="obs-left">
+      <div class="metrics-schema">
+        <div class="ms-label">APIMetrics — every Gemini call writes a row (Prisma → PostgreSQL)</div>
+        <div class="ms-field-grid">
+          <div class="ms-field"><div class="mf-name">operationType</div><div class="mf-type">session · drill · qa_review · fixer · chat</div></div>
+          <div class="ms-field"><div class="mf-name">model</div><div class="mf-type">gemini-3-flash-preview · gemini-2.5-flash</div></div>
+          <div class="ms-field"><div class="mf-name">promptTokens</div><div class="mf-type">Int — input token count</div></div>
+          <div class="ms-field"><div class="mf-name">completionTokens</div><div class="mf-type">Int — output token count</div></div>
+          <div class="ms-field"><div class="mf-name">totalTokens</div><div class="mf-type">Int — for cost calculation</div></div>
+          <div class="ms-field"><div class="mf-name">durationMs</div><div class="mf-type">Int — wall-clock latency</div></div>
+          <div class="ms-field"><div class="mf-name">success</div><div class="mf-type">Boolean — true/false</div></div>
+          <div class="ms-field"><div class="mf-name">errorMessage</div><div class="mf-type">String? — error reason</div></div>
+          <div class="ms-field"><div class="mf-name">ageGroup</div><div class="mf-type">String — U8–U18 context</div></div>
+          <div class="ms-field"><div class="mf-name">gameModelId</div><div class="mf-type">POSSESSION · PRESSING · TRANSITION</div></div>
+          <div class="ms-field"><div class="mf-name">promptLength</div><div class="mf-type">Int — chars (prompt size tracking)</div></div>
+          <div class="ms-field"><div class="mf-name">responseLength</div><div class="mf-type">Int — chars (output size tracking)</div></div>
+        </div>
+      </div>
+      <div class="video-pipeline">
+        <div class="vp-label">Video Analysis Pipeline — Gemini Multimodal</div>
+        <div class="vp-step"><div class="vps-num">1</div><div><strong>Upload + context</strong><p>Video uploaded to Supabase Storage. Coach sets ageGroup, playerLevel, coachLevel, formation, gameModelId, focusTeamColor.</p></div></div>
+        <div class="vp-step"><div class="vps-num">2</div><div><strong>Gemini video prompt</strong><p>Multimodal call: video file URI + structured prompt. Team labeling by color (no jersey numbers). scopeTag per observation (IN_SCOPE / SUPPORTING / OUT_OF_SCOPE).</p></div></div>
+        <div class="vp-step"><div class="vps-num">3</div><div><strong>Scope + severity rules</strong><p>≥70% observations must be IN_SCOPE. ≤15% OUT_OF_SCOPE. topPriorities uses only IN_SCOPE. Severity: CRITICAL / MAJOR / MINOR with confidence score.</p></div></div>
+        <div class="vp-step"><div class="vps-num">4</div><div><strong>Auto-generate corrective session</strong><p>Top observations passed to session generation pipeline as additional context. Corrective session targets exact issues found.</p></div></div>
+      </div>
+    </div>
+    <div class="obs-right">
+      <div class="quality-gates">
+        <div class="qg-label">Production Quality Gates</div>
+        <div class="qg-row">
+          <div class="qgr-flag">STRICT_GAME_MODEL_ALIGNMENT=1</div>
+          <p>If gameModel QA score &lt; 4: reject with SESSION_GAME_MODEL_ALIGNMENT_FAILED. Client shows error, prompts coach to regenerate.</p>
+        </div>
+        <div class="qg-row">
+          <div class="qgr-flag">STRICT_PHASE_ALIGNMENT=1</div>
+          <p>If phase score &lt; 4: reject with SESSION_PHASE_ALIGNMENT_FAILED. Telemetry includes full score breakdown for debugging.</p>
+        </div>
+        <div class="qg-row">
+          <div class="qgr-flag">Generation Cancellation</div>
+          <p>Coach can cancel in-flight generation. generationId flag checked during pipeline. Returns HTTP 499 if cancelled.</p>
+        </div>
+      </div>
+      <div class="pcard">
+        <div class="pc-label">Progressive Series Context Passing</div>
+        <div class="code-block" style="margin-top:4px">
+<span class="tok-cm">// Session N prompt includes prev sessions</span><br/>
+<span class="tok-kw">const</span> prevCtx = sessions.<span class="tok-fn">map</span>(s => ({<br/>
+&nbsp; title: s.title,<br/>
+&nbsp; summary: s.summary,<br/>
+&nbsp; drills: s.drills.<span class="tok-fn">map</span>(d =><br/>
+&nbsp;&nbsp;&nbsp; d.title + <span class="tok-str">": "</span> + d.focus)<br/>
+}));<br/><br/>
+<span class="tok-cm">// Passed as JSON in prompt context</span><br/>
+prompt += <span class="tok-fn">JSON.stringify</span>(prevCtx);
+        </div>
+        <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px">Each session in a series receives the full title, summary, and drill focus list from all prior sessions. LLM is instructed to build on — not repeat — previous themes and increase tactical complexity with each session.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" id="s11">
+  <div class="top" style="text-align:center;margin-bottom:22px;width:100%">
+    <div class="badge badge-blue">SCALE CAPACITY MATH</div>
+    <h2>How much unique curriculum depth<br/><span class="accent">exists before repetition</span></h2>
+    <p class="lead" style="margin:10px auto 0;max-width:760px">
+      Bounded to current TacticalEdge session builder options (phase, zone, age group, formations, levels, duration, space, goals, and topic list).
+    </p>
+  </div>
+
+  <div style="width:100%;max-width:980px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">
+    <div class="principle" style="text-align:left;padding:18px;background:rgba(96,165,250,.08);border-color:rgba(96,165,250,.25)">
+      <div class="pill pill-blue" style="margin-bottom:10px">All 4 Game Models</div>
+      <div class="p-val" style="font-size:38px;line-height:1;color:var(--blue)">39,657,600</div>
+      <div class="p-lbl" style="margin-top:8px">Unique session configurations</div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:10px">
+        Current bounded UI configuration space.
+      </p>
+    </div>
+
+    <div class="principle" style="text-align:left;padding:18px;background:rgba(173,255,47,.08);border-color:rgba(173,255,47,.28)">
+      <div class="pill pill-lime" style="margin-bottom:10px">Single Club Model</div>
+      <div class="p-val" style="font-size:38px;line-height:1">9,914,400</div>
+      <div class="p-lbl" style="margin-top:8px">Unique sessions for 1 game model</div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:10px">
+        Example: club standardizes on only POSSESSION, PRESSING, or TRANSITION.
+      </p>
+    </div>
+
+    <div class="principle" style="text-align:left;padding:18px;background:rgba(45,212,191,.09);border-color:rgba(45,212,191,.28)">
+      <div class="pill pill-teal" style="margin-bottom:10px">+2 Formations / Age</div>
+      <div class="p-val" style="font-size:38px;line-height:1;color:var(--teal)">26,632,800</div>
+      <div class="p-lbl" style="margin-top:8px">Unique sessions for 1 game model</div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.5;margin-top:10px">
+        2.69x increase in depth from one formation-set expansion.
+      </p>
+    </div>
+  </div>
+
+  <div style="width:100%;max-width:980px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px">
+    <div class="pcard">
+      <div class="pc-label">Player-Lifecycle Impact</div>
+      <div style="display:flex;align-items:baseline;gap:10px;margin-top:2px">
+        <div style="font-size:34px;font-weight:900;color:var(--lime);line-height:1">24,035–26,438</div>
+        <div class="pill pill-lime">Generations</div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px">
+        Full player generations (age 7→17, 3 sessions/week, ~2 weeks off/year) before repeating a single session configuration.
+      </p>
+    </div>
+
+    <div class="pcard">
+      <div class="pc-label">Mind-Blowing Club Longevity</div>
+      <div style="display:flex;gap:12px;margin-top:2px">
+        <div style="flex:1">
+          <div style="font-size:27px;font-weight:900;color:var(--blue);line-height:1">~3,305 years</div>
+          <p style="font-size:10px;color:var(--muted);margin-top:5px">1 game model, current formations</p>
+        </div>
+        <div style="flex:1">
+          <div style="font-size:27px;font-weight:900;color:var(--teal);line-height:1">~8,878 years</div>
+          <p style="font-size:10px;color:var(--muted);margin-top:5px">1 game model, +2 formations/age</p>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px">
+        Assumes 20 teams per club, each training 3x/week for 50 weeks/year.
+      </p>
+    </div>
+  </div>
+</section>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button id="prevBtn">←</button>
+  <div id="dots"></div>
+  <button id="nextBtn">→</button>
+  <div id="sc">1 / 1</div>
+</div>
+
+<script>
+const slides=Array.from(document.querySelectorAll('.slide'));
+const dotsEl=document.getElementById('dots');
+const counter=document.getElementById('sc');
+const prog=document.getElementById('prog');
+let cur=0;
+slides.forEach((_,i)=>{const d=document.createElement('div');d.className='dot'+(i===0?' active':'');d.addEventListener('click',()=>goTo(i));dotsEl.appendChild(d);});
+function goTo(i){if(i<0||i>=slides.length)return;slides[cur].classList.remove('active');slides[cur].classList.add('exit');const p=cur;setTimeout(()=>slides[p].classList.remove('exit'),400);cur=i;slides[cur].classList.add('active');document.querySelectorAll('.dot').forEach((d,j)=>d.classList.toggle('active',j===cur));counter.textContent=`${cur+1} / ${slides.length}`;prog.style.width=((cur+1)/slides.length*100)+'%';}
+document.getElementById('prevBtn').addEventListener('click',()=>goTo(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>goTo(cur+1));
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')goTo(cur+1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')goTo(cur-1);});
+counter.textContent=`1 / ${slides.length}`;
+prog.style.width=(100/slides.length)+'%';
+</script>
+</body>
+</html>

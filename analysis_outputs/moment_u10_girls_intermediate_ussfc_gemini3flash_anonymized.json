@@ -1,0 +1,499 @@
+{
+  "context": {
+    "ageGroup": "U10 Girls",
+    "playerLevel": "Intermediate",
+    "coachLevel": "USSF C",
+    "focusTeamColor": "blue",
+    "opponentTeamColor": "red"
+  },
+  "overall": {
+    "summary": "The clip showcases a high-energy U10 match where Team A transitions from a defensive scramble into a successful counter-attack led by Team A attacker #25. While the individual effort for the goal is commendable, the team lacks structural discipline in the buildup and defensive transition. Technical execution is inconsistent, particularly in first touches and passing weight, which is typical for intermediate U10s but needs addressing for USSF C standards.",
+    "topPriorities": [
+      "Improve 'Open Body Shape' when receiving to increase field vision.",
+      "Establish a 'Diamond' structure in possession to avoid bunching.",
+      "Develop 'Scanning' habits before the ball arrives to speed up decision-making.",
+      "Refine 'Striking Technique' with the laces for power and accuracy.",
+      "Enhance 'Defensive Recovery' paths to protect the central 'danger zone'."
+    ],
+    "videoQualityRisks": [
+      "High-angle drone footage makes it difficult to see specific foot-to-ball contact points.",
+      "Sun glare on the far side of the pitch obscures player numbers.",
+      "Fast camera panning during the breakaway causes slight motion blur."
+    ]
+  },
+  "analysisArray": [
+    {
+      "id": "tech-01",
+      "category": "technical",
+      "title": "Closed Body Shape at Kickoff",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:02",
+      "whatHappened": "Team A attacker #25 starts the game with her back partially to the opponent's goal.",
+      "whyItMatters": "Limits her ability to see forward passing lanes immediately.",
+      "coachingCue": "Open the door.",
+      "microCorrection": "Position the back foot at a 45-degree angle toward the target area.",
+      "u10Adaptation": "Pretend you are a flashlight; shine your light on the whole field."
+    },
+    {
+      "id": "tact-01",
+      "category": "tactical",
+      "title": "Lack of Width on Kickoff",
+      "severity": "major",
+      "confidence": 0.8,
+      "timestamp": "0:03",
+      "whatHappened": "The wingers are standing inside the center circle rather than stretching the pitch.",
+      "whyItMatters": "Compresses the playing area, making it easier for Team B to press.",
+      "coachingCue": "Toes to the line.",
+      "microCorrection": "Wide players should stay within 2 yards of the touchline during buildup.",
+      "u10Adaptation": "Make the field as big as a giant's house."
+    },
+    {
+      "id": "phys-01",
+      "category": "physical",
+      "title": "Static Starting Positions",
+      "severity": "minor",
+      "confidence": 0.85,
+      "timestamp": "0:04",
+      "whatHappened": "Players are standing flat-footed waiting for the first pass.",
+      "whyItMatters": "Slows down the reaction time to the ball and opponent movements.",
+      "coachingCue": "Active feet.",
+      "microCorrection": "Keep weight on the balls of the feet with knees slightly bent.",
+      "u10Adaptation": "Dance like you're on hot coals."
+    },
+    {
+      "id": "dec-01",
+      "category": "decision-making",
+      "title": "Forced Long Ball",
+      "severity": "major",
+      "confidence": 0.9,
+      "timestamp": "0:05",
+      "whatHappened": "Team B kicks the ball long into a crowded area immediately.",
+      "whyItMatters": "Results in a 50/50 turnover rather than controlled possession.",
+      "coachingCue": "Find a friend.",
+      "microCorrection": "Look for the short pass to the feet of a teammate first.",
+      "u10Adaptation": "Don't just kick it; pass it to a teammate's toes."
+    },
+    {
+      "id": "tact-02",
+      "category": "tactical",
+      "title": "Defensive Line Depth",
+      "severity": "critical",
+      "confidence": 0.8,
+      "timestamp": "0:06",
+      "whatHappened": "Team A defenders are caught in a flat line as the long ball is played.",
+      "whyItMatters": "One pass beats the entire defense, leading to a breakaway risk.",
+      "coachingCue": "Drop and cover.",
+      "microCorrection": "One defender should drop 5 yards deeper to act as a 'sweeper'.",
+      "u10Adaptation": "One player stays back like a safety net."
+    },
+    {
+      "id": "dec-02",
+      "category": "decision-making",
+      "title": "Goalkeeper Hesitation",
+      "severity": "major",
+      "confidence": 0.75,
+      "timestamp": "0:07",
+      "whatHappened": "The Team A keeper waits for the ball to enter the box rather than meeting it early.",
+      "whyItMatters": "Allows the attacker more time to reach the ball and shoot.",
+      "coachingCue": "Be the boss of the box.",
+      "microCorrection": "Attack the ball at the earliest possible point outside the 6-yard box.",
+      "u10Adaptation": "Go get the ball before the 'monster' gets it."
+    },
+    {
+      "id": "tech-02",
+      "category": "technical",
+      "title": "Incomplete Clearance",
+      "severity": "major",
+      "confidence": 0.85,
+      "timestamp": "0:09",
+      "whatHappened": "The clearance from Team A defender is sliced and stays in the central danger zone.",
+      "whyItMatters": "Keeps the pressure on the defense and allows for a second-chance shot.",
+      "coachingCue": "Big laces, big space.",
+      "microCorrection": "Lock the ankle and strike through the middle of the ball toward the sidelines.",
+      "u10Adaptation": "Kick it to the trees, not the middle."
+    },
+    {
+      "id": "phys-02",
+      "category": "physical",
+      "title": "Recovery Sprint Speed",
+      "severity": "minor",
+      "confidence": 0.8,
+      "timestamp": "0:11",
+      "whatHappened": "Midfielders are jogging back while the ball is in their defensive third.",
+      "whyItMatters": "Leaves the defenders outnumbeTeam B in the box.",
+      "coachingCue": "Sprint to the goal.",
+      "microCorrection": "High-intensity 10-yard burst to get goal-side of the opponent.",
+      "u10Adaptation": "Race your shadow back to the goal."
+    },
+    {
+      "id": "tact-03",
+      "category": "tactical",
+      "title": "Bunching in Midfield",
+      "severity": "major",
+      "confidence": 0.9,
+      "timestamp": "0:13",
+      "whatHappened": "Four Team A players are within a 3-yard radius of each other.",
+      "whyItMatters": "Eliminates passing options and clogs the dribbling lanes.",
+      "coachingCue": "Find your own space.",
+      "microCorrection": "Maintain a minimum of 8-10 yards between teammates in the middle third.",
+      "u10Adaptation": "Don't be a magnet; push away from your friends."
+    },
+    {
+      "id": "tech-03",
+      "category": "technical",
+      "title": "Throw-in Technique",
+      "severity": "minor",
+      "confidence": 0.7,
+      "timestamp": "0:15",
+      "whatHappened": "The throw-in is executed with a slight foot lift (hard to see, but suspected).",
+      "whyItMatters": "Results in a foul throw and loss of possession.",
+      "coachingCue": "Glue your feet.",
+      "microCorrection": "Drag the back toe to ensure contact with the ground remains.",
+      "u10Adaptation": "Keep your feet stuck in the mud."
+    },
+    {
+      "id": "dec-03",
+      "category": "decision-making",
+      "title": "Receiving Under Pressure",
+      "severity": "major",
+      "confidence": 0.85,
+      "timestamp": "0:17",
+      "whatHappened": "Team A attacker #25 receives the ball and immediately turns into two defenders.",
+      "whyItMatters": "High risk of turnover in a transition moment.",
+      "coachingCue": "Check your shoulder.",
+      "microCorrection": "Scan before the ball arrives to identify the 'weak' side of the press.",
+      "u10Adaptation": "Look for the 'ghosts' behind you before you touch the ball."
+    },
+    {
+      "id": "tech-04",
+      "category": "technical",
+      "title": "First Touch Direction",
+      "severity": "major",
+      "confidence": 0.9,
+      "timestamp": "0:18",
+      "whatHappened": "Team A attacker #25's first touch stops the ball dead under her feet.",
+      "whyItMatters": "Requires a second touch to get the ball moving, allowing defenders to close in.",
+      "coachingCue": "Touch into space.",
+      "microCorrection": "Use the inside of the foot to push the ball 2 yards away from the body.",
+      "u10Adaptation": "Push the ball out of your feet so you can run."
+    },
+    {
+      "id": "phys-03",
+      "category": "physical",
+      "title": "Upper Body Balance",
+      "severity": "minor",
+      "confidence": 0.8,
+      "timestamp": "0:19",
+      "whatHappened": "Team A attacker #25 is leaning too far back while trying to shield the ball.",
+      "whyItMatters": "Makes her easy to knock off balance by a smaller defender.",
+      "coachingCue": "Get low.",
+      "microCorrection": "Lower the center of gravity by bending the knees and using an arm for feel.",
+      "u10Adaptation": "Be like a sturdy table, not a tall tree."
+    },
+    {
+      "id": "tact-04",
+      "category": "tactical",
+      "title": "Support Angles",
+      "severity": "major",
+      "confidence": 0.85,
+      "timestamp": "0:21",
+      "whatHappened": "Teammates are standing behind defenders, hiding from the ball carrier.",
+      "whyItMatters": "Team A attacker #25 has no 'escape' pass, forcing her into a difficult 1v3.",
+      "coachingCue": "Be a window, not a wall.",
+      "microCorrection": "Move into the 'passing lanes' where you can see both the ball and the goal.",
+      "u10Adaptation": "Hide-and-seek is for recess, not soccer; let your friend see you."
+    },
+    {
+      "id": "dec-04",
+      "category": "decision-making",
+      "title": "Scanning Before the Break",
+      "severity": "minor",
+      "confidence": 0.75,
+      "timestamp": "0:23",
+      "whatHappened": "Team A attacker #25 wins the ball but keeps her head down for three full seconds.",
+      "whyItMatters": "Misses the opportunity to see a teammate running wide left.",
+      "coachingCue": "Eyes up.",
+      "microCorrection": "Lift the chin between every two touches of the ball.",
+      "u10Adaptation": "Take a picture of the field with your eyes."
+    },
+    {
+      "id": "phys-04",
+      "category": "physical",
+      "title": "Explosive Acceleration",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:25",
+      "whatHappened": "Team A attacker #25 recognizes the space and accelerates past the midfield line.",
+      "whyItMatters": "Creates the numerical advantage needed for the counter-attack.",
+      "coachingCue": "Big gears.",
+      "microCorrection": "Drive the arms to generate more power in the first three steps.",
+      "u10Adaptation": "Turn on your rocket boosters."
+    },
+    {
+      "id": "tech-05",
+      "category": "technical",
+      "title": "Dribbling with Laces",
+      "severity": "minor",
+      "confidence": 0.85,
+      "timestamp": "0:26",
+      "whatHappened": "Team A attacker #25 uses the inside of her foot to dribble at high speed.",
+      "whyItMatters": "Inside-foot dribbling is slower and breaks the running stride.",
+      "coachingCue": "Point your toes.",
+      "microCorrection": "Use the 'pinky toe' area (outside/laces) to push the ball forward while running.",
+      "u10Adaptation": "Run like a sprinter, not a duck."
+    },
+    {
+      "id": "dec-05",
+      "category": "decision-making",
+      "title": "Attacking the Space",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:27",
+      "whatHappened": "Team A attacker #25 chooses to drive centrally toward the goal.",
+      "whyItMatters": "The most direct path to scoring, putting the keeper under pressure.",
+      "coachingCue": "Go for gold.",
+      "microCorrection": "Attack the 'near post' space to force the keeper to move.",
+      "u10Adaptation": "Drive the car straight to the garage."
+    },
+    {
+      "id": "phys-05",
+      "category": "physical",
+      "title": "Agility in the Turn",
+      "severity": "minor",
+      "confidence": 0.8,
+      "timestamp": "0:28",
+      "whatHappened": "A Team A teammate makes a sharp turn to avoid a collision.",
+      "whyItMatters": "Prevents injury and maintains the flow of the attack.",
+      "coachingCue": "Quick feet.",
+      "microCorrection": "Small, choppy steps to adjust body weight before a change of direction.",
+      "u10Adaptation": "Be like a ninja, light on your feet."
+    },
+    {
+      "id": "tech-06",
+      "category": "technical",
+      "title": "Plant Foot Placement",
+      "severity": "major",
+      "confidence": 0.7,
+      "timestamp": "0:29",
+      "whatHappened": "Team A attacker #25's plant foot appears to be too far behind the ball during the shot.",
+      "whyItMatters": "Causes the ball to rise or lose power; Team Buces accuracy.",
+      "coachingCue": "Step next to the ball.",
+      "microCorrection": "The plant foot should be parallel to the ball, pointing at the target.",
+      "u10Adaptation": "Put your 'aiming foot' right next to the ball's house."
+    },
+    {
+      "id": "tech-07",
+      "category": "technical",
+      "title": "Shooting with Laces",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:30",
+      "whatHappened": "Team A attacker #25 strikes the ball well with her laces for the goal.",
+      "whyItMatters": "Provides the necessary power to beat the goalkeeper from distance.",
+      "coachingCue": "Toe down, ankle locked.",
+      "microCorrection": "Strike the center of the ball with the 'sweet spot' of the laces.",
+      "u10Adaptation": "Hit it with your shoelaces, not your toes."
+    },
+    {
+      "id": "dec-06",
+      "category": "decision-making",
+      "title": "Shot Selection",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:31",
+      "whatHappened": "Team A attacker #25 shoots early rather than trying to dribble around the keeper.",
+      "whyItMatters": "Catches the keeper off guard before they can set their feet.",
+      "coachingCue": "See the gap, hit the gap.",
+      "microCorrection": "Aim for the corners of the goal, away from the keeper's reach.",
+      "u10Adaptation": "Find the 'empty' part of the net."
+    },
+    {
+      "id": "tact-05",
+      "category": "tactical",
+      "title": "Goalkeeper Positioning",
+      "severity": "major",
+      "confidence": 0.8,
+      "timestamp": "0:32",
+      "whatHappened": "The Team B keeper is standing on the goal line during the shot.",
+      "whyItMatters": "Gives the shooter the maximum angle to score.",
+      "coachingCue": "Cut the angle.",
+      "microCorrection": "Move 2-3 yards off the line to narrow the shooting window.",
+      "u10Adaptation": "Come out and make yourself look like a giant wall."
+    },
+    {
+      "id": "phys-06",
+      "category": "physical",
+      "title": "Celebration Energy",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:33",
+      "whatHappened": "The team celebrates with high intensity.",
+      "whyItMatters": "Builds morale and team chemistry, which is vital at U10.",
+      "coachingCue": "Enjoy the moment.",
+      "microCorrection": "Ensure players quickly return to their positions to stay focused.",
+      "u10Adaptation": "High fives for everyone, then back to work!"
+    },
+    {
+      "id": "tact-06",
+      "category": "tactical",
+      "title": "Post-Goal Organization",
+      "severity": "minor",
+      "confidence": 0.85,
+      "timestamp": "0:35",
+      "whatHappened": "Team A players are slow to return to their half for the restart.",
+      "whyItMatters": "Allows the opponent to catch them off guard if the ref blows the whistle early.",
+      "coachingCue": "Reset and ready.",
+      "microCorrection": "Immediately jog back to the starting formation after the celebration.",
+      "u10Adaptation": "Get back to your 'home' spots quickly."
+    },
+    {
+      "id": "dec-07",
+      "category": "decision-making",
+      "title": "Midfield Tracking",
+      "severity": "major",
+      "confidence": 0.75,
+      "timestamp": "0:10",
+      "whatHappened": "Team A #12 watches the ball instead of tracking the runner behind her.",
+      "whyItMatters": "Leaves a Team B player unmarked in a dangerous central position.",
+      "coachingCue": "See the ball, see the player.",
+      "microCorrection": "Maintain a 'side-on' stance to keep both the ball and the opponent in view.",
+      "u10Adaptation": "Keep one eye on the ball and one eye on your 'buddy'."
+    },
+    {
+      "id": "tech-08",
+      "category": "technical",
+      "title": "Passing Weight",
+      "severity": "major",
+      "confidence": 0.8,
+      "timestamp": "0:04",
+      "whatHappened": "The initial pass from the kickoff is too soft.",
+      "whyItMatters": "Invites immediate pressure and risks an early turnover.",
+      "coachingCue": "Punch the pass.",
+      "microCorrection": "Follow through toward the target to ensure the ball reaches the teammate's feet.",
+      "u10Adaptation": "Pass it like you're trying to break a paper wall."
+    },
+    {
+      "id": "phys-07",
+      "category": "physical",
+      "title": "Core Stability in Contact",
+      "severity": "minor",
+      "confidence": 0.7,
+      "timestamp": "0:20",
+      "whatHappened": "A Team A player stumbles slightly after a shoulder-to-shoulder challenge.",
+      "whyItMatters": "Loss of balance leads to loss of possession.",
+      "coachingCue": "Be the hammer, not the nail.",
+      "microCorrection": "Engage the core and lean into the contact with the shoulder.",
+      "u10Adaptation": "Be strong like a superhero when someone bumps you."
+    },
+    {
+      "id": "tact-07",
+      "category": "tactical",
+      "title": "Transition to Defense",
+      "severity": "critical",
+      "confidence": 0.8,
+      "timestamp": "0:08",
+      "whatHappened": "When the ball is cleaTeam B, Team A forwards stay high and don't help.",
+      "whyItMatters": "Creates a massive gap between the lines for the opponent to exploit.",
+      "coachingCue": "Compact the field.",
+      "microCorrection": "Forwards should drop to the halfway line when the ball is in their own third.",
+      "u10Adaptation": "Everyone helps defend, even the strikers."
+    },
+    {
+      "id": "dec-08",
+      "category": "decision-making",
+      "title": "Goalkeeper Distribution",
+      "severity": "minor",
+      "confidence": 0.65,
+      "timestamp": "0:12",
+      "whatHappened": "After a save/pickup, the keeper looks to punt rather than roll the ball.",
+      "whyItMatters": "Punting is a 50/50; rolling to a defender builds controlled play.",
+      "coachingCue": "Build from the back.",
+      "microCorrection": "Look for the wide defenders first before deciding to kick long.",
+      "u10Adaptation": "Roll the ball to your friends like a bowling ball."
+    },
+    {
+      "id": "phys-08",
+      "category": "physical",
+      "title": "Sustained Sprinting",
+      "severity": "minor",
+      "confidence": 0.9,
+      "timestamp": "0:29",
+      "whatHappened": "Team A attacker #25 maintains her speed for over 20 yards during the breakaway.",
+      "whyItMatters": "Prevents the defenders from catching up and making a recovery tackle.",
+      "coachingCue": "Finish the run.",
+      "microCorrection": "Maintain high knee drive even when tiTeam B at the end of the sprint.",
+      "u10Adaptation": "Keep your engine running until the ball is in the net."
+    },
+    {
+      "id": "tact-08",
+      "category": "tactical",
+      "title": "Pressure on the Ball",
+      "severity": "major",
+      "confidence": 0.8,
+      "timestamp": "0:16",
+      "whatHappened": "Team A players are 'containing' from 5 yards away rather than pressing.",
+      "whyItMatters": "Gives Team B too much time to look up and pass.",
+      "coachingCue": "Close the gap.",
+      "microCorrection": "Sprint to within 2 yards, then slow down and get into a defensive stance.",
+      "u10Adaptation": "Get close enough to smell their jersey, then stop."
+    }
+  ],
+  "sessionRecommendations": [
+    {
+      "focus": "Receiving and Turning in the Midfield",
+      "durationMin": 20,
+      "objective": "Improve the ability to receive with an open body shape and take the first touch into space.",
+      "constraints": [
+        "3v3 + 2 Neutral players",
+        "Players must check their shoulder before receiving",
+        "Points for turning and passing to the opposite side"
+      ],
+      "successCriteria": [
+        "70% of touches are directed away from pressure",
+        "Players are scanning at least once before every reception"
+      ]
+    },
+    {
+      "focus": "Counter-Attacking at Speed",
+      "durationMin": 15,
+      "objective": "Develop the technical skills to dribble and finish while running at maximum velocity.",
+      "constraints": [
+        "1v1 breakaway drills from the halfway line",
+        "Defender starts 3 yards behind the attacker",
+        "Attacker must shoot before entering the 6-yard box"
+      ],
+      "successCriteria": [
+        "Attackers use laces for dribbling",
+        "Shots are on target with power"
+      ]
+    },
+    {
+      "focus": "Defensive Shape and Spacing",
+      "durationMin": 20,
+      "objective": "Teach the 'Diamond' structure and how to maintain depth in the defensive line.",
+      "constraints": [
+        "6v6 small-sided game",
+        "Field divided into three vertical zones",
+        "Defenders must be in different horizontal planes (one deep, two wide)"
+      ],
+      "successCriteria": [
+        "No more than two players in the same vertical zone at once",
+        "Defensive line drops together when the ball is played long"
+      ]
+    }
+  ],
+  "teamDefinition": {
+    "focusTeam": {
+      "label": "Team A",
+      "color": "blue",
+      "scope": "Primary team evaluated for coaching interventions"
+    },
+    "opponentTeam": {
+      "label": "Team B",
+      "color": "red",
+      "scope": "Opponent actions referenced for context only"
+    },
+    "namingPolicy": "No personal names. Use team labels, unit labels, and optional jersey numbers only."
+  }
+}

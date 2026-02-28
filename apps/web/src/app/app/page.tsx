@@ -87,20 +87,6 @@ const drillOfDayEntries: Array<{
 
 const quickLinks = [
   {
-    href: "/demo/drill",
-    label: "New Drill",
-    desc: "Generate a custom drill",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 8v8M8 12h8" />
-      </svg>
-    ),
-    color: "from-emerald-500/25 to-teal-500/10 border-emerald-500/25 hover:border-emerald-400/50",
-    hoverGlow: "hover:shadow-emerald-500/15",
-    textColor: "text-emerald-400",
-  },
-  {
     href: "/demo/session",
     label: "New Session",
     desc: "Build a full training session",
@@ -143,6 +129,37 @@ const quickLinks = [
     hoverGlow: "hover:shadow-amber-500/15",
     textColor: "text-amber-400",
   },
+  {
+    href: "/video-analysis",
+    label: "Video Analysis",
+    desc: "Analyze match clips",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <rect x="3.5" y="6" width="13" height="12" rx="2" />
+        <path d="M16.5 10l4-2v8l-4-2" />
+      </svg>
+    ),
+    color: "from-cyan-500/25 to-sky-500/10 border-cyan-500/25 hover:border-cyan-400/50",
+    hoverGlow: "hover:shadow-cyan-500/15",
+    textColor: "text-cyan-400",
+    beta: true,
+  },
+  {
+    href: "/doc-hub",
+    label: "DOC Hub",
+    desc: "Training docs & guides",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+        <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
+        <path d="M14 3.5V8h4" />
+        <path d="M9.5 12h5M9.5 15h5" />
+      </svg>
+    ),
+    color: "from-indigo-500/25 to-violet-500/10 border-indigo-500/25 hover:border-indigo-400/50",
+    hoverGlow: "hover:shadow-indigo-500/15",
+    textColor: "text-indigo-400",
+    beta: true,
+  },
 ];
 
 export default function Home() {
@@ -180,6 +197,14 @@ export default function Home() {
   }, []);
 
   const drillOfDay = drillOfDayEntries[drillIndex];
+  const normalizeCoachLevelForGeneration = (value?: string) => {
+    const v = String(value || "").toUpperCase();
+    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_C") return "USSF_C";
+    if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
+    if (v === "USSF_D") return "GRASSROOTS";
+    return undefined;
+  };
 
   return (
     <main className="relative flex h-dvh flex-col overflow-hidden bg-[#060a13] text-slate-50">
@@ -206,7 +231,14 @@ export default function Home() {
               >
                 <span className={`${link.textColor} transition-transform duration-200 group-hover:scale-110`}>{link.icon}</span>
                 <div className="flex flex-col">
-                  <span className="text-[13px] font-semibold text-white/90">{link.label}</span>
+                  <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/90">
+                    <span>{link.label}</span>
+                    {link.beta ? (
+                      <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
+                        Beta
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-[10px] text-slate-500 group-hover:text-slate-400">{link.desc}</span>
                 </div>
               </Link>
@@ -250,14 +282,28 @@ export default function Home() {
                 if (params.formationAttacking) queryParams.set("formationAttacking", params.formationAttacking);
                 if (params.formationDefending) queryParams.set("formationDefending", params.formationDefending);
                 if (params.playerLevel) queryParams.set("playerLevel", params.playerLevel);
-                if (params.coachLevel) queryParams.set("coachLevel", params.coachLevel);
+                const normalizedCoachLevel = normalizeCoachLevelForGeneration(params.coachLevel);
+                if (normalizedCoachLevel) queryParams.set("coachLevel", normalizedCoachLevel);
                 if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) queryParams.set("goalsAvailable", String(params.goalsAvailable));
                 if (params.numberOfSessions && params.numberOfSessions > 1) {
                   queryParams.set("series", "true");
                   queryParams.set("numberOfSessions", String(params.numberOfSessions));
                 }
                 queryParams.set("autoGenerate", "true");
-                router.push(`/demo/session?${queryParams.toString()}`);
+                queryParams.set("requestId", String(Date.now()));
+                const targetUrl = `/demo/session?${queryParams.toString()}`;
+                const before = typeof window !== "undefined"
+                  ? `${window.location.pathname}${window.location.search}`
+                  : "";
+                router.push(targetUrl);
+                if (typeof window !== "undefined") {
+                  window.setTimeout(() => {
+                    const after = `${window.location.pathname}${window.location.search}`;
+                    if (after === before) {
+                      window.location.assign(targetUrl);
+                    }
+                  }, 350);
+                }
               }}
             />
           </div>

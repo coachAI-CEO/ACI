@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TacticalEdge - Session Quality and Progressive Series Flow</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --lime: #c6f135;
+      --lime-soft: rgba(198, 241, 53, 0.12);
+      --lime-border: rgba(198, 241, 53, 0.24);
+      --bg: #050605;
+      --surface: #0a0f1a;
+      --card: rgba(12, 20, 16, 0.52);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #e8f3d4;
+      --muted: #8ea58a;
+      --blue: #5abfff;
+      --purple: #b87fff;
+      --amber: #f5c842;
+      --red: #ff6b6b;
+      --green: #3ddc84;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      background: radial-gradient(circle at 20% -10%, rgba(198, 241, 53, 0.10), transparent 36%),
+                  radial-gradient(circle at 90% 0%, rgba(90, 191, 255, 0.07), transparent 28%),
+                  var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    .container { max-width: 1120px; margin: 0 auto; padding: 28px 20px 64px; }
+
+    .hero {
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 28px;
+      background: linear-gradient(135deg, rgba(198, 241, 53, 0.07), rgba(255, 255, 255, 0.02) 40%, rgba(90, 191, 255, 0.05));
+      backdrop-filter: blur(8px);
+      margin-bottom: 22px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--lime-border);
+      background: var(--lime-soft);
+      color: var(--lime);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .badge::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--lime);
+      box-shadow: 0 0 10px var(--lime);
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 54px);
+      letter-spacing: -0.02em;
+      line-height: 1.03;
+      margin-bottom: 12px;
+    }
+    .accent { color: var(--lime); }
+    .sub {
+      color: var(--muted);
+      max-width: 760px;
+      font-size: 17px;
+    }
+
+    .section {
+      margin-top: 20px;
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 20px;
+    }
+
+    .section h2 {
+      font-size: 24px;
+      margin-bottom: 6px;
+      letter-spacing: -0.01em;
+    }
+    .section p.lead {
+      color: var(--muted);
+      margin-bottom: 14px;
+      max-width: 840px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(150px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 12px;
+    }
+
+    .node {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 12px;
+      min-height: 118px;
+      position: relative;
+    }
+    .node::after {
+      content: "->";
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: rgba(198, 241, 53, 0.55);
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .node:last-child::after { content: ""; }
+
+    .node .tag {
+      display: inline-block;
+      font-size: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #c9d6c0;
+      margin-bottom: 8px;
+    }
+    .tag.blue { color: var(--blue); border-color: rgba(90, 191, 255, 0.35); background: rgba(90, 191, 255, 0.10); }
+    .tag.lime { color: var(--lime); border-color: rgba(198, 241, 53, 0.35); background: rgba(198, 241, 53, 0.10); }
+    .tag.purple { color: var(--purple); border-color: rgba(184, 127, 255, 0.35); background: rgba(184, 127, 255, 0.10); }
+    .tag.amber { color: var(--amber); border-color: rgba(245, 200, 66, 0.35); background: rgba(245, 200, 66, 0.10); }
+    .tag.green { color: var(--green); border-color: rgba(61, 220, 132, 0.35); background: rgba(61, 220, 132, 0.10); }
+
+    .node h3 { font-size: 14px; margin-bottom: 6px; }
+    .node p { font-size: 12px; color: var(--muted); }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .panel {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.018);
+      padding: 14px;
+    }
+
+    .panel h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    ul.clean { list-style: none; display: grid; gap: 8px; }
+    ul.clean li {
+      font-size: 13px;
+      color: #d4e0ce;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    ul.clean li::before {
+      content: ">";
+      color: var(--lime);
+      font-weight: 700;
+      margin-top: 1px;
+    }
+
+    .mono-card {
+      margin-top: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      background: #0c111b;
+      padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #cdd8cf;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .kpi {
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.018);
+      padding: 12px;
+      text-align: center;
+    }
+    .kpi .n {
+      color: var(--lime);
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 5px;
+    }
+    .kpi .l {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding-top: 12px;
+    }
+
+    @media (max-width: 1050px) {
+      .flow { grid-template-columns: repeat(3, minmax(180px, 1fr)); }
+      .node:nth-child(3)::after, .node:nth-child(6)::after { content: ""; }
+    }
+    @media (max-width: 780px) {
+      .split { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .node::after { content: "v"; right: 10px; top: auto; bottom: -10px; transform: none; }
+      .node:last-child::after { content: ""; }
+      .kpis { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+      .container { padding: 18px 14px 42px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <div class="badge">TacticalEdge Architecture Brief</div>
+      <h1>Why TacticalEdge Delivers <span class="accent">Quality Sessions</span> Every Time</h1>
+      <p class="sub">
+        This page explains the high-level code flow for single-session generation and progressive series generation.
+        It is technical enough for engineering and product review, without going deep into implementation details.
+      </p>
+    </header>
+
+    <section class="section">
+      <h2>End-to-End Code Flow</h2>
+      <p class="lead">Every request runs through deterministic guardrails before and after AI generation. This gives repeatable quality, not just creative output.</p>
+      <div class="flow">
+        <article class="node">
+          <span class="tag blue">1. Input</span>
+          <h3>Capture + Normalize</h3>
+          <p>Validate age group, phase, zone, formations, player counts, duration, and coach level.</p>
+        </article>
+        <article class="node">
+          <span class="tag lime">2. Prompt Layer</span>
+          <h3>Constraint Encoding</h3>
+          <p>Inject tactical rules, output shape expectations, progression logic, and language style controls.</p>
+        </article>
+        <article class="node">
+          <span class="tag purple">3. Generation</span>
+          <h3>LLM Session Draft</h3>
+          <p>Generate session JSON with drills, timings, coaching points, constraints, and tactical diagrams.</p>
+        </article>
+        <article class="node">
+          <span class="tag amber">4. QA Engine</span>
+          <h3>Score + Gate</h3>
+          <p>Score tactical coherence, progression quality, age fit, and coaching usability against thresholds.</p>
+        </article>
+        <article class="node">
+          <span class="tag green">5. Auto-Fix</span>
+          <h3>Patch If Needed</h3>
+          <p>If any area fails, apply a targeted fixer pass and re-check before release to user.</p>
+        </article>
+        <article class="node">
+          <span class="tag lime">6. Delivery</span>
+          <h3>Persist + Return</h3>
+          <p>Return clean session payload and optionally persist to Vault for lookup, sharing, and reuse.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Why Quality Is Consistent</h2>
+      <p class="lead">Quality comes from layered controls around the model, not from model output alone.</p>
+      <div class="split">
+        <article class="panel">
+          <h3>Quality Controls</h3>
+          <ul class="clean">
+            <li>Strong typed request contracts avoid malformed tactical asks.</li>
+            <li>Coach-level adaptation ensures terminology and complexity stay appropriate.</li>
+            <li>Schema checks enforce complete drill structures and safe defaults.</li>
+            <li>Score thresholds prevent weak sessions from shipping unchanged.</li>
+            <li>Fixer stage applies deterministic remediation for missing or low-quality fields.</li>
+          </ul>
+          <div class="mono-card">quality_pass = schema_valid
+&& qa.total >= threshold
+&& tactical_coherence >= min
+&& age_fit >= min
+&& progression_chain_is_valid</div>
+        </article>
+        <article class="panel">
+          <h3>Operational Reliability</h3>
+          <ul class="clean">
+            <li>Fallback routing and retry logic reduce transient generation failures.</li>
+            <li>Auth/session handling prevents bad token states from blocking generation.</li>
+            <li>Vault reference IDs provide traceability from generated output to stored artifact.</li>
+            <li>Structured logging allows quick diagnosis of quality regressions.</li>
+            <li>Consistent response shape keeps frontend rendering stable.</li>
+          </ul>
+          <div class="mono-card">request -> normalize -> generate -> qa_gate
+if fail: fixer -> qa_gate
+if pass: persist -> return</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>How Progressive Series Works</h2>
+      <p class="lead">A progressive series is not just multiple sessions. It is a sequenced learning arc with controlled progression and anti-duplication.</p>
+      <div class="split">
+        <article class="panel">
+          <h3>Series Generation Logic</h3>
+          <ul class="clean">
+            <li>Start from one base tactical objective and generate N connected sessions.</li>
+            <li>Session 1 establishes core pattern and technical baseline.</li>
+            <li>Middle sessions increase constraints, decision speed, and tactical complexity.</li>
+            <li>Final session emphasizes transfer to game-real scenarios and decision pressure.</li>
+            <li>Cross-session memory reduces repeated drills and repeated coaching language.</li>
+          </ul>
+          <div class="mono-card">for sessionIndex in 1..N:
+  target_load = progressive_curve(sessionIndex, N)
+  target_complexity = tactical_curve(sessionIndex, N)
+  session = generate_with_context(previous_sessions)
+  validate_progression(session, previous_sessions)</div>
+        </article>
+        <article class="panel">
+          <h3>Series Quality Guarantees</h3>
+          <ul class="clean">
+            <li>Progression checks verify each session advances rather than repeats.</li>
+            <li>Load and duration remain appropriate for the selected age group.</li>
+            <li>Skill focus remains coherent across the full series objective.</li>
+            <li>Each session is independently QA-scored before final series delivery.</li>
+            <li>Series metadata enables scheduling, Vault grouping, and downstream planning.</li>
+          </ul>
+          <div class="mono-card">series_pass = all(session.pass for session in series)
+&& progression_index >= min
+&& duplication_score <= max
+&& objective_alignment >= min</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>At-a-Glance Outcomes</h2>
+      <p class="lead">The architecture balances creativity and control so coaches get useful outputs quickly, with fewer manual fixes.</p>
+      <div class="kpis">
+        <div class="kpi"><div class="n">6</div><div class="l">Quality Gates</div></div>
+        <div class="kpi"><div class="n">2</div><div class="l">Recovery Paths</div></div>
+        <div class="kpi"><div class="n">N</div><div class="l">Series Sessions</div></div>
+        <div class="kpi"><div class="n">1</div><div class="l">Unified Flow</div></div>
+      </div>
+      <p class="footer-note">
+        TacticalEdge style applied: dark field, lime accents, technical cards, concise engineering language.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

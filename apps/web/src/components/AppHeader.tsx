@@ -13,13 +13,12 @@ type SidebarItem = {
 };
 
 const navItems: SidebarItem[] = [
-  { href: "/app", label: "Home", icon: HomeIcon },
-  { href: "/demo/drill", label: "Drill Generator", icon: DrillIcon },
   { href: "/demo/session", label: "Session Builder", icon: SessionIcon },
   { href: "/vault", label: "Vault", icon: VaultIcon },
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/video-analysis", label: "Video Analysis", icon: VideoAnalysisIcon, beta: true },
+  { href: "/doc-hub", label: "DOC Hub", icon: DocHubIcon, beta: true },
 ];
 
 const bottomItems: SidebarItem[] = [
@@ -112,10 +111,10 @@ export default function AppHeader() {
             <path d="M4 7h16M4 12h16M4 17h16" />
           </svg>
         </button>
-        <span className="text-sm font-semibold tracking-tight">
+        <Link href="/app" className="text-sm font-semibold tracking-tight">
           <span className="text-white/90">Tactical</span>
           <span className="text-emerald-400">Edge</span>
-        </span>
+        </Link>
         <AuthButton compact />
       </div>
 
@@ -135,7 +134,7 @@ export default function AppHeader() {
       } ${mobileOpen || isDesktop ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
     >
       {/* Logo area */}
-      <div className="flex h-20 items-center gap-3 px-4 border-b border-white/[0.04]">
+      <Link href="/app" className="flex h-20 items-center gap-3 px-4 border-b border-white/[0.04]">
         <div className="relative flex h-[65px] w-[65px] shrink-0 items-center justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -154,7 +153,7 @@ export default function AppHeader() {
           <span className="text-white/90">Tactical</span>
           <span className="text-emerald-400">Edge</span>
         </span>
-      </div>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-1 scrollbar-none">
@@ -343,6 +342,17 @@ function VideoAnalysisIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
       <path d="M10 9.5l5 2.5-5 2.5v-5z" />
+    </svg>
+  );
+}
+
+function DocHubIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M7.5 9.5h9M7.5 13h6M7.5 6.5h4" />
+      <circle cx="17.5" cy="13.5" r="2.5" />
+      <path d="M17.5 12v1.6l1.1.8" />
     </svg>
   );
 }

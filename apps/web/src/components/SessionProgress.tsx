@@ -1,11 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type Props = {
   isSeries: boolean;
   totalSessions?: number;
   currentSession?: number;
+  readySeriesSessions?: Array<{
+    id: string;
+    title?: string;
+    seriesNumber?: number | null;
+  }>;
   onCancel?: () => void;
 };
 
@@ -63,16 +69,18 @@ export default function SessionProgress({
   isSeries,
   totalSessions = 0,
   currentSession = 0,
+  readySeriesSessions = [],
   onCancel,
 }: Props) {
-  const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
   const [detailIndex, setDetailIndex] = useState(0);
 
   useEffect(() => {
-    const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+    const id = setInterval(() => {
+      setElapsed((prev) => prev + 1000);
+    }, 1000);
     return () => clearInterval(id);
-  }, [startTime]);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -98,6 +106,11 @@ export default function SessionProgress({
   );
   const activeStep = COACH_FLOW_STEPS[normalizedStepIndex];
   const activeDetail = activeStep.details[detailIndex % activeStep.details.length];
+  const completedSeriesCount = readySeriesSessions.length;
+  const generatingSeriesIndex =
+    isSeries && totalSessions > 0
+      ? Math.min(totalSessions, Math.max(1, completedSeriesCount + 1))
+      : 1;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/75 p-6 backdrop-blur-sm">
@@ -182,8 +195,52 @@ export default function SessionProgress({
               <span className="text-xs text-emerald-300">Building with coach-style validation</span>
             </div>
             {isSeries && totalSessions > 0 && (
-              <div className="mt-4 inline-flex items-center rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-xs text-slate-300">
-                Series progress: {currentSession || 1}/{totalSessions}
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center rounded-full border border-cyan-700/70 bg-cyan-950/40 px-3 py-1 text-xs text-cyan-200">
+                    Generating: {generatingSeriesIndex}/{totalSessions}
+                  </div>
+                  <div className="inline-flex items-center rounded-full border border-emerald-700/70 bg-emerald-950/30 px-3 py-1 text-xs text-emerald-200">
+                    Ready: {completedSeriesCount}/{totalSessions}
+                  </div>
+                  <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/60 px-3 py-1 text-xs text-slate-300">
+                    Series progress: {currentSession || 1}/{totalSessions}
+                  </div>
+                </div>
+                {readySeriesSessions.length > 0 && (
+                  <div className="rounded-xl border border-emerald-700/40 bg-emerald-950/20 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-emerald-300">
+                      Sessions Ready
+                    </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {readySeriesSessions.map((session, idx) => (
+                        <div
+                          key={session.id}
+                          className="rounded-lg border border-emerald-800/40 bg-slate-950/30 px-2.5 py-2 text-xs text-emerald-100"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <span className="font-semibold text-emerald-300">
+                                Session {session.seriesNumber || idx + 1}:
+                              </span>{" "}
+                              <span className="text-slate-200">
+                                {session.title || `Session ${session.seriesNumber || idx + 1}`}
+                              </span>
+                            </div>
+                            <Link
+                              href={`/demo/session?sessionId=${encodeURIComponent(session.id)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 rounded-md border border-emerald-600/60 bg-emerald-900/30 px-2 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-800/40"
+                            >
+                              Open
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

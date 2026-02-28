@@ -12,8 +12,17 @@ export async function GET(
     const API_URL = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     const url = `${API_URL}/vault/series/${seriesId}`;
     const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    const cookieToken = req.cookies.get("accessToken")?.value;
+    const userIdHeader = req.headers.get("x-user-id");
     const headers: HeadersInit = {};
-    if (authHeader) headers["Authorization"] = authHeader;
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    } else if (cookieToken) {
+      headers["Authorization"] = `Bearer ${cookieToken}`;
+    }
+    if (userIdHeader) {
+      headers["x-user-id"] = userIdHeader;
+    }
     
     const res = await fetch(url, { headers });
     const data = await res.json();

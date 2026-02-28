@@ -3,7 +3,7 @@ import type { SessionPromptInput } from "./prompts/session";
 import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { findSimilarSessions } from "./services/vault";
-import { generateSessionPdf } from "./services/pdf-export";
+import { generateSessionPdf, generateCompactSessionPdf } from "./services/pdf-export";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, requireFeature, AuthRequest } from "./middleware/auth";
@@ -396,16 +396,18 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
 r.post("/ai/export-session-pdf", authenticate, requireFeature('canExportPDF'), async (req: AuthRequest, res) => {
   try {
     const session = req.body?.session;
+    const format  = req.body?.format === "compact" ? "compact" : "full";
     if (!session) {
       return res.status(400).json({ ok: false, error: "session is required" });
     }
     console.log("[PDF_ROUTE] Received session for PDF export:", {
       title: session.title,
       drillsCount: session.drills?.length,
-      firstDrillHasDiagram: !!(session.drills?.[0]?.diagram || session.drills?.[0]?.diagramV1),
-      firstDrillKeys: session.drills?.[0] ? Object.keys(session.drills[0]) : [],
+      format,
     });
-    const pdfBuffer = await generateSessionPdf(session);
+    const pdfBuffer = format === "compact"
+      ? await generateCompactSessionPdf(session)
+      : await generateSessionPdf(session);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "attachment; filename=session.pdf");
     return res.send(pdfBuffer);

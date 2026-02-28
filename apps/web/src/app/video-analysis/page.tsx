@@ -2,6 +2,150 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getUserId } from "@/lib/user";
+import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
+import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
+
+// Helper component for filtered vault list
+function FilteredVaultList({ 
+  vaultItems, 
+  searchQuery, 
+  onOpenItem, 
+  onRerunItem, 
+  onDeleteItem, 
+  isLoading 
+}: { 
+  vaultItems: VideoVaultItem[]; 
+  searchQuery: string; 
+  onOpenItem: (item: VideoVaultItem) => void; 
+  onRerunItem: (item: VideoVaultItem) => void; 
+  onDeleteItem: (item: VideoVaultItem) => void; 
+  isLoading: boolean; 
+}) {
+  const filteredVaultItems = useMemo(() => {
+    if (!searchQuery.trim()) return vaultItems;
+    const query = searchQuery.toLowerCase();
+    return vaultItems.filter(item => 
+      (item.title || '').toLowerCase().includes(query) ||
+      (item.refCode || '').toLowerCase().includes(query) ||
+      (item.gameModelId || '').toLowerCase().includes(query) ||
+      (item.phase || '').toLowerCase().includes(query) ||
+      (item.zone || '').toLowerCase().includes(query)
+    );
+  }, [vaultItems, searchQuery]);
+
+  if (filteredVaultItems.length === 0 && searchQuery) {
+    return (
+      <div className="flex h-[200px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-700 bg-slate-900/30">
+        <svg className="mb-3 h-10 w-10 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <p className="text-sm font-medium text-slate-400">No matching results</p>
+        <p className="mt-1 text-xs text-slate-500">Try adjusting your search terms</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-700/50 bg-slate-900/30">
+      <table className="w-full min-w-[900px] text-left text-xs">
+        <thead className="sticky top-0 bg-slate-900/95 backdrop-blur text-slate-300">
+          <tr className="border-b border-slate-700/50">
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold">Date</th>
+            <th className="px-3 py-2.5 font-semibold">Analysis Name</th>
+            <th className="px-3 py-2.5 font-semibold">Ref Code</th>
+            <th className="px-3 py-2.5 font-semibold">Game Model</th>
+            <th className="px-3 py-2.5 font-semibold">Phase</th>
+            <th className="px-3 py-2.5 font-semibold">Zone</th>
+            <th className="px-3 py-2.5 font-semibold">Age Group</th>
+            <th className="px-3 py-2.5 font-semibold">Level</th>
+            <th className="whitespace-nowrap px-3 py-2.5 font-semibold text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredVaultItems.map((vaultItem) => {
+            const vaultItemName = prettifyVaultTitle(vaultItem.title);
+            const createdAt = vaultItem.createdAt ? new Date(vaultItem.createdAt).toLocaleDateString() : 'N/A';
+            const refCode = vaultItem.refCode || 'VA-PENDING';
+            
+            // Normalize game model - convert "3v3" to "3v3", "5v5" to "5v5", etc.
+            const gameModel = vaultItem.gameModelId 
+              ? vaultItem.gameModelId.replace(/v/i, 'v').replace(/(\d)v(\d)/i, '$1v$2') 
+              : '-';
+            
+            // Normalize phase - capitalize first letter
+            const phase = vaultItem.phase 
+              ? vaultItem.phase.charAt(0).toUpperCase() + vaultItem.phase.slice(1).toLowerCase()
+              : '-';
+            
+            // Normalize zone
+            const zone = vaultItem.zone 
+              ? vaultItem.zone.charAt(0).toUpperCase() + vaultItem.zone.slice(1).toLowerCase()
+              : '-';
+            
+            const ageGroup = vaultItem.ageGroup || '-';
+            
+            // Normalize level - convert "GRASSROOTS" to "Grassroots", "USSF_C" to "USSF C", etc.
+            const playerLevel = (vaultItem.playerLevel || vaultItem.coachLevel || '-')
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, (c: string) => c.toUpperCase());
+            
+            return (
+              <tr 
+                key={vaultItem.id} 
+                className="border-b border-slate-800/50 transition-colors hover:bg-slate-800/50"
+              >
+                <td className="whitespace-nowrap px-3 py-3 text-slate-400">{createdAt}</td>
+                <td className="px-3 py-3">
+                  <span className="font-medium text-white">{vaultItemName}</span>
+                </td>
+                <td className="px-3 py-3">
+                  <span className="inline-flex rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-200">
+                    {refCode}
+                  </span>
+                </td>
+                <td className="px-3 py-3">
+                  <span className="rounded bg-blue-500/20 px-2 py-0.5 text-blue-200">{gameModel}</span>
+                </td>
+                <td className="px-3 py-3">
+                  <span className="rounded bg-purple-500/20 px-2 py-0.5 text-purple-200">{phase}</span>
+                </td>
+                <td className="px-3 py-3">
+                  <span className="rounded bg-orange-500/20 px-2 py-0.5 text-orange-200">{zone}</span>
+                </td>
+                <td className="px-3 py-3 text-slate-300">{ageGroup}</td>
+                <td className="px-3 py-3 text-slate-400">{playerLevel}</td>
+                <td className="px-3 py-3 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => onOpenItem(vaultItem)}
+                      className="inline-flex items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-500/20"
+                    >
+                      Open
+                    </button>
+                    <button
+                      onClick={() => onRerunItem(vaultItem)}
+                      disabled={isLoading}
+                      className="inline-flex items-center rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Re-run
+                    </button>
+                    <button
+                      onClick={() => onDeleteItem(vaultItem)}
+                      disabled={isLoading}
+                      className="inline-flex items-center rounded-md border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-semibold text-rose-200 transition hover:border-rose-300/50 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 const AGE_GROUP_OPTIONS = [
   { label: "U8", value: "U8" },
@@ -287,6 +431,7 @@ export default function VideoAnalysisPage() {
   const [vaultSaveMessage, setVaultSaveMessage] = useState<string | null>(null);
   const [vaultModalOpen, setVaultModalOpen] = useState(false);
   const [vaultLoading, setVaultLoading] = useState(false);
+  const [vaultSearch, setVaultSearch] = useState("");
   const [vaultError, setVaultError] = useState<string | null>(null);
   const [vaultItems, setVaultItems] = useState<VideoVaultItem[]>([]);
   const [currentAnalysisTitle, setCurrentAnalysisTitle] = useState<string>("");
@@ -295,6 +440,12 @@ export default function VideoAnalysisPage() {
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const [noMatchDialogOpen, setNoMatchDialogOpen] = useState(false);
+  const [searchParams, setSearchParams] = useState<any>(null);
+  const [selectedSession, setSelectedSession] = useState<any>(null);
 
   const analysisItems: VideoAnalysisItem[] = useMemo(
     () => (Array.isArray(videoAnalysis?.analysisArray) ? videoAnalysis.analysisArray : []),
@@ -426,7 +577,9 @@ export default function VideoAnalysisPage() {
   }, [videoAnalysis]);
   const [animFrameIdx, setAnimFrameIdx] = useState(0);
   const [animPlaying, setAnimPlaying] = useState(false);
+  const [animSpeed, setAnimSpeed] = useState(1); // 0.5, 1, 1.5, 2
   const currentAnimFrame = animationFrames[animFrameIdx] || null;
+  const animStepMs = Math.round(ANIM_STEP_MS / animSpeed);
   const focusTeamFill = useMemo(
     () => toHexColor(videoAnalysis?.teamDefinition?.focusTeam?.color || videoContext.focusTeamColor, "#3b82f6"),
     [videoAnalysis, videoContext.focusTeamColor]
@@ -447,13 +600,13 @@ export default function VideoAnalysisPage() {
       setAnimFrameIdx((prev) => {
         if (prev >= animationFrames.length - 1) {
           setAnimPlaying(false);
-          return prev;
+          return 0; // Loop back to start
         }
         return prev + 1;
       });
-    }, ANIM_STEP_MS);
+    }, Math.round(ANIM_STEP_MS / animSpeed));
     return () => clearInterval(timer);
-  }, [animPlaying, animationFrames.length, ANIM_STEP_MS]);
+  }, [animPlaying, animationFrames.length, ANIM_STEP_MS, animSpeed]);
 
   const getAuthHeaders = () => {
     const accessToken =
@@ -560,6 +713,156 @@ export default function VideoAnalysisPage() {
 
   const cancelVideoAnalysis = () => {
     abortControllerRef.current?.abort();
+  };
+
+  const findRecommendedSessions = async () => {
+    if (!videoAnalysis || recommendationsLoading) return;
+    
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+    setRecommendations([]);
+    
+    try {
+      // Build search parameters from analysis context for vault search
+      const searchInput = {
+        gameModelId: resolvedGameModel || videoContext.gameModelId || '',
+        ageGroup: resolvedAgeGroup || videoContext.ageGroup || '',
+        phase: resolvedPhase || videoContext.phase || undefined,
+        zone: resolvedZone || videoContext.zone || undefined,
+        limit: 10,
+      };
+      
+      // Use vault/sessions GET endpoint with query params
+      const queryParams = new URLSearchParams();
+      if (searchInput.gameModelId) queryParams.set('gameModelId', searchInput.gameModelId);
+      if (searchInput.ageGroup) queryParams.set('ageGroup', searchInput.ageGroup);
+      if (searchInput.phase) queryParams.set('phase', searchInput.phase);
+      if (searchInput.zone) queryParams.set('zone', searchInput.zone);
+      queryParams.set('limit', String(searchInput.limit));
+      
+      const res = await fetch(`/api/vault/sessions?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      
+      const data = await res.json().catch(() => ({}));
+      
+      // Check for matches in response
+      const sessions = data?.sessions || [];
+      
+      if (res.ok && sessions.length > 0) {
+        // Found matches - display them
+        setRecommendations(sessions.slice(0, 5));
+      } else if (res.ok && sessions.length === 0) {
+        // Success but no matches - show dialog to expand search or generate
+        setSearchParams(searchInput);
+        setNoMatchDialogOpen(true);
+      } else {
+        // API error - show dialog with option to generate
+        console.warn('Vault search failed:', res.status, data);
+        setSearchParams(searchInput);
+        setNoMatchDialogOpen(true);
+      }
+    } catch (e: any) {
+      // Network or other error - show dialog
+      console.warn('Vault search error:', e);
+      setSearchParams({});
+      setNoMatchDialogOpen(true);
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  };
+
+  const generateNewSession = async (params: any) => {
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+    
+    try {
+      // Use /api/generate-session to create a new session based on analysis
+      const res = await fetch('/api/generate-session', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          gameModelId: params.gameModelId,
+          ageGroup: params.ageGroup,
+          phase: params.phase || undefined,
+          zone: params.zone || undefined,
+          coachLevel: params.coachLevel || params.playerLevel,
+          formationAttacking: params.formationAttacking || '',
+          formationDefending: '',
+          numbersMin: params.numbersMin || 6,
+          numbersMax: params.numbersMax || 11,
+          goalsAvailable: params.goalsAvailable || 2,
+          spaceConstraint: params.spaceConstraint || 'balanced',
+          durationMin: params.durationMin || 45,
+          topic: params.context?.topPriorities?.[0] || params.context?.summary?.substring(0, 100) || 'Training session based on video analysis',
+        }),
+      });
+      
+      const data = await res.json().catch(() => ({}));
+      
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Generation failed: ${res.status}`);
+      }
+      
+      // Set the generated session as recommendation
+      if (data?.session) {
+        setRecommendations([data.session]);
+      } else {
+        throw new Error('No session generated');
+      }
+    } catch (e: any) {
+      setRecommendationsError(e?.message || 'Failed to generate session');
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  };
+
+  const expandSearchCriteria = async () => {
+    if (!searchParams) return;
+    
+    setNoMatchDialogOpen(false);
+    setRecommendationsLoading(true);
+    
+    try {
+      // Expand search with relaxed parameters - remove phase/zone filters
+      const queryParams = new URLSearchParams();
+      if (searchParams.gameModelId) queryParams.set('gameModelId', searchParams.gameModelId);
+      if (searchParams.ageGroup) queryParams.set('ageGroup', searchParams.ageGroup);
+      // Remove phase and zone filters for expanded search
+      queryParams.set('limit', '20');  // More results
+      
+      const res = await fetch(`/api/vault/sessions?${queryParams.toString()}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      
+      const data = await res.json().catch(() => ({}));
+      
+      const sessions = data?.sessions || [];
+      
+      if (res.ok && sessions.length > 0) {
+        setRecommendations(sessions.slice(0, 5));
+      } else {
+        // Still no matches, show error - user can still generate
+        setRecommendationsError('No sessions found even with expanded criteria. Use "Generate New Session" below.');
+      }
+    } catch (e: any) {
+      setRecommendationsError(e?.message || 'Failed to expand search. You can generate a new session instead.');
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  };
+
+  const proceedToGenerate = async () => {
+    if (!searchParams) return;
+    setNoMatchDialogOpen(false);
+    await generateNewSession(searchParams);
+  };
+
+  const cancelRecommendationSearch = () => {
+    setNoMatchDialogOpen(false);
+    setSearchParams(null);
   };
 
   const requestRunConfirmation = () => {
@@ -790,6 +1093,34 @@ export default function VideoAnalysisPage() {
     await runFullVideoAnalysis(rerunContext, { forceRefresh: true });
   };
 
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<VideoVaultItem | null>(null);
+
+  const handleDeleteClick = (item: VideoVaultItem) => {
+    setDeleteConfirmItem(item);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmItem) return;
+    const item = deleteConfirmItem;
+    setDeleteConfirmItem(null);
+    
+    try {
+      const res = await fetch(`/api/video-analysis/vault/${item.id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setVaultError(data?.error || 'Failed to delete item');
+        return;
+      }
+      // Remove from local list
+      setVaultItems(prev => prev.filter(v => v.id !== item.id));
+    } catch (e: any) {
+      setVaultError(e?.message || 'Failed to delete item');
+    }
+  };
+
   return (
     <main className="relative min-h-dvh overflow-hidden bg-[#060a13] text-slate-50">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -800,22 +1131,26 @@ export default function VideoAnalysisPage() {
       <div className="relative mx-auto w-full max-w-6xl p-4 md:p-6">
         <section className="rounded-2xl border border-cyan-500/[0.12] bg-gradient-to-b from-[#08131a]/85 to-[#090f1a]/70 shadow-[0_0_30px_-12px_rgba(6,182,212,0.12)]">
           <div className="flex items-center gap-3 border-b border-cyan-500/[0.08] bg-gradient-to-r from-cyan-950/25 to-transparent px-5 py-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/20 shadow-[0_0_12px_rgba(6,182,212,0.18)]">
-              <svg viewBox="0 0 24 24" className="h-4 w-4 text-cyan-300" fill="none" stroke="currentColor" strokeWidth="2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/30 to-blue-600/20 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+              <svg viewBox="0 0 24 24" className="h-5 w-5 text-cyan-300" fill="none" stroke="currentColor" strokeWidth="2">
                 <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
                 <path d="M10 9.5l5 2.5-5 2.5v-5z" />
               </svg>
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-white/90">Video Analysis</h1>
-              <p className="text-xs text-slate-500">Dedicated analysis workspace with anonymized Team A/Team B output.</p>
+              <h1 className="text-base font-semibold text-white/90">Video Analysis</h1>
+              <p className="text-xs text-slate-500">AI-powered tactical analysis with anonymized Team A/Team B output.</p>
             </div>
           </div>
 
           <div className="space-y-4 p-4">
             <div className="space-y-4">
               <div className="space-y-3 rounded-xl border border-white/[0.07] bg-black/10 p-3">
-              <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Configure Analysis</p>
+                  <span className="text-[10px] text-slate-500">Set parameters for AI analysis</span>
+                </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
                 <label className="flex flex-col gap-1 whitespace-nowrap text-[11px] text-slate-400">
                   Age Group
                   <select
@@ -968,7 +1303,7 @@ export default function VideoAnalysisPage() {
                 />
               </label>
 
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <button
                   onClick={requestRunConfirmation}
                   disabled={videoLoading || !isVideoFormValid}
@@ -1009,23 +1344,26 @@ export default function VideoAnalysisPage() {
                 </div>
               ) : null}
 
-                <div className="rounded-lg border border-cyan-500/20 bg-[#071119] px-3 py-2 text-[11px] text-slate-300">
+                <div className="rounded-lg border border-cyan-500/20 bg-[#071119] px-3 py-3 text-[11px]">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-200">Analysis Configuration</p>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-cyan-200">Analysis Scope</span>
-                    <span className="text-slate-500">|</span>
-                    <span>
-                      Focus: <span className="text-white/90">{formatColorLabel(videoContext.focusTeamColor)}</span> (Team A) vs{" "}
-                      <span className="text-white/90">{formatColorLabel(videoContext.opponentTeamColor)}</span> (Team B)
+                    <span className="inline-flex items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+                      <span className="mr-1 opacity-70">Focus:</span>
+                      {formatColorLabel(videoContext.focusTeamColor)}
+                      <span className="mx-1 text-cyan-400/50">vs</span>
+                      {formatColorLabel(videoContext.opponentTeamColor)}
                     </span>
-                    <span className="text-slate-500">|</span>
-                    <span>
-                      Tactical scope: <span className="text-white/90">{GAME_MODEL_LABELS[videoContext.gameModelId] || videoContext.gameModelId}</span> /{" "}
-                      <span className="text-white/90">{PHASE_LABELS[videoContext.phase] || videoContext.phase}</span> /{" "}
-                      <span className="text-white/90">{ZONE_LABELS[videoContext.zone] || videoContext.zone}</span>
+                    <span className="inline-flex rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-1 text-slate-300">
+                      {GAME_MODEL_LABELS[videoContext.gameModelId] || videoContext.gameModelId || 'N/A'}
                     </span>
-                    <span className="text-slate-500">|</span>
-                    <span>
-                      Formation used: <span className="text-white/90">{formationDisplay}</span>
+                    <span className="inline-flex rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-1 text-slate-300">
+                      {PHASE_LABELS[videoContext.phase] || videoContext.phase || 'N/A'}
+                    </span>
+                    <span className="inline-flex rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-1 text-slate-300">
+                      {ZONE_LABELS[videoContext.zone] || videoContext.zone || 'N/A'}
+                    </span>
+                    <span className="inline-flex rounded-md border border-white/[0.10] bg-white/[0.04] px-2 py-1 text-slate-300">
+                      {formationDisplay}
                     </span>
                   </div>
                 </div>
@@ -1033,7 +1371,15 @@ export default function VideoAnalysisPage() {
 
               <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-white/[0.07] bg-black/10 p-3">
-                <p className="mb-2 text-[11px] font-medium text-slate-300">Clip Preview</p>
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-300">Video Clip</p>
+                    <p className="text-[9px] text-slate-500">Uploaded video for analysis</p>
+                  </div>
+                  {videoPreviewUrl && (
+                    <span className="text-[9px] text-emerald-400">✓ Video loaded</span>
+                  )}
+                </div>
                 {videoPreviewUrl ? (
                   <video
                     src={videoPreviewUrl}
@@ -1043,7 +1389,12 @@ export default function VideoAnalysisPage() {
                   />
                 ) : (
                   <div className="flex h-[420px] items-center justify-center rounded-md border border-dashed border-white/[0.12] text-sm text-slate-500">
-                    <span>Run analysis to load video preview.</span>
+                    <div className="text-center">
+                      <svg className="mx-auto mb-2 h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      <span>Run analysis to load video preview</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1051,7 +1402,10 @@ export default function VideoAnalysisPage() {
               <div className="rounded-xl border border-white/[0.07] bg-black/10 p-3">
                 <div className="rounded-lg border border-cyan-500/20 bg-[#071119] p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-cyan-200">Tactical Animation</p>
+                    <div>
+                      <p className="text-[11px] font-semibold text-cyan-200">Tactical Animation</p>
+                      <p className="text-[9px] text-slate-500">Key moments visualized</p>
+                    </div>
                     <span className="text-[10px] text-slate-400">
                       {animationFrames.length > 0 ? `${animFrameIdx + 1}/${animationFrames.length}` : "No frames"}
                     </span>
@@ -1059,12 +1413,87 @@ export default function VideoAnalysisPage() {
 
                   {animationFrames.length === 0 || !currentAnimFrame ? (
                     <div className="flex h-[220px] items-center justify-center rounded-md border border-dashed border-white/[0.12] text-xs text-slate-500">
-                      Run analysis to render tactical animation frames.
+                      <div className="text-center">
+                        <svg className="mx-auto mb-2 h-6 w-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Run analysis to generate tactical animation</span>
+                      </div>
                     </div>
                   ) : (
                     <>
-                      <div className="rounded-md border border-white/[0.08] bg-[#041018] p-2">
+                      {/* Enhanced Frame Progress Bar / Scrubber */}
+                      <div className="mb-3">
+                        <div className="relative h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className="absolute h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-200"
+                            style={{ width: `${animationFrames.length > 1 ? ((animFrameIdx / (animationFrames.length - 1)) * 100) : 0}%` }}
+                          />
+                          {/* Frame markers */}
+                          {animationFrames.slice(0, Math.min(animationFrames.length, 20)).map((frame, idx) => {
+                            const position = animationFrames.length > 1 ? (idx / (animationFrames.length - 1)) * 100 : 0;
+                            return (
+                              <div
+                                key={`marker-${idx}`}
+                                className="absolute top-0 h-2 w-0.5 bg-cyan-400/40"
+                                style={{ left: `${position}%` }}
+                              />
+                            );
+                          })}
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.max(0, animationFrames.length - 1)}
+                          value={animFrameIdx}
+                          onChange={(e) => {
+                            setAnimFrameIdx(Number(e.target.value));
+                            setAnimPlaying(false);
+                          }}
+                          className="absolute inset-x-0 h-2 w-full cursor-pointer opacity-0"
+                          style={{ marginTop: '-8px' }}
+                        />
+                      </div>
+
+                      <div className="rounded-md border border-white/[0.08] bg-[#041018] p-2 relative overflow-hidden">
                         <svg viewBox="0 0 120 80" className="h-[210px] w-full">
+                          <defs>
+                            {/* Field gradient */}
+                            <linearGradient id="animFieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                              <stop offset="0%" stopColor="#1a3a2e" />
+                              <stop offset="50%" stopColor="#1e4d3a" />
+                              <stop offset="100%" stopColor="#1a3a2e" />
+                            </linearGradient>
+                            {/* Focus team gradient */}
+                            <radialGradient id="focusPlayerGrad" cx="30%" cy="30%">
+                              <stop offset="0%" stopColor="#60a5fa" />
+                              <stop offset="100%" stopColor="#2563eb" />
+                            </radialGradient>
+                            {/* Opponent gradient */}
+                            <radialGradient id="oppPlayerGrad" cx="30%" cy="30%">
+                              <stop offset="0%" stopColor="#f8fafc" />
+                              <stop offset="100%" stopColor="#cbd5e1" />
+                            </radialGradient>
+                            {/* Ball gradient */}
+                            <radialGradient id="ballGrad" cx="35%" cy="35%">
+                              <stop offset="0%" stopColor="#fbbf24" />
+                              <stop offset="100%" stopColor="#d97706" />
+                            </radialGradient>
+                            {/* Glow filter */}
+                            <filter id="animGlow" x="-50%" y="-50%" width="200%" height="200%">
+                              <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+                              <feMerge>
+                                <feMergeNode in="coloredBlur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                              </feMerge>
+                            </filter>
+                          </defs>
+                          
+                          {/* Field background */}
+                          <rect x="0" y="0" width="120" height="80" fill="url(#animFieldGrad)" rx="2" />
+                          
+                          {/* Field markings */}
                           <g stroke="rgba(255,255,255,0.30)" strokeWidth="0.6" fill="none">
                             <line x1="60" y1="0" x2="60" y2="80" />
                             <circle cx="60" cy="40" r="10" />
@@ -1072,6 +1501,7 @@ export default function VideoAnalysisPage() {
                             <rect x="102" y="18" width="18" height="44" />
                           </g>
 
+                          {/* Arrows */}
                           {(Array.isArray(currentAnimFrame.arrows) ? currentAnimFrame.arrows : []).slice(0, 18).map((arrow, idx) => {
                             const x1 = (Number(arrow?.from?.x ?? 0) / 100) * 120;
                             const y1 = (Number(arrow?.from?.y ?? 0) / 100) * 80;
@@ -1080,85 +1510,95 @@ export default function VideoAnalysisPage() {
                             const type = String(arrow?.type || "").toUpperCase();
                             const stroke = type === "PRESS" ? "#ef4444" : "#fbbf24";
                             return (
-                              <line
-                                key={`anim-arrow-${idx}`}
-                                x1={x1}
-                                y1={y1}
-                                x2={x2}
-                                y2={y2}
-                                stroke={stroke}
-                                strokeWidth="1.1"
-                                strokeDasharray="2 1.8"
-                                opacity="0.95"
-                              />
-                            );
-                          })}
-
-                          {(Array.isArray(currentAnimFrame.players) ? currentAnimFrame.players : []).map((player, idx) => {
-                            const x = (Number(player?.x ?? 0) / 100) * 120;
-                            const y = (Number(player?.y ?? 0) / 100) * 80;
-                            const isTeamB = String(player?.team || "A").toUpperCase() === "B";
-                            const fill = isTeamB ? opponentTeamFill : focusTeamFill;
-                            const textFill = isTeamB ? "#020617" : "#f8fafc";
-                            const token = String(player?.id || `P${idx + 1}`).split("_")[1] || String(idx + 1);
-                            return (
-                              <g
-                                key={`anim-player-${player?.id || idx}`}
-                                style={{
-                                  transform: `translate(${x}px, ${y}px)`,
-                                  transition: `transform ${Math.max(500, ANIM_STEP_MS - 180)}ms ease-in-out`,
-                                }}
-                              >
-                                <circle cx="0" cy="0" r="2.2" fill={fill} stroke="#0b1220" strokeWidth="0.45" />
-                                <text x="0" y="0.6" fontSize="1.45" textAnchor="middle" fill={textFill} fontWeight="700">
-                                  {token}
-                                </text>
+                              <g key={`anim-arrow-${idx}`}>
+                                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeDasharray="4 2" opacity="0.8" filter="url(#animGlow)" />
+                                <circle cx={x2} cy={y2} r="2" fill={stroke} opacity="0.9" />
                               </g>
                             );
                           })}
 
+                          {/* Players with enhanced markers */}
+                          {(Array.isArray(currentAnimFrame.players) ? currentAnimFrame.players : []).map((player, idx) => {
+                            const x = (Number(player?.x ?? 0) / 100) * 120;
+                            const y = (Number(player?.y ?? 0) / 100) * 80;
+                            const isTeamB = String(player?.team || "A").toUpperCase() === "B";
+                            const fill = isTeamB ? "url(#oppPlayerGrad)" : "url(#focusPlayerGrad)";
+                            const textFill = isTeamB ? "#0f172a" : "#f8fafc";
+                            const token = String(player?.id || `P${idx + 1}`).split("_")[1] || String(idx + 1);
+                            return (
+                              <g key={`anim-player-${player?.id || idx}`} style={{ transform: `translate(${x}px, ${y}px)`, transition: `transform ${Math.max(500, Math.round(ANIM_STEP_MS / animSpeed) - 180)}ms ease-in-out` }}>
+                                <ellipse cx="0" cy="3" rx="3" ry="1.5" fill="rgba(0,0,0,0.4)" />
+                                <circle cx="0" cy="0" r="3" fill={fill} stroke="#0b1220" strokeWidth="0.5" filter="url(#animGlow)" />
+                                <circle cx="-0.8" cy="-0.8" r="1" fill="rgba(255,255,255,0.3)" />
+                                <text x="0" y="0.8" fontSize="1.8" textAnchor="middle" fill={textFill} fontWeight="700" stroke="#0b1220" strokeWidth="0.2">{token}</text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Ball */}
                           {currentAnimFrame.ball ? (
-                            <g
-                              style={{
-                                transform: `translate(${(Number(currentAnimFrame.ball?.x ?? 0) / 100) * 120}px, ${(Number(currentAnimFrame.ball?.y ?? 0) / 100) * 80}px)`,
-                                transition: `transform ${Math.max(500, ANIM_STEP_MS - 180)}ms ease-in-out`,
-                              }}
-                            >
-                              <circle r="1.2" fill="#fb923c" stroke="#f8fafc" strokeWidth="0.35" />
+                            <g style={{ transform: `translate(${(Number(currentAnimFrame.ball?.x ?? 0) / 100) * 120}px, ${(Number(currentAnimFrame.ball?.y ?? 0) / 100) * 80}px)`, transition: `transform ${Math.max(500, Math.round(ANIM_STEP_MS / animSpeed) - 180)}ms ease-in-out` }}>
+                              <circle r="1.5" cy="1" fill="rgba(0,0,0,0.3)" />
+                              <circle r="1.5" fill="url(#ballGrad)" stroke="#f8fafc" strokeWidth="0.3" filter="url(#animGlow)" />
                             </g>
                           ) : null}
                         </svg>
                       </div>
 
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => setAnimFrameIdx((prev) => Math.max(0, prev - 1))}
-                            disabled={animFrameIdx === 0}
-                            className="rounded-md border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] text-slate-200 disabled:opacity-40"
-                          >
-                            Prev
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (animFrameIdx >= animationFrames.length - 1) setAnimFrameIdx(0);
-                              setAnimPlaying((p) => !p);
-                            }}
-                            className="rounded-md border border-cyan-400/35 bg-cyan-500/12 px-2.5 py-1 text-[10px] font-semibold text-cyan-200"
-                          >
-                            {animPlaying ? "Pause" : "Play"}
-                          </button>
-                          <button
-                            onClick={() => setAnimFrameIdx((prev) => Math.min(animationFrames.length - 1, prev + 1))}
-                            disabled={animFrameIdx >= animationFrames.length - 1}
-                            className="rounded-md border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] text-slate-200 disabled:opacity-40"
-                          >
-                            Next
-                          </button>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          {/* Speed Control */}
+                          <div className="flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] p-1">
+                            <span className="px-1.5 text-[9px] text-slate-400">Speed</span>
+                            {[0.5, 1, 1.5, 2].map((speed) => (
+                              <button
+                                key={speed}
+                                onClick={() => setAnimSpeed(speed)}
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition ${
+                                  animSpeed === speed
+                                    ? 'bg-cyan-500/30 text-cyan-200'
+                                    : 'text-slate-400 hover:text-slate-200'
+                                }`}
+                              >
+                                {speed}x
+                              </button>
+                            ))}
+                          </div>
+                          <div className="h-4 w-px bg-white/[0.1]" />
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setAnimFrameIdx((prev) => Math.max(0, prev - 1))}
+                              disabled={animFrameIdx === 0}
+                              className="rounded-md border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-white/[0.08]"
+                            >
+                              Prev
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (animFrameIdx >= animationFrames.length - 1) setAnimFrameIdx(0);
+                                setAnimPlaying((p) => !p);
+                              }}
+                              className="rounded-md border border-cyan-400/35 bg-cyan-500/12 px-3 py-1 text-[10px] font-semibold text-cyan-200 hover:bg-cyan-500/20"
+                            >
+                              {animPlaying ? "⏸ Pause" : "▶ Play"}
+                            </button>
+                            <button
+                              onClick={() => setAnimFrameIdx((prev) => Math.min(animationFrames.length - 1, prev + 1))}
+                              disabled={animFrameIdx >= animationFrames.length - 1}
+                              className="rounded-md border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] text-slate-200 disabled:opacity-40 hover:bg-white/[0.08]"
+                            >
+                              Next
+                            </button>
+                          </div>
                         </div>
-                        <span className="rounded-md border border-white/[0.1] bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-slate-300">
-                          {currentAnimFrame.timestamp || "n/a"}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-md border border-white/[0.1] bg-white/[0.03] px-2 py-1 font-mono text-[10px] text-cyan-300">
+                            {currentAnimFrame.timestamp || "n/a"}
+                          </span>
+                          <span className="text-[10px] text-slate-500">
+                            Frame {animFrameIdx + 1}/{animationFrames.length}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="mt-2 rounded-md border-l-2 border-cyan-400/60 bg-[#0a1620]/70 px-2.5 py-2 text-[11px] text-slate-200">
@@ -1173,6 +1613,36 @@ export default function VideoAnalysisPage() {
 
             <div className="min-h-[500px] rounded-xl border border-white/[0.07] bg-black/10 p-3">
               <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Analysis Results</p>
+                  <span className="text-[10px] text-slate-500">{analysisItems.length} findings</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={findRecommendedSessions}
+                    disabled={!videoAnalysis || recommendationsLoading}
+                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {recommendationsLoading ? (
+                      <>
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-emerald-300/30 border-t-emerald-300" />
+                        Finding Sessions...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                        Find Recommended Sessions
+                      </>
+                    )}
+                  </button>
+                  {recommendations.length > 0 && (
+                    <span className="text-[10px] text-emerald-400">
+                      {recommendations.length} session{recommendations.length > 1 ? 's' : ''} found
+                    </span>
+                  )}
+                </div>
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                 <div className="rounded-lg border border-white/[0.08] bg-black/15 p-3">
                   {historyIndex > 0 ? (
@@ -1248,7 +1718,7 @@ export default function VideoAnalysisPage() {
 
                       {topPriorities.length > 0 ? (
                         <div>
-                          <p className="mb-1 text-[11px] font-medium text-cyan-100">Primary Advice</p>
+                          <p className="mb-1 text-[11px] font-medium text-cyan-100">Key Priorities</p>
                           <ul className="list-disc space-y-1 pl-4 text-[11px] text-slate-300">
                             {topPriorities.slice(0, 5).map((item, idx) => (
                               <li key={`priority-${idx}`}>{item}</li>
@@ -1274,10 +1744,25 @@ export default function VideoAnalysisPage() {
 
                 <div className="rounded-lg border border-white/[0.08] bg-black/15 p-3">
                   {videoLoading ? (
-                    <div className="flex h-[525px] items-center justify-center rounded-lg border border-dashed border-white/[0.12] text-sm text-cyan-200">
+                    <div className="space-y-4 p-2">
+                      {/* Skeleton header */}
                       <div className="flex items-center gap-3">
-                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-cyan-300/30 border-t-cyan-300" />
-                        <span className="font-medium tracking-wide">Analyzing...</span>
+                        <div className="h-6 w-24 animate-pulse rounded-md bg-slate-800" />
+                        <div className="h-6 w-20 animate-pulse rounded-md bg-slate-800" />
+                      </div>
+                      {/* Skeleton summary */}
+                      <div className="h-24 w-full animate-pulse rounded-lg bg-slate-800/50" />
+                      {/* Skeleton priorities */}
+                      <div className="space-y-2">
+                        <div className="h-4 w-32 animate-pulse rounded bg-slate-800" />
+                        <div className="h-16 w-full animate-pulse rounded-lg bg-slate-800/50" />
+                      </div>
+                      {/* Skeleton table */}
+                      <div className="space-y-2 pt-2">
+                        <div className="h-6 w-full animate-pulse rounded bg-slate-800" />
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className="h-12 w-full animate-pulse rounded bg-slate-800/50" />
+                        ))}
                       </div>
                     </div>
                   ) : analysisItems.length === 0 ? (
@@ -1290,39 +1775,160 @@ export default function VideoAnalysisPage() {
                         <thead className="sticky top-0 bg-[#0a1620] text-slate-300">
                           <tr className="border-b border-white/[0.08]">
                             <th className="px-2 py-2 font-semibold">Time</th>
+                            <th className="px-2 py-2 font-semibold">Severity</th>
                             <th className="px-2 py-2 font-semibold">Topic</th>
                             <th className="px-2 py-2 font-semibold">Narrative</th>
-                            <th className="px-2 py-2 font-semibold">Mission</th>
+                            <th className="px-2 py-2 font-semibold">Assessment</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {timelineItems.map((item, idx) => (
-                            <tr key={`${item.id || idx}`} className="border-b border-white/[0.06] align-top">
-                              <td className="whitespace-nowrap px-2 py-2 text-slate-400">{item.timestamp || "n/a"}</td>
-                              <td className="px-2 py-2 font-medium text-white/90">{cleanAnalysisTitle(item.title)}</td>
-                              <td className="px-2 py-2 text-slate-300">
-                                {String(item?.teamFocus || "").toUpperCase() === "TEAM_B" && String(item?.teamAImplication || "").trim()
-                                  ? `Team A implication: ${String(item.teamAImplication).trim()}`
-                                  : item.whatHappened || "-"}
-                              </td>
-                              <td className="px-2 py-2">
-                                {getMissionAssessment(item) === "Good" ? (
-                                  <span className="inline-flex rounded-md border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200">
-                                    Good
+                          {timelineItems.map((item, idx) => {
+                            const severity = String(item?.severity || "").toLowerCase();
+                            const severityConfig = severity === "critical" 
+                              ? { bg: "bg-red-500/20", border: "border-red-400/40", text: "text-red-300", label: "Critical" }
+                              : severity === "major"
+                                ? { bg: "bg-orange-500/20", border: "border-orange-400/40", text: "text-orange-300", label: "Major" }
+                                : severity === "minor"
+                                  ? { bg: "bg-yellow-500/15", border: "border-yellow-400/30", text: "text-yellow-300", label: "Minor" }
+                                  : { bg: "bg-slate-500/15", border: "border-slate-400/30", text: "text-slate-300", label: "Info" };
+                            const rowSeverity = severity === "critical" ? "border-l-2 border-l-red-500/60" : severity === "major" ? "border-l-2 border-l-orange-500/50" : "";
+                            return (
+                              <tr key={`${item.id || idx}`} className={`border-b border-white/[0.06] align-top ${rowSeverity}`}>
+                                <td className="whitespace-nowrap px-2 py-2 text-slate-400">{item.timestamp || "n/a"}</td>
+                                <td className="px-2 py-2">
+                                  <span className={`inline-flex rounded-md border ${severityConfig.bg} ${severityConfig.border} ${severityConfig.text} px-1.5 py-0.5 text-[9px] font-semibold`}>
+                                    {severityConfig.label}
                                   </span>
-                                ) : (
-                                  <span className="inline-flex rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
-                                    Needs Work
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                </td>
+                                <td className="px-2 py-2 font-medium text-white/90">{cleanAnalysisTitle(item.title)}</td>
+                                <td className="px-2 py-2 text-slate-300">
+                                  {String(item?.teamFocus || "").toUpperCase() === "TEAM_B" && String(item?.teamAImplication || "").trim()
+                                    ? `Team A: ${String(item.teamAImplication).trim()}`
+                                    : item.whatHappened || "-"}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {getMissionAssessment(item) === "Good" ? (
+                                    <span className="inline-flex rounded-md border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200">
+                                      ✓ Good
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
+                                      ⚠ Needs Work
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
                   )}
                 </div>
+
+                {/* Recommended Sessions Section */}
+                {(recommendations.length > 0 || recommendationsError || recommendationsLoading) && (
+                  <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
+                        Recommended Sessions
+                      </p>
+                      {recommendations.length > 0 && (
+                        <span className="text-[10px] text-emerald-400">
+                          Based on your analysis: {resolvedGameModel} / {resolvedPhase} / {resolvedZone}
+                        </span>
+                      )}
+                    </div>
+
+                    {recommendationsLoading && (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="flex items-center gap-3">
+                          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-emerald-300/30 border-t-emerald-300" />
+                          <span className="text-sm text-emerald-200">
+                            {recommendationsError ? 'Generating new session...' : 'Finding matching sessions...'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {recommendationsError && !recommendationsLoading && (
+                      <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+                        {recommendationsError}
+                      </div>
+                    )}
+
+                    {recommendations.length > 0 && !recommendationsLoading && (
+                      <div className="space-y-3">
+                        {recommendations.map((session, idx) => (
+                          <div 
+                            key={`rec-session-${idx}`}
+                            onClick={() => setSelectedSession(session)}
+                            className="cursor-pointer rounded-lg border border-white/[0.08] bg-black/20 p-3 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all"
+                          >
+                            <div className="mb-2 flex items-start justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="text-sm font-medium text-white truncate">
+                                    {session.title || `Session ${idx + 1}`}
+                                  </h4>
+                                  {session.refCode && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(session.refCode);
+                                      }}
+                                      className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors shrink-0"
+                                      title="Click to copy"
+                                    >
+                                      {session.refCode}
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {session.ageGroup && (
+                                    <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[9px] text-cyan-200">
+                                      {session.ageGroup}
+                                    </span>
+                                  )}
+                                  {session.gameModelId && (
+                                    <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] text-blue-200">
+                                      {GAME_MODEL_LABELS[session.gameModelId] || session.gameModelId}
+                                    </span>
+                                  )}
+                                  {session.phase && (
+                                    <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] text-purple-200">
+                                      {PHASE_LABELS[session.phase] || session.phase}
+                                    </span>
+                                  )}
+                                  {session.zone && (
+                                    <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[9px] text-orange-200">
+                                      {ZONE_LABELS[session.zone] || session.zone}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {session.durationMin && (
+                              <p className="text-[10px] text-slate-500 mb-1">
+                                {session.durationMin} min session
+                              </p>
+                            )}
+                            {session.json?.summary && (
+                              <p className="text-[11px] text-slate-400 line-clamp-2">
+                                {session.json.summary}
+                              </p>
+                            )}
+                            {session.json?.drills && session.json.drills.length > 0 && (
+                              <p className="mt-1 text-[10px] text-slate-500">
+                                {session.json.drills.length} drill{session.json.drills.length !== 1 ? 's' : ''}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 </div>
 
               </div>
@@ -1331,7 +1937,7 @@ export default function VideoAnalysisPage() {
         </section>
       </div>
 
-      {confirmRunOpen ? (
+      {confirmRunOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-lg rounded-xl border border-cyan-500/20 bg-[#08131a] p-4 shadow-[0_0_30px_-12px_rgba(6,182,212,0.25)]">
             <h2 className="text-sm font-semibold text-cyan-200">Run Video Analysis?</h2>
@@ -1366,87 +1972,408 @@ export default function VideoAnalysisPage() {
             </div>
           </div>
         </div>
-      ) : null}
+      )}
 
-      {vaultModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-4xl rounded-xl border border-cyan-500/20 bg-[#08131a] p-4 shadow-[0_0_30px_-12px_rgba(6,182,212,0.25)]">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-cyan-200">Video Analysis Vault</h2>
+      {vaultModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setVaultModalOpen(false);
+              setVaultSearch("");
+            }
+          }}
+        >
+          <div className="w-full max-w-5xl max-h-[85vh] flex flex-col rounded-xl border border-cyan-500/20 bg-[#08131a] shadow-[0_0_30px_-12px_rgba(6,182,212,0.25)]">
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between gap-3 border-b border-cyan-500/10 px-5 pt-5">
+              <div className="flex items-center gap-2">
+                <svg className="h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                </svg>
+                <h2 className="text-base font-semibold text-white">Video Analysis Vault</h2>
+                {vaultItems.length > 0 && (
+                  <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-xs font-medium text-cyan-300">
+                    {vaultItems.length}
+                  </span>
+                )}
+              </div>
               <button
-                onClick={() => setVaultModalOpen(false)}
-                className="inline-flex items-center rounded-md border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-white/[0.08]"
+                onClick={() => {
+                  setVaultModalOpen(false);
+                  setVaultSearch("");
+                }}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
               >
-                Close
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
+            {/* Search Bar */}
+            {vaultItems.length > 0 && (
+              <div className="mb-4 px-5 pt-4">
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={vaultSearch}
+                    onChange={(e) => setVaultSearch(e.target.value)}
+                    placeholder="Search by title, ref code, or game model..."
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900/50 py-2 pl-10 pr-4 text-sm text-white placeholder-slate-500 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                  />
+                </div>
+              </div>
+            )}
+
             {vaultLoading ? (
-              <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed border-white/[0.12] text-sm text-cyan-200">
-                Loading vault...
+              <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-white/[0.12] mx-5">
+                <div className="flex items-center gap-2 text-cyan-200">
+                  <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading vault...
+                </div>
               </div>
             ) : vaultError ? (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
                 {vaultError}
               </div>
             ) : vaultItems.length === 0 ? (
-              <div className="flex h-[260px] items-center justify-center rounded-md border border-dashed border-white/[0.12] text-sm text-slate-500">
-                No saved video analysis yet.
+              <div className="flex h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-700 bg-slate-900/30 mx-5 mb-5">
+                <svg className="mb-3 h-12 w-12 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-sm font-medium text-slate-400">No saved video analysis yet</p>
+                <p className="mt-1 text-xs text-slate-500">Run an analysis and save it to see it here</p>
               </div>
             ) : (
-              <div className="max-h-[440px] overflow-auto rounded-md border border-white/[0.08]">
-                <table className="min-w-full text-left text-[11px]">
-                  <thead className="sticky top-0 bg-[#0a1620] text-slate-300">
-                    <tr className="border-b border-white/[0.08]">
-                      <th className="px-2 py-2 font-semibold">Date</th>
-                      <th className="px-2 py-2 font-semibold">Video Analysis</th>
-                      <th className="px-2 py-2 font-semibold">Scope</th>
-                      <th className="px-2 py-2 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vaultItems.map((item) => (
-                      <tr key={item.id} className="border-b border-white/[0.06] align-top">
-                        <td className="whitespace-nowrap px-2 py-2 text-slate-400">
-                          {item.createdAt ? new Date(item.createdAt).toLocaleString() : "n/a"}
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex rounded-md border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
-                              {item.refCode || "VA-PENDING"}
-                            </span>
-                            <span className="text-white/90">{prettifyVaultTitle(item.title)}</span>
-                          </div>
-                        </td>
-                        <td className="px-2 py-2 text-slate-300">
-                          {item.gameModelId || "n/a"} / {item.phase || "n/a"} / {item.zone || "n/a"}
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => openVaultAnalysisItem(item)}
-                              className="inline-flex items-center rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-200 transition hover:border-cyan-300/50 hover:bg-cyan-500/20"
-                            >
-                              Open
-                            </button>
-                            <button
-                              onClick={() => rerunVaultAnalysisItem(item)}
-                              disabled={videoLoading}
-                              className="inline-flex items-center rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Re-run
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex-1 overflow-auto px-5 pb-5">
+                <FilteredVaultList
+                  vaultItems={vaultItems}
+                  searchQuery={vaultSearch}
+                  onOpenItem={openVaultAnalysisItem}
+                  onRerunItem={rerunVaultAnalysisItem}
+                  onDeleteItem={handleDeleteClick}
+                  isLoading={videoLoading}
+                />
               </div>
             )}
           </div>
         </div>
-      ) : null}
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmItem && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          onClick={() => setDeleteConfirmItem(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-rose-500/30 bg-[#0f172a] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/20">
+                <svg className="h-5 w-5 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">PERMANENT CLEARANCE</h3>
+                <p className="text-xs text-slate-400">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6 rounded-lg border border-rose-500/20 bg-rose-500/5 p-3">
+              <p className="text-sm text-slate-200">
+                The analysis <span className="font-medium text-white">"{prettifyVaultTitle(deleteConfirmItem.title)}"</span> will be permanently removed from the vault.
+              </p>
+              <p className="mt-2 text-xs text-slate-400">
+                All associated tactical data and insights will be lost.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirmItem(null)}
+                className="flex-1 rounded-lg border border-slate-600 bg-transparent px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-500"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Session Preview Modal */}
+      {selectedSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-semibold text-white">{selectedSession.title}</h2>
+                {selectedSession.refCode && (
+                  <button
+                    onClick={() => navigator.clipboard.writeText(selectedSession.refCode)}
+                    className="px-2 py-1 rounded bg-cyan-900/40 text-cyan-300 text-xs font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors"
+                  >
+                    {selectedSession.refCode}
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedSession(null)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Session Metadata */}
+            <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-xs">
+              {selectedSession.gameModelId && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Game Model:</span>
+                  <span className="text-emerald-400">{GAME_MODEL_LABELS[selectedSession.gameModelId] || selectedSession.gameModelId}</span>
+                </div>
+              )}
+              {selectedSession.ageGroup && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Age:</span>
+                  <span className="text-slate-200">{selectedSession.ageGroup}</span>
+                </div>
+              )}
+              {selectedSession.phase && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Phase:</span>
+                  <span className="text-slate-200">{PHASE_LABELS[selectedSession.phase] || selectedSession.phase}</span>
+                </div>
+              )}
+              {selectedSession.zone && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Zone:</span>
+                  <span className="text-slate-200">{ZONE_LABELS[selectedSession.zone] || selectedSession.zone}</span>
+                </div>
+              )}
+              {selectedSession.formationUsed && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Formation:</span>
+                  <span className="text-blue-300">{selectedSession.formationUsed}</span>
+                </div>
+              )}
+              {selectedSession.durationMin && (
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 uppercase tracking-wide">Duration:</span>
+                  <span className="text-slate-200">{selectedSession.durationMin} min</span>
+                </div>
+              )}
+            </div>
+
+            {/* Summary */}
+            {selectedSession.json?.summary && (
+              <div className="mb-4 rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Summary</h3>
+                <p className="text-sm text-slate-300 leading-relaxed">{selectedSession.json.summary}</p>
+              </div>
+            )}
+
+            {/* Drills Preview */}
+            {selectedSession.json?.drills && selectedSession.json.drills.length > 0 && (
+              <div className="mb-4 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                  Drills ({selectedSession.json.drills.length})
+                </h3>
+                {selectedSession.json.drills.slice(0, 2).map((drill: any, i: number) => {
+                  const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
+                  const description = drill.description ?? drill.json?.description;
+                  const organization = drill.organization ?? drill.json?.organization;
+                  return (
+                    <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
+                      {/* Drill Header */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-semibold ${
+                          drill.drillType === 'WARMUP' ? 'bg-amber-900/40 text-amber-300 border border-amber-700/30' :
+                          drill.drillType === 'TECHNICAL' ? 'bg-blue-900/40 text-blue-300 border border-blue-700/30' :
+                          drill.drillType === 'TACTICAL' ? 'bg-purple-900/40 text-purple-300 border border-purple-700/30' :
+                          drill.drillType === 'CONDITIONED_GAME' ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/30' :
+                          drill.drillType === 'COOLDOWN' ? 'bg-slate-700/40 text-slate-300 border border-slate-600/30' :
+                          'bg-slate-800 text-slate-300 border border-slate-700'
+                        }`}>
+                          {drill.drillType || drill.type || `Drill ${i + 1}`}
+                        </span>
+                        {drill.durationMin && (
+                          <span className="text-[10px] text-slate-500">{drill.durationMin} min</span>
+                        )}
+                      </div>
+                      <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title || `Drill ${i + 1}`}</h4>
+                      
+                      {/* Two-column layout: Diagram + Details */}
+                      <div className="grid grid-cols-1 gap-3">
+                        {/* Diagram */}
+                        {diagram && (
+                          <div className="flex items-center justify-center rounded-lg border border-slate-700/30 bg-slate-900/50 p-2">
+                            <UniversalDrillDiagram
+                              drillData={tacticalEdgeToUniversalDrillData(diagram, {
+                                title: drill.title ?? "Diagram",
+                                description,
+                                organization,
+                              })}
+                              size="small"
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Description & Key Info */}
+                        <div className="space-y-2">
+                          {description && (
+                            <p className="text-[11px] text-slate-300 leading-relaxed line-clamp-4">{description}</p>
+                          )}
+                          {organization?.area && (
+                            <div className="flex gap-2 text-[10px] text-slate-400">
+                              {organization.area.lengthYards && (
+                                <span>{organization.area.lengthYards}x{organization.area.widthYards || '?'}y</span>
+                              )}
+                            </div>
+                          )}
+                          {drill.coachingPoints && drill.coachingPoints.length > 0 && (
+                            <div>
+                              <span className="text-[9px] text-slate-500 uppercase">Key Points:</span>
+                              <ul className="text-[10px] text-slate-400 mt-1">
+                                {drill.coachingPoints.slice(0, 2).map((pt: string, j: number) => (
+                                  <li key={j} className="truncate">• {pt}</li>
+                                ))}
+                                {drill.coachingPoints.length > 2 && (
+                                  <li className="text-slate-500">+{drill.coachingPoints.length - 2} more</li>
+                                )}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {selectedSession.json.drills.length > 2 && (
+                  <p className="text-xs text-slate-500 text-center">
+                    + {selectedSession.json.drills.length - 2} more drills
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-2 pt-2">
+              <a
+                href={`/demo/session?sessionId=${selectedSession.id}`}
+                onClick={() => {
+                  // Store session data in sessionStorage for the demo/session page
+                  if (selectedSession.id) {
+                    sessionStorage.setItem(
+                      `vaultSession:${selectedSession.id}`,
+                      JSON.stringify(selectedSession)
+                    );
+                  }
+                }}
+                className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+              >
+                Open Full Session
+                <svg className="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </a>
+              <button
+                onClick={() => setSelectedSession(null)}
+                className="inline-flex items-center rounded-full border border-slate-600 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Match Confirmation Dialog */}
+      {noMatchDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-slate-600/50 bg-[#0f172a] p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20">
+                <svg className="h-5 w-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">No Matching Sessions Found</h3>
+                <p className="text-sm text-slate-400">We couldn't find sessions matching your analysis criteria</p>
+              </div>
+            </div>
+            
+            <div className="mb-6 space-y-3">
+              <p className="text-sm text-slate-300">
+                Would you like to:
+              </p>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400"></span>
+                  <span><strong className="text-cyan-300">Expand search</strong> - Broaden criteria to find more sessions</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"></span>
+                  <span><strong className="text-emerald-300">Generate new</strong> - Create a custom session based on your analysis</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-500"></span>
+                  <span><strong className="text-slate-300">Skip</strong> - Continue without session recommendations</span>
+                </li>
+              </ul>
+            </div>
+            
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                onClick={cancelRecommendationSearch}
+                className="order-3 sm:order-1 inline-flex justify-center rounded-lg border border-slate-600 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-800"
+              >
+                Skip
+              </button>
+              <button
+                onClick={expandSearchCriteria}
+                disabled={recommendationsLoading}
+                className="order-2 inline-flex justify-center rounded-lg border border-cyan-500/50 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-200 transition hover:border-cyan-400/50 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Expand Search
+              </button>
+              <button
+                onClick={proceedToGenerate}
+                disabled={recommendationsLoading}
+                className="order-1 inline-flex justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 sm:order-3"
+              >
+                {recommendationsLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Generating...
+                  </span>
+                ) : 'Generate New Session'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

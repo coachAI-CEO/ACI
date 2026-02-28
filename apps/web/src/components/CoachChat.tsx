@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
+  intent?: "search" | "generate" | "clarify" | "chat";
   recommendations?: any[];
   referencedItems?: Array<{
     refCode: string;
@@ -23,29 +25,74 @@ type CoachChatProps = {
   onGenerateRequest?: (params: any) => void;
 };
 
+const CHAT_STORAGE_KEY = "coachAssistant.chat.v1";
+const CHAT_HISTORY_LIMIT = 30;
+const WELCOME_MESSAGE: Message = {
+  id: "welcome",
+  role: "assistant",
+  content:
+    "Hi Coach! What are you working on with your team?\n\n" +
+    "Tell me:\n" +
+    "• What age group you're coaching\n" +
+    "• What challenge or topic you want to address\n\n" +
+    "For example:\n" +
+    '"My U14s struggle to keep the ball under pressure"\n' +
+    '"I need a session on breaking low blocks for U16"\n' +
+    '"3-session series on pressing for my U12 team"\n\n' +
+    "💡 You can also reference existing items:\n" +
+    '"Improve S-7K2M" or "Explain drill D-9M3P"',
+};
+
+const hasMinimumGenerationParams = (params: any): boolean => {
+  if (!params || typeof params !== "object") return false;
+  const hasAgeGroup = Boolean(params.ageGroup);
+  const hasGameModel = Boolean(params.gameModelId);
+  const hasPhaseOrTopic = Boolean(params.phase || params.topic);
+  return hasAgeGroup && hasGameModel && hasPhaseOrTopic;
+};
+
+const clampMessages = (messages: Message[]): Message[] => {
+  const nonWelcome = messages
+    .filter((m) => m.id !== "welcome")
+    .filter((m) => !m.isLoading)
+    .slice(-CHAT_HISTORY_LIMIT);
+  return [WELCOME_MESSAGE, ...nonWelcome];
+};
+
+const normalizeStoredMessage = (value: any): Message | null => {
+  if (!value || typeof value !== "object") return null;
+  const role = value.role === "user" || value.role === "assistant" ? value.role : null;
+  if (!role) return null;
+  const content = typeof value.content === "string" ? value.content : "";
+  if (!content && !value.isLoading) return null;
+  return {
+    id: typeof value.id === "string" ? value.id : `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content,
+    intent:
+      value.intent === "search" ||
+      value.intent === "generate" ||
+      value.intent === "clarify" ||
+      value.intent === "chat"
+        ? value.intent
+        : undefined,
+    recommendations: Array.isArray(value.recommendations) ? value.recommendations : undefined,
+    referencedItems: Array.isArray(value.referencedItems) ? value.referencedItems : undefined,
+    extractedParams: value.extractedParams,
+    readyToGenerate: Boolean(value.readyToGenerate),
+    isLoading: Boolean(value.isLoading),
+  };
+};
+
 export const CoachChat: React.FC<CoachChatProps> = ({
   onSessionSelect,
   onGenerateRequest,
 }) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hi Coach! What are you working on with your team?\n\n" +
-        "Tell me:\n" +
-        "• What age group you're coaching\n" +
-        "• What challenge or topic you want to address\n\n" +
-        "For example:\n" +
-        '"My U14s struggle to keep the ball under pressure"\n' +
-        '"I need a session on breaking low blocks for U16"\n' +
-        '"3-session series on pressing for my U12 team"\n\n' +
-        "💡 You can also reference existing items:\n" +
-        '"Improve S-7K2M" or "Explain drill D-9M3P"',
-    },
-  ]);
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -57,6 +104,36 @@ export const CoachChat: React.FC<CoachChatProps> = ({
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const normalized = parsed
+            .map((item: any) => normalizeStoredMessage(item))
+            .filter(Boolean) as Message[];
+          setMessages(clampMessages(normalized));
+        }
+      }
+    } catch {
+      // ignore malformed storage
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(clampMessages(messages)));
+    } catch {
+      // Best-effort local persistence only.
+    }
+  }, [messages, hydrated]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -67,16 +144,18 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       content: input.trim(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => clampMessages([...prev, userMessage]));
     setInput("");
     setIsLoading(true);
 
     // Add loading message
     const loadingId = `loading-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      { id: loadingId, role: "assistant", content: "", isLoading: true },
-    ]);
+    setMessages((prev) =>
+      clampMessages([
+        ...prev,
+        { id: loadingId, role: "assistant", content: "", isLoading: true },
+      ])
+    );
 
     try {
       const accessToken =
@@ -102,30 +181,31 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       // Remove loading message and add response
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== loadingId);
-        return [
+        return clampMessages([
           ...filtered,
           {
             id: `assistant-${Date.now()}`,
             role: "assistant",
             content: data.message || data.error || "Something went wrong",
+            intent: data.intent,
             recommendations: data.recommendations,
             referencedItems: data.referencedItems,
             extractedParams: data.extractedParams,
             readyToGenerate: data.readyToGenerate,
           },
-        ];
+        ]);
       });
     } catch (err: any) {
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== loadingId);
-        return [
+        return clampMessages([
           ...filtered,
           {
             id: `error-${Date.now()}`,
             role: "assistant",
             content: "Sorry, I had trouble processing that. Please try again.",
           },
-        ];
+        ]);
       });
     } finally {
       setIsLoading(false);
@@ -146,9 +226,72 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   };
 
   const handleGenerateNew = (params: any) => {
+    const normalizeCoachLevelForGeneration = (value?: string) => {
+      const v = String(value || "").toUpperCase();
+      if (v === "GRASSROOTS") return "GRASSROOTS";
+      if (v === "USSF_C") return "USSF_C";
+      if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
+      if (v === "USSF_D") return "GRASSROOTS";
+      return undefined;
+    };
+
+    const buildSessionQuery = (input: any) => {
+      const queryParams = new URLSearchParams();
+      if (input?.ageGroup) queryParams.set("ageGroup", input.ageGroup);
+      if (input?.gameModelId) queryParams.set("gameModelId", input.gameModelId);
+      if (input?.phase) queryParams.set("phase", input.phase);
+      if (input?.zone) queryParams.set("zone", input.zone);
+      if (input?.topic) queryParams.set("topic", input.topic);
+      if (input?.durationMin) queryParams.set("durationMin", String(input.durationMin));
+      if (input?.numbersMin) queryParams.set("numbersMin", String(input.numbersMin));
+      if (input?.numbersMax) queryParams.set("numbersMax", String(input.numbersMax));
+      if (input?.formationAttacking) queryParams.set("formationAttacking", input.formationAttacking);
+      if (input?.formationDefending) queryParams.set("formationDefending", input.formationDefending);
+      if (input?.playerLevel) queryParams.set("playerLevel", input.playerLevel);
+      const normalizedCoachLevel = normalizeCoachLevelForGeneration(input?.coachLevel);
+      if (normalizedCoachLevel) queryParams.set("coachLevel", normalizedCoachLevel);
+      if (input?.goalsAvailable !== null && input?.goalsAvailable !== undefined) {
+        queryParams.set("goalsAvailable", String(input.goalsAvailable));
+      }
+      if (input?.numberOfSessions && input.numberOfSessions > 1) {
+        queryParams.set("series", "true");
+        queryParams.set("numberOfSessions", String(input.numberOfSessions));
+      }
+      queryParams.set("autoGenerate", "true");
+      // Force a fresh navigation even if other params are unchanged.
+      queryParams.set("requestId", String(Date.now()));
+      return queryParams.toString();
+    };
+
+    const query = buildSessionQuery(params || {});
+    const targetUrl = `/demo/session?${query}`;
+
+    // Let parent run any local UI side-effects (e.g. closing chat panel), but do not
+    // depend on client router transitions for this action.
     if (onGenerateRequest) {
-      onGenerateRequest(params);
+      try {
+        onGenerateRequest(params);
+      } catch (err) {
+        console.warn("[COACH_CHAT] onGenerateRequest side-effects failed", err);
+      }
     }
+
+    // Deterministic navigation path: hard redirect so generate never no-ops.
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(
+          "coachAssistant.pendingGenerate",
+          JSON.stringify({ params, targetUrl, ts: Date.now() })
+        );
+      } catch {
+        // best effort only
+      }
+      window.location.assign(targetUrl);
+      return;
+    }
+
+    // SSR-safe fallback.
+    router.push(targetUrl);
   };
 
   return (
@@ -249,7 +392,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
                   )}
 
                   {/* Generate button when ready */}
-                  {msg.readyToGenerate && msg.extractedParams && (
+                  {(msg.intent === "generate" || msg.readyToGenerate || hasMinimumGenerationParams(msg.extractedParams)) && msg.extractedParams && (
                     <div className="mt-3 space-y-2">
                       <button
                         onClick={() => handleGenerateNew(msg.extractedParams)}

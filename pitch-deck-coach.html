@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TacticalEdge — For Coaches</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --lime:#ADFF2F;--lime2:rgba(173,255,47,.12);--lime3:rgba(173,255,47,.06);
+  --black:#050605;--dark:#060a13;
+  --panel:rgba(255,255,255,.04);--panel2:rgba(255,255,255,.07);
+  --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.13);
+  --text:#f1f5f9;--muted:#94a3b8;--muted2:#64748b;
+  --blue:#60a5fa;--purple:#c084fc;--amber:#fbbf24;--green:#34d399;--red:#f87171;--orange:#fb923c;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+}
+html,body{height:100%;background:var(--black);color:var(--text);font-family:var(--font);overflow:hidden}
+
+/* ── DECK ── */
+#deck{width:100vw;height:100vh;position:relative}
+.slide{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:40px 60px;opacity:0;pointer-events:none;transition:opacity .42s ease,transform .42s ease;transform:translateX(52px)}
+.slide.active{opacity:1;pointer-events:all;transform:translateX(0)}
+.slide.exit{opacity:0;transform:translateX(-52px)}
+.slide::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(173,255,47,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(173,255,47,.03) 1px,transparent 1px);background-size:50px 50px;pointer-events:none}
+.slide::after{content:"";position:absolute;top:0;left:0;width:340px;height:340px;background:radial-gradient(circle at top left,rgba(173,255,47,.09),transparent 68%);pointer-events:none}
+
+/* ── NAV ── */
+#nav{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;z-index:100;background:rgba(6,10,19,.88);backdrop-filter:blur(14px);border:1px solid var(--border);border-radius:9999px;padding:8px 18px}
+#nav button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;padding:3px 9px;border-radius:5px;transition:color .2s,background .2s}
+#nav button:hover{color:var(--lime);background:rgba(173,255,47,.08)}
+#dots{display:flex;gap:5px;align-items:center}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--border);cursor:pointer;transition:background .3s,width .3s}
+.dot.active{background:var(--lime);width:20px;border-radius:3px}
+#sc{font-size:11px;color:var(--muted);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+#hint{position:fixed;top:16px;right:20px;font-size:11px;color:rgba(148,163,184,.3);z-index:100;letter-spacing:.05em}
+#prog{position:fixed;top:0;left:0;height:3px;background:var(--lime);transition:width .4s ease;z-index:200;box-shadow:0 0 10px var(--lime)}
+
+/* ── SHARED ── */
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(173,255,47,.1);border:1px solid rgba(173,255,47,.25);border-radius:9999px;padding:4px 14px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--lime);margin-bottom:18px}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--lime);box-shadow:0 0 8px var(--lime)}
+.badge-blue{background:rgba(96,165,250,.1);border-color:rgba(96,165,250,.25);color:var(--blue)}
+.badge-blue::before{background:var(--blue);box-shadow:0 0 8px var(--blue)}
+.badge-purple{background:rgba(192,132,252,.1);border-color:rgba(192,132,252,.25);color:var(--purple)}
+.badge-purple::before{background:var(--purple);box-shadow:0 0 8px var(--purple)}
+h1{font-size:clamp(32px,4.8vw,58px);font-weight:900;line-height:1.08;letter-spacing:-.02em}
+h2{font-size:clamp(24px,3vw,42px);font-weight:900;line-height:1.1;letter-spacing:-.02em}
+.accent{color:var(--lime)}
+.muted{color:var(--muted)}
+.lead{font-size:clamp(13px,1.4vw,17px);color:var(--muted);line-height:1.65;max-width:640px}
+.logo-img{width:60px;height:60px;object-fit:contain;margin-bottom:16px;filter:drop-shadow(0 0 14px rgba(173,255,47,.4))}
+.btn-p{background:var(--lime);color:#000;font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border:none;border-radius:8px;padding:11px 24px;cursor:pointer}
+.btn-o{background:none;color:var(--lime);font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;border:1px solid rgba(173,255,47,.35);border-radius:8px;padding:11px 24px;cursor:pointer}
+.pill{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.pill-lime{background:var(--lime2);border:1px solid rgba(173,255,47,.3);color:var(--lime)}
+.pill-blue{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.25);color:var(--blue)}
+.pill-purple{background:rgba(192,132,252,.1);border:1px solid rgba(192,132,252,.25);color:var(--purple)}
+.pill-amber{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--amber)}
+.pill-red{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:var(--red)}
+
+/* ═══════════════════════════════════════════
+   S1 — COVER
+═══════════════════════════════════════════ */
+#s1{text-align:center}
+#s1 h1{margin-bottom:16px}
+#s1 .lead{margin:0 auto 28px}
+#s1 .cta{display:flex;gap:10px;justify-content:center}
+.cover-stats{display:flex;gap:28px;margin-top:36px;padding-top:28px;border-top:1px solid var(--border)}
+.cs-item{text-align:center}
+.cs-val{font-size:22px;font-weight:900;color:var(--lime)}
+.cs-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-top:2px}
+
+/* ═══════════════════════════════════════════
+   S2 — COACH LEVELS
+═══════════════════════════════════════════ */
+#s2{justify-content:flex-start;padding-top:46px}
+#s2 .top{text-align:center;margin-bottom:20px;width:100%}
+.levels-row{display:flex;gap:12px;width:100%;max-width:940px}
+.lv-card{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.lv-card.featured{border-color:rgba(173,255,47,.35);background:var(--lime3)}
+.lv-badge{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;padding:3px 10px;border-radius:4px;display:inline-block;margin-bottom:4px}
+.lv-g{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.25)}
+.lv-d{background:rgba(96,165,250,.15);color:var(--blue);border:1px solid rgba(96,165,250,.25)}
+.lv-c{background:rgba(192,132,252,.15);color:var(--purple);border:1px solid rgba(192,132,252,.25)}
+.lv-b{background:rgba(173,255,47,.15);color:var(--lime);border:1px solid rgba(173,255,47,.25)}
+.lv-card h3{font-size:13px;font-weight:800}
+.lv-card .lv-sub{font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.4}
+.adapt-row{display:flex;flex-direction:column;gap:5px}
+.adapt-item{display:flex;gap:8px;align-items:flex-start}
+.adapt-item .a-icon{font-size:12px;flex-shrink:0;margin-top:1px}
+.adapt-item p{font-size:11px;color:var(--muted);line-height:1.4}
+.adapt-item strong{color:var(--text);font-size:11px}
+.demo-phrase{background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-top:6px}
+.demo-phrase .dp-label{font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.demo-phrase p{font-size:11px;color:var(--text);line-height:1.45;font-style:italic}
+
+/* ═══════════════════════════════════════════
+   S3 — DRILL ANATOMY
+═══════════════════════════════════════════ */
+#s3{justify-content:flex-start;padding-top:44px}
+#s3 .top{text-align:center;margin-bottom:18px;width:100%}
+.drill-layout{display:flex;gap:16px;width:100%;max-width:960px}
+.drill-meta{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.drill-meta-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.drill-meta-card .dmc-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.meta-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.meta-row:last-child{margin-bottom:0}
+.meta-key{font-size:11px;color:var(--muted)}
+.meta-val{font-size:11px;font-weight:700;color:var(--text)}
+.drill-content{flex:1;display:flex;flex-direction:column;gap:8px}
+.dc-section{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.dc-section .dcs-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.dc-section ul{list-style:none;display:flex;flex-direction:column;gap:4px}
+.dc-section li{font-size:12px;color:var(--text);display:flex;gap:7px;line-height:1.45}
+.dc-section li::before{content:"→";color:var(--lime);font-weight:800;flex-shrink:0;font-size:10px;margin-top:2px}
+.prog-section li::before{content:"↑";color:var(--blue)}
+.constraint-section li::before{content:"⊘";color:var(--orange)}
+.load-box{background:rgba(173,255,47,.06);border:1px solid rgba(173,255,47,.15);border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center}
+.load-box .lb-left strong{font-size:12px;font-weight:800;color:var(--lime);display:block}
+.load-box .lb-left span{font-size:10px;color:var(--muted)}
+.load-box .lb-right{text-align:right}
+.load-box .lb-right strong{font-size:11px;color:var(--text)}
+.load-box .lb-right span{font-size:10px;color:var(--muted);display:block}
+
+/* ═══════════════════════════════════════════
+   S4 — TACTICAL DIAGRAMS
+═══════════════════════════════════════════ */
+#s4{justify-content:flex-start;padding-top:44px}
+#s4 .top{text-align:center;margin-bottom:18px;width:100%}
+.diagrams-wrap{display:flex;gap:20px;width:100%;max-width:960px;align-items:flex-start}
+.diag-panel{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.diag-panel-header{display:flex;align-items:center;justify-content:space-between}
+.diag-panel-header h3{font-size:13px;font-weight:800}
+/* PITCH SVG */
+.pitch-svg-wrap{background:#1a3a1a;border:2px solid rgba(255,255,255,.15);border-radius:8px;padding:6px;position:relative;overflow:hidden}
+.pitch-inner{width:100%;aspect-ratio:3/2;position:relative;background:#1c4a1c}
+.pitch-line{position:absolute;background:rgba(255,255,255,.5)}
+.pitch-h{height:1px;width:100%}
+.pitch-v{width:1px;height:100%}
+.pitch-circle{position:absolute;border:1px solid rgba(255,255,255,.35);border-radius:50%}
+/* Player tokens */
+.pt{position:absolute;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;transform:translate(-50%,-50%);border:2px solid rgba(255,255,255,.8);cursor:default;z-index:2}
+.pt-att{background:#e53e3e;color:#fff}
+.pt-def{background:#3182ce;color:#fff}
+.pt-neu{background:#718096;color:#fff}
+/* Annotation boxes */
+.ann{position:absolute;font-size:8px;font-weight:900;letter-spacing:.06em;color:#ADFF2F;text-transform:uppercase;transform:translate(-50%,-50%);white-space:nowrap;text-shadow:0 0 4px rgba(0,0,0,.8)}
+.ann-red{color:#f87171}
+.ann-white{color:rgba(255,255,255,.7)}
+/* SVG arrows overlay */
+.arrows-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+.diag-legend{display:flex;flex-wrap:wrap;gap:8px}
+.dl-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)}
+.dl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.diag-features{display:flex;flex-direction:column;gap:5px}
+.df-row{display:flex;gap:8px;align-items:flex-start}
+.df-icon{font-size:14px;flex-shrink:0}
+.df-text strong{display:block;font-size:11px;font-weight:700}
+.df-text p{font-size:10px;color:var(--muted);line-height:1.4}
+.complexity-compare{display:flex;gap:8px;margin-top:6px}
+.cc-box{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.cc-box .cc-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:5px}
+.cc-item{font-size:10px;color:var(--text);display:flex;gap:5px;margin-bottom:3px;line-height:1.3}
+.cc-item::before{content:"•";color:var(--lime);flex-shrink:0}
+
+/* ═══════════════════════════════════════════
+   S5 — SESSION BUILDER
+═══════════════════════════════════════════ */
+#s5{justify-content:flex-start;padding-top:42px}
+#s5 .top{text-align:center;margin-bottom:16px;width:100%}
+.session-layout{display:flex;gap:16px;width:100%;max-width:960px}
+.session-left{width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.session-right{flex:1;display:flex;flex-direction:column;gap:8px}
+.param-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.param-card .pc-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.param-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.param-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;padding:5px 8px;text-align:center}
+.param-item .pi-val{font-size:12px;font-weight:800;color:var(--lime)}
+.param-item .pi-key{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.phase-list{display:flex;flex-direction:column;gap:6px}
+.phase-row{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start}
+.phase-dot{width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;letter-spacing:.04em}
+.pd-1{background:rgba(96,165,250,.15);border:2px solid rgba(96,165,250,.4);color:var(--blue)}
+.pd-2{background:rgba(173,255,47,.12);border:2px solid rgba(173,255,47,.4);color:var(--lime)}
+.pd-3{background:rgba(192,132,252,.12);border:2px solid rgba(192,132,252,.4);color:var(--purple)}
+.pd-4{background:rgba(251,191,36,.12);border:2px solid rgba(251,191,36,.4);color:var(--amber)}
+.pd-5{background:rgba(52,211,153,.12);border:2px solid rgba(52,211,153,.4);color:var(--green)}
+.phase-row .pr-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+.phase-row .pr-dur{font-size:10px;color:var(--muted)}
+.phase-row .pr-desc{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
+.cue-chip{display:inline-block;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:5px;padding:3px 8px;font-size:10px;color:var(--text);margin:2px}
+.session-meta-row{display:flex;gap:8px}
+.smi{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:9px 11px;text-align:center}
+.smi-val{font-size:16px;font-weight:900;color:var(--lime)}
+.smi-lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px}
+
+/* ═══════════════════════════════════════════
+   S6 — FORMATIONS + GAME MODEL
+═══════════════════════════════════════════ */
+#s6{justify-content:flex-start;padding-top:42px}
+#s6 .top{text-align:center;margin-bottom:16px;width:100%}
+.formation-wrap{display:flex;gap:14px;width:100%;max-width:960px}
+.formation-col{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:14px}
+.fc-header{font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.fc-header::before{content:"";width:8px;height:8px;border-radius:50%}
+.fc-7v7::before{background:var(--blue)}
+.fc-9v9::before{background:var(--purple)}
+.fc-11v11::before{background:var(--lime)}
+.form-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px;display:flex;align-items:center;gap:10px;cursor:default;transition:background .2s,border-color .2s}
+.form-item:hover{background:rgba(173,255,47,.05);border-color:rgba(173,255,47,.2)}
+.form-item:last-child{margin-bottom:0}
+.form-name{font-size:14px;font-weight:900;color:var(--text);min-width:60px}
+.form-desc{font-size:11px;color:var(--muted);line-height:1.4}
+.form-mini{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-left:auto;flex-shrink:0}
+.form-dot{width:5px;height:5px;border-radius:50%;background:rgba(173,255,47,.5)}
+.game-model-row{display:flex;gap:10px;width:100%;max-width:960px;margin-top:12px}
+.gm-card{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px;text-align:center}
+.gm-card .gm-icon{font-size:20px;margin-bottom:5px}
+.gm-card h3{font-size:12px;font-weight:800;margin-bottom:3px}
+.gm-card p{font-size:10px;color:var(--muted);line-height:1.4}
+.zone-strip{width:100%;max-width:960px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+.zs-card{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:9px 12px;display:flex;align-items:center;gap:8px}
+.zs-num{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+.zn1{background:rgba(96,165,250,.15);color:var(--blue)}
+.zn2{background:rgba(173,255,47,.12);color:var(--lime)}
+.zn3{background:rgba(239,68,68,.12);color:var(--red)}
+.zs-card p{font-size:11px;color:var(--muted);line-height:1.35}
+.zs-card strong{font-size:11px;font-weight:700;color:var(--text)}
+
+/* ═══════════════════════════════════════════
+   S7 — PLAYER SESSIONS
+═══════════════════════════════════════════ */
+#s7{justify-content:flex-start;padding-top:42px}
+#s7 .top{text-align:center;margin-bottom:16px;width:100%}
+.player-layout{display:flex;gap:16px;width:100%;max-width:960px}
+.player-left{flex:1;display:flex;flex-direction:column;gap:8px}
+.player-right{width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.pj-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.pj-card .pjc-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.pj-drill{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.pj-drill:last-child{margin-bottom:0}
+.pj-drill .pjd-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.pj-drill .pjd-type{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;padding:2px 8px;border-radius:4px}
+.pjt-warmup{background:rgba(96,165,250,.15);color:var(--blue)}
+.pjt-tech{background:rgba(173,255,47,.12);color:var(--lime)}
+.pjt-cool{background:rgba(52,211,153,.12);color:var(--green)}
+.pj-drill .pjd-title{font-size:12px;font-weight:700}
+.pj-drill .pjd-dur{margin-left:auto;font-size:10px;color:var(--muted)}
+.pj-setup-steps{list-style:none;display:flex;flex-direction:column;gap:3px;margin-bottom:6px}
+.pj-setup-steps li{font-size:11px;color:var(--muted);display:flex;gap:6px;line-height:1.4}
+.pj-setup-steps li span{color:var(--lime);font-weight:800;flex-shrink:0;font-size:10px}
+.pj-reps{display:flex;gap:8px}
+.pj-rep{background:rgba(173,255,47,.07);border:1px solid rgba(173,255,47,.15);border-radius:6px;padding:4px 10px;font-size:10px;color:var(--text)}
+.self-cues{display:flex;flex-direction:column;gap:4px}
+.sc-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;padding:7px 10px;display:flex;gap:7px;align-items:flex-start}
+.sc-item::before{content:"👁";font-size:12px;flex-shrink:0}
+.sc-item p{font-size:11px;color:var(--text);line-height:1.4}
+.level-adapt{display:flex;flex-direction:column;gap:6px}
+.la-row{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 11px;display:flex;align-items:flex-start;gap:8px}
+.la-row .la-pill{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;padding:2px 8px;border-radius:4px;flex-shrink:0;margin-top:1px}
+.la-beg{background:rgba(52,211,153,.12);color:var(--green);border:1px solid rgba(52,211,153,.2)}
+.la-int{background:rgba(96,165,250,.12);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+.la-adv{background:rgba(192,132,252,.12);color:var(--purple);border:1px solid rgba(192,132,252,.2)}
+.la-row p{font-size:11px;color:var(--muted);line-height:1.4}
+.pdf-badge{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 12px;display:flex;gap:10px;align-items:center}
+.pdf-badge .pb-icon{font-size:20px}
+.pdf-badge strong{font-size:12px;font-weight:700;display:block;margin-bottom:2px}
+.pdf-badge p{font-size:11px;color:var(--muted)}
+
+/* ═══════════════════════════════════════════
+   S8 — COACHING INTELLIGENCE
+═══════════════════════════════════════════ */
+#s8{justify-content:flex-start;padding-top:42px}
+#s8 .top{text-align:center;margin-bottom:16px;width:100%}
+.intelligence-wrap{display:flex;gap:14px;width:100%;max-width:960px}
+.intel-left{width:240px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.intel-right{flex:1;display:flex;flex-direction:column;gap:8px}
+.skill-focus-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.sf-title{font-size:14px;font-weight:800;color:var(--lime);margin-bottom:4px}
+.sf-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.sf-skills{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.psych-row{display:flex;gap:6px;margin-top:6px}
+.psych-box{flex:1;border-radius:8px;padding:8px 10px}
+.psych-good{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.2)}
+.psych-bad{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2)}
+.psych-box .pb-header{font-size:9px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;margin-bottom:5px;display:flex;align-items:center;gap:5px}
+.ph-good{color:var(--green)}
+.ph-bad{color:var(--red)}
+.psych-box p{font-size:10px;color:var(--muted);line-height:1.4;margin-bottom:3px}
+.phrase-section{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.ps-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.phrase-tabs{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+.ptab{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 10px;border-radius:5px;cursor:default}
+.ptab-active{background:var(--lime2);border:1px solid rgba(173,255,47,.3);color:var(--lime)}
+.ptab-idle{background:var(--panel);border:1px solid var(--border);color:var(--muted)}
+.phrase-pairs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.phrase-pair-col .ppc-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}
+.enc{color:var(--green)}
+.cor{color:var(--red)}
+.phrase-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:7px;padding:8px 10px;margin-bottom:5px}
+.phrase-item p{font-size:11px;color:var(--text);line-height:1.45;font-style:italic}
+.qa-bar-wrap{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.qa-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.qa-bars{display:flex;flex-direction:column;gap:4px}
+.qb-row{display:flex;align-items:center;gap:8px}
+.qb-name{font-size:10px;color:var(--muted);width:80px;flex-shrink:0}
+.qb-track{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.qb-fill{height:100%;background:var(--lime);border-radius:3px;transition:width 1s ease}
+.qb-val{font-size:10px;font-weight:800;color:var(--lime);width:24px;text-align:right}
+
+/* ═══════════════════════════════════════════
+   S9 — VAULT + AI ASSISTANT
+═══════════════════════════════════════════ */
+#s9{justify-content:flex-start;padding-top:42px}
+#s9 .top{text-align:center;margin-bottom:16px;width:100%}
+.vault-layout{display:flex;gap:16px;width:100%;max-width:960px}
+.vault-left{flex:1;display:flex;flex-direction:column;gap:8px}
+.vault-right{width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:8px}
+.vault-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+.vault-card .vc-label{font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.vault-item{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:5px;display:flex;align-items:center;gap:10px}
+.vault-item:last-child{margin-bottom:0}
+.vi-code{font-size:12px;font-weight:900;font-family:monospace;color:var(--lime);background:rgba(173,255,47,.1);border:1px solid rgba(173,255,47,.2);border-radius:5px;padding:2px 8px;flex-shrink:0}
+.vi-title{font-size:12px;font-weight:600;flex:1}
+.vi-tags{display:flex;gap:4px;flex-wrap:wrap}
+.vi-fav{font-size:13px;margin-left:auto;flex-shrink:0}
+.chat-wrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.chat-header{background:rgba(255,255,255,.04);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:8px}
+.chat-header .ch-dot{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 6px var(--lime)}
+.chat-header h3{font-size:12px;font-weight:800}
+.chat-header span{margin-left:auto;font-size:10px;color:var(--muted)}
+.chat-messages{padding:10px;display:flex;flex-direction:column;gap:6px}
+.msg{padding:8px 11px;border-radius:9px;font-size:11px;line-height:1.5;max-width:88%}
+.msg-user{background:var(--lime2);border:1px solid rgba(173,255,47,.2);align-self:flex-end;color:var(--text)}
+.msg-ai{background:rgba(255,255,255,.04);border:1px solid var(--border);align-self:flex-start;color:var(--muted)}
+.msg-ai strong{color:var(--lime)}
+.chat-input{border-top:1px solid var(--border);padding:8px 10px;display:flex;gap:8px;align-items:center}
+.chat-input-box{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--text);font-family:var(--font)}
+.chat-send{background:var(--lime);color:#000;border:none;border-radius:6px;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer}
+.series-chain{display:flex;flex-direction:column;gap:6px}
+.sc-row{background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:8px;padding:8px 11px;display:flex;align-items:center;gap:10px;position:relative}
+.sc-row:not(:last-child)::after{content:"";position:absolute;left:19px;top:100%;height:6px;width:2px;background:linear-gradient(to bottom,rgba(173,255,47,.3),transparent);z-index:1}
+.sc-num{width:26px;height:26px;border-radius:50%;border:2px solid var(--lime);background:rgba(173,255,47,.1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;color:var(--lime);flex-shrink:0}
+.sc-row strong{font-size:11px;font-weight:700;display:block;margin-bottom:2px}
+.sc-row p{font-size:10px;color:var(--muted)}
+.sc-row .sr-code{margin-left:auto;font-family:monospace;font-size:10px;color:var(--lime);background:rgba(173,255,47,.08);padding:1px 6px;border-radius:4px;flex-shrink:0}
+
+/* ═══════════════════════════════════════════
+   S10 — START HERE
+═══════════════════════════════════════════ */
+#s10{text-align:center}
+#s10 h2{margin:12px 0 14px}
+#s10 .lead{margin:0 auto 22px}
+.start-plans{display:flex;gap:14px;width:100%;max-width:780px;margin-bottom:20px}
+.sp-card{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:left}
+.sp-card.featured{border-color:rgba(173,255,47,.4);background:var(--lime3)}
+.sp-name{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:5px}
+.sp-price{font-size:28px;font-weight:900;margin-bottom:3px}
+.sp-price span{font-size:13px;font-weight:400;color:var(--muted)}
+.sp-who{font-size:11px;color:var(--muted);margin-bottom:11px;line-height:1.4}
+.sp-list{list-style:none;display:flex;flex-direction:column;gap:4px}
+.sp-list li{font-size:11px;display:flex;gap:7px;line-height:1.4}
+.sp-list li::before{content:"✓";color:var(--lime);font-weight:800;flex-shrink:0;margin-top:1px}
+.sp-tag{display:inline-block;background:var(--lime);color:#000;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:4px;margin-bottom:5px}
+.trial-callout{background:rgba(173,255,47,.07);border:1px solid rgba(173,255,47,.18);border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:10px;margin-bottom:18px;width:100%;max-width:780px}
+.trial-callout span{font-size:20px}
+.trial-callout p{font-size:13px;color:var(--text)}
+.trial-callout strong{color:var(--lime)}
+.cta-row{display:flex;gap:10px;justify-content:center}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<div id="hint">← → arrow keys</div>
+<div id="deck">
+
+<!-- ═══════════════════════════════════════════
+     S1 — COVER
+═══════════════════════════════════════════ -->
+<section class="slide active" id="s1">
+  <img src="apps/web/public/images/logo.png" alt="TacticalEdge" class="logo-img"/>
+  <div class="badge">FOR COACHES</div>
+  <h1>Built around<br/><span class="accent">how you actually coach</span></h1>
+  <p class="lead" style="margin:16px auto 26px;">
+    From grassroots parent coach to USSF B+ licensed — TacticalEdge adapts to your level, your formation, your players, and your game model. Generate sessions in minutes. Coach with confidence.
+  </p>
+  <div class="cta">
+    <button class="btn-p">Try Free for 7 Days</button>
+    <button class="btn-o">tacticaledge.app</button>
+  </div>
+  <div class="cover-stats">
+    <div class="cs-item"><div class="cs-val">1,500+</div><div class="cs-lbl">Drills Generated</div></div>
+    <div class="cs-item"><div class="cs-val">250+</div><div class="cs-lbl">Sessions Built</div></div>
+    <div class="cs-item"><div class="cs-val">U8–U18</div><div class="cs-lbl">Age Coverage</div></div>
+    <div class="cs-item"><div class="cs-val">12+</div><div class="cs-lbl">Formations</div></div>
+    <div class="cs-item"><div class="cs-val">4</div><div class="cs-lbl">Coach Levels</div></div>
+    <div class="cs-item"><div class="cs-val">6</div><div class="cs-lbl">Training Phases</div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S2 — COACH LEVELS
+═══════════════════════════════════════════ -->
+<section class="slide" id="s2">
+  <div class="top">
+    <div class="badge">THE PLATFORM KNOWS YOUR LEVEL</div>
+    <h2>The AI adapts to <span class="accent">how you coach</span><br/>— not the other way around</h2>
+    <p class="lead" style="margin:6px auto 0;font-size:13px">Select your license level. Everything — language, diagram complexity, tactical depth — adjusts automatically.</p>
+  </div>
+  <div class="levels-row">
+    <!-- Grassroots -->
+    <div class="lv-card">
+      <div class="lv-badge lv-g">Grassroots</div>
+      <h3>Parent / Volunteer Coach</h3>
+      <p class="lv-sub">No license required. Built for the parent who stepped up and runs Tuesday training.</p>
+      <div class="adapt-row">
+        <div class="adapt-item"><div class="a-icon">💬</div><div><p><strong>Plain English language.</strong> "Extra player" instead of "numerical superiority"</p></div></div>
+        <div class="adapt-item"><div class="a-icon">🗺</div><div><p><strong>Simple diagrams.</strong> 2–4 arrows only. No zone overlays. Easy to read at a glance.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">⏱</div><div><p><strong>Short, clear steps.</strong> Every setup in 5 steps max. Max 22 words per instruction.</p></div></div>
+      </div>
+      <div class="demo-phrase"><div class="dp-label">Sample coaching cue</div><p>"Move the ball quickly to find the player who has space — win the ball back straight away if you lose it."</p></div>
+    </div>
+    <!-- USSF D -->
+    <div class="lv-card">
+      <div class="lv-badge lv-d">USSF D License</div>
+      <h3>Foundation Coached</h3>
+      <p class="lv-sub">You've completed D license. You understand the basics of player development and session structure.</p>
+      <div class="adapt-row">
+        <div class="adapt-item"><div class="a-icon">💬</div><div><p><strong>Foundational terminology.</strong> Concepts tied to concrete, visible player actions.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">🗺</div><div><p><strong>Medium diagrams.</strong> Richer player positioning, 4–6 arrows, basic zone overlays.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">📋</div><div><p><strong>Structured coaching points.</strong> Linked to the session's core theme.</p></div></div>
+      </div>
+      <div class="demo-phrase"><div class="dp-label">Sample coaching cue</div><p>"Press as a unit when the ball goes to the wide defender — trigger the press from your striker's first movement."</p></div>
+    </div>
+    <!-- USSF C -->
+    <div class="lv-card featured">
+      <div class="lv-badge lv-c">USSF C License</div>
+      <h3>Intermediate Coach</h3>
+      <p class="lv-sub">You understand game models, phases of play, and how to develop tactical understanding in players.</p>
+      <div class="adapt-row">
+        <div class="adapt-item"><div class="a-icon">💬</div><div><p><strong>Tactical vocabulary.</strong> Press triggers, cover shadows, transition windows, compactness.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">🗺</div><div><p><strong>Full diagrams.</strong> 7–10 arrows, 4–6 annotations, safe zones, half-space channels.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">📊</div><div><p><strong>Load notes.</strong> Work:rest ratios, energy system classification, RPE guidance.</p></div></div>
+      </div>
+      <div class="demo-phrase"><div class="dp-label">Sample coaching cue</div><p>"Body shape open before receiving — scan before the ball arrives, first touch into space, protect the pivot."</p></div>
+    </div>
+    <!-- USSF B+ -->
+    <div class="lv-card">
+      <div class="lv-badge lv-b">USSF B / B+</div>
+      <h3>Advanced Coach</h3>
+      <p class="lv-sub">High-performance level. You're thinking in game models, progressive loading, and detailed tactical periodization.</p>
+      <div class="adapt-row">
+        <div class="adapt-item"><div class="a-icon">💬</div><div><p><strong>Full tactical depth.</strong> Detailed spatial awareness, timing, body shape, counterpressing cues.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">🗺</div><div><p><strong>Complex diagrams.</strong> Full channels, half-spaces, pressing traps, defensive shape overlays.</p></div></div>
+        <div class="adapt-item"><div class="a-icon">📐</div><div><p><strong>Periodization logic.</strong> Progressive RPE, ATP-PC vs aerobic load, drill sequencing rationale.</p></div></div>
+      </div>
+      <div class="demo-phrase"><div class="dp-label">Sample coaching cue</div><p>"Striker's first press angle cuts the back pass lane — force play wide, second line holds compactness in the 6 zone."</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S3 — DRILL ANATOMY
+═══════════════════════════════════════════ -->
+<section class="slide" id="s3">
+  <div class="top">
+    <div class="badge">WHAT A DRILL ACTUALLY CONTAINS</div>
+    <h2>Every drill is a <span class="accent">complete coaching document</span><br/><span style="font-size:.6em;font-weight:600;color:var(--muted)">— not a description, a runsheet</span></h2>
+  </div>
+  <div class="drill-layout">
+    <!-- Left: metadata -->
+    <div class="drill-meta">
+      <div class="drill-meta-card">
+        <div class="dmc-label">Drill Identity</div>
+        <div class="meta-row"><span class="meta-key">Reference</span><span class="meta-val" style="color:var(--lime);font-family:monospace">D-7K2M</span></div>
+        <div class="meta-row"><span class="meta-key">Title</span><span class="meta-val">Midfield Build-Out 6v4 + GK</span></div>
+        <div class="meta-row"><span class="meta-key">Age Group</span><span class="meta-val">U14</span></div>
+        <div class="meta-row"><span class="meta-key">Formation</span><span class="meta-val">4-3-3</span></div>
+        <div class="meta-row"><span class="meta-key">Duration</span><span class="meta-val">22 min</span></div>
+        <div class="meta-row"><span class="meta-key">Players</span><span class="meta-val">10–14</span></div>
+        <div class="meta-row"><span class="meta-key">Space</span><span class="meta-val">Half pitch</span></div>
+      </div>
+      <div class="drill-meta-card">
+        <div class="dmc-label">Tactical Context</div>
+        <div class="meta-row"><span class="meta-key">Game Model</span><span class="pill pill-lime">POSSESSION</span></div>
+        <div class="meta-row"><span class="meta-key">Phase</span><span class="pill pill-blue">ATTACKING</span></div>
+        <div class="meta-row"><span class="meta-key">Zone</span><span class="pill pill-purple">MIDDLE THIRD</span></div>
+        <div class="meta-row" style="margin-top:6px"><span class="meta-key">Player Level</span><span class="meta-val">Intermediate</span></div>
+        <div class="meta-row"><span class="meta-key">Coach Level</span><span class="meta-val">USSF C</span></div>
+        <div class="meta-row"><span class="meta-key">Energy Sys</span><span class="meta-val">Anaerobic</span></div>
+        <div class="meta-row"><span class="meta-key">RPE</span><span class="meta-val">6–8 / 10</span></div>
+      </div>
+      <div class="load-box">
+        <div class="lb-left"><strong>4 × 4:00</strong><span>Work period</span></div>
+        <div class="lb-right"><strong>2:00 rest</strong><span>1:0.5 work:rest</span></div>
+      </div>
+    </div>
+    <!-- Right: content sections -->
+    <div class="drill-content">
+      <div class="dc-section">
+        <div class="dcs-label">Setup (5-step organization)</div>
+        <ul>
+          <li>Set up a half-pitch area with one full-size goal and two mini-goals on the midline</li>
+          <li>Attackers (6): GK + back four + pivot — in a compact 4-1 shape</li>
+          <li>Defenders (4): Two-plus-two press block — one striker pair, one mid pair</li>
+          <li>Coach stands at edge of D, feeds ball to GK to trigger each rep</li>
+          <li>Rotate defending unit every 2 goals or 4 minutes</li>
+        </ul>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="dc-section" style="flex:1">
+          <div class="dcs-label">Coaching Points</div>
+          <ul>
+            <li>DM: open body before ball arrives — see both lines before receiving</li>
+            <li>Fullbacks: time overlap run off DM's first touch forward</li>
+            <li>When pressed wide: pivot must hold central — don't chase ball</li>
+            <li>Striker press: cut back-pass lane first, then press to wide side</li>
+          </ul>
+        </div>
+        <div class="dc-section prog-section" style="flex:1">
+          <div class="dcs-label">Progressions</div>
+          <ul>
+            <li>Add second pivot for 7v4 — build overload confidence</li>
+            <li>Flip press trigger direction — test decision-making under new angle</li>
+            <li>Live counter: defenders score in full goal if they win within 6 seconds</li>
+            <li>Remove GK: force ground-only build-up from CB-CB axis</li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <div class="dc-section constraint-section" style="flex:1">
+          <div class="dcs-label">Constraints</div>
+          <ul>
+            <li>Must involve pivot before ball crosses midline</li>
+            <li>Max 2 touches in build-up third for advanced</li>
+            <li>No back passes after midline is crossed</li>
+          </ul>
+        </div>
+        <div class="dc-section" style="flex:1">
+          <div class="dcs-label">Equipment</div>
+          <ul>
+            <li>Full-size goal (or two poles)</li>
+            <li>2 mini-goals on midline</li>
+            <li>12 bibs (2 colours), 6 cones</li>
+            <li>4–6 training balls</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S4 — TACTICAL DIAGRAMS
+═══════════════════════════════════════════ -->
+<section class="slide" id="s4">
+  <div class="top">
+    <div class="badge">VISUAL TACTICAL DIAGRAMS</div>
+    <h2>Every drill <span class="accent">drawn for you</span><br/><span style="font-size:.6em;font-weight:600;color:var(--muted)">— player positions, arrows, zones, press lines, annotations</span></h2>
+  </div>
+  <div class="diagrams-wrap">
+    <!-- FULL DIAGRAM (USSF B+) -->
+    <div class="diag-panel" style="flex:1.3">
+      <div class="diag-panel-header">
+        <h3>Full Diagram <span class="pill pill-lime" style="margin-left:6px">USSF C / B+</span></h3>
+        <span style="font-size:10px;color:var(--muted)">7–10 arrows · 4–6 annotations · half-spaces</span>
+      </div>
+      <div class="pitch-svg-wrap">
+        <div class="pitch-inner" style="height:200px;position:relative">
+          <!-- Pitch lines -->
+          <div class="pitch-line pitch-h" style="top:50%;opacity:.4"></div>
+          <div class="pitch-line pitch-v" style="left:33.3%;height:100%;opacity:.25"></div>
+          <div class="pitch-line pitch-v" style="left:66.6%;height:100%;opacity:.25"></div>
+          <!-- Goal -->
+          <div style="position:absolute;right:0;top:38%;width:12px;height:24%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4)"></div>
+          <!-- Mini goals -->
+          <div style="position:absolute;left:40%;top:-6px;width:10%;height:10px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4)"></div>
+          <!-- Player tokens – ATT (red) -->
+          <div class="pt pt-att" style="left:10%;top:50%" title="GK">GK</div>
+          <div class="pt pt-att" style="left:22%;top:30%" title="LCB">4</div>
+          <div class="pt pt-att" style="left:22%;top:70%" title="RCB">5</div>
+          <div class="pt pt-att" style="left:40%;top:50%" title="DM/Pivot">6</div>
+          <div class="pt pt-att" style="left:56%;top:30%" title="LCM">8</div>
+          <div class="pt pt-att" style="left:56%;top:70%" title="RCM">10</div>
+          <!-- DEF (blue) -->
+          <div class="pt pt-def" style="left:65%;top:22%" title="D1">9</div>
+          <div class="pt pt-def" style="left:65%;top:50%" title="D2">7</div>
+          <div class="pt pt-def" style="left:72%;top:36%" title="D3">11</div>
+          <div class="pt pt-def" style="left:72%;top:64%" title="D4">2</div>
+          <!-- Ball -->
+          <div style="position:absolute;left:9.5%;top:49%;width:9px;height:9px;background:white;border-radius:50%;transform:translate(-50%,-50%);z-index:5;box-shadow:0 0 4px rgba(255,255,255,.8)"></div>
+          <!-- SVG Arrows -->
+          <svg class="arrows-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <!-- GK→LCB pass -->
+            <line x1="10" y1="50" x2="22" y2="30" stroke="#ADFF2F" stroke-width=".8" stroke-dasharray="2,1.5" marker-end="url(#arr)"/>
+            <!-- LCB→Pivot -->
+            <line x1="22" y1="30" x2="40" y2="50" stroke="#ADFF2F" stroke-width=".8" marker-end="url(#arr)"/>
+            <!-- Pivot→LCM -->
+            <line x1="40" y1="50" x2="56" y2="30" stroke="#ADFF2F" stroke-width=".8" marker-end="url(#arr)"/>
+            <!-- LCM run forward -->
+            <line x1="56" y1="30" x2="72" y2="18" stroke="#60a5fa" stroke-width=".8" stroke-dasharray="2,1.5" marker-end="url(#arr-b)"/>
+            <!-- Press arrow D1→Pivot -->
+            <line x1="65" y1="22" x2="45" y2="46" stroke="#f87171" stroke-width=".7" stroke-dasharray="1.5,1.5" marker-end="url(#arr-r)"/>
+            <defs>
+              <marker id="arr" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#ADFF2F"/></marker>
+              <marker id="arr-b" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#60a5fa"/></marker>
+              <marker id="arr-r" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#f87171"/></marker>
+            </defs>
+          </svg>
+          <!-- Annotations -->
+          <div class="ann" style="left:42%;top:38%">PIVOT</div>
+          <div class="ann ann-red" style="left:66%;top:35%">PRESS TRIGGER</div>
+          <div class="ann ann-white" style="left:24%;top:18%">BUILD WIDE</div>
+          <!-- Safe zone -->
+          <div style="position:absolute;left:30%;top:40%;width:15%;height:20%;background:rgba(173,255,47,.08);border:1px dashed rgba(173,255,47,.3);border-radius:3px"></div>
+        </div>
+      </div>
+      <div class="diag-legend">
+        <div class="dl-item"><div class="dl-dot" style="background:#e53e3e"></div>Attackers</div>
+        <div class="dl-item"><div class="dl-dot" style="background:#3182ce"></div>Defenders</div>
+        <div class="dl-item"><svg width="18" height="10"><line x1="0" y1="5" x2="18" y2="5" stroke="#ADFF2F" stroke-width="1.5" marker-end="url(#a1)"/><defs><marker id="a1" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto"><polygon points="0,0 4,2 0,4" fill="#ADFF2F"/></marker></defs></svg>Pass</div>
+        <div class="dl-item"><svg width="18" height="10"><line x1="0" y1="5" x2="18" y2="5" stroke="#60a5fa" stroke-width="1.5" stroke-dasharray="3,2"/></svg>Run</div>
+        <div class="dl-item"><svg width="18" height="10"><line x1="0" y1="5" x2="18" y2="5" stroke="#f87171" stroke-width="1" stroke-dasharray="2,2"/></svg>Press</div>
+      </div>
+      <div class="diag-features">
+        <div class="df-row"><div class="df-icon">📐</div><div class="df-text"><strong>Half-space channels</strong><p>Visual zones highlighting half-spaces, wide channels, pressing trap corridors</p></div></div>
+        <div class="df-row"><div class="df-icon">🎯</div><div class="df-text"><strong>Annotations with triggers</strong><p>"PRESS TRIGGER", "PIVOT", "BUILD WIDE" — cue words placed exactly where they matter</p></div></div>
+      </div>
+    </div>
+
+    <!-- SIMPLE DIAGRAM (Grassroots) -->
+    <div class="diag-panel">
+      <div class="diag-panel-header">
+        <h3>Simple Diagram <span class="pill pill-blue" style="margin-left:6px">Grassroots</span></h3>
+        <span style="font-size:10px;color:var(--muted)">2–4 arrows · 1–2 labels · clean</span>
+      </div>
+      <div class="pitch-svg-wrap">
+        <div class="pitch-inner" style="height:160px;position:relative">
+          <div class="pitch-line pitch-h" style="top:50%;opacity:.4"></div>
+          <div style="position:absolute;right:0;top:35%;width:10px;height:30%;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4)"></div>
+          <div class="pt pt-att" style="left:15%;top:50%;width:20px;height:20px;font-size:8px">GK</div>
+          <div class="pt pt-att" style="left:30%;top:30%;width:20px;height:20px;font-size:8px">4</div>
+          <div class="pt pt-att" style="left:30%;top:70%;width:20px;height:20px;font-size:8px">5</div>
+          <div class="pt pt-att" style="left:50%;top:50%;width:20px;height:20px;font-size:8px">6</div>
+          <div class="pt pt-def" style="left:68%;top:35%;width:20px;height:20px;font-size:8px">7</div>
+          <div class="pt pt-def" style="left:68%;top:65%;width:20px;height:20px;font-size:8px">9</div>
+          <svg class="arrows-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="15" y1="50" x2="30" y2="30" stroke="#ADFF2F" stroke-width="1" stroke-dasharray="3,2" marker-end="url(#a2)"/>
+            <line x1="30" y1="30" x2="50" y2="50" stroke="#ADFF2F" stroke-width="1" marker-end="url(#a2)"/>
+            <line x1="50" y1="50" x2="68" y2="35" stroke="#ADFF2F" stroke-width="1" marker-end="url(#a2)"/>
+            <defs><marker id="a2" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#ADFF2F"/></marker></defs>
+          </svg>
+          <div class="ann" style="left:52%;top:38%;font-size:7px">PASS &amp; MOVE</div>
+        </div>
+      </div>
+      <div class="complexity-compare">
+        <div class="cc-box">
+          <div class="cc-label" style="color:var(--green)">Grassroots gets</div>
+          <div class="cc-item">2–4 arrows max</div>
+          <div class="cc-item">1–2 simple labels</div>
+          <div class="cc-item">No zone overlays</div>
+          <div class="cc-item">Clean, scannable</div>
+        </div>
+        <div class="cc-box">
+          <div class="cc-label" style="color:var(--lime)">USSF B+ gets</div>
+          <div class="cc-item">7–10 arrows</div>
+          <div class="cc-item">4–6 annotations</div>
+          <div class="cc-item">1–3 safe zones</div>
+          <div class="cc-item">Half-space channels</div>
+        </div>
+      </div>
+      <div class="diag-features">
+        <div class="df-row"><div class="df-icon">🎽</div><div class="df-text"><strong>Role labels + jersey numbers</strong><p>GK, CB, DM, CM, RW — every player knows their role at a glance</p></div></div>
+        <div class="df-row"><div class="df-icon">🟡</div><div class="df-text"><strong>Cones, goals, balls placed</strong><p>Equipment placement shown on pitch — no guessing where to set up</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S5 — SESSION BUILDER
+═══════════════════════════════════════════ -->
+<section class="slide" id="s5">
+  <div class="top">
+    <div class="badge">THE SESSION BUILDER</div>
+    <h2>A complete <span class="accent">90-minute session</span><br/>in under 4 minutes</h2>
+  </div>
+  <div class="session-layout">
+    <!-- Params sidebar -->
+    <div class="session-left">
+      <div class="param-card">
+        <div class="pc-label">You Set</div>
+        <div class="param-grid">
+          <div class="param-item"><div class="pi-val">U14</div><div class="pi-key">Age Group</div></div>
+          <div class="param-item"><div class="pi-val">4-3-3</div><div class="pi-key">Formation</div></div>
+          <div class="param-item"><div class="pi-val">90 min</div><div class="pi-key">Duration</div></div>
+          <div class="param-item"><div class="pi-val">Int.</div><div class="pi-key">Level</div></div>
+          <div class="param-item"><div class="pi-val">Press.</div><div class="pi-key">Game Model</div></div>
+          <div class="param-item"><div class="pi-val">Mid 3rd</div><div class="pi-key">Zone</div></div>
+        </div>
+      </div>
+      <div class="session-meta-row">
+        <div class="smi"><div class="smi-val">5</div><div class="smi-lbl">Phases</div></div>
+        <div class="smi"><div class="smi-val">12</div><div class="smi-lbl">Players</div></div>
+        <div class="smi"><div class="smi-val">2</div><div class="smi-lbl">Goals</div></div>
+      </div>
+      <div class="param-card">
+        <div class="pc-label">AI Generates</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">📋</div><p style="font-size:11px;color:var(--muted)">Full session runsheet with timing</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">🗺</div><p style="font-size:11px;color:var(--muted)">5 tactical diagrams (one per phase)</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">💬</div><p style="font-size:11px;color:var(--muted)">Coaching points for each drill</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">↑</div><p style="font-size:11px;color:var(--muted)">Progressions to increase intensity</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">⚡</div><p style="font-size:11px;color:var(--muted)">Load notes (RPE + work:rest)</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:12px">🎯</div><p style="font-size:11px;color:var(--muted)">Skill focus + psychological theme</p></div>
+        </div>
+      </div>
+    </div>
+    <!-- Phase list -->
+    <div class="session-right">
+      <div class="phase-list">
+        <div class="phase-row">
+          <div class="phase-dot pd-1">W</div>
+          <div style="flex:1">
+            <div class="pr-title">Warmup <span class="pr-dur">15 min</span></div>
+            <div class="pr-desc">Rondo 4v1 + dynamic movement — activate touch quality, scanning, body temp</div>
+            <div style="margin-top:4px"><span class="cue-chip">Head up receiving</span><span class="cue-chip">First touch forward</span><span class="cue-chip">Communication</span></div>
+          </div>
+        </div>
+        <div class="phase-row">
+          <div class="phase-dot pd-2">T</div>
+          <div style="flex:1">
+            <div class="pr-title">Technical <span class="pr-dur">20 min</span></div>
+            <div class="pr-desc">Passing combinations + press-trigger reactions — isolated technique with cognitive demand</div>
+            <div style="margin-top:4px"><span class="cue-chip">Body shape open</span><span class="cue-chip">Timing of run</span><span class="cue-chip">Press trigger</span></div>
+          </div>
+        </div>
+        <div class="phase-row">
+          <div class="phase-dot pd-3">T</div>
+          <div style="flex:1">
+            <div class="pr-title">Tactical <span class="pr-dur">25 min</span></div>
+            <div class="pr-desc">6v4 + GK build-out — game model applied in controlled overload scenario (see D-7K2M)</div>
+            <div style="margin-top:4px"><span class="cue-chip">Pivot position</span><span class="cue-chip">Fullback timing</span><span class="cue-chip">Compactness</span></div>
+          </div>
+        </div>
+        <div class="phase-row">
+          <div class="phase-dot pd-4">G</div>
+          <div style="flex:1">
+            <div class="pr-title">Conditioned Game <span class="pr-dur">25 min</span></div>
+            <div class="pr-desc">8v8 with pressing constraint — must press as a unit within 3 seconds of loss, bonus point for regain</div>
+            <div style="margin-top:4px"><span class="cue-chip">Press as unit</span><span class="cue-chip">Immediate press</span><span class="cue-chip">Track runners</span></div>
+          </div>
+        </div>
+        <div class="phase-row">
+          <div class="phase-dot pd-5">C</div>
+          <div style="flex:1">
+            <div class="pr-title">Cooldown <span class="pr-dur">5 min</span></div>
+            <div class="pr-desc">Static stretch + reflection — coach asks: "When did we press well? When did we lose shape?"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S6 — FORMATIONS + GAME MODELS
+═══════════════════════════════════════════ -->
+<section class="slide" id="s6">
+  <div class="top">
+    <div class="badge">FORMATIONS, GAME MODELS &amp; PHASES</div>
+    <h2>Your system.<br/><span class="accent">Your formation. Your philosophy.</span></h2>
+  </div>
+  <div class="formation-wrap">
+    <div class="formation-col">
+      <div class="fc-header fc-7v7">7v7 FORMATS &nbsp;·&nbsp; U8–U12</div>
+      <div class="form-item"><div class="form-name">2-3-1</div><div class="form-desc">Defensive pair, midfield triangle, lone striker. Width in midfield.</div></div>
+      <div class="form-item"><div class="form-name">3-2-1</div><div class="form-desc">Three-back build with double pivot. Possession from deep.</div></div>
+    </div>
+    <div class="formation-col">
+      <div class="fc-header fc-9v9">9v9 FORMATS &nbsp;·&nbsp; U13–U14</div>
+      <div class="form-item"><div class="form-name">3-2-3</div><div class="form-desc">Flat defensive line, double pivot, three across the top.</div></div>
+      <div class="form-item"><div class="form-name">2-3-2-1</div><div class="form-desc">Layered possession structure with creative midfield triangle.</div></div>
+      <div class="form-item"><div class="form-name">3-3-2</div><div class="form-desc">High-line three-back with pressing midfield unit.</div></div>
+    </div>
+    <div class="formation-col">
+      <div class="fc-header fc-11v11">11v11 FORMATS &nbsp;·&nbsp; U15–U18</div>
+      <div class="form-item"><div class="form-name">4-3-3</div><div class="form-desc">Single pivot, two 8s, wide forwards. Attack-minded pressing shape.</div></div>
+      <div class="form-item"><div class="form-name">4-2-3-1</div><div class="form-desc">Double pivot, #10 free role, lone striker. Compact block width.</div></div>
+      <div class="form-item"><div class="form-name">4-4-2</div><div class="form-desc">Flat midfield four. Compact, direct, transition-focused.</div></div>
+      <div class="form-item"><div class="form-name">3-5-2</div><div class="form-desc">Three-back with wing-backs. Dominant midfield + double pivot.</div></div>
+    </div>
+  </div>
+  <div class="game-model-row">
+    <div class="gm-card"><div class="gm-icon">🤝</div><h3>Possession</h3><p>Keep the ball, build patiently, create space through movement</p></div>
+    <div class="gm-card"><div class="gm-icon">⚡</div><h3>Pressing</h3><p>High press, win the ball high, fast vertical after regain</p></div>
+    <div class="gm-card"><div class="gm-icon">↔</div><h3>Transition</h3><p>Fast counter-attack, direct play, exploit space behind defence</p></div>
+    <div class="gm-card"><div class="gm-icon">🤖</div><h3>Coach AI</h3><p>Let the AI decide the best game model for your session topic</p></div>
+  </div>
+  <div class="zone-strip">
+    <div class="zs-card"><div class="zs-num zn1">Z1</div><div><strong>Defensive Third</strong><p>Build-up from back, GK distribution, CBs under pressure, press triggers from front</p></div></div>
+    <div class="zs-card"><div class="zs-num zn2">Z2</div><div><strong>Middle Third</strong><p>Central play, midfield combinations, breaking lines, screens and pivots</p></div></div>
+    <div class="zs-card"><div class="zs-num zn3">Z3</div><div><strong>Attacking Third</strong><p>Chance creation, finishing, wide combinations, set-piece variations</p></div></div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S7 — PLAYER SESSIONS
+═══════════════════════════════════════════ -->
+<section class="slide" id="s7">
+  <div class="top">
+    <div class="badge badge-blue">PLAYER HOMEWORK PLANS</div>
+    <h2>Turn any session into <span class="accent">solo player work</span><br/><span style="font-size:.6em;font-weight:600;color:var(--muted)">— adapted by level, ready for home, PDF for parents</span></h2>
+  </div>
+  <div class="player-layout">
+    <div class="player-left">
+      <div class="pj-card">
+        <div class="pjc-label">Solo Plan — P-5X1Q &nbsp;·&nbsp; Liam (U14 · Intermediate)</div>
+        <div class="pj-drill">
+          <div class="pjd-header"><div class="pjd-type pjt-warmup">Warmup</div><div class="pjd-title">Ball Mastery Activation</div><div class="pjd-dur">8 min</div></div>
+          <ul class="pj-setup-steps">
+            <li><span>1.</span>Mark a 5×5 yard square with 4 cones</li>
+            <li><span>2.</span>Work inside the square — move ball with both feet continuously</li>
+            <li><span>3.</span>Alternate: sole rolls, inside-outside, drag-backs</li>
+          </ul>
+          <div class="pj-reps"><div class="pj-rep">3 × 90 sec</div><div class="pj-rep">30 sec rest</div></div>
+        </div>
+        <div class="pj-drill">
+          <div class="pjd-header"><div class="pjd-type pjt-tech">Technical</div><div class="pjd-title">Pivot Receiving — Wall Work</div><div class="pjd-dur">15 min</div></div>
+          <ul class="pj-setup-steps">
+            <li><span>1.</span>Stand 5 yards from a wall or rebounder</li>
+            <li><span>2.</span>Pass to wall — open your body before ball returns</li>
+            <li><span>3.</span>First touch out of feet — left, then right side alternating</li>
+            <li><span>4.</span>Progress: add a half-turn before touching</li>
+          </ul>
+          <div class="pj-reps"><div class="pj-rep">4 × 10 reps each side</div><div class="pj-rep">45 sec rest</div></div>
+        </div>
+        <div class="pj-drill">
+          <div class="pjd-header"><div class="pjd-type pjt-cool">Cooldown</div><div class="pjd-title">Reflection</div><div class="pjd-dur">5 min</div></div>
+          <ul class="pj-setup-steps">
+            <li><span>1.</span>Static stretch — hips, hamstrings, ankles (30 sec each)</li>
+            <li><span>2.</span>Mental check: "Did my first touch go where I wanted?"</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="player-right">
+      <div class="pj-card">
+        <div class="pjc-label">Self-Coaching Cues</div>
+        <div class="self-cues">
+          <div class="sc-item"><p>"Can I see both goals from where I'm standing before the ball arrives?"</p></div>
+          <div class="sc-item"><p>"Is my first touch going into space — or back into pressure?"</p></div>
+          <div class="sc-item"><p>"Am I completing the full half-turn before touching, or just reaching?"</p></div>
+        </div>
+      </div>
+      <div class="pj-card">
+        <div class="pjc-label">Level Adaptations</div>
+        <div class="level-adapt">
+          <div class="la-row"><div class="la-pill la-beg">Beginner</div><p>2 reps per side, longer rest (60s), remove half-turn, static receiving only</p></div>
+          <div class="la-row"><div class="la-pill la-int">Intermediate</div><p>4 reps per side, 45s rest, add half-turn on rep 3+</p></div>
+          <div class="la-row"><div class="la-pill la-adv">Advanced</div><p>6 reps per side, 30s rest, half-turn every rep, eyes up before touch</p></div>
+        </div>
+      </div>
+      <div class="pdf-badge">
+        <div class="pb-icon">📄</div>
+        <div>
+          <strong>PDF Export Ready</strong>
+          <p>Player plan exported as printable PDF — send to parents, share via group chat, email the player directly.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S8 — COACHING INTELLIGENCE
+═══════════════════════════════════════════ -->
+<section class="slide" id="s8">
+  <div class="top">
+    <div class="badge badge-purple">COACHING INTELLIGENCE</div>
+    <h2>Every session comes with a <span class="accent">coaching brief</span><br/><span style="font-size:.6em;font-weight:600;color:var(--muted)">— what to say, when to say it, and what to watch for</span></h2>
+  </div>
+  <div class="intelligence-wrap">
+    <div class="intel-left">
+      <div class="skill-focus-card">
+        <div class="sf-label">Skill Focus Generated</div>
+        <div class="sf-title">Composure Under Pressure</div>
+        <p style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.5">This session demands that players scan, receive under pressure, and keep the ball moving — composure is the throughline.</p>
+        <div class="sf-label">Key Skills</div>
+        <div class="sf-skills">
+          <span class="pill pill-lime">Scanning</span>
+          <span class="pill pill-lime">Body orientation</span>
+          <span class="pill pill-lime">First touch</span>
+          <span class="pill pill-lime">Decision speed</span>
+          <span class="pill pill-blue">Communication</span>
+        </div>
+        <div class="psych-row">
+          <div class="psych-box psych-good">
+            <div class="psych-box pb-header ph-good">✓ Reinforce</div>
+            <p>Name the scan: "Yes — you looked before it arrived"</p>
+            <p>Praise the decision not the outcome</p>
+          </div>
+          <div class="psych-box psych-bad">
+            <div class="psych-box pb-header ph-bad">✗ Redirect</div>
+            <p>Don't shout "turn!" — instead: "Where was your space?"</p>
+            <p>Correct before next rep, not after the play</p>
+          </div>
+        </div>
+      </div>
+      <div class="qa-bar-wrap">
+        <div class="qa-label">Session QA Score (auto-validated)</div>
+        <div class="qa-bars">
+          <div class="qb-row"><span class="qb-name">Structure</span><div class="qb-track"><div class="qb-fill" style="width:90%"></div></div><span class="qb-val">4.5</span></div>
+          <div class="qb-row"><span class="qb-name">Game Model</span><div class="qb-track"><div class="qb-fill" style="width:100%"></div></div><span class="qb-val">5.0</span></div>
+          <div class="qb-row"><span class="qb-name">Clarity</span><div class="qb-track"><div class="qb-fill" style="width:80%"></div></div><span class="qb-val">4.0</span></div>
+          <div class="qb-row"><span class="qb-name">Realism</span><div class="qb-track"><div class="qb-fill" style="width:90%"></div></div><span class="qb-val">4.5</span></div>
+          <div class="qb-row"><span class="qb-name">Safety</span><div class="qb-track"><div class="qb-fill" style="width:100%"></div></div><span class="qb-val">5.0</span></div>
+          <div class="qb-row"><span class="qb-name">Progression</span><div class="qb-track"><div class="qb-fill" style="width:80%"></div></div><span class="qb-val">4.0</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="intel-right">
+      <div class="phrase-section" style="flex:1">
+        <div class="ps-label">Coaching Phrases — Per Phase</div>
+        <div class="phrase-tabs">
+          <div class="ptab ptab-active">Tactical</div>
+          <div class="ptab ptab-idle">Warmup</div>
+          <div class="ptab ptab-idle">Technical</div>
+          <div class="ptab ptab-idle">Game</div>
+          <div class="ptab ptab-idle">Cooldown</div>
+        </div>
+        <div class="phrase-pairs">
+          <div class="phrase-pair-col">
+            <div class="ppc-label enc">✓ Encourage — when you see it done right</div>
+            <div class="phrase-item"><p>"That's the scan — you already knew your next pass before the ball arrived. That's what we want."</p></div>
+            <div class="phrase-item"><p>"Perfect body shape — you're half-turned before touch. Ball goes forward immediately. Yes!"</p></div>
+            <div class="phrase-item"><p>"That's the pivot play — you held your position in the 6, released at the right moment."</p></div>
+          </div>
+          <div class="phrase-pair-col">
+            <div class="ppc-label cor">✗ Correct — when you need to redirect</div>
+            <div class="phrase-item"><p>"Before the next rep — where was your space? Pause. Now picture receiving open. Go again."</p></div>
+            <div class="phrase-item"><p>"You received square — the press got there. What does your first touch look like if you're half-turned?"</p></div>
+            <div class="phrase-item"><p>"The pivot is drifting towards the ball. Remind them: your job is the space, not the ball."</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S9 — VAULT + PROGRESSIVE SERIES + AI CHAT
+═══════════════════════════════════════════ -->
+<section class="slide" id="s9">
+  <div class="top">
+    <div class="badge">YOUR VAULT, SERIES &amp; AI ASSISTANT</div>
+    <h2>Everything saved. <span class="accent">Everything searchable.</span><br/>Everything connected.</h2>
+  </div>
+  <div class="vault-layout">
+    <div class="vault-left">
+      <!-- Vault -->
+      <div class="vault-card">
+        <div class="vc-label">Content Vault — your sessions, drills, and series</div>
+        <div class="vault-item">
+          <div class="vi-code">S-7K2M</div>
+          <div class="vi-title">Pressing Session — U14 · 4-3-3</div>
+          <div class="vi-tags"><span class="pill pill-lime">PRESSING</span><span class="pill pill-blue">MID THIRD</span></div>
+          <div class="vi-fav">★</div>
+        </div>
+        <div class="vault-item">
+          <div class="vi-code">D-9M3P</div>
+          <div class="vi-title">6v4 Build-Out Drill</div>
+          <div class="vi-tags"><span class="pill pill-blue">POSSESSION</span><span class="pill pill-purple">TACTICAL</span></div>
+          <div class="vi-fav">★</div>
+        </div>
+        <div class="vault-item">
+          <div class="vi-code">SR-KZ9N</div>
+          <div class="vi-title">4-Session Pressing Series — U16</div>
+          <div class="vi-tags"><span class="pill pill-lime">SERIES</span><span class="pill pill-amber">4 SESSIONS</span></div>
+          <div class="vi-fav">☆</div>
+        </div>
+        <div class="vault-item">
+          <div class="vi-code">P-5X1Q</div>
+          <div class="vi-title">Liam — Pivot Receiving Homework</div>
+          <div class="vi-tags"><span class="pill pill-purple">PLAYER PLAN</span><span class="pill pill-blue">INTERMEDIATE</span></div>
+          <div class="vi-fav">☆</div>
+        </div>
+      </div>
+      <!-- Progressive series -->
+      <div class="vault-card">
+        <div class="vc-label">Progressive Series — SR-KZ9N — 4 Sessions on Pressing</div>
+        <div class="series-chain">
+          <div class="sc-row"><div class="sc-num">1</div><div style="flex:1"><strong>Pressing Shape &amp; Triggers</strong><p>Introduce press cues, unit movement, compactness</p></div><div class="sr-code">S-KZ01</div></div>
+          <div class="sc-row"><div class="sc-num">2</div><div style="flex:1"><strong>Press Trap in Middle Third</strong><p>Force play wide, secondary pressure, win possession</p></div><div class="sr-code">S-KZ02</div></div>
+          <div class="sc-row"><div class="sc-num">3</div><div style="flex:1"><strong>High Press from Front Line</strong><p>Striker triggers, midfield second wave, no-ball-escape</p></div><div class="sr-code">S-KZ03</div></div>
+          <div class="sc-row"><div class="sc-num">4</div><div style="flex:1"><strong>Press + Transition Counter</strong><p>Win ball high → immediate vertical attack in 5 seconds</p></div><div class="sr-code">S-KZ04</div></div>
+        </div>
+      </div>
+    </div>
+    <!-- AI Chat -->
+    <div class="vault-right">
+      <div class="chat-wrap">
+        <div class="chat-header">
+          <div class="ch-dot"></div>
+          <h3>AI Coach Assistant</h3>
+          <span>● Live</span>
+        </div>
+        <div class="chat-messages">
+          <div class="msg msg-user">My U14s keep losing the ball in transitions — I need a session on it</div>
+          <div class="msg msg-ai">Got it — I'll build a <strong>Transition Defending</strong> session for your U14s. What formation are they running, and do you have 12–14 players available?</div>
+          <div class="msg msg-user">4-2-3-1, about 14 players</div>
+          <div class="msg msg-ai">Perfect. <strong>S-TR14</strong> is ready — 90 min Transition session in 4-2-3-1. I've focused Phase 3 on immediate press reaction (0–3 sec window) and Phase 4 on tracking runners when shape breaks. Want me to build a 3-session series from this?</div>
+          <div class="msg msg-user">Yes — 3 sessions building on this one</div>
+          <div class="msg msg-ai">Building <strong>SR-TR3</strong> — a 3-session transition series. Session 1 is S-TR14. Sessions 2 &amp; 3 will escalate speed, then add counter-attack output. Check your vault.</div>
+        </div>
+        <div class="chat-input">
+          <div class="chat-input-box">Ask about your session, drill, or series...</div>
+          <button class="chat-send">→</button>
+        </div>
+      </div>
+      <div class="vault-card" style="flex:0">
+        <div class="vc-label">What you can ask the AI</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="df-row" style="gap:6px"><div style="font-size:11px">💬</div><p style="font-size:11px;color:var(--muted);">"Build me a pressing session for U12"</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:11px">💬</div><p style="font-size:11px;color:var(--muted);">"3-session series on finishing for U16"</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:11px">💬</div><p style="font-size:11px;color:var(--muted);">"Improve drill D-9M3P for advanced players"</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:11px">💬</div><p style="font-size:11px;color:var(--muted);">"Player plan for my striker — intermediate"</p></div>
+          <div class="df-row" style="gap:6px"><div style="font-size:11px">💬</div><p style="font-size:11px;color:var(--muted);">"What sessions did I run on possession this month?"</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════
+     S10 — START
+═══════════════════════════════════════════ -->
+<section class="slide" id="s10">
+  <img src="apps/web/public/images/logo.png" alt="TacticalEdge" class="logo-img"/>
+  <div class="badge">GET STARTED</div>
+  <h2>Stop planning from scratch.<br/><span class="accent">Start coaching with confidence.</span></h2>
+  <p class="lead" style="margin:10px auto 18px;">
+    Pick your level. Set your formation. Generate your first session in under 4 minutes.
+  </p>
+  <div class="trial-callout">
+    <span>🎯</span>
+    <p><strong>7-day free trial — no credit card needed.</strong> Generate up to 10 sessions and 30 drills free. See the platform before you commit.</p>
+  </div>
+  <div class="start-plans">
+    <div class="sp-card">
+      <div class="sp-name">Starter Coach</div>
+      <div class="sp-price">$10<span>/mo</span></div>
+      <div class="sp-who">Individual coaches — grassroots to licensed</div>
+      <ul class="sp-list">
+        <li>150 drills + 40 sessions/month</li>
+        <li>All 4 coach levels (Grassroots → B+)</li>
+        <li>All formations (7v7, 9v9, 11v11)</li>
+        <li>Tactical diagrams on every drill</li>
+        <li>Player homework plans + PDF</li>
+        <li>Content vault with ref codes</li>
+        <li>AI Coach Assistant</li>
+        <li>Calendar + parent summaries</li>
+      </ul>
+    </div>
+    <div class="sp-card featured">
+      <div class="sp-tag">Best Value</div>
+      <div class="sp-name">Club Pro</div>
+      <div class="sp-price">$40<span>/mo</span></div>
+      <div class="sp-who">Growing coaches + club teams (up to 5 coaches)</div>
+      <ul class="sp-list">
+        <li>Everything in Starter</li>
+        <li><strong>Unlimited</strong> drills &amp; sessions</li>
+        <li>Progressive series generation</li>
+        <li>Video analysis feature</li>
+        <li>5 coach seats — club-wide vault</li>
+        <li>Advanced analytics dashboard</li>
+        <li>Coaching intelligence (skill focus + phrases)</li>
+      </ul>
+    </div>
+    <div class="sp-card">
+      <div class="sp-name">Academy Elite</div>
+      <div class="sp-price" style="font-size:22px">Custom</div>
+      <div class="sp-who">High-performance environments</div>
+      <ul class="sp-list">
+        <li>Everything in Club Pro</li>
+        <li>Custom game model configuration</li>
+        <li>Custom drill gallery &amp; curation</li>
+        <li>Club-branded experience</li>
+        <li>Dedicated onboarding + support</li>
+        <li>Technical director dashboard</li>
+      </ul>
+    </div>
+  </div>
+  <div class="cta-row">
+    <button class="btn-p">Start Free — 7 Days</button>
+    <a href="mailto:admin@tacticaledge.app" style="color:var(--lime);font-size:13px;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(173,255,47,.3);padding-bottom:2px">admin@tacticaledge.app</a>
+    <span style="color:var(--muted);font-size:12px">tacticaledge.app</span>
+  </div>
+  <p style="margin-top:24px;font-size:11px;color:rgba(148,163,184,.28);letter-spacing:.05em">© 2026 TacticalEdge · Built for coaches, by coaches</p>
+</section>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button id="prevBtn">←</button>
+  <div id="dots"></div>
+  <button id="nextBtn">→</button>
+  <div id="sc">1 / 10</div>
+</div>
+
+<script>
+const slides=Array.from(document.querySelectorAll('.slide'));
+const dotsEl=document.getElementById('dots');
+const counter=document.getElementById('sc');
+const prog=document.getElementById('prog');
+let cur=0;
+slides.forEach((_,i)=>{const d=document.createElement('div');d.className='dot'+(i===0?' active':'');d.addEventListener('click',()=>goTo(i));dotsEl.appendChild(d);});
+function goTo(i){if(i<0||i>=slides.length)return;slides[cur].classList.remove('active');slides[cur].classList.add('exit');const p=cur;setTimeout(()=>slides[p].classList.remove('exit'),420);cur=i;slides[cur].classList.add('active');document.querySelectorAll('.dot').forEach((d,j)=>d.classList.toggle('active',j===cur));counter.textContent=`${cur+1} / ${slides.length}`;prog.style.width=((cur+1)/slides.length*100)+'%';}
+document.getElementById('prevBtn').addEventListener('click',()=>goTo(cur-1));
+document.getElementById('nextBtn').addEventListener('click',()=>goTo(cur+1));
+document.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowDown')goTo(cur+1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')goTo(cur-1);});
+prog.style.width='10%';
+</script>
+</body>
+</html>

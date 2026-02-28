@@ -47,13 +47,14 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+    const normalizedEmail = formData.email.trim().toLowerCase();
 
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: formData.email,
+          email: normalizedEmail,
           password: formData.password,
           name: formData.name || undefined,
           coachLevel: formData.coachLevel || undefined,
