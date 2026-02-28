@@ -8,18 +8,17 @@ const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const APP_NAME = process.env.APP_NAME || 'TacticalEdge';
 const DEFAULT_PROD_URL = 'https://tacticaledge.app';
-const IS_RENDER = Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL);
 const FRONTEND_URL_RAW =
   process.env.FRONTEND_URL ||
   process.env.APP_URL ||
-  (IS_RENDER ? DEFAULT_PROD_URL : 'http://localhost:3000');
+  DEFAULT_PROD_URL;
 const FRONTEND_URL = FRONTEND_URL_RAW.replace(/\/+$/, '');
 const LOGO_URL = process.env.EMAIL_LOGO_URL || `${FRONTEND_URL}/images/logo.png`;
 const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER || 'noreply@tacticaledge.app';
 const FROM_NAME = process.env.FROM_NAME || APP_NAME;
 
-if (IS_RENDER && !process.env.FRONTEND_URL && !process.env.APP_URL) {
-  console.warn(`[EMAIL] FRONTEND_URL not set in production, defaulting to ${DEFAULT_PROD_URL}`);
+if (!process.env.FRONTEND_URL && !process.env.APP_URL) {
+  console.warn(`[EMAIL] FRONTEND_URL not set, defaulting to ${DEFAULT_PROD_URL}`);
 }
 
 // Create reusable transporter
