@@ -21,6 +21,11 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [resendVerificationState, setResendVerificationState] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [resendVerificationLoading, setResendVerificationLoading] = useState(false);
 
   const checkUser = () => {
     const storedUser = localStorage.getItem("user");
@@ -83,6 +88,8 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
   }
 
   const handleResendVerification = async () => {
+    setResendVerificationState(null);
+    setResendVerificationLoading(true);
     try {
       const accessToken = localStorage.getItem("accessToken");
       const res = await fetch(`${apiBase}/auth/resend-verification`, {
@@ -95,12 +102,23 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
 
       const data = await res.json();
       if (res.ok && data.ok) {
-        alert("Verification email sent! Please check your inbox.");
+        setResendVerificationState({
+          type: "success",
+          message: "Verification email sent. Please check your inbox.",
+        });
       } else {
-        alert(data.error || "Failed to send verification email");
+        setResendVerificationState({
+          type: "error",
+          message: data.error || "Failed to send verification email",
+        });
       }
-    } catch (error: any) {
-      alert("Failed to send verification email");
+    } catch {
+      setResendVerificationState({
+        type: "error",
+        message: "Failed to send verification email",
+      });
+    } finally {
+      setResendVerificationLoading(false);
     }
   };
 
@@ -129,12 +147,24 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
               <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
               <div className="absolute bottom-full left-0 mb-2 z-50 w-48 rounded-xl border border-white/[0.08] bg-[#0f1520] p-2 shadow-2xl shadow-black/50">
                 <p className="px-3 py-1.5 text-xs text-slate-400 truncate">{user.name || user.email}</p>
+                {resendVerificationState && (
+                  <p
+                    className={`mx-2 mb-1 rounded-md px-2 py-1 text-[11px] ${
+                      resendVerificationState.type === "success"
+                        ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                        : "border border-red-500/40 bg-red-500/10 text-red-300"
+                    }`}
+                  >
+                    {resendVerificationState.message}
+                  </p>
+                )}
                 {user.emailVerified === false && (
                   <button
                     onClick={handleResendVerification}
+                    disabled={resendVerificationLoading}
                     className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-amber-300 transition hover:bg-white/[0.04]"
                   >
-                    Verify Email
+                    {resendVerificationLoading ? "Sending..." : "Verify Email"}
                   </button>
                 )}
                 {user.adminRole === "SUPER_ADMIN" && (
@@ -183,12 +213,24 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
             <div className="absolute bottom-full left-0 mb-2 z-50 w-full rounded-xl border border-white/[0.08] bg-[#0f1520] p-1.5 shadow-2xl shadow-black/50">
+              {resendVerificationState && (
+                <p
+                  className={`mx-1.5 mb-1 rounded-md px-2 py-1 text-[11px] ${
+                    resendVerificationState.type === "success"
+                      ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : "border border-red-500/40 bg-red-500/10 text-red-300"
+                  }`}
+                >
+                  {resendVerificationState.message}
+                </p>
+              )}
               {user.emailVerified === false && (
                 <button
                   onClick={handleResendVerification}
+                  disabled={resendVerificationLoading}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-amber-300 transition hover:bg-white/[0.04]"
                 >
-                  Verify Email
+                  {resendVerificationLoading ? "Sending..." : "Verify Email"}
                 </button>
               )}
               {user.adminRole === "SUPER_ADMIN" && (
