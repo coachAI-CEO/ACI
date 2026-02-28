@@ -434,6 +434,10 @@ export default function AdminDashboard() {
   const [showPassword, setShowPassword] = useState(false);
   const [verifyingEmail, setVerifyingEmail] = useState<string | null>(null);
   const [resendingVerification, setResendingVerification] = useState<string | null>(null);
+  const [emailActionNotice, setEmailActionNotice] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
   const [showCoachLevelModal, setShowCoachLevelModal] = useState<{ userId: string; email: string; currentCoachLevel: string | null; currentAgeGroups: string[] } | null>(null);
   const [coachLevelForm, setCoachLevelForm] = useState({
     coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
@@ -1068,6 +1072,7 @@ export default function AdminDashboard() {
   }, [usersPage, loadUsers, fetchData]);
 
   const verifyUserEmail = useCallback(async (userId: string) => {
+    setEmailActionNotice(null);
     setVerifyingEmail(userId);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/verify-email`, {
@@ -1079,19 +1084,21 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       if (data.ok) {
+        setEmailActionNotice({ type: "success", message: "User email marked as verified." });
         loadUsers(usersPage);
         fetchData();
       } else {
-        alert(data.error || "Failed to verify email");
+        setEmailActionNotice({ type: "error", message: data.error || "Failed to verify email" });
       }
     } catch (e: any) {
-      alert(e?.message || "Failed to verify email");
+      setEmailActionNotice({ type: "error", message: e?.message || "Failed to verify email" });
     } finally {
       setVerifyingEmail(null);
     }
   }, [usersPage, loadUsers, fetchData]);
 
   const resendVerificationEmail = useCallback(async (userId: string) => {
+    setEmailActionNotice(null);
     setResendingVerification(userId);
     try {
       const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/resend-verification`, {
@@ -1104,17 +1111,25 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (data.ok) {
         if (data.token) {
-          // In development, show the token
-          alert(`Verification email sent! Token (dev only): ${data.token}`);
+          setEmailActionNotice({
+            type: "success",
+            message: `Verification email sent. Dev token: ${data.token}`,
+          });
         } else {
-          alert("Verification email sent!");
+          setEmailActionNotice({ type: "success", message: "Verification email sent." });
         }
         loadUsers(usersPage);
       } else {
-        alert(data.error || "Failed to resend verification email");
+        setEmailActionNotice({
+          type: "error",
+          message: data.error || "Failed to resend verification email",
+        });
       }
     } catch (e: any) {
-      alert(e?.message || "Failed to resend verification email");
+      setEmailActionNotice({
+        type: "error",
+        message: e?.message || "Failed to resend verification email",
+      });
     } finally {
       setResendingVerification(null);
     }
@@ -3817,6 +3832,17 @@ export default function AdminDashboard() {
             <div className="text-center py-8 text-slate-400">No users found. Click "Refresh" to load users.</div>
           ) : (
             <div className="overflow-x-auto">
+              {emailActionNotice && (
+                <div
+                  className={`mb-3 rounded-lg border p-3 text-sm ${
+                    emailActionNotice.type === "success"
+                      ? "border-emerald-700/50 bg-emerald-900/20 text-emerald-300"
+                      : "border-red-700/50 bg-red-900/20 text-red-300"
+                  }`}
+                >
+                  {emailActionNotice.message}
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-700/50">
