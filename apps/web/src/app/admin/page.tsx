@@ -429,6 +429,9 @@ export default function AdminDashboard() {
   const [blockingUser, setBlockingUser] = useState<string | null>(null);
   const [showBlockModal, setShowBlockModal] = useState<{ userId: string; email: string; currentlyBlocked: boolean } | null>(null);
   const [blockReason, setBlockReason] = useState("");
+  const [deletingUser, setDeletingUser] = useState<string | null>(null);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState<{ userId: string; email: string } | null>(null);
+  const [deleteUserConfirmInput, setDeleteUserConfirmInput] = useState("");
   const [showResetPasswordModal, setShowResetPasswordModal] = useState<{ userId: string; email: string } | null>(null);
   const [resetPasswordInput, setResetPasswordInput] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -1068,6 +1071,35 @@ export default function AdminDashboard() {
       alert(e?.message || `Failed to ${blocked ? 'block' : 'unblock'} user`);
     } finally {
       setBlockingUser(null);
+    }
+  }, [usersPage, loadUsers, fetchData]);
+
+  const deleteUserAccount = useCallback(async (userId: string) => {
+    setDeletingUser(userId);
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: {
+          ...getAuthHeaders(),
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok) {
+        setShowDeleteUserModal(null);
+        setDeleteUserConfirmInput("");
+        setEmailActionNotice({
+          type: "success",
+          message: "User account and related account data deleted successfully.",
+        });
+        loadUsers(usersPage);
+        fetchData();
+      } else {
+        alert(data?.error || "Failed to delete user account");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Failed to delete user account");
+    } finally {
+      setDeletingUser(null);
     }
   }, [usersPage, loadUsers, fetchData]);
 
@@ -3982,6 +4014,17 @@ export default function AdminDashboard() {
                             >
                               {user.blocked ? "🔓 Unblock" : "🚫 Block"}
                             </button>
+                            <button
+                              onClick={() => {
+                                setShowDeleteUserModal({ userId: user.id, email: user.email });
+                                setDeleteUserConfirmInput("");
+                              }}
+                              disabled={deletingUser === user.id}
+                              className="text-xs text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                              title="Erase account and account data"
+                            >
+                              {deletingUser === user.id ? "Erasing..." : "🗑 Erase"}
+                            </button>
                           </div>
                         </div>
                       </td>
@@ -4556,6 +4599,46 @@ export default function AdminDashboard() {
                   className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete User Modal */}
+        {showDeleteUserModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+            <div className="bg-slate-900 border border-rose-700/60 rounded-xl p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold text-rose-200 mb-3">Erase Account</h3>
+              <p className="text-sm text-slate-300 mb-3">
+                This permanently deletes <span className="font-semibold text-slate-100">{showDeleteUserModal.email}</span> and related account data.
+              </p>
+              <p className="text-xs text-slate-400 mb-3">
+                Type <span className="font-mono text-rose-300">DELETE</span> to confirm.
+              </p>
+              <input
+                type="text"
+                value={deleteUserConfirmInput}
+                onChange={(e) => setDeleteUserConfirmInput(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                placeholder="Type DELETE"
+              />
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteUserModal(null);
+                    setDeleteUserConfirmInput("");
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold border border-slate-600/70 bg-slate-800/60 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => deleteUserAccount(showDeleteUserModal.userId)}
+                  disabled={deleteUserConfirmInput.trim().toUpperCase() !== "DELETE" || deletingUser === showDeleteUserModal.userId}
+                  className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingUser === showDeleteUserModal.userId ? "Erasing..." : "Erase Account"}
                 </button>
               </div>
             </div>

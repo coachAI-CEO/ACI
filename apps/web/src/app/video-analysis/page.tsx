@@ -378,6 +378,11 @@ type VideoAnalysisItem = {
   diagramFrameIds?: string[];
 };
 
+type RecommendationNarrative = {
+  involves: string;
+  why: string;
+};
+
 type AnalysisHistoryEntry = {
   analysis: any | null;
   cached: boolean;
@@ -539,9 +544,21 @@ export default function VideoAnalysisPage() {
     () => String(videoContext.coachLevel || analysisContext.coachLevel || "").toUpperCase(),
     [videoContext.coachLevel, analysisContext]
   );
+  const resolvedPlayerLevel = useMemo(
+    () => String(videoContext.playerLevel || analysisContext.playerLevel || "").toUpperCase(),
+    [videoContext.playerLevel, analysisContext]
+  );
   const resolvedFormation = useMemo(
     () => String(videoContext.formationUsed || analysisContext.formationUsed || "").trim(),
     [videoContext.formationUsed, analysisContext]
+  );
+  const resolvedFocusTeamColor = useMemo(
+    () => String(videoContext.focusTeamColor || analysisContext.focusTeamColor || "").trim(),
+    [videoContext.focusTeamColor, analysisContext]
+  );
+  const resolvedOpponentTeamColor = useMemo(
+    () => String(videoContext.opponentTeamColor || analysisContext.opponentTeamColor || "").trim(),
+    [videoContext.opponentTeamColor, analysisContext]
   );
   const formationDisplay = resolvedFormation || "Select formation";
   const formationOptions = useMemo(
@@ -715,6 +732,127 @@ export default function VideoAnalysisPage() {
     abortControllerRef.current?.abort();
   };
 
+  const buildRecommendationNarrative = (session: any): RecommendationNarrative => {
+    const sessionGameModel = String(session?.gameModelId || resolvedGameModel || "").toUpperCase();
+    const sessionPhase = String(session?.phase || resolvedPhase || "").toUpperCase();
+    const sessionZone = String(session?.zone || resolvedZone || "").toUpperCase();
+    const sessionAgeGroup = String(session?.ageGroup || resolvedAgeGroup || "current team").trim();
+    const sessionDuration = Number(session?.durationMin || 45);
+    const sessionFormation = String(session?.formationUsed || resolvedFormation || "").trim();
+    const sessionDrillsCount = Array.isArray(session?.json?.drills) ? session.json.drills.length : 0;
+    const playerLevelLabel = resolvedPlayerLevel ? formatEnumLabel(resolvedPlayerLevel).toLowerCase() : "";
+    const coachLevelLabel = resolvedCoachLevel ? formatEnumLabel(resolvedCoachLevel) : "";
+    const focusColorLabel = resolvedFocusTeamColor ? formatColorLabel(resolvedFocusTeamColor).toLowerCase() : "";
+    const opponentColorLabel = resolvedOpponentTeamColor ? formatColorLabel(resolvedOpponentTeamColor).toLowerCase() : "";
+    const sessionSummaryText = String(session?.json?.summary || "").trim();
+    const drillTitles = Array.isArray(session?.json?.drills)
+      ? session.json.drills.map((d: any) => String(d?.title || "").trim()).filter(Boolean)
+      : [];
+    const sessionTextCorpus = [
+      String(session?.title || ""),
+      sessionSummaryText,
+      drillTitles.join(" "),
+      sessionGameModel,
+      sessionPhase,
+      sessionZone,
+      sessionFormation,
+    ]
+      .join(" ")
+      .toLowerCase();
+    const tokenize = (value: string) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((t) => t.length >= 4);
+    const sessionTokens = new Set(tokenize(sessionTextCorpus));
+
+    const priorities = topPriorities
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    const matchedPriorities = priorities
+      .filter((priority) => tokenize(priority).some((token) => sessionTokens.has(token)))
+      .slice(0, 2);
+    const focusPriorities = (matchedPriorities.length > 0 ? matchedPriorities : priorities).slice(0, 2);
+    const fallbackFindings = analysisItems
+      .filter((item) => {
+        const severity = String(item?.severity || "").toLowerCase();
+        return severity === "critical" || severity === "major";
+      })
+      .map((item) => String(item?.title || "").trim())
+      .filter(Boolean)
+      .slice(0, 2);
+    const focusList = focusPriorities.length > 0 ? focusPriorities : fallbackFindings;
+    const focusText = focusList.length > 0 ? focusList.join("; ") : "the key issues identified in the review";
+
+    const severityCounts = analysisItems.reduce(
+      (acc, item) => {
+        const severity = String(item?.severity || "").toLowerCase();
+        if (severity === "critical") acc.critical += 1;
+        else if (severity === "major") acc.major += 1;
+        else if (severity === "minor") acc.minor += 1;
+        return acc;
+      },
+      { critical: 0, major: 0, minor: 0 }
+    );
+    const needsWorkCount = analysisItems.reduce(
+      (acc, item) => (getMissionAssessment(item) === "Needs Work" ? acc + 1 : acc),
+      0
+    );
+    const highPriorityCount = severityCounts.critical + severityCounts.major;
+
+    const gameModelLabel = GAME_MODEL_LABELS[sessionGameModel] || formatEnumLabel(sessionGameModel) || "targeted";
+    const phaseLabel = PHASE_LABELS[sessionPhase] || formatEnumLabel(sessionPhase) || "phase-specific";
+    const zoneLabel = ZONE_LABELS[sessionZone] || formatEnumLabel(sessionZone) || "target-zone";
+    const fitReasons = [
+      sessionGameModel && resolvedGameModel && sessionGameModel === resolvedGameModel ? "matches your game model" : "",
+      sessionPhase && resolvedPhase && sessionPhase === resolvedPhase ? "matches your selected phase" : "",
+      sessionZone && resolvedZone && sessionZone === resolvedZone ? "matches your selected zone" : "",
+      sessionAgeGroup && resolvedAgeGroup && sessionAgeGroup === resolvedAgeGroup ? "fits your age group" : "",
+      matchedPriorities.length > 0 ? `targets: ${matchedPriorities.join("; ")}` : "",
+      drillTitles.length > 0 ? `session content includes ${drillTitles.slice(0, 2).join(" + ")}` : "",
+      sessionSummaryText
+        ? `objective: ${sessionSummaryText.split(/[.!?]/)[0].trim().slice(0, 120)}`
+        : "",
+    ].filter(Boolean);
+
+    const involvesParts = [
+      `${sessionDuration} min ${gameModelLabel.toLowerCase()} session`,
+      `for ${sessionAgeGroup}${playerLevelLabel ? ` ${playerLevelLabel}` : ""} players`,
+      `in ${phaseLabel.toLowerCase()} (${zoneLabel.toLowerCase()})`,
+      sessionFormation ? `using ${sessionFormation}` : "",
+      sessionDrillsCount > 0 ? `with ${sessionDrillsCount} drills` : "",
+      `focused on ${focusText}`,
+    ].filter(Boolean);
+
+    const whyParts = [
+      fitReasons.length > 0 ? fitReasons.join(". ") : "",
+      highPriorityCount > 0
+        ? `analysis flagged ${highPriorityCount} high-priority issue${highPriorityCount === 1 ? "" : "s"}`
+        : "analysis identified repeated moments to improve",
+      needsWorkCount > 0
+        ? `${needsWorkCount} timeline moment${needsWorkCount === 1 ? "" : "s"} were marked Needs Work`
+        : "",
+      coachLevelLabel ? `coach level context: ${coachLevelLabel}` : "",
+      focusColorLabel && opponentColorLabel ? `team context: ${focusColorLabel} focus vs ${opponentColorLabel} opponent` : "",
+      scopeSummary ? `scope: ${scopeSummary}` : "",
+    ].filter(Boolean);
+
+    return {
+      involves: `${involvesParts.join(", ")}.`,
+      why: `${whyParts.join(". ")}.`,
+    };
+  };
+
+  const enrichRecommendedSessions = (sessions: any[]) => {
+    const base = Array.isArray(sessions) ? sessions.slice(0, 5) : [];
+    return base.map((session) => ({
+      ...session,
+      recommendationNarrative: buildRecommendationNarrative(session),
+    }));
+  };
+
   const findRecommendedSessions = async () => {
     if (!videoAnalysis || recommendationsLoading) return;
     
@@ -729,6 +867,15 @@ export default function VideoAnalysisPage() {
         ageGroup: resolvedAgeGroup || videoContext.ageGroup || '',
         phase: resolvedPhase || videoContext.phase || undefined,
         zone: resolvedZone || videoContext.zone || undefined,
+        playerLevel: resolvedPlayerLevel || videoContext.playerLevel || undefined,
+        coachLevel: resolvedCoachLevel || videoContext.coachLevel || undefined,
+        formationAttacking: resolvedFormation || videoContext.formationUsed || undefined,
+        durationMin: 45,
+        context: {
+          topPriorities,
+          summary: overallSummary,
+          scopeSummary,
+        },
         limit: 10,
       };
       
@@ -752,7 +899,7 @@ export default function VideoAnalysisPage() {
       
       if (res.ok && sessions.length > 0) {
         // Found matches - display them
-        setRecommendations(sessions.slice(0, 5));
+        setRecommendations(enrichRecommendedSessions(sessions));
       } else if (res.ok && sessions.length === 0) {
         // Success but no matches - show dialog to expand search or generate
         setSearchParams(searchInput);
@@ -787,7 +934,8 @@ export default function VideoAnalysisPage() {
           ageGroup: params.ageGroup,
           phase: params.phase || undefined,
           zone: params.zone || undefined,
-          coachLevel: params.coachLevel || params.playerLevel,
+          coachLevel: params.coachLevel || resolvedCoachLevel || undefined,
+          playerLevel: params.playerLevel || resolvedPlayerLevel || undefined,
           formationAttacking: params.formationAttacking || '',
           formationDefending: '',
           numbersMin: params.numbersMin || 6,
@@ -807,7 +955,7 @@ export default function VideoAnalysisPage() {
       
       // Set the generated session as recommendation
       if (data?.session) {
-        setRecommendations([data.session]);
+        setRecommendations(enrichRecommendedSessions([data.session]));
       } else {
         throw new Error('No session generated');
       }
@@ -842,7 +990,7 @@ export default function VideoAnalysisPage() {
       const sessions = data?.sessions || [];
       
       if (res.ok && sessions.length > 0) {
-        setRecommendations(sessions.slice(0, 5));
+        setRecommendations(enrichRecommendedSessions(sessions));
       } else {
         // Still no matches, show error - user can still generate
         setRecommendationsError('No sessions found even with expanded criteria. Use "Generate New Session" below.');
@@ -1611,37 +1759,149 @@ export default function VideoAnalysisPage() {
               </div>
             </div>
 
-            <div className="min-h-[500px] rounded-xl border border-white/[0.07] bg-black/10 p-3">
+            <div className="flex flex-col gap-4">
+            <div className="order-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
+                  Recommended Sessions
+                </p>
+                {recommendations.length > 0 && (
+                  <span className="text-[10px] text-emerald-400">
+                    Based on your analysis: {resolvedGameModel} / {resolvedPhase} / {resolvedZone}
+                  </span>
+                )}
+              </div>
+              <div className="mb-3 flex items-center gap-2">
+                <button
+                  onClick={findRecommendedSessions}
+                  disabled={!videoAnalysis || recommendationsLoading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {recommendationsLoading ? (
+                    <>
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border border-emerald-300/30 border-t-emerald-300" />
+                      Finding Sessions...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      Find Recommended Sessions
+                    </>
+                  )}
+                </button>
+                {recommendations.length > 0 && (
+                  <span className="text-[10px] text-emerald-400">
+                    {recommendations.length} session{recommendations.length > 1 ? 's' : ''} found
+                  </span>
+                )}
+              </div>
+
+              {recommendationsLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-emerald-300/30 border-t-emerald-300" />
+                    <span className="text-sm text-emerald-200">
+                      {recommendationsError ? 'Generating new session...' : 'Finding matching sessions...'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {recommendationsError && !recommendationsLoading && (
+                <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
+                  {recommendationsError}
+                </div>
+              )}
+
+              {recommendations.length > 0 && !recommendationsLoading && (
+                <div className="space-y-3">
+                  {recommendations.map((session, idx) => (
+                    <div 
+                      key={`rec-session-${idx}`}
+                      onClick={() => setSelectedSession(session)}
+                      className="cursor-pointer rounded-lg border border-white/[0.08] bg-black/20 p-3 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all"
+                    >
+                      <div className="mb-2 flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-sm font-medium text-white truncate">
+                              {session.title || `Session ${idx + 1}`}
+                            </h4>
+                            {session.refCode && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(session.refCode);
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors shrink-0"
+                                title="Click to copy"
+                              >
+                                {session.refCode}
+                              </button>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {session.ageGroup && (
+                              <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[9px] text-cyan-200">
+                                {session.ageGroup}
+                              </span>
+                            )}
+                            {session.gameModelId && (
+                              <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] text-blue-200">
+                                {GAME_MODEL_LABELS[session.gameModelId] || session.gameModelId}
+                              </span>
+                            )}
+                            {session.phase && (
+                              <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] text-purple-200">
+                                {PHASE_LABELS[session.phase] || session.phase}
+                              </span>
+                            )}
+                            {session.zone && (
+                              <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[9px] text-orange-200">
+                                {ZONE_LABELS[session.zone] || session.zone}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {session.durationMin && (
+                        <p className="text-[10px] text-slate-500 mb-1">
+                          {session.durationMin} min session
+                        </p>
+                      )}
+                      {session.recommendationNarrative?.involves && (
+                        <p className="mb-1 text-[11px] text-emerald-200/90 line-clamp-3">
+                          <span className="font-semibold text-emerald-300">This session involves:</span> {session.recommendationNarrative.involves}
+                        </p>
+                      )}
+                      {session.recommendationNarrative?.why && (
+                        <p className="mb-1 text-[11px] text-cyan-100/90 line-clamp-3">
+                          <span className="font-semibold text-cyan-300">Why this is recommended:</span> {session.recommendationNarrative.why}
+                        </p>
+                      )}
+                      {session.json?.summary && (
+                        <p className="text-[11px] text-slate-400 line-clamp-2">
+                          {session.json.summary}
+                        </p>
+                      )}
+                      {session.json?.drills && session.json.drills.length > 0 && (
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          {session.json.drills.length} drill{session.json.drills.length !== 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="order-1 min-h-[500px] rounded-xl border border-white/[0.07] bg-black/10 p-3">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-cyan-200">Analysis Results</p>
                   <span className="text-[10px] text-slate-500">{analysisItems.length} findings</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={findRecommendedSessions}
-                    disabled={!videoAnalysis || recommendationsLoading}
-                    className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {recommendationsLoading ? (
-                      <>
-                        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-emerald-300/30 border-t-emerald-300" />
-                        Finding Sessions...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                        Find Recommended Sessions
-                      </>
-                    )}
-                  </button>
-                  {recommendations.length > 0 && (
-                    <span className="text-[10px] text-emerald-400">
-                      {recommendations.length} session{recommendations.length > 1 ? 's' : ''} found
-                    </span>
-                  )}
                 </div>
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                 <div className="rounded-lg border border-white/[0.08] bg-black/15 p-3">
@@ -1826,112 +2086,10 @@ export default function VideoAnalysisPage() {
                   )}
                 </div>
 
-                {/* Recommended Sessions Section */}
-                {(recommendations.length > 0 || recommendationsError || recommendationsLoading) && (
-                  <div className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
-                        Recommended Sessions
-                      </p>
-                      {recommendations.length > 0 && (
-                        <span className="text-[10px] text-emerald-400">
-                          Based on your analysis: {resolvedGameModel} / {resolvedPhase} / {resolvedZone}
-                        </span>
-                      )}
-                    </div>
-
-                    {recommendationsLoading && (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="flex items-center gap-3">
-                          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-emerald-300/30 border-t-emerald-300" />
-                          <span className="text-sm text-emerald-200">
-                            {recommendationsError ? 'Generating new session...' : 'Finding matching sessions...'}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {recommendationsError && !recommendationsLoading && (
-                      <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-300">
-                        {recommendationsError}
-                      </div>
-                    )}
-
-                    {recommendations.length > 0 && !recommendationsLoading && (
-                      <div className="space-y-3">
-                        {recommendations.map((session, idx) => (
-                          <div 
-                            key={`rec-session-${idx}`}
-                            onClick={() => setSelectedSession(session)}
-                            className="cursor-pointer rounded-lg border border-white/[0.08] bg-black/20 p-3 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all"
-                          >
-                            <div className="mb-2 flex items-start justify-between">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="text-sm font-medium text-white truncate">
-                                    {session.title || `Session ${idx + 1}`}
-                                  </h4>
-                                  {session.refCode && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        navigator.clipboard.writeText(session.refCode);
-                                      }}
-                                      className="px-1.5 py-0.5 rounded bg-cyan-900/40 text-cyan-300 text-[9px] font-mono border border-cyan-700/30 hover:bg-cyan-900/60 transition-colors shrink-0"
-                                      title="Click to copy"
-                                    >
-                                      {session.refCode}
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {session.ageGroup && (
-                                    <span className="rounded bg-cyan-500/20 px-1.5 py-0.5 text-[9px] text-cyan-200">
-                                      {session.ageGroup}
-                                    </span>
-                                  )}
-                                  {session.gameModelId && (
-                                    <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] text-blue-200">
-                                      {GAME_MODEL_LABELS[session.gameModelId] || session.gameModelId}
-                                    </span>
-                                  )}
-                                  {session.phase && (
-                                    <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] text-purple-200">
-                                      {PHASE_LABELS[session.phase] || session.phase}
-                                    </span>
-                                  )}
-                                  {session.zone && (
-                                    <span className="rounded bg-orange-500/20 px-1.5 py-0.5 text-[9px] text-orange-200">
-                                      {ZONE_LABELS[session.zone] || session.zone}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            {session.durationMin && (
-                              <p className="text-[10px] text-slate-500 mb-1">
-                                {session.durationMin} min session
-                              </p>
-                            )}
-                            {session.json?.summary && (
-                              <p className="text-[11px] text-slate-400 line-clamp-2">
-                                {session.json.summary}
-                              </p>
-                            )}
-                            {session.json?.drills && session.json.drills.length > 0 && (
-                              <p className="mt-1 text-[10px] text-slate-500">
-                                {session.json.drills.length} drill{session.json.drills.length !== 1 ? 's' : ''}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
                 </div>
 
               </div>
+            </div>
             </div>
           </div>
         </section>
@@ -2187,6 +2345,21 @@ export default function VideoAnalysisPage() {
               <div className="mb-4 rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Summary</h3>
                 <p className="text-sm text-slate-300 leading-relaxed">{selectedSession.json.summary}</p>
+              </div>
+            )}
+            {(selectedSession.recommendationNarrative?.involves || selectedSession.recommendationNarrative?.why) && (
+              <div className="mb-4 rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300">Recommendation Brief</h3>
+                {selectedSession.recommendationNarrative?.involves && (
+                  <p className="mb-2 text-sm text-emerald-100">
+                    <span className="font-semibold text-emerald-300">Involves:</span> {selectedSession.recommendationNarrative.involves}
+                  </p>
+                )}
+                {selectedSession.recommendationNarrative?.why && (
+                  <p className="text-sm text-cyan-100">
+                    <span className="font-semibold text-cyan-300">Why needed:</span> {selectedSession.recommendationNarrative.why}
+                  </p>
+                )}
               </div>
             )}
 

@@ -2519,7 +2519,7 @@ r.delete("/admin/users/:userId", requireAdminPermission('canDeleteUsers'), async
     // Prevent deleting other admins (unless super admin)
     const targetUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { adminRole: true }
+      select: { adminRole: true, email: true }
     });
     
     if (targetUser?.adminRole && req.adminRole !== 'SUPER_ADMIN') {
@@ -2528,20 +2528,130 @@ r.delete("/admin/users/:userId", requireAdminPermission('canDeleteUsers'), async
         error: 'Cannot delete admin users' 
       });
     }
-    
-    await prisma.user.delete({ where: { id: userId } });
+
+    if (!targetUser) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    // Hard-delete account data: remove user-owned and user-generated artifacts.
+    const generatedSessions = await prisma.session.findMany({
+      where: { generatedBy: userId },
+      select: { id: true, seriesId: true },
+    });
+    const generatedSessionIds = generatedSessions.map((s) => s.id);
+    const generatedSeriesIds = Array.from(new Set(
+      generatedSessions
+        .map((s) => String(s.seriesId || "").trim())
+        .filter(Boolean)
+    ));
+
+    const generatedDrills = await prisma.drill.findMany({
+      where: { generatedBy: userId },
+      select: { id: true },
+    });
+    const generatedDrillIds = generatedDrills.map((d) => d.id);
+
+    const deleted = await prisma.$transaction(async (tx) => {
+      let favoritesBySession = 0;
+      let favoritesBySeries = 0;
+      let favoritesByDrill = 0;
+      let calendarBySession = 0;
+      let playerPlansBySession = 0;
+      let playerPlansBySeries = 0;
+      let skillFocusBySession = 0;
+      let skillFocusBySeries = 0;
+      let sessionsDeleted = 0;
+      let drillsDeleted = 0;
+
+      if (generatedSessionIds.length > 0) {
+        const favSession = await tx.favorite.deleteMany({
+          where: { sessionId: { in: generatedSessionIds } },
+        });
+        favoritesBySession = favSession.count;
+
+        const calSession = await tx.calendarEvent.deleteMany({
+          where: { sessionId: { in: generatedSessionIds } },
+        });
+        calendarBySession = calSession.count;
+
+        const ppSession = await tx.playerPlan.deleteMany({
+          where: { sourceType: "SESSION", sourceId: { in: generatedSessionIds } },
+        });
+        playerPlansBySession = ppSession.count;
+
+        const sfSession = await tx.skillFocus.deleteMany({
+          where: { sessionId: { in: generatedSessionIds } },
+        });
+        skillFocusBySession = sfSession.count;
+
+        const sess = await tx.session.deleteMany({
+          where: { id: { in: generatedSessionIds } },
+        });
+        sessionsDeleted = sess.count;
+      }
+
+      if (generatedSeriesIds.length > 0) {
+        const favSeries = await tx.favorite.deleteMany({
+          where: { seriesId: { in: generatedSeriesIds } },
+        });
+        favoritesBySeries = favSeries.count;
+
+        const ppSeries = await tx.playerPlan.deleteMany({
+          where: { sourceType: "SERIES", sourceId: { in: generatedSeriesIds } },
+        });
+        playerPlansBySeries = ppSeries.count;
+
+        const sfSeries = await tx.skillFocus.deleteMany({
+          where: { seriesId: { in: generatedSeriesIds } },
+        });
+        skillFocusBySeries = sfSeries.count;
+      }
+
+      if (generatedDrillIds.length > 0) {
+        const favDrill = await tx.favorite.deleteMany({
+          where: { drillId: { in: generatedDrillIds } },
+        });
+        favoritesByDrill = favDrill.count;
+
+        const dr = await tx.drill.deleteMany({
+          where: { id: { in: generatedDrillIds } },
+        });
+        drillsDeleted = dr.count;
+      }
+
+      const deletedUser = await tx.user.delete({ where: { id: userId } });
+
+      return {
+        userId: deletedUser.id,
+        sessionsDeleted,
+        drillsDeleted,
+        favoritesBySession,
+        favoritesBySeries,
+        favoritesByDrill,
+        calendarBySession,
+        playerPlansBySession,
+        playerPlansBySeries,
+        skillFocusBySession,
+        skillFocusBySeries,
+      };
+    });
     
     await logAdminAction(
       req.userId!,
       'user.deleted',
       {
         resourceType: 'User',
-        resourceId: userId
+        resourceId: userId,
+        data: {
+          email: targetUser.email || null,
+          hardDelete: true,
+          deleted,
+        },
       },
       req
     );
     
-    return res.json({ ok: true });
+    return res.json({ ok: true, deleted });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
   }

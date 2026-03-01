@@ -3163,77 +3163,76 @@ function SessionDemoPageContent() {
                     )}
                   </>
                 )}
-                {userFeatures?.canExportPDF && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        // Ensure we're sending the full session with all drill data including diagrams
-                        // Preserve both diagram and diagramV1 if they exist
-                        // Include skill focus if it's been generated
-                        const sessionForExport = {
-                          ...session,
-                          skillFocus: skillFocus || session.skillFocus || null, // Include skill focus from state or session
-                          drills: session.drills?.map((drill: any) => {
-                            const drillCopy = { ...drill };
-                            // Ensure at least one diagram field exists if either exists
-                            if (drill.diagramV1 && !drill.diagram) {
-                              drillCopy.diagram = drill.diagramV1;
-                            }
-                            if (drill.json?.diagram && !drillCopy.diagram) {
-                              drillCopy.diagram = drill.json.diagram;
-                            }
-                            return drillCopy;
-                          }) || [],
-                        };
-                        console.log("[PDF_EXPORT] Sending session to PDF export:", {
-                          title: sessionForExport.title,
-                          drillsCount: sessionForExport.drills?.length,
-                          drillsWithDiagrams: sessionForExport.drills?.filter((d: any) => d.diagram || d.diagramV1).length,
-                          firstDrillHasDiagram: !!(sessionForExport.drills?.[0]?.diagram || sessionForExport.drills?.[0]?.diagramV1),
-                          firstDrillDiagramSample: sessionForExport.drills?.[0] ? {
-                            hasDiagram: !!sessionForExport.drills[0].diagram,
-                            hasDiagramV1: !!sessionForExport.drills[0].diagramV1,
-                            diagramPlayers: sessionForExport.drills[0].diagram?.players?.length || sessionForExport.drills[0].diagramV1?.players?.length || 0,
-                          } : null,
-                        });
-                        
-                        // Get auth token for authenticated requests
-                        const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                        const headers: Record<string, string> = {
-                          "Content-Type": "application/json",
-                        };
-                        if (accessToken) {
-                          headers["Authorization"] = `Bearer ${accessToken}`;
-                        }
-                        
-                        const response = await fetch("/api/export-session-pdf", {
-                          method: "POST",
-                          headers,
-                          body: JSON.stringify({ session: sessionForExport }),
-                        });
-                        if (!response.ok) {
-                          const error = await response.json();
-                          alert("Error exporting PDF: " + (error.error || "Unknown error"));
-                          return;
-                        }
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}.pdf`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                      } catch (e: any) {
-                        alert("Error exporting PDF: " + e.message);
+                {userFeatures?.canExportPDF && (() => {
+                  // Shared helper — builds the export payload and triggers download
+                  const handleExport = async (format: "full" | "compact") => {
+                    try {
+                      const sessionForExport = {
+                        ...session,
+                        skillFocus: skillFocus || session.skillFocus || null,
+                        drills: session.drills?.map((drill: any) => {
+                          const drillCopy = { ...drill };
+                          if (drill.diagramV1 && !drill.diagram) drillCopy.diagram = drill.diagramV1;
+                          if (drill.json?.diagram && !drillCopy.diagram) drillCopy.diagram = drill.json.diagram;
+                          return drillCopy;
+                        }) || [],
+                      };
+                      const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                      const headers: Record<string, string> = { "Content-Type": "application/json" };
+                      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+                      const response = await fetch("/api/export-session-pdf", {
+                        method: "POST",
+                        headers,
+                        body: JSON.stringify({ session: sessionForExport, format }),
+                      });
+                      if (!response.ok) {
+                        const error = await response.json();
+                        alert("Error exporting PDF: " + (error.error || "Unknown error"));
+                        return;
                       }
-                    }}
-                    className="inline-flex h-9 items-center rounded-full bg-emerald-500 px-3.5 text-[13px] font-semibold text-slate-950 shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
-                  >
-                    Export PDF
-                  </button>
-                )}
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      const suffix = format === "compact" ? "-compact" : "";
+                      a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}${suffix}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (e: any) {
+                      alert("Error exporting PDF: " + e.message);
+                    }
+                  };
+
+                  return (
+                    <div className="relative flex items-center rounded-full overflow-hidden border border-emerald-500 bg-emerald-500 text-slate-950 text-[13px] font-semibold shadow-lg shadow-emerald-500/30">
+                      {/* Full PDF */}
+                      <button
+                        onClick={() => handleExport("full")}
+                        className="flex items-center gap-1.5 h-9 px-3.5 hover:bg-emerald-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                        </svg>
+                        Full PDF
+                      </button>
+                      {/* Divider */}
+                      <span className="w-px h-5 bg-emerald-700/40 self-center" />
+                      {/* 1-Page compact */}
+                      <button
+                        onClick={() => handleExport("compact")}
+                        title="Landscape coach's sheet — 4 drill columns, print-ready"
+                        className="flex items-center gap-1.5 h-9 px-3 hover:bg-emerald-400 transition-colors"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
+                        </svg>
+                        1-Page
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Session Plan Breakdown */}

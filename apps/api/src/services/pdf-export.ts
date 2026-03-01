@@ -268,7 +268,15 @@ function drawSectionHeader(
 function drawDiagram(
   doc: PDFKit.PDFDocument,
   rawDiagram: any,
-  options?: { width?: number; position?: "left" | "center"; startX?: number }
+  options?: {
+    width?: number;
+    position?: "left" | "center";
+    startX?: number;
+    /** Scale player circle radius (default 1.0). Pass 0.5 for compact layouts. */
+    playerScale?: number;
+    /** Scale arrowhead size and line weight (default 1.0). Pass 0.5 for compact layouts. */
+    arrowScale?: number;
+  }
 ): { width: number; height: number; startX: number; startY: number } | null {
   const pageMargins = (doc.page as any).margins;
   const savedBottom = pageMargins.bottom;
@@ -377,8 +385,10 @@ function drawDiagram(
       return "#9ca3af";
     };
 
-    const baseRadius = Math.min(boxWidth, boxHeight) * 0.03;
-    const radius = Math.max(7, Math.min(11, baseRadius));
+    const playerScale = options?.playerScale ?? 1;
+    const arrowScale  = options?.arrowScale  ?? 1;
+    const baseRadius  = Math.min(boxWidth, boxHeight) * 0.03;
+    const radius      = Math.max(3, Math.max(7, Math.min(11, baseRadius)) * playerScale);
 
     const toPdf = (vx: number, vy: number): { x: number; y: number } => {
       if (orientation === "VERTICAL") {
@@ -456,14 +466,14 @@ function drawDiagram(
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len < 1) return;
 
-        const aLen = Math.min(8, len * 0.3);
+        const aLen = Math.min(8, len * 0.3) * arrowScale;
         const aHW  = aLen * 0.45;
         const ux = dx / len;
         const uy = dy / len;
         const bMx = to.x - ux * aLen;
         const bMy = to.y - uy * aLen;
 
-        const lw = arrowStyle === "bold" ? 1.8 : 1;
+        const lw = (arrowStyle === "bold" ? 1.8 : 1) * arrowScale;
         doc.lineWidth(lw).strokeColor(arrowColor).fillColor(arrowColor);
 
         if (arrowStyle === "dashed") doc.dash(5, { space: 3 });
@@ -1107,8 +1117,20 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
 }
 
 // ─── generateCompactSessionPdf ────────────────────────────────────────────────
-// Single-page "Coach's Sheet": compact header, all drills with tiny diagrams,
-// no overview table, no session summary, no coaching emphasis.
+// "Coach's Sheet" — landscape A4, single page.
+//
+// Layout
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │  HEADER  dark navy — session title + meta chips                  48 pt   │
+// ├──────────┬──────────┬──────────┬──────────────────────────────────────────┤
+// │  Drill 1 │  Drill 2 │  Drill 3 │  Drill 4   (non-cooldown, max 4)        │
+// │  [type]  │  [type]  │  [type]  │  [type]    colored top bar              │
+// │  diagram │  diagram │  diagram │  diagram   fit column width             │
+// │  org     │  org     │  org     │  org       6.5 pt muted                 │
+// │  points  │  points  │  points  │  points    7.5 pt numbered              │
+// ├──────────┴──────────┴──────────┴──────────────────────────────────────────┤
+// │  COOLDOWN strip — badge · title · coaching points inline           55 pt  │
+// └───────────────────────────────────────────────────────────────────────────┘
 
 export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
   console.log("[PDF] Generating compact session PDF:", {
@@ -1117,164 +1139,216 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
   });
 
   return new Promise((resolve, reject) => {
-    const margin      = 30;
-    const doc         = new PDFDocument({ size: "A4", margin });
+    const margin = 22;
+    // Landscape A4: 841.89 × 595.28 pt
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin });
     const chunks: Buffer[] = [];
     const sessionTitle = session.title || "Training Session";
-    let drawingDecor   = false;
-    let pageNum        = 1;
 
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end",  () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.on("pageAdded", () => {
-      if (drawingDecor) return;
-      pageNum++;
-      drawingDecor = true;
-      drawPageDecor(doc, sessionTitle, pageNum);
-      drawingDecor = false;
-      doc.x = margin;
-      doc.y = margin;
-    });
+    const pageW = doc.page.width;    // 841.89
+    const pageH = doc.page.height;   // 595.28
+    const contentW = pageW - margin * 2;
 
-    drawPageDecor(doc, sessionTitle, pageNum);
+    // Partition drills: up to 4 main columns + optional cooldown strip
+    const allDrills: any[] = (Array.isArray(session.drills) ? session.drills : []).map(normalizeDrill);
+    const cooldownDrill = allDrills.find((d: any) => d.drillType === "COOLDOWN") ?? null;
+    const mainDrills    = allDrills.filter((d: any) => d.drillType !== "COOLDOWN").slice(0, 4);
 
-    const pageW = doc.page.width - margin * 2;
+    // Suppress PDFKit auto-page-breaks while we draw in the lower zone
+    const pm = (doc.page as any).margins;
+    pm.bottom = 0;
 
-    // ── Compact header bar ───────────────────────────────────────────────────
+    // ── Header (full width, dark navy, 48 pt) ────────────────────────────────
+    const headerH = 48;
+    doc.fillColor(BRAND.navy).rect(0, 0, pageW, headerH).fill();
+    doc.fillColor(BRAND.blue).rect(0, headerH - 3, pageW, 3).fill();
+
+    doc.fontSize(6).fillColor("#94a3b8").font("Helvetica")
+      .text("TACTICALEDGE  ·  COACH'S SHEET", margin, 8, { lineBreak: false });
+
+    // Title (left 60% of header)
+    const maxTitleW = contentW * 0.62;
+    doc.fontSize(11).fillColor(BRAND.white).font("Helvetica-Bold")
+      .text(sessionTitle, margin, 17, { width: maxTitleW, lineBreak: false });
+
+    // Meta chips (right portion of header, y=20)
     {
-      const headerH = 42;
-      const { width } = doc.page;
-      doc.fillColor(BRAND.navy).rect(0, 0, width, headerH).fill();
-      doc.fillColor(BRAND.blue).rect(0, headerH - 3, width, 3).fill();
-
-      // Brand · Title
-      doc.fontSize(7).fillColor("#94a3b8").font("Helvetica")
-        .text("TacticalEdge", margin, 8, { lineBreak: false });
-      doc.fontSize(11).fillColor(BRAND.white).font("Helvetica-Bold")
-        .text(sessionTitle, margin, 19, { lineBreak: false });
-
-      // Chips: refCode, ageGroup, duration — right side of title
-      doc.fontSize(7).font("Helvetica");
-      const titleW = doc.widthOfString(sessionTitle);
-      let cx = margin + titleW + 10;
+      const chipOpts = { bgColor: "#1e293b", textColor: "#94a3b8", fontSize: 6.5, padX: 5, padY: 2 };
       const chipY = 21;
-      const chipOpts = { bgColor: "#1e293b", textColor: "#94a3b8", fontSize: 7, padX: 5, padY: 2 };
-
-      if (session.refCode) {
-        cx += drawBadge(doc, session.refCode, cx, chipY, chipOpts) + 4;
+      let cx = margin + maxTitleW + 16;
+      if (session.refCode)  cx += drawBadge(doc, session.refCode, cx, chipY, chipOpts) + 5;
+      if (session.ageGroup) cx += drawBadge(doc, session.ageGroup, cx, chipY, chipOpts) + 5;
+      if (session.phase) {
+        const lbl = PHASE_LABELS[session.phase] || session.phase;
+        cx += drawBadge(doc, lbl, cx, chipY, chipOpts) + 5;
       }
-      if (session.ageGroup) {
-        cx += drawBadge(doc, session.ageGroup, cx, chipY, chipOpts) + 4;
+      if (session.zone) {
+        const lbl = ZONE_LABELS[session.zone] || session.zone;
+        cx += drawBadge(doc, lbl, cx, chipY, chipOpts) + 5;
       }
       const dur = session.durationMin
-        ?? (Array.isArray(session.drills)
-          ? session.drills.reduce((s: number, d: any) => s + (parseInt(d.duration ?? d.durationMin ?? 0) || 0), 0)
-          : 0);
-      if (dur > 0) {
-        drawBadge(doc, `${dur} min`, cx, chipY, chipOpts);
+        ?? allDrills.reduce((s: number, d: any) => s + (parseInt(d.duration ?? d.durationMin ?? 0) || 0), 0);
+      if (dur > 0) drawBadge(doc, `${dur} min`, cx, chipY, chipOpts);
+    }
+
+    // ── Cooldown strip (bottom, 55 pt) ───────────────────────────────────────
+    const cooldownH = 55;
+    const cooldownY = pageH - margin - cooldownH;
+
+    if (cooldownDrill) {
+      const cdCfg = getDrillConfig(cooldownDrill.drillType);
+
+      // Background + top border in type color
+      doc.fillColor(cdCfg.bg).rect(margin, cooldownY, contentW, cooldownH).fill();
+      doc.fillColor(cdCfg.border).rect(margin, cooldownY, contentW, 3).fill();
+
+      // Badge + title + duration — single row
+      let cdX = margin + 8;
+      const cdBw = drawBadge(doc, cdCfg.label.toUpperCase(), cdX, cooldownY + 9, {
+        bgColor: cdCfg.badgeBg, textColor: cdCfg.badgeText, fontSize: 6.5,
+      });
+      cdX += cdBw + 6;
+
+      doc.fontSize(8.5).font("Helvetica-Bold").fillColor(BRAND.black);
+      const cdTitleW = doc.widthOfString(cooldownDrill.title);
+      doc.text(cooldownDrill.title, cdX, cooldownY + 8, { lineBreak: false });
+      cdX += cdTitleW + 6;
+
+      drawBadge(doc, `${cooldownDrill.duration} min`, cdX, cooldownY + 9, {
+        bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 6.5,
+      });
+
+      // Coaching points — first 3, inline as numbered list
+      const cdPts = (cooldownDrill.coachingPoints || []).slice(0, 3) as string[];
+      if (cdPts.length > 0) {
+        const ptsText = cdPts.map((p: string, i: number) => `${i + 1}.  ${p}`).join("     ");
+        doc.fontSize(7.5).fillColor(BRAND.black).font("Helvetica")
+          .text(ptsText, margin + 8, cooldownY + 26, { width: contentW - 16, lineBreak: false });
       }
 
-      doc.y = headerH + 8;
-      doc.x = margin;
+      // Org summary
+      const { setupSteps, constraints } = buildOrgSections(cooldownDrill.organization);
+      const orgText = constraints[0] || setupSteps[0];
+      if (orgText) {
+        doc.fontSize(6.5).fillColor(BRAND.muted).font("Helvetica")
+          .text(orgText, margin + 8, cooldownY + 40, { width: contentW - 16, lineBreak: false });
+      }
     }
 
-    // ── Drills ───────────────────────────────────────────────────────────────
-    if (Array.isArray(session.drills) && session.drills.length > 0) {
-      const diagW   = 90;  // tiny diagram width
-      const textX   = margin + diagW + 10;
-      const textW   = pageW - diagW - 10;
+    // ── 4 Main Drill Columns ──────────────────────────────────────────────────
+    const nCols   = Math.max(mainDrills.length, 1);
+    const colGap  = 7;
+    const colW    = (contentW - colGap * (nCols - 1)) / nCols;
+    const colTop  = headerH + 7;
+    const colBot  = cooldownY - 7;
+    const colH    = colBot - colTop;
 
-      session.drills.forEach((rawDrill: any, idx: number) => {
-        const drill = normalizeDrill(rawDrill);
-        const cfg   = getDrillConfig(drill.drillType);
+    mainDrills.forEach((drill: any, idx: number) => {
+      const colX   = margin + idx * (colW + colGap);
+      const cfg    = getDrillConfig(drill.drillType);
+      const innerW = colW - 10;  // 5 pt padding each side
+      const innerX = colX + 5;
 
-        const blockTopY = doc.y;
+      // Column background (very light drill-type tint)
+      doc.fillColor(cfg.bg).rect(colX, colTop, colW, colH).fill();
+      // Top colored bar
+      doc.fillColor(cfg.border).rect(colX, colTop, colW, 4).fill();
+      // Thin outer border
+      doc.strokeColor(cfg.border).lineWidth(0.4)
+        .rect(colX, colTop, colW, colH).stroke();
 
-        // ── Drill header row ──
-        {
-          // Number circle
-          doc.fillColor(cfg.border).circle(margin + 9, blockTopY + 8, 9).fill();
-          doc.fontSize(7).fillColor(BRAND.white).font("Helvetica-Bold")
-            .text(String(idx + 1), margin, blockTopY + 4, { width: 18, align: "center", lineBreak: false });
-
-          // Title
-          doc.fontSize(9.5).fillColor(BRAND.black).font("Helvetica-Bold")
-            .text(drill.title, margin + 22, blockTopY, { lineBreak: false });
-
-          // Type badge + duration
-          const titleEndX = margin + 22 + doc.widthOfString(drill.title) + 8;
-          const bw = drawBadge(doc, cfg.label.toUpperCase(), titleEndX, blockTopY, {
-            bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 6.5,
-          });
-          drawBadge(doc, `${drill.duration} min`, titleEndX + bw + 5, blockTopY, {
-            bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 6.5,
-          });
-
-          doc.moveDown(0.5);
-        }
-
-        const contentY = doc.y;
-        let diagEndY   = contentY;
-
-        // ── Tiny diagram ──
-        if (drill.diagram) {
-          // Suppress auto-page-break during diagram drawing
-          const pm = (doc.page as any).margins;
-          const sb = pm.bottom;
-          pm.bottom = 0;
-          const di = drawDiagram(doc, drill.diagram, { width: diagW, startX: margin });
-          pm.bottom = sb;
-          if (di) diagEndY = di.startY + di.height;
-        }
-
-        // ── Text: 1-line org summary + up to 3 coaching points ──
-        doc.x = textX;
-        doc.y = contentY;
-
-        // Organisation — single compact line from first step or area size
-        const { setupSteps, constraints } = buildOrgSections(drill.organization);
-        const orgParts: string[] = [];
-        if (constraints.length > 0) orgParts.push(constraints[0]);
-        else if (setupSteps.length > 0) orgParts.push(setupSteps[0]);
-        if (orgParts.length > 0) {
-          doc.fontSize(7).fillColor(BRAND.muted).font("Helvetica")
-            .text(orgParts.join("  ·  "), textX, doc.y, { width: textW });
-          doc.moveDown(0.2);
-        }
-
-        // Coaching points — max 3
-        const pts = Array.isArray(drill.coachingPoints) ? drill.coachingPoints.slice(0, 3) : [];
-        pts.forEach((pt: string, i: number) => {
-          doc.fontSize(8).fillColor(BRAND.black).font("Helvetica")
-            .text(`${i + 1}.  ${pt}`, textX, doc.y, { width: textW, lineGap: 0.5 });
-        });
-
-        const textEndY  = doc.y;
-        const blockEndY = Math.max(diagEndY, textEndY) + 4;
-
-        // Left border
-        {
-          const pm = (doc.page as any).margins;
-          const sb = pm.bottom;
-          pm.bottom = 0;
-          doc.fillColor(cfg.border).rect(margin, blockTopY, 3, blockEndY - blockTopY).fill();
-          pm.bottom = sb;
-        }
-
-        doc.x = margin;
-        doc.y = blockEndY;
-
-        // Thin separator
-        if (idx < session.drills.length - 1) {
-          doc.strokeColor(BRAND.separator).lineWidth(0.4).opacity(0.6)
-            .moveTo(margin, doc.y + 3).lineTo(doc.page.width - margin, doc.y + 3)
-            .stroke().opacity(1);
-          doc.y += 8;
-        }
+      // ── Row 1: type badge + duration (right-aligned) ──────────────────────
+      const badgeY = colTop + 8;
+      drawBadge(doc, cfg.label.toUpperCase(), innerX, badgeY, {
+        bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 6,
       });
-    }
+
+      // Duration — right-aligned inside column
+      doc.fontSize(6.5).fillColor(BRAND.muted).font("Helvetica-Bold");
+      const durStr = `${drill.duration} min`;
+      const durW   = doc.widthOfString(durStr);
+      doc.text(durStr, colX + colW - 6 - durW, badgeY + 1, { lineBreak: false });
+
+      // ── Row 2: drill title ────────────────────────────────────────────────
+      const titleY = badgeY + 15;
+      doc.fontSize(7.5).fillColor(BRAND.black).font("Helvetica-Bold")
+        .text(drill.title, innerX, titleY, { width: innerW, lineBreak: true });
+      let rowY = doc.y + 3;
+
+      // ── Diagram ───────────────────────────────────────────────────────────
+      if (drill.diagram) {
+        // Horizontal: full inner width. Vertical: cap height at 125 pt → width = 125/1.5 ≈ 83 pt
+        const orientation = drill.diagram?.pitch?.orientation || "HORIZONTAL";
+        const diagW = orientation === "VERTICAL"
+          ? Math.round(125 / 1.5)   // 83 pt wide → 125 pt tall
+          : innerW;                  // full width → innerW / 1.5 tall
+        // Center vertical (narrower) diagrams in the column
+        const diagStartX = orientation === "VERTICAL"
+          ? colX + (colW - diagW) / 2
+          : innerX;
+
+        doc.y = rowY;
+        const di = drawDiagram(doc, drill.diagram, {
+          width: diagW, startX: diagStartX,
+          playerScale: 0.5, arrowScale: 0.55,
+        });
+        rowY = di ? di.startY + di.height + 5 : rowY + 5;
+      }
+
+      // Helper: small bold section label (e.g. "ORGANISATION")
+      const drawColLabel = (label: string, y: number): number => {
+        doc.fontSize(5.5).fillColor(cfg.border).font("Helvetica-Bold")
+          .text(label, innerX, y, { lineBreak: false });
+        return y + 8;  // label height + gap
+      };
+
+      // ── Organisation ──────────────────────────────────────────────────────
+      const { setupSteps, constraints } = buildOrgSections(drill.organization);
+      const orgText = constraints[0] || setupSteps[0];
+      if (orgText && rowY + 10 < colBot - 4) {
+        rowY = drawColLabel("ORGANISATION", rowY);
+        doc.fontSize(6).fillColor(BRAND.muted).font("Helvetica")
+          .text(orgText, innerX, rowY, { width: innerW });
+        rowY = doc.y + 3;
+      }
+
+      // ── Description ───────────────────────────────────────────────────────
+      if (drill.description && rowY + 14 < colBot - 4) {
+        rowY = drawColLabel("DESCRIPTION", rowY);
+        doc.fontSize(6.5).fillColor("#334155").font("Helvetica")
+          .text(drill.description, innerX, rowY, { width: innerW, lineGap: 0.3 });
+        rowY = doc.y + 3;
+      }
+
+      // ── Key Coaching Points ───────────────────────────────────────────────
+      const pts = (drill.coachingPoints || []) as string[];
+      if (pts.length > 0 && rowY + 14 < colBot - 4) {
+        rowY = drawColLabel("KEY POINTS", rowY);
+        pts.forEach((pt: string, i: number) => {
+          if (rowY + 8 > colBot - 4) return;
+          doc.fontSize(7).fillColor(BRAND.black).font("Helvetica")
+            .text(`${i + 1}.  ${pt}`, innerX, rowY, { width: innerW, lineGap: 0.3 });
+          rowY = doc.y;
+        });
+        rowY += 2;
+      }
+
+      // ── Progressions ──────────────────────────────────────────────────────
+      const progs = (drill.progressions || []) as string[];
+      if (progs.length > 0 && rowY + 14 < colBot - 4) {
+        rowY = drawColLabel("PROGRESSIONS", rowY);
+        progs.forEach((prog: string, i: number) => {
+          if (rowY + 8 > colBot - 4) return;
+          doc.fontSize(7).fillColor(BRAND.black).font("Helvetica")
+            .text(`${i + 1}.  ${prog}`, innerX, rowY, { width: innerW, lineGap: 0.3 });
+          rowY = doc.y;
+        });
+      }
+    });
 
     doc.end();
   });
