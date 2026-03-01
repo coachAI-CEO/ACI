@@ -14,6 +14,7 @@ import type { FixDecisionCode } from "./services/fixer";
 import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
 import { hashPassword } from "./services/auth";
 import { generateVerificationToken, sendVerificationEmail } from "./services/email";
+import { notifyNewAccountCreated } from "./services/account-alerts";
 import { z } from "zod";
 
 const r = express.Router();
@@ -2250,6 +2251,21 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
       }
     }
 
+    notifyNewAccountCreated({
+      userId: user.id,
+      email: user.email || body.email,
+      name: user.name,
+      role: user.role,
+      subscriptionPlan: user.subscriptionPlan,
+      source: "admin_quick_create",
+      createdById: req.userId,
+      createdByEmail: req.user?.email || null,
+      ipAddress: req.ip || (req.headers["x-forwarded-for"] as string) || undefined,
+      userAgent: (req.headers["user-agent"] as string) || undefined,
+    }).catch((error) => {
+      console.error("[ADMIN] Failed to emit new account alerts for quick-create:", error);
+    });
+
     await logAdminAction(
       req.userId!,
       "user.quick_create",
@@ -2344,6 +2360,7 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
         totalPages: Math.ceil(total / limit)
       }
     });
+
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
   }
@@ -3140,6 +3157,37 @@ r.get("/admin/audit-log", requireAdminPermission('canAccessAdminDashboard'), asy
     });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// In-app account creation alerts for admin dashboard
+r.get("/admin/account-alerts", requireAdminPermission("canAccessAdminDashboard"), async (req: AdminRequest, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+
+    const actions = await prisma.adminAction.findMany({
+      where: {
+        action: "user.account_created",
+      },
+      take: limit,
+      orderBy: { createdAt: "desc" },
+      include: {
+        admin: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.json({
+      ok: true,
+      alerts: actions,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to fetch account alerts" });
   }
 });
 
