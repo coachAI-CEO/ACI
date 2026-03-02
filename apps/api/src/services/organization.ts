@@ -1,6 +1,5 @@
 import { prisma } from "../prisma";
 import { SUBSCRIPTION_LIMITS } from "../config/subscription-limits";
-import { notifyNewAccountCreated } from "./account-alerts";
 
 /**
  * Get organization members (users with the same organizationName)
@@ -113,7 +112,7 @@ export async function inviteCoach(
 
   const owner = await prisma.user.findUnique({
     where: { id: ownerId },
-    select: { organizationName: true, email: true },
+    select: { organizationName: true },
   });
 
   if (!owner || !owner.organizationName) {
@@ -169,19 +168,6 @@ export async function inviteCoach(
       teamAgeGroups: teamAgeGroups || [],
       emailVerified: false,
     },
-  });
-
-  notifyNewAccountCreated({
-    userId: user.id,
-    email: user.email || email,
-    name: user.name,
-    role: user.role,
-    subscriptionPlan: user.subscriptionPlan,
-    source: "organization_invite",
-    createdById: ownerId,
-    createdByEmail: owner?.email || null,
-  }).catch((error) => {
-    console.error("[ORGANIZATION] Failed to emit new account alerts for invite:", error);
   });
 
   return {

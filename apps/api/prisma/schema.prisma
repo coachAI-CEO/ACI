@@ -644,7 +644,6 @@ model AccessPermission {
   // Access control
   canGenerateSessions Boolean @default(false) // Can generate new sessions
   canAccessVault      Boolean @default(false) // Can access vault (view and save)
-  canAccessVideoReview Boolean @default(false) // Can access video review/analysis
   
   // Metadata
   notes         String?  // Admin notes about this permission

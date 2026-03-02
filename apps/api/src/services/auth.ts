@@ -3,7 +3,6 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
 import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from './email';
-import { notifyNewAccountCreated } from './account-alerts';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key-change-in-production';
@@ -64,8 +63,6 @@ export async function registerUser(data: {
   name?: string;
   coachLevel?: string;
   subscriptionPlan?: string;
-  ipAddress?: string;
-  userAgent?: string;
 }): Promise<{ user: any; tokens: AuthTokens }> {
   const normalizedEmail = data.email.trim().toLowerCase();
 
@@ -131,21 +128,6 @@ export async function registerUser(data: {
       // Don't throw - registration should succeed even if email fails
     });
   }
-
-  notifyNewAccountCreated({
-    userId: user.id,
-    email: user.email || normalizedEmail,
-    name: user.name,
-    role: user.role,
-    subscriptionPlan: user.subscriptionPlan,
-    source: 'self_register',
-    createdById: user.id,
-    createdByEmail: user.email,
-    ipAddress: data.ipAddress,
-    userAgent: data.userAgent,
-  }).catch((error) => {
-    console.error('[AUTH] Failed to emit new account alerts:', error);
-  });
   
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.role);

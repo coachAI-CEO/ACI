@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authenticate, AuthRequest } from "./middleware/auth";
-import { canAccessVideoReview } from "./services/access-permissions";
 import { buildVideoAnalysisPrompt } from "./prompts/video-analysis";
 import { prisma } from "./prisma";
 import { createHash } from "crypto";
@@ -10,23 +9,6 @@ const r = Router();
 
 // Require auth for video analysis flows
 r.use(authenticate);
-r.use(async (req: AuthRequest, res, next) => {
-  try {
-    if (!req.userId) {
-      return res.status(401).json({ ok: false, error: "Authentication required" });
-    }
-    const allowed = await canAccessVideoReview(req.userId, req.user?.coachLevel || null);
-    if (!allowed) {
-      return res.status(403).json({
-        ok: false,
-        error: "Video review access is disabled for your account.",
-      });
-    }
-    return next();
-  } catch (error: any) {
-    return res.status(500).json({ ok: false, error: error?.message || "Permission check failed" });
-  }
-});
 
 const VideoAnalysisRunRequestSchema = z.object({
   ageGroup: z.string().min(1),

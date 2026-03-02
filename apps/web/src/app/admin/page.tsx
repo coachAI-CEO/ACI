@@ -145,28 +145,6 @@ type AgeGroupStats = {
   count: number;
 };
 
-type AccountAlert = {
-  id: string;
-  action: string;
-  resourceId: string | null;
-  details?: {
-    source?: string;
-    account?: {
-      email?: string;
-      name?: string | null;
-      role?: string | null;
-      subscriptionPlan?: string | null;
-      createdByEmail?: string | null;
-    };
-  } | null;
-  createdAt: string;
-  admin?: {
-    id: string;
-    email: string | null;
-    name: string | null;
-  } | null;
-};
-
 type RandomSessionsJob = {
   id: string;
   ageGroup: string;
@@ -426,7 +404,6 @@ export default function AdminDashboard() {
     bySubscriptionPlan: Record<string, number>;
     bySubscriptionStatus: Record<string, number>;
   } | null>(null);
-  const [accountAlerts, setAccountAlerts] = useState<AccountAlert[]>([]);
 
   // User Management
   const [users, setUsers] = useState<Array<{
@@ -482,7 +459,6 @@ export default function AdminDashboard() {
     formats: string[];
     canGenerateSessions: boolean;
     canAccessVault: boolean;
-    canAccessVideoReview: boolean;
     notes: string | null;
     createdAt: string;
   }>>([]);
@@ -490,24 +466,22 @@ export default function AdminDashboard() {
   const [showPermissionModal, setShowPermissionModal] = useState<{ permission?: any } | null>(null);
   type PermissionFormState = {
     userId: string;
-    resourceType: "SESSION" | "VAULT" | "BOTH" | "VIDEO_REVIEW";
+    resourceType: "SESSION" | "VAULT" | "BOTH";
     coachLevel: "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS";
     ageGroups: string[];
     formats: string[];
     canGenerateSessions: boolean;
     canAccessVault: boolean;
-    canAccessVideoReview: boolean;
     notes: string;
   };
   const createEmptyPermissionForm = (): PermissionFormState => ({
     userId: "" as string | "",
-    resourceType: "BOTH" as "SESSION" | "VAULT" | "BOTH" | "VIDEO_REVIEW",
+    resourceType: "BOTH" as "SESSION" | "VAULT" | "BOTH",
     coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
     ageGroups: [] as string[],
     formats: [] as string[],
     canGenerateSessions: false,
     canAccessVault: false,
-    canAccessVideoReview: false,
     notes: "",
   });
   const [permissionForm, setPermissionForm] = useState<PermissionFormState>(
@@ -795,7 +769,7 @@ export default function AdminDashboard() {
     setError(null);
     try {
       const authHeaders = getAuthHeaders();
-      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes, usageByPlanRes, vaultUsageRes, favoritesUsageRes, featureAccessRes, trialAccountsRes, limitEnforcementRes, clubAccountsRes, normalizeStatusRes, accountAlertsRes] = await Promise.all([
+      const [statsRes, timelineRes, recentRes, operationsRes, ageRes, userSummaryRes, usageByPlanRes, vaultUsageRes, favoritesUsageRes, featureAccessRes, trialAccountsRes, limitEnforcementRes, clubAccountsRes, normalizeStatusRes] = await Promise.all([
         fetch(`${API_BASE_URL}/admin/stats`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/timeline?days=7`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/metrics/recent?limit=20`, { headers: authHeaders }),
@@ -810,7 +784,6 @@ export default function AdminDashboard() {
         fetch(`${API_BASE_URL}/admin/analytics/limit-enforcement`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/analytics/club-accounts`, { headers: authHeaders }),
         fetch(`${API_BASE_URL}/admin/drills/normalize-status`, { headers: authHeaders }),
-        fetch(`${API_BASE_URL}/admin/account-alerts?limit=20`, { headers: authHeaders }),
       ]);
 
       if (statsRes.ok) {
@@ -917,13 +890,6 @@ export default function AdminDashboard() {
         const data = await clubAccountsRes.json();
         if (data.ok) {
           setClubAccounts(data.clubAccounts);
-        }
-      }
-
-      if (accountAlertsRes.ok) {
-        const data = await accountAlertsRes.json();
-        if (data.ok) {
-          setAccountAlerts(Array.isArray(data.alerts) ? data.alerts : []);
         }
       }
     } catch (e: any) {
@@ -1237,7 +1203,6 @@ export default function AdminDashboard() {
           formats: permissionForm.formats,
           canGenerateSessions: permissionForm.canGenerateSessions,
           canAccessVault: permissionForm.canAccessVault,
-          canAccessVideoReview: permissionForm.canAccessVideoReview,
           notes: permissionForm.notes || undefined,
         }),
       });
@@ -4123,7 +4088,6 @@ export default function AdminDashboard() {
                     <th className="text-left py-2 px-3 text-slate-400 font-semibold">Formats</th>
                     <th className="text-left py-2 px-3 text-slate-400 font-semibold">Sessions</th>
                     <th className="text-left py-2 px-3 text-slate-400 font-semibold">Vault</th>
-                    <th className="text-left py-2 px-3 text-slate-400 font-semibold">Video Review</th>
                     <th className="text-left py-2 px-3 text-slate-400 font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -4143,11 +4107,7 @@ export default function AdminDashboard() {
                       <td className="py-2 px-3 text-slate-300">{perm.resourceType}</td>
                       <td className="py-2 px-3 text-slate-300">
                         {perm.userId ? (
-                          perm.user?.coachLevel ? (
-                            <span>{coachLevelLabel[perm.user.coachLevel] || perm.user.coachLevel}</span>
-                          ) : (
-                            <span className="text-xs text-slate-500">Not set (User-specific)</span>
-                          )
+                          <span className="text-xs text-slate-500">N/A (User-specific)</span>
                         ) : (
                           perm.coachLevel ? coachLevelLabel[perm.coachLevel] || perm.coachLevel : "All"
                         )}
@@ -4173,13 +4133,6 @@ export default function AdminDashboard() {
                         )}
                       </td>
                       <td className="py-2 px-3">
-                        {perm.canAccessVideoReview ? (
-                          <span className="text-xs text-emerald-400 font-semibold">✓ Allowed</span>
-                        ) : (
-                          <span className="text-xs text-red-400 font-semibold">✗ Denied</span>
-                        )}
-                      </td>
-                      <td className="py-2 px-3">
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => {
@@ -4194,7 +4147,6 @@ export default function AdminDashboard() {
                                 formats: perm.formats,
                                 canGenerateSessions: perm.canGenerateSessions,
                                 canAccessVault: perm.canAccessVault,
-                                canAccessVideoReview: perm.canAccessVideoReview,
                                 notes: perm.notes || "",
                               });
                               setShowPermissionModal({ permission: perm });
@@ -4357,7 +4309,6 @@ export default function AdminDashboard() {
                     <option value="SESSION">Sessions Only</option>
                     <option value="VAULT">Vault Only</option>
                     <option value="BOTH">Both Sessions & Vault</option>
-                    <option value="VIDEO_REVIEW">Video Review Only</option>
                   </select>
                 </div>
 
@@ -4449,7 +4400,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="grid grid-cols-2 gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -4467,15 +4418,6 @@ export default function AdminDashboard() {
                       className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
                     />
                     <span className="text-xs text-slate-300">Can Access Vault</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={permissionForm.canAccessVideoReview}
-                      onChange={(e) => setPermissionForm({ ...permissionForm, canAccessVideoReview: e.target.checked })}
-                      className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-emerald-500/50"
-                    />
-                    <span className="text-xs text-slate-300">Can Access Video Review</span>
                   </label>
                 </div>
 
@@ -5262,54 +5204,6 @@ export default function AdminDashboard() {
             </div>
             );
           })()}
-        </div>
-
-        {/* New Account Alerts */}
-        <div className="bg-slate-900/70 border border-slate-700/70 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-slate-300">New Account Alerts</h2>
-            <button
-              onClick={fetchData}
-              className="px-3 py-1 text-xs rounded-lg border border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700"
-            >
-              Refresh
-            </button>
-          </div>
-          {accountAlerts.length > 0 ? (
-            <div className="space-y-2">
-              {accountAlerts.map((alert) => {
-                const account = alert.details?.account;
-                const source = alert.details?.source || "unknown";
-                return (
-                  <div
-                    key={alert.id}
-                    className="rounded-lg border border-slate-700/70 bg-slate-800/40 p-3 text-xs text-slate-300"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-emerald-300">{account?.email || "Unknown email"}</span>
-                      <span className="text-slate-500">•</span>
-                      <span>{account?.role || "TRIAL"}</span>
-                      <span className="text-slate-500">•</span>
-                      <span>{account?.subscriptionPlan || "TRIAL"}</span>
-                    </div>
-                    <div className="mt-1 text-slate-400">
-                      Source: <span className="text-slate-300">{source}</span>
-                      {account?.createdByEmail && (
-                        <>
-                          {" "}• Created by: <span className="text-slate-300">{account.createdByEmail}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="mt-1 text-slate-500">
-                      {new Date(alert.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-sm text-slate-500">No recent account alerts.</div>
-          )}
         </div>
 
         {/* Recent API Calls */}
