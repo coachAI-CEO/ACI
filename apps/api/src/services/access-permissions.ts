@@ -443,29 +443,37 @@ export async function canAccessVideoReview(
 
   const userCoachLevel = coachLevel || user.coachLevel;
 
-  const userSpecific = await prisma.accessPermission.findMany({
-    where: {
-      AND: [
-        { userId },
+    const userSpecific = await prisma.accessPermission.findMany({
+      where: {
+        AND: [
+          { userId },
         {
           OR: [
             { resourceType: "VIDEO_REVIEW" },
             { resourceType: "BOTH" },
           ],
-        },
-      ],
-    },
-    select: { canAccessVideoReview: true },
-  });
+          },
+        ],
+      },
+      select: {
+        resourceType: true,
+        canAccessVideoReview: true,
+        canAccessVault: true,
+      },
+    });
 
-  if (userSpecific.length > 0) {
-    return userSpecific.some((perm) => perm.canAccessVideoReview);
-  }
+    if (userSpecific.length > 0) {
+      // Backward compatibility: older BOTH permissions may have vault allowed
+      // without explicitly setting canAccessVideoReview.
+      return userSpecific.some(
+        (perm) => perm.canAccessVideoReview || (perm.resourceType === "BOTH" && perm.canAccessVault)
+      );
+    }
 
   const coachLevelRules = await prisma.accessPermission.findMany({
-    where: {
-      AND: [
-        { userId: null },
+      where: {
+        AND: [
+          { userId: null },
         {
           OR: [
             { resourceType: "VIDEO_REVIEW" },
@@ -477,15 +485,22 @@ export async function canAccessVideoReview(
             { coachLevel: null },
             { coachLevel: userCoachLevel || undefined },
           ],
-        },
-      ],
-    },
-    select: { canAccessVideoReview: true },
-  });
+          },
+        ],
+      },
+      select: {
+        resourceType: true,
+        canAccessVideoReview: true,
+        canAccessVault: true,
+      },
+    });
 
-  if (coachLevelRules.length > 0) {
-    return coachLevelRules.some((perm) => perm.canAccessVideoReview);
-  }
+    if (coachLevelRules.length > 0) {
+      // Backward compatibility for coach-level BOTH permissions.
+      return coachLevelRules.some(
+        (perm) => perm.canAccessVideoReview || (perm.resourceType === "BOTH" && perm.canAccessVault)
+      );
+    }
 
   return true;
 }
