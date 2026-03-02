@@ -2676,6 +2676,31 @@ r.patch("/admin/users/:userId/role", requireAdminPermission('canChangeUserRoles'
         return res.status(400).json({ ok: false, error: 'Invalid role' });
       }
       updateData.role = role;
+
+      // Keep role and subscription limits aligned when role is changed in admin.
+      const defaultPlanByRole: Record<string, string> = {
+        FREE: "FREE",
+        COACH: "COACH_BASIC",
+        CLUB: "CLUB_STANDARD",
+        ADMIN: "FREE",
+        TRIAL: "TRIAL",
+      };
+      const now = new Date();
+      const mappedPlan = defaultPlanByRole[role] || "FREE";
+      updateData.subscriptionPlan = mappedPlan;
+      updateData.subscriptionStatus = mappedPlan === "TRIAL" ? "TRIAL" : "ACTIVE";
+      updateData.subscriptionStartDate = now;
+      updateData.lastResetDate = now;
+      updateData.sessionsGeneratedThisMonth = 0;
+      updateData.drillsGeneratedThisMonth = 0;
+
+      if (mappedPlan === "TRIAL") {
+        const trialEndDate = new Date(now);
+        trialEndDate.setDate(trialEndDate.getDate() + 7);
+        updateData.trialEndDate = trialEndDate;
+      } else {
+        updateData.trialEndDate = null;
+      }
     }
     
     // Update admin role if provided
