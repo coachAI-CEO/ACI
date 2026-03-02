@@ -3176,12 +3176,13 @@ r.post("/admin/access-permissions", requireAdminPermission('canManageUsers'), as
     const schema = z.object({
       id: z.string().uuid().optional(), // If provided, update existing
       userId: z.string().uuid().nullable().optional(), // Specific user ID (if set, overrides coachLevel)
-      resourceType: z.enum(["SESSION", "VAULT", "BOTH"]),
+      resourceType: z.enum(["SESSION", "VAULT", "BOTH", "VIDEO_REVIEW"]),
       coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       ageGroups: z.array(z.string()).default([]), // Empty = all age groups
       formats: z.array(z.enum(["7v7", "9v9", "11v11"])).default([]), // Empty = all formats
       canGenerateSessions: z.boolean().default(false),
       canAccessVault: z.boolean().default(false),
+      canAccessVideoReview: z.boolean().default(false),
       notes: z.string().optional(),
       updateUserCoachLevel: z.boolean().optional(), // If true, update the user's coachLevel property
     });
@@ -3233,6 +3234,7 @@ r.post("/admin/access-permissions", requireAdminPermission('canManageUsers'), as
       formats: body.formats,
       canGenerateSessions: body.canGenerateSessions,
       canAccessVault: body.canAccessVault,
+      canAccessVideoReview: body.canAccessVideoReview,
       notes: body.notes || null,
       createdBy: req.userId || null,
     };
@@ -3335,7 +3337,7 @@ r.get("/admin/access-permissions/check/:userId", requireAdminPermission('canMana
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
     
-    const { canGenerateSessions, canAccessVault } = await import('./services/access-permissions');
+    const { canGenerateSessions, canAccessVault, canAccessVideoReview } = await import('./services/access-permissions');
     
     const checks: any = {
       userId,
@@ -3349,6 +3351,7 @@ r.get("/admin/access-permissions/check/:userId", requireAdminPermission('canMana
     } else {
       checks.canAccessVault = await canAccessVault(userId);
     }
+    checks.canAccessVideoReview = await canAccessVideoReview(userId, coachLevel as any || user.coachLevel);
     
     return res.json({ ok: true, ...checks });
   } catch (error: any) {

@@ -419,3 +419,73 @@ export async function canAccessVault(
   // User has access if any permission grants it
   return coachLevelPermissions.length > 0;
 }
+
+/**
+ * Check if a user can access video review.
+ *
+ * Behavior:
+ * - SUPER_ADMIN always has access.
+ * - If user-specific VIDEO_REVIEW permissions exist, they are authoritative.
+ * - Else if coach-level VIDEO_REVIEW permissions exist, they are authoritative.
+ * - Else default to true (backward compatibility until explicit rules are created).
+ */
+export async function canAccessVideoReview(
+  userId: string,
+  coachLevel?: CoachLevel | null
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { coachLevel: true, adminRole: true },
+  });
+
+  if (!user) return false;
+  if (user.adminRole === "SUPER_ADMIN") return true;
+
+  const userCoachLevel = coachLevel || user.coachLevel;
+
+  const userSpecific = await prisma.accessPermission.findMany({
+    where: {
+      AND: [
+        { userId },
+        {
+          OR: [
+            { resourceType: "VIDEO_REVIEW" },
+            { resourceType: "BOTH" },
+          ],
+        },
+      ],
+    },
+    select: { canAccessVideoReview: true },
+  });
+
+  if (userSpecific.length > 0) {
+    return userSpecific.some((perm) => perm.canAccessVideoReview);
+  }
+
+  const coachLevelRules = await prisma.accessPermission.findMany({
+    where: {
+      AND: [
+        { userId: null },
+        {
+          OR: [
+            { resourceType: "VIDEO_REVIEW" },
+            { resourceType: "BOTH" },
+          ],
+        },
+        {
+          OR: [
+            { coachLevel: null },
+            { coachLevel: userCoachLevel || undefined },
+          ],
+        },
+      ],
+    },
+    select: { canAccessVideoReview: true },
+  });
+
+  if (coachLevelRules.length > 0) {
+    return coachLevelRules.some((perm) => perm.canAccessVideoReview);
+  }
+
+  return true;
+}
