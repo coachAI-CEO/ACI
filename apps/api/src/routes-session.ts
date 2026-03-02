@@ -18,12 +18,15 @@ import {
 const r = express.Router();
 
 function normalizeCoachLevel(value: unknown): string {
-  const v = String(value || "")
-    .trim()
-    .toUpperCase();
+  const raw = String(value || "").trim().toUpperCase();
+  const v = raw
+    .replace(/\+/g, " PLUS ")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
   if (v === "GRASSROOTS") return "GRASSROOTS";
   if (v === "USSF_C") return "USSF_C";
-  if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
+  if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
   return v;
 }
 

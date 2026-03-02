@@ -5,6 +5,18 @@ import { FormEvent } from "react";
 import { useState } from "react";
 import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 
+function normalizeCoachLevel(value: unknown): "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" {
+  const raw = String(value || "").trim().toUpperCase();
+  const v = raw
+    .replace(/\+/g, " PLUS ")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
+  if (v === "USSF_C") return "USSF_C";
+  return "GRASSROOTS";
+}
+
 export default function SessionFormWithLoading({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,9 +40,11 @@ export default function SessionFormWithLoading({ children }: { children: React.R
       }
     });
 
+    const normalizedCoachLevel = normalizeCoachLevel(formData.get("coachLevel"));
+    params.set("coachLevel", normalizedCoachLevel);
+
     // Hard UI guardrail: grassroots generation always runs as beginner players.
-    const coachLevel = String(formData.get("coachLevel") || "");
-    if (coachLevel === "GRASSROOTS") {
+    if (normalizedCoachLevel === "GRASSROOTS") {
       params.set("playerLevel", "BEGINNER");
     }
 

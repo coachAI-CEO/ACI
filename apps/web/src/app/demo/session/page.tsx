@@ -198,11 +198,17 @@ const coachLevelOptions = [
 ] as const;
 
 function normalizeCoachLevel(value?: string): string {
-  const v = String(value || "").toUpperCase();
-  if (v === "USSF_B_PLUS" || v === "USSF B+" || v === "USSF_B") return "USSF_B_PLUS";
-  if (v === "USSF_C" || v === "USSF C") return "USSF_C";
+  const raw = String(value || "").trim().toUpperCase();
+  const v = raw
+    .replace(/\+/g, " PLUS ")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
+  if (v === "USSF_C") return "USSF_C";
+  if (v === "USSF_D") return "GRASSROOTS";
   if (v === "GRASSROOTS") return "GRASSROOTS";
-  return v;
+  return "GRASSROOTS";
 }
 
 function getLanguageLevelBadge(coachLevel?: string) {
@@ -411,7 +417,9 @@ function getConfigFromSearchParams(
   const defaults = getDefaultConfig();
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
-  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
+  const coachLevel = normalizeCoachLevel(
+    parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS")
+  );
   const guardedPlayerLevelDefault =
     coachLevel === "GRASSROOTS" ? "BEGINNER" : defaults.playerLevel;
   const rawPlayerLevel = parseStringOrDefault(searchParams.get("playerLevel"), guardedPlayerLevelDefault);
@@ -437,7 +445,7 @@ function getConfigFromSearchParams(
       getDefaultFormation(parseStringOrDefault(searchParams.get("ageGroup"), defaults.ageGroup))
     ),
     playerLevel,
-    coachLevel: parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel),
+    coachLevel,
     numbersMin: parseNumberOrDefault(searchParams.get("numbersMin"), defaults.numbersMin),
     numbersMax: parseNumberOrDefault(searchParams.get("numbersMax"), defaults.numbersMax),
     goalsAvailable: parseNumberOrDefault(searchParams.get("goalsAvailable"), defaults.goalsAvailable),
@@ -927,12 +935,7 @@ function SessionDemoPageContent() {
 
   const config = getConfigFromSearchParams(searchParams);
   const normalizeCoachLevelForGeneration = (value?: string) => {
-    const v = String(value || "").toUpperCase();
-    if (v === "GRASSROOTS") return "GRASSROOTS";
-    if (v === "USSF_C") return "USSF_C";
-    if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-    if (v === "USSF_D") return "GRASSROOTS";
-    return undefined;
+    return normalizeCoachLevel(value);
   };
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
