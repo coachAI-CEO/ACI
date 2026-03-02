@@ -124,7 +124,11 @@ r.post('/auth/register', async (req, res) => {
     const data = RegisterSchema.parse(req.body);
     const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
     const userAgent = req.headers['user-agent'];
-    const result = await registerUser(data);
+    const result = await registerUser({
+      ...data,
+      ipAddress: ipAddress || undefined,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    });
     return res.json({ ok: true, ...result });
   } catch (error: any) {
     if (error.message === 'User already exists') {
