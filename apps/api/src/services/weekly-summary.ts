@@ -257,6 +257,7 @@ export function formatWeeklySummaryAsText(summary: WeeklySummary): string {
       PRESSING: "Pressing",
       TRANSITION: "Transition",
       COACHAI: "Balanced",
+      ROCKLIN_FC: "Rocklin FC",
     };
     text += `Focus Areas: ${gameModels.map((gm) => gameModelLabels[gm] || gm).join(", ")}\n`;
   }

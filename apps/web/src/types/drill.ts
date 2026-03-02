@@ -1,6 +1,6 @@
 import type { DiagramV1 } from "./diagram";
 
-export type GameModelId = "COACHAI" | "POSSESSION" | "PRESSING" | "TRANSITION";
+export type GameModelId = "COACHAI" | "POSSESSION" | "PRESSING" | "TRANSITION" | "ROCKLIN_FC";
 
 export type PhaseId =
   | "ATTACKING"

@@ -69,6 +69,7 @@ const GAME_MODEL_LABELS: Record<string, string> = {
   PRESSING:   "Pressing",
   TRANSITION: "Transition",
   COACHAI:    "Balanced model",
+  ROCKLIN_FC: "Rocklin FC",
   TACTICAL:   "Tactical",
 };
 
@@ -1181,6 +1182,10 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
       const chipY = 21;
       let cx = margin + maxTitleW + 16;
       if (session.refCode)  cx += drawBadge(doc, session.refCode, cx, chipY, chipOpts) + 5;
+      if (session.gameModelId) {
+        const lbl = GAME_MODEL_LABELS[session.gameModelId] || session.gameModelId;
+        cx += drawBadge(doc, lbl, cx, chipY, chipOpts) + 5;
+      }
       if (session.ageGroup) cx += drawBadge(doc, session.ageGroup, cx, chipY, chipOpts) + 5;
       if (session.phase) {
         const lbl = PHASE_LABELS[session.phase] || session.phase;

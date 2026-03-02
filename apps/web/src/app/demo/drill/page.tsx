@@ -79,6 +79,7 @@ const gameModelLabel: Record<string, string> = {
   PRESSING: "Pressing",
   TRANSITION: "Transition",
   COACHAI: "Balanced model",
+  ROCKLIN_FC: "Rocklin FC",
 };
 
 const phaseLabel: Record<string, string> = {
@@ -441,6 +442,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   <option value="PRESSING">Pressing</option>
                   <option value="TRANSITION">Transition</option>
                   <option value="COACHAI">Balanced (CoachAI)</option>
+                  <option value="ROCKLIN_FC">Rocklin FC</option>
                 </select>
               </div>
 

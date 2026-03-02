@@ -334,6 +334,22 @@ function uniqueNonEmpty(values: string[]): string[] {
   return out;
 }
 
+function humanizeGameModelText(value: any, parentKey?: string): any {
+  if (typeof value === "string") {
+    return value.replace(/\bROCKLIN_FC\b/g, "Rocklin FC");
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => humanizeGameModelText(item));
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "gameModelId" || parentKey === "gameModelId") continue;
+      (value as any)[key] = humanizeGameModelText(child, key);
+    }
+  }
+  return value;
+}
+
 function modelConstraintDefaults(gameModelId: string, phase?: string, zone?: string): string[] {
   const p = phase || "ATTACKING";
   const z = zone || "ATTACKING_THIRD";
@@ -353,6 +369,12 @@ function modelConstraintDefaults(gameModelId: string, phase?: string, zone?: str
     return [
       `TRANSITION cue (${p}/${z}): first action in 3 seconds after regain must be forward or to support.`,
       `TRANSITION cue (${p}/${z}): on loss, nearest 3 players counterpress for 3-5 seconds before recovery.`,
+    ];
+  }
+  if (gameModelId === "ROCKLIN_FC") {
+    return [
+      "After regain, play forward early when on (pass or dribble); if not, secure and re-expand with width/depth.",
+      "After loss, counterpress for 3-5 seconds; if not regained, recover compact and protect central lanes.",
     ];
   }
   return [
@@ -405,6 +427,9 @@ function hasModelSpecificConstraint(constraints: string[], gameModelId: string):
   if (gameModelId === "TRANSITION") {
     return /(transition|regain|on loss|counterpress|first action|3 seconds|5 seconds|fast attack|counter)/i.test(text);
   }
+  if (gameModelId === "ROCKLIN_FC") {
+    return /(rocklin|vertical|line[- ]?break|overload|switch|counterpress|compact|final[- ]?third|runs behind|width|depth)/i.test(text);
+  }
   return /(possession|press|transition|counterpress|regain|circulation|switch)/i.test(text);
 }
 
@@ -440,10 +465,10 @@ function enforceModelConstraints(
     next = uniqueNonEmpty([...next, ...modelDefaults, ...phaseDefaults]);
   }
   if (!hasModelSpecificConstraint(next, input.gameModelId)) {
-    next = uniqueNonEmpty([...modelDefaults, ...next]);
+    next = uniqueNonEmpty([...next, modelDefaults[0]]);
   }
   if (!hasPhaseSpecificConstraint(next, input.phase)) {
-    next = uniqueNonEmpty([...phaseDefaults, ...next]);
+    next = uniqueNonEmpty([...next, phaseDefaults[0]]);
   }
   drill.constraints = next.slice(0, 5);
 }
@@ -560,6 +585,7 @@ export async function generateAndReviewDrill(
   // For now, we do NOT auto-patch drills here.
   const finalDrill = drill;
   const finalQa = qaJson;
+  humanizeGameModelText(finalDrill);
 
   // Average QA score
   const avgScore =

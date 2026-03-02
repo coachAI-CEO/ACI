@@ -64,6 +64,7 @@ const gameModelLabel: Record<string, string> = {
   PRESSING: "Pressing",
   TRANSITION: "Transition",
   COACHAI: "Balanced",
+  ROCKLIN_FC: "Rocklin FC",
 };
 
 const phaseLabel: Record<string, string> = {
@@ -342,6 +343,7 @@ export default function FavoritesPage() {
             <option value="PRESSING">Pressing</option>
             <option value="TRANSITION">Transition</option>
             <option value="COACHAI">Balanced</option>
+            <option value="ROCKLIN_FC">Rocklin FC</option>
           </select>
 
           <select

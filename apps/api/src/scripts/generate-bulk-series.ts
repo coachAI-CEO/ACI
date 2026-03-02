@@ -46,7 +46,7 @@ function parseArgs(): Args {
   };
 }
 
-const gameModels = ["POSSESSION", "PRESSING", "TRANSITION", "COACHAI"];
+const gameModels = ["POSSESSION", "PRESSING", "TRANSITION", "COACHAI", "ROCKLIN_FC"];
 const ageGroups = ["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16"];
 const phases = ["ATTACKING", "DEFENDING", "TRANSITION"];
 const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"];

@@ -172,6 +172,7 @@ const GAME_MODEL_LABELS: Record<string, string> = {
   PRESSING: "Pressing",
   TRANSITION: "Transition",
   COACHAI: "Balanced (CoachAI)",
+  ROCKLIN_FC: "Rocklin FC",
 };
 const PHASE_LABELS: Record<string, string> = {
   ATTACKING: "Attacking",
@@ -1381,6 +1382,7 @@ export default function VideoAnalysisPage() {
                     <option value="PRESSING">Pressing</option>
                     <option value="TRANSITION">Transition</option>
                     <option value="COACHAI">Balanced (CoachAI)</option>
+                    <option value="ROCKLIN_FC">Rocklin FC</option>
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 whitespace-nowrap text-[11px] text-slate-400">

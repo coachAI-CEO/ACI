@@ -28,6 +28,7 @@ const gameModelLabel: Record<string, string> = {
   PRESSING: "Pressing",
   TRANSITION: "Transition",
   COACHAI: "Balanced",
+  ROCKLIN_FC: "Rocklin FC",
 };
 
 const phaseLabel: Record<string, string> = {

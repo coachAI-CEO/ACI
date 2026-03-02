@@ -41,6 +41,7 @@ const gameModelLabel: Record<string, string> = {
   PRESSING: "Pressing",
   TRANSITION: "Transition",
   COACHAI: "Balanced",
+  ROCKLIN_FC: "Rocklin FC",
 };
 
 export default function WeeklySummaryModal({

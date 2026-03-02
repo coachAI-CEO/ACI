@@ -622,7 +622,7 @@ async function runRandomSessionJob(jobId: string) {
   job.status = "running";
   const userId = job.userId; // Get userId from job
 
-  const gameModels = ["COACHAI", "POSSESSION", "PRESSING", "TRANSITION"] as const;
+  const gameModels = ["COACHAI", "POSSESSION", "PRESSING", "TRANSITION", "ROCKLIN_FC"] as const;
   const phases = ["ATTACKING", "DEFENDING", "TRANSITION"] as const;
   const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"] as const;
   const playerLevels = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;

@@ -2,7 +2,7 @@ export function buildDrillFixerPrompt(args: {
   originalDrill: any;
   qa: any;
   guard: {
-    gameModelId: "COACHAI"|"POSSESSION"|"PRESSING"|"TRANSITION";
+    gameModelId: "COACHAI"|"POSSESSION"|"PRESSING"|"TRANSITION"|"ROCKLIN_FC";
     ageGroup: string;
     phase: string;
     zone: string;

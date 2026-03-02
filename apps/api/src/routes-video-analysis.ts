@@ -33,7 +33,7 @@ const VideoAnalysisRunRequestSchema = z.object({
   playerLevel: z.string().min(1),
   coachLevel: z.string().min(1),
   formationUsed: z.string().min(1),
-  gameModelId: z.enum(["COACHAI", "POSSESSION", "PRESSING", "TRANSITION"]),
+  gameModelId: z.enum(["COACHAI", "POSSESSION", "PRESSING", "TRANSITION", "ROCKLIN_FC"]),
   phase: z.enum(["ATTACKING", "DEFENDING", "TRANSITION"]),
   zone: z.enum(["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"]),
   focusTeamColor: z.string().min(1),
@@ -194,6 +194,7 @@ function formatEnumTitle(value: string): string {
 function formatGameModelTitle(value: string): string {
   const upper = String(value || "").toUpperCase();
   if (upper === "COACHAI") return "Balanced";
+  if (upper === "ROCKLIN_FC") return "Rocklin FC";
   return formatEnumTitle(upper);
 }
 

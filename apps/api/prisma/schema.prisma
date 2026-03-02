@@ -13,6 +13,7 @@ enum GameModelId {
   POSSESSION
   PRESSING
   TRANSITION
+  ROCKLIN_FC
 }
 
 enum Phase {

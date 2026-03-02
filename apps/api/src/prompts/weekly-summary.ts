@@ -75,6 +75,7 @@ export function buildWeeklySummaryPrompt(input: WeeklySummaryPromptInput): strin
     PRESSING: "Pressing",
     TRANSITION: "Transition",
     COACHAI: "Balanced",
+    ROCKLIN_FC: "Rocklin FC",
   };
 
   const ageGroupDescription = ageGroups.length > 0 

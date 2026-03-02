@@ -55,7 +55,7 @@ export function runDrillQAStub(drill: any): DrillQA {
   // --- Game model / psych / constraints ---
   const gameModelOk =
     typeof json.gameModelId === "string" &&
-    ["POSSESSION", "PRESSING", "TRANSITION", "COACHAI"].includes(
+    ["POSSESSION", "PRESSING", "TRANSITION", "COACHAI", "ROCKLIN_FC"].includes(
       json.gameModelId
     );
 
@@ -116,7 +116,7 @@ export function runDrillQAStub(drill: any): DrillQA {
   }
   if (!gameModelOk) {
     notes.push(
-      "Game model: gameModelId should be one of POSSESSION, PRESSING, TRANSITION, or COACHAI and must be set on the drill JSON."
+      "Game model: gameModelId should be one of POSSESSION, PRESSING, TRANSITION, COACHAI, or ROCKLIN_FC and must be set on the drill JSON."
     );
   }
   if (!psychOk) {

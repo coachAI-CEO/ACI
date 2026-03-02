@@ -25,7 +25,7 @@ const FormationUsedSchema = z.enum([
   "4-3-3", "4-2-3-1", "4-4-2", "3-5-2"
 ]);
 
-const GameModelIdSchema = z.enum(["COACHAI", "POSSESSION", "PRESSING", "TRANSITION"]);
+const GameModelIdSchema = z.enum(["COACHAI", "POSSESSION", "PRESSING", "TRANSITION", "ROCKLIN_FC"]);
 const PhaseSchema = z.enum(["ATTACKING", "DEFENDING", "TRANSITION", "TRANSITION_TO_ATTACK", "TRANSITION_TO_DEFEND"]);
 const ZoneSchema = z.enum(["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"]);
 const SpaceConstraintSchema = z.enum(["FULL", "HALF", "THIRD", "QUARTER"]);

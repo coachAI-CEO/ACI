@@ -25,6 +25,7 @@ These are the parameters needed to generate a good session. Ask about important 
   - POSSESSION: Build-up play, keeping the ball, patient attacking
   - PRESSING: High press, counter-pressing, winning ball back quickly  
   - TRANSITION: Quick switches between attack/defense, counter-attacks
+  - ROCKLIN_FC: Vertical possession, final-third intensity, immediate counterpress then compact recovery
   - COACHAI: General/mixed approach
 
 **IMPORTANT - Ask if relevant:**
@@ -210,6 +211,7 @@ Analyze this request and respond in the JSON format specified above.`;
         PRESSING: "Pressing",
         TRANSITION: "Transition",
         COACHAI: "Balanced",
+        ROCKLIN_FC: "Rocklin FC",
       };
       return labels[value] || value;
     };
@@ -314,6 +316,8 @@ function extractBasicParams(message: string): any {
   } else if (lower.includes("transition") || lower.includes("counter") ||
              lower.includes("quick attack") || lower.includes("fast break")) {
     params.gameModelId = "TRANSITION";
+  } else if (lower.includes("rocklin")) {
+    params.gameModelId = "ROCKLIN_FC";
   }
 
   // Phases

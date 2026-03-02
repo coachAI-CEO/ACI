@@ -62,6 +62,21 @@ function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?:
     ].join("\n");
   }
 
+  if (gameModelId === "ROCKLIN_FC") {
+    return [
+      ...common,
+      "ROCKLIN_FC PROFILE:",
+      "- Session theme: proactive, vertical-possession football with immediate regain intent.",
+      "- In possession: create width/depth and support angles; progress with pass-or-dribble line breaks; switch when pressure locks one side.",
+      "- Final-third intent: attack with intensity (runs behind, overloads, 1v1/2v1 actions, through balls/crosses, quick finishing decisions).",
+      "- On loss (ATT->DEF): immediate 3-5 second counterpress; if not won, recover to compact block.",
+      "- Out of possession: coordinated pressure-cover-balance, deny central progression, protect in behind, force predictable play.",
+      "- On regain (DEF->ATT): first action forward if on; if not, secure ball and expand shape before next penetration.",
+      "- CONDITIONED_GAME should test both transitions: fast counter on regain + immediate reaction on loss.",
+      "- Avoid passive low-block as default and avoid sterile circulation without penetration intent.",
+    ].join("\n");
+  }
+
   return [
     ...common,
     "COACHAI PROFILE:",
@@ -746,6 +761,7 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "- For POSSESSION: expect support angles, circulation, overloads, line breaks.",
     "- For PRESSING: expect triggers, compactness, coordinated regains, trap behavior.",
     "- For TRANSITION: expect 3-6 second reactions after regain/loss, fast attack/counterpress choices.",
+    "- For ROCKLIN_FC: expect vertical progression + final-third intensity + immediate loss reaction + compact recovery.",
     "- For COACHAI: expect explicit switching logic across all three moments.",
     "",
     "PHASE (rate alignment with phase/zone intent):",

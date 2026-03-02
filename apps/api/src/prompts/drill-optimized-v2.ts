@@ -242,6 +242,20 @@ function getGameModelGuidance(gameModelId: string, phase: string, zone: string):
     ].join("\n");
   }
 
+  if (gameModelId === "ROCKLIN_FC") {
+    return [
+      ...common,
+      "ROCKLIN_FC REQUIREMENTS:",
+      "- Emphasize proactive vertical-possession behavior with immediate regain intent.",
+      "- Constraints should reward line-break pass-or-dribble actions, overload support, and smart switching under pressure.",
+      "- Coaching points must include width/depth shape, support angles, final-third intensity, and quick finishing decisions.",
+      "- On loss: immediate 3-5 second counterpress; if regain fails, recover compact shape.",
+      "- On regain: first action forward if available; otherwise secure and expand shape before next penetration.",
+      "- Diagram should show progression lanes, final-third attacking actions, and clear ATT->DEF / DEF->ATT transition moments.",
+      "- Avoid passive low-block default and avoid slow sterile circulation as the main objective.",
+    ].join("\n");
+  }
+
   return [
     ...common,
     "COACHAI REQUIREMENTS:",
@@ -430,6 +444,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "   - POSSESSION: circulation/overloads/line breaks dominate.",
     "   - PRESSING: triggers/angles/compact regains dominate.",
     "   - TRANSITION: regain-loss reaction windows dominate.",
+    "   - ROCKLIN_FC: vertical progression + final-third intensity + immediate counterpress/compact recovery dominate.",
     "   - COACHAI: balanced moments with explicit switching logic.",
     "   If these are missing, this is a gameModel failure.",
     "15. constraints MUST be 2-5 concrete rules and include at least one explicit gameModel cue.",
