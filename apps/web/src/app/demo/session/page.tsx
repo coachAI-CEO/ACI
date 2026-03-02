@@ -937,6 +937,13 @@ function SessionDemoPageContent() {
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const isBackgroundSeriesProgress = Boolean(pendingSeriesCheck);
+  const showProgressDialog = loading || isBackgroundSeriesProgress;
+  const progressIsSeries = progressInfo?.isSeries || isBackgroundSeriesProgress;
+  const progressTotalSessions = progressInfo?.totalSessions || pendingSeriesCheck?.expectedCount;
+  const progressCurrentSession =
+    progressInfo?.currentSession ||
+    (progressTotalSessions ? Math.min(progressTotalSessions, Math.max(1, liveSeriesSessions.length + 1)) : 1);
 
   useEffect(() => {
     // Ensure the generating overlay appears immediately for AI/chat-triggered runs.
@@ -1083,6 +1090,8 @@ function SessionDemoPageContent() {
       generationAbortRef.current = null;
     }
     void cancelGenerationOnServer();
+    setPendingSeriesCheck(null);
+    setCheckingForSeries(false);
     setLoading(false);
     setProgressInfo(null);
     setLiveSeriesSessions([]);
@@ -1430,10 +1439,7 @@ function SessionDemoPageContent() {
               return;
             }
             const errorMsg = e?.message || String(e);
-            const isBackgroundGeneration =
-              errorMsg.includes("interrupted") ||
-              errorMsg.includes("timeout") ||
-              errorMsg.includes("503");
+            const isBackgroundGeneration = /interrupted|timeout|timed out|503|504/i.test(errorMsg);
             if (isBackgroundGeneration) {
               console.warn("[SESSION_PAGE] Progressive series still generating in background:", errorMsg);
             } else {
@@ -2002,11 +2008,11 @@ function SessionDemoPageContent() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-      {loading && (
+      {showProgressDialog && (
         <SessionProgress
-          isSeries={progressInfo?.isSeries || false}
-          totalSessions={progressInfo?.totalSessions}
-          currentSession={progressInfo?.currentSession}
+          isSeries={progressIsSeries}
+          totalSessions={progressTotalSessions}
+          currentSession={progressCurrentSession}
           readySeriesSessions={liveSeriesSessions}
           onCancel={cancelGeneration}
         />
@@ -2425,10 +2431,7 @@ function SessionDemoPageContent() {
                           return;
                         }
                         const errorMsg = e?.message || String(e);
-                        const isBackgroundGeneration =
-                          errorMsg.includes("interrupted") ||
-                          errorMsg.includes("timeout") ||
-                          errorMsg.includes("503");
+                        const isBackgroundGeneration = /interrupted|timeout|timed out|503|504/i.test(errorMsg);
                         if (isBackgroundGeneration) {
                           setError(
                             "GENERATION_IN_PROGRESS: The connection timed out, but your sessions are being generated in the background. " +
