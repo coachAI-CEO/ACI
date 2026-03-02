@@ -465,6 +465,11 @@ export default function AdminDashboard() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [roleActionNotice, setRoleActionNotice] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [updatingUserRole, setUpdatingUserRole] = useState<string | null>(null);
   const [showCoachLevelModal, setShowCoachLevelModal] = useState<{ userId: string; email: string; currentCoachLevel: string | null; currentAgeGroups: string[] } | null>(null);
   const [coachLevelForm, setCoachLevelForm] = useState({
     coachLevel: "" as "" | "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS",
@@ -987,8 +992,10 @@ export default function AdminDashboard() {
   }, [createUserForm, loadUsers, fetchData]);
 
   const updateUserRole = useCallback(async (userId: string, role?: string, adminRole?: string | null) => {
+    setRoleActionNotice(null);
+    setUpdatingUserRole(userId);
     try {
-      const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/role`, {
+      const res = await fetch(`/api/admin/users/${userId}/role`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -999,16 +1006,25 @@ export default function AdminDashboard() {
           ...(adminRole !== undefined && { adminRole }),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (data.ok) {
         // Reload users and summary
-        loadUsers(usersPage);
-        fetchData();
+        await loadUsers(usersPage);
+        await fetchData();
+        setRoleActionNotice({ type: "success", message: "User role updated." });
       } else {
-        alert(data.error || "Failed to update role");
+        setRoleActionNotice({ type: "error", message: data?.error || "Failed to update role" });
       }
     } catch (e: any) {
-      alert(e?.message || "Failed to update role");
+      setRoleActionNotice({
+        type: "error",
+        message:
+          e?.message === "Failed to fetch" || e?.name === "TypeError"
+            ? "Could not reach the admin API. Check API_URL/NEXT_PUBLIC_API_URL and backend availability."
+            : e?.message || "Failed to update role",
+      });
+    } finally {
+      setUpdatingUserRole(null);
     }
   }, [usersPage, loadUsers, fetchData]);
 
@@ -3911,6 +3927,17 @@ export default function AdminDashboard() {
                   {emailActionNotice.message}
                 </div>
               )}
+              {roleActionNotice && (
+                <div
+                  className={`mb-3 rounded-lg border p-3 text-sm ${
+                    roleActionNotice.type === "success"
+                      ? "border-emerald-700/50 bg-emerald-900/20 text-emerald-300"
+                      : "border-red-700/50 bg-red-900/20 text-red-300"
+                  }`}
+                >
+                  {roleActionNotice.message}
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-700/50">
@@ -3933,6 +3960,7 @@ export default function AdminDashboard() {
                         <select
                           value={user.role}
                           onChange={(e) => updateUserRole(user.id, e.target.value)}
+                          disabled={updatingUserRole === user.id}
                           className="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                         >
                           <option value="FREE">FREE</option>
@@ -3946,6 +3974,7 @@ export default function AdminDashboard() {
                         <select
                           value={user.adminRole || ""}
                           onChange={(e) => updateUserRole(user.id, undefined, e.target.value || null)}
+                          disabled={updatingUserRole === user.id}
                           className="px-2 py-1 rounded border border-slate-700 bg-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
                         >
                           <option value="">None</option>
