@@ -25,7 +25,7 @@ type CoachChatProps = {
   onGenerateRequest?: (params: any) => void;
 };
 
-const CHAT_STORAGE_KEY = "coachAssistant.chat.v1";
+const CHAT_STORAGE_KEY_PREFIX = "coachAssistant.chat.v2";
 const CHAT_HISTORY_LIMIT = 30;
 const WELCOME_MESSAGE: Message = {
   id: "welcome",
@@ -84,6 +84,23 @@ const normalizeStoredMessage = (value: any): Message | null => {
   };
 };
 
+const getScopedChatStorageKey = (): string => {
+  if (typeof window === "undefined") return `${CHAT_STORAGE_KEY_PREFIX}:anon`;
+
+  try {
+    const rawUser = localStorage.getItem("user");
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      const scope = parsed?.id || parsed?.email;
+      if (scope) return `${CHAT_STORAGE_KEY_PREFIX}:${String(scope)}`;
+    }
+  } catch {
+    // ignore malformed user storage
+  }
+
+  return `${CHAT_STORAGE_KEY_PREFIX}:anon`;
+};
+
 export const CoachChat: React.FC<CoachChatProps> = ({
   onSessionSelect,
   onGenerateRequest,
@@ -93,6 +110,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [chatStorageKey, setChatStorageKey] = useState(`${CHAT_STORAGE_KEY_PREFIX}:anon`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -105,9 +123,14 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   }, [messages]);
 
   useEffect(() => {
+    setChatStorageKey(getScopedChatStorageKey());
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
+    setHydrated(false);
     try {
-      const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+      const raw = localStorage.getItem(chatStorageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -122,17 +145,17 @@ export const CoachChat: React.FC<CoachChatProps> = ({
     } finally {
       setHydrated(true);
     }
-  }, []);
+  }, [chatStorageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(clampMessages(messages)));
+      localStorage.setItem(chatStorageKey, JSON.stringify(clampMessages(messages)));
     } catch {
       // Best-effort local persistence only.
     }
-  }, [messages, hydrated]);
+  }, [messages, hydrated, chatStorageKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
