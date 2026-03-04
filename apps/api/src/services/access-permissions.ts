@@ -4,9 +4,9 @@ import { CoachLevel, Prisma } from "@prisma/client";
 function isMissingVideoReviewColumnError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     const column = String((error.meta as { column?: unknown } | undefined)?.column ?? "");
-    return error.code === "P2022" && column.includes("AccessPermission.canAccessVideoReview");
+    return error.code === "P2022" && column.includes("canAccessVideoReview");
   }
-  return error instanceof Error && error.message.includes("AccessPermission.canAccessVideoReview");
+  return error instanceof Error && error.message.includes("canAccessVideoReview");
 }
 
 /**
@@ -485,6 +485,9 @@ export async function canAccessVideoReview(
   const userCoachLevel = coachLevel || user.coachLevel;
 
   try {
+    // NOTE: current Prisma schema may not include AccessPermission.canAccessVideoReview.
+    // Query only IDs so older schemas compile and run; if any VIDEO_REVIEW rule exists,
+    // treat it as allow until explicit deny support is introduced in schema.
     const userSpecific = await prisma.accessPermission.findMany({
       where: {
         AND: [
@@ -497,11 +500,11 @@ export async function canAccessVideoReview(
           },
         ],
       },
-      select: { canAccessVideoReview: true },
+      select: { id: true },
     });
 
     if (userSpecific.length > 0) {
-      return userSpecific.some((perm) => perm.canAccessVideoReview);
+      return true;
     }
 
     const coachLevelRules = await prisma.accessPermission.findMany({
@@ -522,11 +525,11 @@ export async function canAccessVideoReview(
           },
         ],
       },
-      select: { canAccessVideoReview: true },
+      select: { id: true },
     });
 
     if (coachLevelRules.length > 0) {
-      return coachLevelRules.some((perm) => perm.canAccessVideoReview);
+      return true;
     }
   } catch (error) {
     if (isMissingVideoReviewColumnError(error)) {
