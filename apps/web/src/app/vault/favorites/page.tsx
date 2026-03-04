@@ -8,6 +8,7 @@ import DrillDiagramCard from "@/components/DrillDiagramCard";
 import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 type FavoriteSession = {
   id: string;
@@ -128,6 +129,7 @@ export default function FavoritesPage() {
     seriesTitle: string;
     sessions: Array<{ id: string; title: string; refCode?: string | null }>;
   } | null>(null);
+  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
 
   // Filters
   const [filters, setFilters] = useState({
@@ -135,6 +137,21 @@ export default function FavoritesPage() {
     ageGroup: "",
     phase: "",
   });
+
+  useEffect(() => {
+    if (!enforcedGameModelId) return;
+    setFilters((prev) =>
+      prev.gameModelId === enforcedGameModelId ? prev : { ...prev, gameModelId: enforcedGameModelId }
+    );
+  }, [enforcedGameModelId]);
+
+  const selectedSessionSummary =
+    typeof selectedSession?.json?.summary === "string"
+      ? selectedSession.json.summary.trim()
+      : "";
+  const selectedSessionDrills = Array.isArray(selectedSession?.json?.drills)
+    ? selectedSession.json.drills.filter((drill: any) => drill && typeof drill === "object")
+    : [];
 
   const loadFavorites = useCallback(async () => {
     setLoading(true);
@@ -336,14 +353,15 @@ export default function FavoritesPage() {
           <select
             value={filters.gameModelId}
             onChange={(e) => setFilters({ ...filters, gameModelId: e.target.value })}
+            disabled={Boolean(enforcedGameModelId)}
             className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-200"
           >
-            <option value="">All Game Models</option>
-            <option value="POSSESSION">Possession</option>
-            <option value="PRESSING">Pressing</option>
-            <option value="TRANSITION">Transition</option>
-            <option value="COACHAI">Balanced</option>
-            <option value="ROCKLIN_FC">Rocklin FC</option>
+            {!enforcedGameModelId && <option value="">All Game Models</option>}
+            {scopedGameModelOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
           <select
@@ -374,7 +392,9 @@ export default function FavoritesPage() {
 
           {(filters.gameModelId || filters.ageGroup || filters.phase) && (
             <button
-              onClick={() => setFilters({ gameModelId: "", ageGroup: "", phase: "" })}
+              onClick={() =>
+                setFilters({ gameModelId: enforcedGameModelId || "", ageGroup: "", phase: "" })
+              }
               className="px-3 py-2 text-sm text-slate-400 hover:text-slate-200"
             >
               Clear Filters
@@ -605,7 +625,7 @@ export default function FavoritesPage() {
 
         {/* Session Detail Modal */}
         {selectedSession && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4">
             <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-700/70 bg-slate-900/90 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -671,19 +691,19 @@ export default function FavoritesPage() {
               </div>
 
               <div className="mt-6 space-y-6">
-                {selectedSession.json?.summary && (
+                {selectedSessionSummary && (
                   <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
                     <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Summary</h3>
                     <p className="text-sm text-slate-300 leading-relaxed">
-                      {selectedSession.json.summary}
+                      {selectedSessionSummary}
                     </p>
                   </div>
                 )}
 
-                {selectedSession.json?.drills && selectedSession.json.drills.length > 0 && (
+                {selectedSessionDrills.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
-                    {selectedSession.json.drills.map((drill: any, i: number) => {
+                    {selectedSessionDrills.map((drill: any, i: number) => {
                       const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
                       const description = drill.description ?? drill.json?.description;
                       const organization = drill.organization ?? drill.json?.organization;
@@ -703,7 +723,7 @@ export default function FavoritesPage() {
                             <span className="text-[10px] text-slate-500">{drill.durationMin} min</span>
                           )}
                         </div>
-                        <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title}</h4>
+                        <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title || "Untitled drill"}</h4>
                         
                         {/* Two-column layout: Diagram + Details */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -751,6 +771,15 @@ export default function FavoritesPage() {
                       </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {!selectedSessionSummary && selectedSessionDrills.length === 0 && (
+                  <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                    <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-2">Session Content</h3>
+                    <p className="text-sm text-slate-400">
+                      This session has no saved summary or drills yet.
+                    </p>
                   </div>
                 )}
 

@@ -6,9 +6,10 @@ import { findSimilarSessions } from "./services/vault";
 import { generateSessionPdf, generateCompactSessionPdf } from "./services/pdf-export";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
-import { authenticate, requireFeature, AuthRequest } from "./middleware/auth";
+import { authenticate, optionalAuth, requireFeature, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
 import { canGenerateSessions } from "./services/access-permissions";
+import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
 import {
   clearGenerationCancelled,
   isGenerationCancelled,
@@ -17,16 +18,51 @@ import {
 
 const r = express.Router();
 
+function extractTaggedBlock(rawText: string, tagName: string): string | null {
+  const open = `<${tagName}>`;
+  const close = `</${tagName}>`;
+  const start = rawText.indexOf(open);
+  if (start < 0) return null;
+  const end = rawText.indexOf(close, start + open.length);
+  if (end < 0) return null;
+  return rawText.slice(start + open.length, end).trim();
+}
+
+function stripTaggedBlock(rawText: string, tagName: string): string {
+  const open = `<${tagName}>`;
+  const close = `</${tagName}>`;
+  const start = rawText.indexOf(open);
+  if (start < 0) return rawText;
+  const end = rawText.indexOf(close, start + open.length);
+  if (end < 0) return rawText;
+  const before = rawText.slice(0, start).trimEnd();
+  const after = rawText.slice(end + close.length).trimStart();
+  return `${before}${before && after ? "\n\n" : ""}${after}`.trim();
+}
+
+function normalizeChatDiagram(raw: any): any | null {
+  if (!raw || typeof raw !== "object") return null;
+  const diagram = { ...raw };
+  diagram.pitch = typeof diagram.pitch === "object" && diagram.pitch !== null
+    ? { ...diagram.pitch }
+    : { variant: "HALF", orientation: "HORIZONTAL", showZones: false };
+  if (typeof diagram.pitch.showZones !== "boolean") diagram.pitch.showZones = false;
+  if (!Array.isArray(diagram.players)) diagram.players = [];
+  if (!Array.isArray(diagram.arrows)) diagram.arrows = [];
+  if (!Array.isArray(diagram.annotations)) diagram.annotations = [];
+  if (!Array.isArray(diagram.safeZones)) diagram.safeZones = [];
+  if (!Array.isArray(diagram.goals)) diagram.goals = [];
+  if (diagram.players.length === 0) return null;
+  return diagram;
+}
+
 function normalizeCoachLevel(value: unknown): string {
-  const raw = String(value || "").trim().toUpperCase();
-  const v = raw
-    .replace(/\+/g, " PLUS ")
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const v = String(value || "")
+    .trim()
+    .toUpperCase();
   if (v === "GRASSROOTS") return "GRASSROOTS";
   if (v === "USSF_C") return "USSF_C";
-  if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
+  if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
   return v;
 }
 
@@ -55,8 +91,9 @@ r.post("/ai/cancel-generation", authenticate, async (req: AuthRequest, res) => {
 });
 
 // AI Chat endpoint for coaching assistant
-r.post("/ai/chat", async (req, res) => {
+r.post("/ai/chat", optionalAuth, async (req: AuthRequest, res) => {
   try {
+    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
     const { prompt, context } = req.body;
     if (!prompt) {
       return res.status(400).json({ ok: false, error: "prompt is required" });
@@ -69,7 +106,12 @@ r.post("/ai/chat", async (req, res) => {
     // Lookup each referenced item
     for (const code of refCodes) {
       const result = await lookupByRefCode(code);
-      if (result) {
+      if (
+        result &&
+        (!enforcedGameModelId ||
+          !result.data?.gameModelId ||
+          String(result.data.gameModelId) === enforcedGameModelId)
+      ) {
         referencedItems.push({
           refCode: code,
           type: result.type,
@@ -128,10 +170,31 @@ Please help the user with their request, using the context of the referenced ite
     });
     
     try {
-      const text = await generateText(enhancedPrompt, { timeout: 30000, retries: 0 });
+      const diagramRequested =
+        /\bdiagram\b|\bdraw\b|\bvisual\b|\bshape\b|\bpositions?\b|\bwhere should players\b/i.test(String(prompt || ""));
+      const diagramInstruction = diagramRequested
+        ? `
+
+If the coach asks for a visual/diagram, append ONE XML-like block at the END of your response:
+<diagram_json>{"pitch":{"variant":"HALF","orientation":"HORIZONTAL","showZones":false},"players":[{"id":"a1","team":"ATT","number":9,"x":35,"y":60},{"id":"a2","team":"ATT","number":10,"x":50,"y":55},{"id":"d1","team":"DEF","number":4,"x":52,"y":36}],"goals":[{"x":50,"y":5,"width":16},{"x":50,"y":95,"width":16}],"arrows":[{"id":"r1","type":"run","from":{"playerId":"a1"},"to":{"x":42,"y":40}},{"id":"p1","type":"pass","from":{"playerId":"a2"},"to":{"x":35,"y":60}}],"annotations":[{"id":"t1","x":48,"y":48,"text":"Break line between CB/FB","color":"#fde68a","fontSize":10}],"safeZones":[]}</diagram_json>
+Only include the block if explicitly helpful. Keep normal coaching text outside this block.`
+        : "";
+
+      const text = await generateText(`${enhancedPrompt}${diagramInstruction}`, { timeout: 30000, retries: 0 });
+      const diagramJson = extractTaggedBlock(text, "diagram_json");
+      let diagram: any = null;
+      if (diagramJson) {
+        try {
+          diagram = normalizeChatDiagram(JSON.parse(diagramJson));
+        } catch {
+          diagram = null;
+        }
+      }
+      const plainText = stripTaggedBlock(text, "diagram_json");
       return res.json({
         ok: true,
-        text,
+        text: plainText,
+        diagram,
         referencedItems: referencedItems.map(item => ({
           refCode: item.refCode,
           type: item.type,
@@ -185,6 +248,10 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
 
   try {
     const body = applyCoachLevelGuardrails((req.body || {}) as SessionPromptInput);
+    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    if (enforcedGameModelId) {
+      body.gameModelId = enforcedGameModelId;
+    }
 
     // Check access permissions
     if (req.userId) {
@@ -322,6 +389,10 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
   try {
     const body = req.body || {};
     const baseInput = applyCoachLevelGuardrails((body.baseInput || body) as SessionPromptInput);
+    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    if (enforcedGameModelId) {
+      baseInput.gameModelId = enforcedGameModelId;
+    }
     const numberOfSessions = Number(body.numberOfSessions) || 3;
 
     if (numberOfSessions < 2 || numberOfSessions > 10) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getUserId } from "@/lib/user";
 import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
 import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 // Helper component for filtered vault list
 function FilteredVaultList({ 
@@ -452,6 +453,14 @@ export default function VideoAnalysisPage() {
   const [noMatchDialogOpen, setNoMatchDialogOpen] = useState(false);
   const [searchParams, setSearchParams] = useState<any>(null);
   const [selectedSession, setSelectedSession] = useState<any>(null);
+  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
+
+  useEffect(() => {
+    if (!enforcedGameModelId) return;
+    setVideoContext((prev) =>
+      prev.gameModelId === enforcedGameModelId ? prev : { ...prev, gameModelId: enforcedGameModelId }
+    );
+  }, [enforcedGameModelId]);
 
   const analysisItems: VideoAnalysisItem[] = useMemo(
     () => (Array.isArray(videoAnalysis?.analysisArray) ? videoAnalysis.analysisArray : []),
@@ -1223,7 +1232,7 @@ export default function VideoAnalysisPage() {
       playerLevel: String(item.playerLevel || "").trim(),
       coachLevel: String(item.coachLevel || "").trim(),
       formationUsed: String(item.formationUsed || item.analysis?.context?.formationUsed || "").trim(),
-      gameModelId: String(item.gameModelId || "").trim(),
+      gameModelId: enforcedGameModelId || String(item.gameModelId || "").trim(),
       phase: String(item.phase || "").trim(),
       zone: String(item.zone || "").trim(),
       focusTeamColor: String(item.focusTeamColor || "").trim(),
@@ -1375,14 +1384,15 @@ export default function VideoAnalysisPage() {
                   <select
                     value={videoContext.gameModelId}
                     onChange={(e) => setVideoContext((prev) => ({ ...prev, gameModelId: e.target.value }))}
+                    disabled={Boolean(enforcedGameModelId)}
                     className="rounded-lg border border-white/[0.08] bg-[#0a1620] px-2.5 py-1.5 text-xs text-white/90 outline-none transition focus:border-cyan-400/50"
                   >
                     <option value="" disabled>Select game model</option>
-                    <option value="POSSESSION">Possession</option>
-                    <option value="PRESSING">Pressing</option>
-                    <option value="TRANSITION">Transition</option>
-                    <option value="COACHAI">Balanced (CoachAI)</option>
-                    <option value="ROCKLIN_FC">Rocklin FC</option>
+                    {scopedGameModelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 whitespace-nowrap text-[11px] text-slate-400">

@@ -19,6 +19,7 @@ import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from 
 import { getUserHeaders } from "@/lib/user";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 type OrganizationObject = {
   setupSteps?: string[];
@@ -198,17 +199,11 @@ const coachLevelOptions = [
 ] as const;
 
 function normalizeCoachLevel(value?: string): string {
-  const raw = String(value || "").trim().toUpperCase();
-  const v = raw
-    .replace(/\+/g, " PLUS ")
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-  if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
-  if (v === "USSF_C") return "USSF_C";
-  if (v === "USSF_D") return "GRASSROOTS";
+  const v = String(value || "").toUpperCase();
+  if (v === "USSF_B_PLUS" || v === "USSF B+" || v === "USSF_B") return "USSF_B_PLUS";
+  if (v === "USSF_C" || v === "USSF C") return "USSF_C";
   if (v === "GRASSROOTS") return "GRASSROOTS";
-  return "GRASSROOTS";
+  return v;
 }
 
 function getLanguageLevelBadge(coachLevel?: string) {
@@ -417,9 +412,7 @@ function getConfigFromSearchParams(
   const defaults = getDefaultConfig();
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
-  const coachLevel = normalizeCoachLevel(
-    parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS")
-  );
+  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
   const guardedPlayerLevelDefault =
     coachLevel === "GRASSROOTS" ? "BEGINNER" : defaults.playerLevel;
   const rawPlayerLevel = parseStringOrDefault(searchParams.get("playerLevel"), guardedPlayerLevelDefault);
@@ -445,7 +438,7 @@ function getConfigFromSearchParams(
       getDefaultFormation(parseStringOrDefault(searchParams.get("ageGroup"), defaults.ageGroup))
     ),
     playerLevel,
-    coachLevel,
+    coachLevel: parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel),
     numbersMin: parseNumberOrDefault(searchParams.get("numbersMin"), defaults.numbersMin),
     numbersMax: parseNumberOrDefault(searchParams.get("numbersMax"), defaults.numbersMax),
     goalsAvailable: parseNumberOrDefault(searchParams.get("goalsAvailable"), defaults.goalsAvailable),
@@ -932,21 +925,32 @@ function SessionDemoPageContent() {
     seriesId: string | null;
   } | null>(null);
   const pendingSeriesIdRef = useRef<string | null>(null);
+  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
 
   const config = getConfigFromSearchParams(searchParams);
+  const effectiveGameModelId = enforcedGameModelId || config.gameModelId;
   const normalizeCoachLevelForGeneration = (value?: string) => {
-    return normalizeCoachLevel(value);
+    const v = String(value || "").toUpperCase();
+    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_C") return "USSF_C";
+    if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
+    if (v === "USSF_D") return "GRASSROOTS";
+    return undefined;
   };
   const hasParams = searchParams.toString().length > 0;
   const searchParamsString = searchParams.toString();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-  const isBackgroundSeriesProgress = Boolean(pendingSeriesCheck);
-  const showProgressDialog = loading || isBackgroundSeriesProgress;
-  const progressIsSeries = progressInfo?.isSeries || isBackgroundSeriesProgress;
-  const progressTotalSessions = progressInfo?.totalSessions || pendingSeriesCheck?.expectedCount;
-  const progressCurrentSession =
-    progressInfo?.currentSession ||
-    (progressTotalSessions ? Math.min(progressTotalSessions, Math.max(1, liveSeriesSessions.length + 1)) : 1);
+
+  useEffect(() => {
+    if (!enforcedGameModelId) return;
+    // Avoid introducing query params on a clean page load; this page interprets
+    // query params as generation intent.
+    if (!searchParamsString) return;
+    if (searchParams.get("gameModelId") === enforcedGameModelId) return;
+    const next = new URLSearchParams(searchParamsString);
+    next.set("gameModelId", enforcedGameModelId);
+    router.replace(`/demo/session?${next.toString()}`);
+  }, [enforcedGameModelId, router, searchParams, searchParamsString]);
 
   useEffect(() => {
     // Ensure the generating overlay appears immediately for AI/chat-triggered runs.
@@ -1093,8 +1097,6 @@ function SessionDemoPageContent() {
       generationAbortRef.current = null;
     }
     void cancelGenerationOnServer();
-    setPendingSeriesCheck(null);
-    setCheckingForSeries(false);
     setLoading(false);
     setProgressInfo(null);
     setLiveSeriesSessions([]);
@@ -1368,6 +1370,24 @@ function SessionDemoPageContent() {
       const isSeries = searchParams.get("series") === "true";
       const numberOfSessions = parseInt(searchParams.get("numberOfSessions") || "3");
       const autoGenerate = searchParams.get("autoGenerate") === "true";
+      const hasGenerationInputs =
+        autoGenerate ||
+        Boolean(
+          searchParams.get("ageGroup") ||
+            searchParams.get("phase") ||
+            searchParams.get("topic") ||
+            searchParams.get("formationAttacking") ||
+            searchParams.get("formationDefending")
+        );
+
+      if (!hasGenerationInputs) {
+        setLoading(false);
+        setProgressInfo(null);
+        setData(null);
+        setSeriesData(null);
+        setLiveSeriesSessions([]);
+        return;
+      }
       
       setError(null);
       setSessionMode(isSeries ? "series" : "single");
@@ -1442,7 +1462,10 @@ function SessionDemoPageContent() {
               return;
             }
             const errorMsg = e?.message || String(e);
-            const isBackgroundGeneration = /interrupted|timeout|timed out|503|504/i.test(errorMsg);
+            const isBackgroundGeneration =
+              errorMsg.includes("interrupted") ||
+              errorMsg.includes("timeout") ||
+              errorMsg.includes("503");
             if (isBackgroundGeneration) {
               console.warn("[SESSION_PAGE] Progressive series still generating in background:", errorMsg);
             } else {
@@ -2011,11 +2034,11 @@ function SessionDemoPageContent() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
-      {showProgressDialog && (
+      {loading && (
         <SessionProgress
-          isSeries={progressIsSeries}
-          totalSessions={progressTotalSessions}
-          currentSession={progressCurrentSession}
+          isSeries={progressInfo?.isSeries || false}
+          totalSessions={progressInfo?.totalSessions}
+          currentSession={progressInfo?.currentSession}
           readySeriesSessions={liveSeriesSessions}
           onCancel={cancelGeneration}
         />
@@ -2089,15 +2112,16 @@ function SessionDemoPageContent() {
                         Game model
                       </label>
                       <select
+                        key={effectiveGameModelId}
                         name="gameModelId"
-                        defaultValue={config.gameModelId}
+                        defaultValue={effectiveGameModelId}
                         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                       >
-                        <option value="POSSESSION">Possession</option>
-                        <option value="PRESSING">Pressing</option>
-                        <option value="TRANSITION">Transition</option>
-                        <option value="COACHAI">Balanced (CoachAI)</option>
-                        <option value="ROCKLIN_FC">Rocklin FC</option>
+                        {scopedGameModelOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -2434,7 +2458,10 @@ function SessionDemoPageContent() {
                           return;
                         }
                         const errorMsg = e?.message || String(e);
-                        const isBackgroundGeneration = /interrupted|timeout|timed out|503|504/i.test(errorMsg);
+                        const isBackgroundGeneration =
+                          errorMsg.includes("interrupted") ||
+                          errorMsg.includes("timeout") ||
+                          errorMsg.includes("503");
                         if (isBackgroundGeneration) {
                           setError(
                             "GENERATION_IN_PROGRESS: The connection timed out, but your sessions are being generated in the background. " +
@@ -3613,7 +3640,11 @@ function SessionDemoPageContent() {
               // Build query params and navigate to trigger generation
               const queryParams = new URLSearchParams();
               if (params.ageGroup) queryParams.set("ageGroup", params.ageGroup);
-              if (params.gameModelId) queryParams.set("gameModelId", params.gameModelId);
+              if (enforcedGameModelId) {
+                queryParams.set("gameModelId", enforcedGameModelId);
+              } else if (params.gameModelId) {
+                queryParams.set("gameModelId", params.gameModelId);
+              }
               if (params.phase) queryParams.set("phase", params.phase);
               if (params.zone) queryParams.set("zone", params.zone);
               if (params.topic) queryParams.set("topic", params.topic);

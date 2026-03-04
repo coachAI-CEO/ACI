@@ -7,6 +7,7 @@ import CoachChat from "@/components/CoachChat";
 import { DrillDiagram } from "@/components/DrillDiagram";
 import { SAMPLE_DIAGRAM_V1 } from "@/sample-diagram-v1";
 import type { DiagramV1 } from "@/types/diagram";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 const coachQuotes = [
   {
@@ -164,6 +165,7 @@ const quickLinks = [
 
 export default function Home() {
   const router = useRouter();
+  const { enforcedGameModelId } = useEnforcedGameModelScope();
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [drillIndex, setDrillIndex] = useState(0);
   const [greeting, setGreeting] = useState("Good evening");
@@ -272,7 +274,11 @@ export default function Home() {
               onGenerateRequest={(params) => {
                 const queryParams = new URLSearchParams();
                 if (params.ageGroup) queryParams.set("ageGroup", params.ageGroup);
-                if (params.gameModelId) queryParams.set("gameModelId", params.gameModelId);
+                if (enforcedGameModelId) {
+                  queryParams.set("gameModelId", enforcedGameModelId);
+                } else if (params.gameModelId) {
+                  queryParams.set("gameModelId", params.gameModelId);
+                }
                 if (params.phase) queryParams.set("phase", params.phase);
                 if (params.zone) queryParams.set("zone", params.zone);
                 if (params.topic) queryParams.set("topic", params.topic);

@@ -11,6 +11,7 @@ import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 type VaultSession = {
   id: string;
@@ -185,6 +186,7 @@ export default function VaultPage() {
   const [seriesPlayerPlans, setSeriesPlayerPlans] = useState<Map<string, { id: string; refCode: string | null }>>(new Map()); // Maps seriesId -> playerPlan info
   const [sessionCalendarCounts, setSessionCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps sessionId -> number of scheduled events
   const [seriesCalendarCounts, setSeriesCalendarCounts] = useState<Map<string, number>>(new Map()); // Maps seriesId -> number of scheduled events
+  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
   
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({
@@ -198,6 +200,21 @@ export default function VaultPage() {
     creator: "", // Filter by creator name/email
     favoritesOnly: false, // Show only favorited items (per active tab)
   });
+
+  useEffect(() => {
+    if (!enforcedGameModelId) return;
+    setFilters((prev) =>
+      prev.gameModelId === enforcedGameModelId ? prev : { ...prev, gameModelId: enforcedGameModelId }
+    );
+  }, [enforcedGameModelId]);
+
+  const selectedSessionSummary =
+    typeof selectedSession?.json?.summary === "string"
+      ? selectedSession.json.summary.trim()
+      : "";
+  const selectedSessionDrills = Array.isArray(selectedSession?.json?.drills)
+    ? selectedSession.json.drills.filter((drill: any) => drill && typeof drill === "object")
+    : [];
 
   // Helper to determine game format from formation
   const getGameFormat = (session: VaultSession): string => {
@@ -1172,14 +1189,15 @@ export default function VaultPage() {
                     <select
                       value={filters.gameModelId}
                       onChange={(e) => setFilters({ ...filters, gameModelId: e.target.value })}
+                      disabled={Boolean(enforcedGameModelId)}
                       className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
                     >
-                      <option value="">All</option>
-                      <option value="POSSESSION">Possession</option>
-                      <option value="PRESSING">Pressing</option>
-                      <option value="TRANSITION">Transition</option>
-                      <option value="COACHAI">Balanced</option>
-                      <option value="ROCKLIN_FC">Rocklin FC</option>
+                      {!enforcedGameModelId && <option value="">All</option>}
+                      {scopedGameModelOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -1239,7 +1257,7 @@ export default function VaultPage() {
                     type="button"
                     onClick={() =>
                       setFilters({
-                        gameModelId: "",
+                        gameModelId: enforcedGameModelId || "",
                         ageGroup: "",
                         phase: "",
                         zone: "",
@@ -1330,6 +1348,16 @@ export default function VaultPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedSession(session);
+                            }}
+                            className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30 transition-colors"
+                            title="View Session"
+                          >
+                            View
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1829,7 +1857,7 @@ export default function VaultPage() {
         )}
 
         {selectedSession && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4">
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4">
             <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-slate-700/70 bg-slate-900/90 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1922,11 +1950,11 @@ export default function VaultPage() {
               </div>
 
               <div className="mt-6 space-y-6">
-                {selectedSession.json?.summary && (
+                {selectedSessionSummary && (
                   <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
                     <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-2">Summary</h3>
                     <p className="text-sm text-slate-300 leading-relaxed">
-                      {selectedSession.json.summary}
+                      {selectedSessionSummary}
                     </p>
                   </div>
                 )}
@@ -2026,10 +2054,10 @@ export default function VaultPage() {
                   </div>
                 )}
 
-                {selectedSession.json?.drills && (
+                {selectedSessionDrills.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">Drills</h3>
-                    {selectedSession.json.drills.map((drill: any, i: number) => {
+                    {selectedSessionDrills.map((drill: any, i: number) => {
                       const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
                       const description = drill.description ?? drill.json?.description;
                       const organization = drill.organization ?? drill.json?.organization;
@@ -2049,7 +2077,7 @@ export default function VaultPage() {
                             <span className="text-[10px] text-slate-500">{drill.durationMin} min</span>
                           )}
                         </div>
-                        <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title}</h4>
+                        <h4 className="font-semibold text-sm text-slate-200 mb-2">{drill.title || "Untitled drill"}</h4>
                         
                         {/* Two-column layout: Diagram + Details */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2097,6 +2125,15 @@ export default function VaultPage() {
                       </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {!selectedSessionSummary && selectedSessionDrills.length === 0 && (
+                  <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
+                    <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wide mb-2">Session Content</h3>
+                    <p className="text-sm text-slate-400">
+                      This session has no saved summary or drills yet.
+                    </p>
                   </div>
                 )}
 

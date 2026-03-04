@@ -15,6 +15,7 @@ import {
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
 import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
+import { getEnforcedClubGameModelId } from './services/club-game-model-scope';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
 type SubscriptionFeatures = {
@@ -80,6 +81,7 @@ interface AuthMeUser {
   emailVerified: boolean;
   emailVerifiedAt: Date | null;
   createdAt: Date;
+  enforcedGameModelId?: string | null;
 }
 
 const r = express.Router();
@@ -124,7 +126,11 @@ r.post('/auth/register', async (req, res) => {
     const data = RegisterSchema.parse(req.body);
     const ipAddress = req.ip || req.headers['x-forwarded-for'] as string;
     const userAgent = req.headers['user-agent'];
-    const result = await registerUser(data);
+    const result = await registerUser({
+      ...data,
+      ipAddress: ipAddress || undefined,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    });
     return res.json({ ok: true, ...result });
   } catch (error: any) {
     if (error.message === 'User already exists') {
@@ -224,6 +230,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     if (!user) {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
+    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
     
     // Get usage limits
     const sessionLimit = await checkUsageLimit(req.userId, 'session');
@@ -239,6 +246,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
       ok: true,
       user: {
         ...user,
+        enforcedGameModelId,
         limits: {
           sessions: sessionLimit,
           drills: drillLimit,
