@@ -2158,6 +2158,14 @@ r.get("/admin/users/summary", requireAdminPermission('canManageUsers'), async (r
   }
 });
 
+// Admin: Account alerts (overview widget)
+r.get("/admin/account-alerts", requireAdminPermission('canAccessAdminDashboard'), async (_req: AdminRequest, res) => {
+  return res.json({
+    ok: true,
+    alerts: [],
+  });
+});
+
 // ------------------------------------
 // Admin: User Management
 // ------------------------------------
