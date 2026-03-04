@@ -1,31 +1,5 @@
-import { promises as fs } from "fs";
-import path from "path";
 import { prisma } from "../prisma";
-
-type ClubRecord = {
-  id: string;
-  name: string;
-  code: string;
-  gameModelId: string;
-  description: string | null;
-  active: boolean;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const CLUBS_STORE_PATH = path.join(__dirname, "..", "..", ".data", "clubs.json");
-
-async function readClubsStore(): Promise<ClubRecord[]> {
-  try {
-    const raw = await fs.readFile(CLUBS_STORE_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return [];
-    throw error;
-  }
-}
+import { getActiveClubByOrganizationName } from "./clubs-store";
 
 /**
  * Returns the enforced club game model for coaches assigned to a club.
@@ -51,13 +25,7 @@ export async function getEnforcedClubGameModelId(userId?: string): Promise<strin
   const organizationName = String(user.organizationName || "").trim();
   if (!organizationName) return null;
 
-  const clubs = await readClubsStore();
-  const club = clubs.find(
-    (c) =>
-      c.active !== false &&
-      String(c.name || "").trim().toLowerCase() === organizationName.toLowerCase()
-  );
+  const club = await getActiveClubByOrganizationName(organizationName);
 
   return club?.gameModelId || null;
 }
-

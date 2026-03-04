@@ -1,10 +1,17 @@
 import express from "express";
-import { promises as fs } from "fs";
-import path from "path";
 import { randomUUID } from "crypto";
 import { SUBSCRIPTION_LIMITS, getFeaturesForUser } from "./config/subscription-limits";
 import { checkUsageLimit } from "./services/auth";
 import { prisma } from "./prisma";
+import {
+  createClub,
+  deleteClub,
+  getClubByCode,
+  getClubById,
+  getClubByName,
+  listClubs,
+  updateClub,
+} from "./services/clubs-store";
 import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
@@ -20,20 +27,6 @@ import { generateVerificationToken, sendVerificationEmail } from "./services/ema
 import { z } from "zod";
 
 const r = express.Router();
-
-type ClubRecord = {
-  id: string;
-  name: string;
-  code: string;
-  gameModelId: string;
-  description: string | null;
-  active: boolean;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const CLUBS_STORE_PATH = path.join(__dirname, "..", ".data", "clubs.json");
 const CLUB_GAME_MODELS = new Set([
   "COACHAI",
   "POSSESSION",
@@ -41,22 +34,6 @@ const CLUB_GAME_MODELS = new Set([
   "TRANSITION",
   "ROCKLIN_FC",
 ]);
-
-async function readClubsStore(): Promise<ClubRecord[]> {
-  try {
-    const raw = await fs.readFile(CLUBS_STORE_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error: any) {
-    if (error?.code === "ENOENT") return [];
-    throw error;
-  }
-}
-
-async function writeClubsStore(clubs: ClubRecord[]): Promise<void> {
-  await fs.mkdir(path.dirname(CLUBS_STORE_PATH), { recursive: true });
-  await fs.writeFile(CLUBS_STORE_PATH, JSON.stringify(clubs, null, 2), "utf8");
-}
 
 // Protect ALL admin routes
 r.use(requireAdmin);
@@ -3452,7 +3429,7 @@ r.get("/admin/access-permissions/check/:userId", requireAdminPermission('canMana
 
 r.get("/admin/clubs", requireAdminPermission("canManageUsers"), async (_req: AdminRequest, res) => {
   try {
-    const clubs = await readClubsStore();
+    const clubs = await listClubs();
     const withCounts = await Promise.all(
       clubs.map(async (club) => {
         const memberCount = await prisma.user.count({
@@ -3472,8 +3449,7 @@ r.get("/admin/clubs", requireAdminPermission("canManageUsers"), async (_req: Adm
 r.get("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
   try {
     const { clubId } = req.params;
-    const clubs = await readClubsStore();
-    const club = clubs.find((c) => c.id === clubId);
+    const club = await getClubById(clubId);
     if (!club) {
       return res.status(404).json({ ok: false, error: "Club not found" });
     }
@@ -3514,31 +3490,28 @@ r.post("/admin/clubs", requireAdminPermission("canManageUsers"), async (req: Adm
     });
 
     const body = schema.parse(req.body ?? {});
-    const clubs = await readClubsStore();
     const normalizedCode = body.code.trim().toLowerCase();
+    const normalizedName = body.name.trim();
 
     if (!CLUB_GAME_MODELS.has(body.gameModelId)) {
       return res.status(400).json({ ok: false, error: "Invalid game model for club" });
     }
-    if (clubs.some((c) => c.code.toLowerCase() === normalizedCode)) {
+    if (await getClubByCode(normalizedCode)) {
       return res.status(400).json({ ok: false, error: "Club code already exists" });
     }
+    if (await getClubByName(normalizedName)) {
+      return res.status(400).json({ ok: false, error: "Club name already exists" });
+    }
 
-    const now = new Date().toISOString();
-    const club: ClubRecord = {
+    const club = await createClub({
       id: randomUUID(),
-      name: body.name.trim(),
+      name: normalizedName,
       code: normalizedCode,
       gameModelId: body.gameModelId,
       description: body.description?.trim() || null,
       active: body.active ?? true,
       createdBy: req.userId || null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    clubs.push(club);
-    await writeClubsStore(clubs);
+    });
 
     await logAdminAction(
       req.userId!,
@@ -3576,13 +3549,11 @@ r.patch("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async 
     });
     const body = schema.parse(req.body ?? {});
 
-    const clubs = await readClubsStore();
-    const idx = clubs.findIndex((c) => c.id === clubId);
-    if (idx === -1) {
+    const current = await getClubById(clubId);
+    if (!current) {
       return res.status(404).json({ ok: false, error: "Club not found" });
     }
 
-    const current = clubs[idx];
     const nextCode = body.code ? body.code.trim().toLowerCase() : current.code;
     const nextName = body.name ? body.name.trim() : current.name;
     const nextGameModelId = body.gameModelId ?? current.gameModelId;
@@ -3591,14 +3562,16 @@ r.patch("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async 
       return res.status(400).json({ ok: false, error: "Invalid game model for club" });
     }
 
-    if (
-      clubs.some((c, i) => i !== idx && c.code.toLowerCase() === nextCode)
-    ) {
+    const existingByCode = await getClubByCode(nextCode);
+    if (existingByCode && existingByCode.id !== clubId) {
       return res.status(400).json({ ok: false, error: "Club code already exists" });
     }
+    const existingByName = await getClubByName(nextName);
+    if (existingByName && existingByName.id !== clubId) {
+      return res.status(400).json({ ok: false, error: "Club name already exists" });
+    }
 
-    clubs[idx] = {
-      ...current,
+    const updatedClub = await updateClub(clubId, {
       name: nextName,
       code: nextCode,
       gameModelId: nextGameModelId,
@@ -3607,30 +3580,30 @@ r.patch("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async 
           ? (body.description?.trim() || null)
           : current.description,
       active: body.active ?? current.active,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (current.name !== clubs[idx].name) {
-      await prisma.user.updateMany({
-        where: { organizationName: current.name },
-        data: { organizationName: clubs[idx].name },
-      });
+    });
+    if (!updatedClub) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
     }
 
-    await writeClubsStore(clubs);
+    if (current.name !== updatedClub.name) {
+      await prisma.user.updateMany({
+        where: { organizationName: current.name },
+        data: { organizationName: updatedClub.name },
+      });
+    }
 
     await logAdminAction(
       req.userId!,
       "club.updated",
       {
         resourceType: "Club",
-        resourceId: clubs[idx].id,
-        data: clubs[idx],
+        resourceId: updatedClub.id,
+        data: updatedClub,
       },
       req
     );
 
-    return res.json({ ok: true, club: clubs[idx] });
+    return res.json({ ok: true, club: updatedClub });
   } catch (error: any) {
     if (error?.name === "ZodError") {
       return res.status(400).json({ ok: false, error: "Invalid input", details: error.errors });
@@ -3642,20 +3615,17 @@ r.patch("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async 
 r.delete("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
   try {
     const { clubId } = req.params;
-    const clubs = await readClubsStore();
-    const idx = clubs.findIndex((c) => c.id === clubId);
-    if (idx === -1) {
+    const club = await getClubById(clubId);
+    if (!club) {
       return res.status(404).json({ ok: false, error: "Club not found" });
     }
 
-    const club = clubs[idx];
     await prisma.user.updateMany({
       where: { organizationName: club.name },
       data: { organizationName: null },
     });
 
-    clubs.splice(idx, 1);
-    await writeClubsStore(clubs);
+    await deleteClub(clubId);
 
     await logAdminAction(
       req.userId!,
@@ -3677,8 +3647,7 @@ r.delete("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async
 r.post("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
   try {
     const { clubId, userId } = req.params;
-    const clubs = await readClubsStore();
-    const club = clubs.find((c) => c.id === clubId);
+    const club = await getClubById(clubId);
     if (!club) {
       return res.status(404).json({ ok: false, error: "Club not found" });
     }
@@ -3716,8 +3685,7 @@ r.post("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUs
 r.delete("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
   try {
     const { clubId, userId } = req.params;
-    const clubs = await readClubsStore();
-    const club = clubs.find((c) => c.id === clubId);
+    const club = await getClubById(clubId);
     if (!club) {
       return res.status(404).json({ ok: false, error: "Club not found" });
     }
