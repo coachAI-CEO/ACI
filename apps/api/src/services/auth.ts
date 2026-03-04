@@ -63,6 +63,8 @@ export async function registerUser(data: {
   name?: string;
   coachLevel?: string;
   subscriptionPlan?: string;
+  ipAddress?: string;
+  userAgent?: string;
 }): Promise<{ user: any; tokens: AuthTokens }> {
   const normalizedEmail = data.email.trim().toLowerCase();
 
@@ -131,7 +133,7 @@ export async function registerUser(data: {
   
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.role);
-  const refreshToken = await createRefreshToken(user.id);
+  const refreshToken = await createRefreshToken(user.id, data.ipAddress, data.userAgent);
   
   return {
     user: {
