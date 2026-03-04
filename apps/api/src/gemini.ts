@@ -24,10 +24,10 @@ export function clearMetricsContext() {
   metricsContext = {};
 }
 
-// Use gemini-3-flash-preview as primary (better clarity scores, similar speed)
-// Fallback to gemini-2.5-flash if preview model unavailable
-const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3-flash-preview";
-const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-2.5-flash";
+// Use gemini-3.1-flash-lite-preview as primary for faster response times.
+// Fallback to gemini-3-flash-preview for compatibility.
+const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
+const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3-flash-preview";
 
 // Performance tuning - balance between speed and reliability
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45000; // 45 seconds (Gemini can be very slow for complex prompts)

@@ -54,7 +54,7 @@ const stripJobStatus = {
 
 // Primary model pricing defaults (per 1M tokens).
 // Keep configurable so analytics stay aligned with deployed model choices.
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3-flash-preview";
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
 const GEMINI_INPUT_PRICE_PER_1M = Number(process.env.GEMINI_INPUT_PRICE_PER_1M) || 0.50;
 const GEMINI_OUTPUT_PRICE_PER_1M = Number(process.env.GEMINI_OUTPUT_PRICE_PER_1M) || 3.00;
 
