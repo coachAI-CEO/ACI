@@ -1,4 +1,7 @@
 import express from "express";
+import { promises as fs } from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
 import { SUBSCRIPTION_LIMITS, getFeaturesForUser } from "./config/subscription-limits";
 import { checkUsageLimit } from "./services/auth";
 import { prisma } from "./prisma";
@@ -17,6 +20,43 @@ import { generateVerificationToken, sendVerificationEmail } from "./services/ema
 import { z } from "zod";
 
 const r = express.Router();
+
+type ClubRecord = {
+  id: string;
+  name: string;
+  code: string;
+  gameModelId: string;
+  description: string | null;
+  active: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const CLUBS_STORE_PATH = path.join(__dirname, "..", ".data", "clubs.json");
+const CLUB_GAME_MODELS = new Set([
+  "COACHAI",
+  "POSSESSION",
+  "PRESSING",
+  "TRANSITION",
+  "ROCKLIN_FC",
+]);
+
+async function readClubsStore(): Promise<ClubRecord[]> {
+  try {
+    const raw = await fs.readFile(CLUBS_STORE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+}
+
+async function writeClubsStore(clubs: ClubRecord[]): Promise<void> {
+  await fs.mkdir(path.dirname(CLUBS_STORE_PATH), { recursive: true });
+  await fs.writeFile(CLUBS_STORE_PATH, JSON.stringify(clubs, null, 2), "utf8");
+}
 
 // Protect ALL admin routes
 r.use(requireAdmin);
@@ -2329,6 +2369,7 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
           emailVerifiedAt: true,
           coachLevel: true,
           teamAgeGroups: true,
+          organizationName: true,
         }
       }),
       prisma.user.count()
@@ -2964,14 +3005,15 @@ r.post("/admin/users/:userId/resend-verification", requireAdminPermission('canMa
 r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
   try {
     const { userId } = req.params;
-    const { coachLevel, teamAgeGroups } = req.body;
+    const { coachLevel, teamAgeGroups, promoteToCoach } = req.body;
     
     const schema = z.object({
       coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       teamAgeGroups: z.array(z.string()).optional(),
+      promoteToCoach: z.boolean().optional(),
     });
     
-    const body = schema.parse({ coachLevel, teamAgeGroups });
+    const body = schema.parse({ coachLevel, teamAgeGroups, promoteToCoach });
     
     // Get user to verify they exist and check their role
     const user = await prisma.user.findUnique({
@@ -2983,15 +3025,23 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
     
-    // Only allow updating coach level for COACH role users
-    if (user.role !== 'COACH') {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'Coach level can only be set for users with COACH role' 
+    const shouldPromoteToCoach =
+      user.role !== 'COACH' &&
+      (body.promoteToCoach ?? true) &&
+      (body.coachLevel !== undefined || body.teamAgeGroups !== undefined);
+
+    // Keep a guard in case caller explicitly disables promotion.
+    if (user.role !== 'COACH' && !shouldPromoteToCoach) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Coach level can only be set for users with COACH role',
       });
     }
     
     const updateData: any = {};
+    if (shouldPromoteToCoach) {
+      updateData.role = 'COACH';
+    }
     if (body.coachLevel !== undefined) {
       updateData.coachLevel = body.coachLevel;
     }
@@ -3018,7 +3068,11 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
       {
         resourceType: 'User',
         resourceId: userId,
-        data: { coachLevel: body.coachLevel, teamAgeGroups: body.teamAgeGroups }
+        data: {
+          coachLevel: body.coachLevel,
+          teamAgeGroups: body.teamAgeGroups,
+          rolePromotedToCoach: shouldPromoteToCoach,
+        }
       },
       req
     );
@@ -3381,6 +3435,312 @@ r.get("/admin/access-permissions/check/:userId", requireAdminPermission('canMana
     return res.json({ ok: true, ...checks });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+// ============================================
+// Club Management (Layer 5)
+// ============================================
+
+r.get("/admin/clubs", requireAdminPermission("canManageUsers"), async (_req: AdminRequest, res) => {
+  try {
+    const clubs = await readClubsStore();
+    const withCounts = await Promise.all(
+      clubs.map(async (club) => {
+        const memberCount = await prisma.user.count({
+          where: { organizationName: club.name },
+        });
+        return { ...club, _count: { users: memberCount } };
+      })
+    );
+
+    withCounts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return res.json({ ok: true, clubs: withCounts });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to load clubs" });
+  }
+});
+
+r.get("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId } = req.params;
+    const clubs = await readClubsStore();
+    const club = clubs.find((c) => c.id === clubId);
+    if (!club) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const users = await prisma.user.findMany({
+      where: { organizationName: club.name },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        subscriptionPlan: true,
+        coachLevel: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json({
+      ok: true,
+      club: {
+        ...club,
+        users,
+        _count: { users: users.length },
+      },
+    });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to load club" });
+  }
+});
+
+r.post("/admin/clubs", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const schema = z.object({
+      name: z.string().min(1).max(120),
+      code: z.string().min(1).max(64),
+      gameModelId: z.string().min(1).max(64),
+      description: z.string().max(500).optional(),
+      active: z.boolean().optional(),
+    });
+
+    const body = schema.parse(req.body ?? {});
+    const clubs = await readClubsStore();
+    const normalizedCode = body.code.trim().toLowerCase();
+
+    if (!CLUB_GAME_MODELS.has(body.gameModelId)) {
+      return res.status(400).json({ ok: false, error: "Invalid game model for club" });
+    }
+    if (clubs.some((c) => c.code.toLowerCase() === normalizedCode)) {
+      return res.status(400).json({ ok: false, error: "Club code already exists" });
+    }
+
+    const now = new Date().toISOString();
+    const club: ClubRecord = {
+      id: randomUUID(),
+      name: body.name.trim(),
+      code: normalizedCode,
+      gameModelId: body.gameModelId,
+      description: body.description?.trim() || null,
+      active: body.active ?? true,
+      createdBy: req.userId || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    clubs.push(club);
+    await writeClubsStore(clubs);
+
+    await logAdminAction(
+      req.userId!,
+      "club.created",
+      {
+        resourceType: "Club",
+        resourceId: club.id,
+        data: {
+          name: club.name,
+          code: club.code,
+          gameModelId: club.gameModelId,
+        },
+      },
+      req
+    );
+
+    return res.json({ ok: true, club });
+  } catch (error: any) {
+    if (error?.name === "ZodError") {
+      return res.status(400).json({ ok: false, error: "Invalid input", details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message || "Failed to create club" });
+  }
+});
+
+r.patch("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId } = req.params;
+    const schema = z.object({
+      name: z.string().min(1).max(120).optional(),
+      code: z.string().min(1).max(64).optional(),
+      gameModelId: z.string().min(1).max(64).optional(),
+      description: z.string().max(500).nullable().optional(),
+      active: z.boolean().optional(),
+    });
+    const body = schema.parse(req.body ?? {});
+
+    const clubs = await readClubsStore();
+    const idx = clubs.findIndex((c) => c.id === clubId);
+    if (idx === -1) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const current = clubs[idx];
+    const nextCode = body.code ? body.code.trim().toLowerCase() : current.code;
+    const nextName = body.name ? body.name.trim() : current.name;
+    const nextGameModelId = body.gameModelId ?? current.gameModelId;
+
+    if (!CLUB_GAME_MODELS.has(nextGameModelId)) {
+      return res.status(400).json({ ok: false, error: "Invalid game model for club" });
+    }
+
+    if (
+      clubs.some((c, i) => i !== idx && c.code.toLowerCase() === nextCode)
+    ) {
+      return res.status(400).json({ ok: false, error: "Club code already exists" });
+    }
+
+    clubs[idx] = {
+      ...current,
+      name: nextName,
+      code: nextCode,
+      gameModelId: nextGameModelId,
+      description:
+        body.description !== undefined
+          ? (body.description?.trim() || null)
+          : current.description,
+      active: body.active ?? current.active,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (current.name !== clubs[idx].name) {
+      await prisma.user.updateMany({
+        where: { organizationName: current.name },
+        data: { organizationName: clubs[idx].name },
+      });
+    }
+
+    await writeClubsStore(clubs);
+
+    await logAdminAction(
+      req.userId!,
+      "club.updated",
+      {
+        resourceType: "Club",
+        resourceId: clubs[idx].id,
+        data: clubs[idx],
+      },
+      req
+    );
+
+    return res.json({ ok: true, club: clubs[idx] });
+  } catch (error: any) {
+    if (error?.name === "ZodError") {
+      return res.status(400).json({ ok: false, error: "Invalid input", details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message || "Failed to update club" });
+  }
+});
+
+r.delete("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId } = req.params;
+    const clubs = await readClubsStore();
+    const idx = clubs.findIndex((c) => c.id === clubId);
+    if (idx === -1) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const club = clubs[idx];
+    await prisma.user.updateMany({
+      where: { organizationName: club.name },
+      data: { organizationName: null },
+    });
+
+    clubs.splice(idx, 1);
+    await writeClubsStore(clubs);
+
+    await logAdminAction(
+      req.userId!,
+      "club.deleted",
+      {
+        resourceType: "Club",
+        resourceId: clubId,
+        data: { name: club.name, code: club.code },
+      },
+      req
+    );
+
+    return res.json({ ok: true });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to delete club" });
+  }
+});
+
+r.post("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId, userId } = req.params;
+    const clubs = await readClubsStore();
+    const club = clubs.find((c) => c.id === clubId);
+    if (!club) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, organizationName: true },
+    });
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { organizationName: club.name },
+    });
+
+    await logAdminAction(
+      req.userId!,
+      "club.user_assigned",
+      {
+        resourceType: "Club",
+        resourceId: clubId,
+        data: { userId, userEmail: user.email, clubName: club.name },
+      },
+      req
+    );
+
+    return res.json({ ok: true });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to assign user" });
+  }
+});
+
+r.delete("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId, userId } = req.params;
+    const clubs = await readClubsStore();
+    const club = clubs.find((c) => c.id === clubId);
+    if (!club) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, organizationName: true },
+    });
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { organizationName: null },
+    });
+
+    await logAdminAction(
+      req.userId!,
+      "club.user_removed",
+      {
+        resourceType: "Club",
+        resourceId: clubId,
+        data: { userId, userEmail: user.email, previousOrganizationName: user.organizationName },
+      },
+      req
+    );
+
+    return res.json({ ok: true });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to remove user from club" });
   }
 });
 

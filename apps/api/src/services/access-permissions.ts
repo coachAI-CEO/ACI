@@ -1,5 +1,13 @@
 import { prisma } from "../prisma";
-import { CoachLevel } from "@prisma/client";
+import { CoachLevel, Prisma } from "@prisma/client";
+
+function isMissingVideoReviewColumnError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const column = String((error.meta as { column?: unknown } | undefined)?.column ?? "");
+    return error.code === "P2022" && column.includes("AccessPermission.canAccessVideoReview");
+  }
+  return error instanceof Error && error.message.includes("AccessPermission.canAccessVideoReview");
+}
 
 /**
  * Get format from age group
@@ -67,6 +75,10 @@ export async function getAllowedFormatsAndAgeGroups(
         },
         { canAccessVault: true }
       ]
+    },
+    select: {
+      ageGroups: true,
+      formats: true
     }
   });
 
@@ -116,6 +128,10 @@ export async function getAllowedFormatsAndAgeGroups(
         },
         { canAccessVault: true }
       ]
+    },
+    select: {
+      ageGroups: true,
+      formats: true
     }
   });
 
@@ -208,6 +224,11 @@ export async function canGenerateSessions(
         },
         { canGenerateSessions: true }
       ]
+    },
+    select: {
+      ageGroups: true,
+      formats: true,
+      coachLevel: true
     }
   });
 
@@ -251,6 +272,11 @@ export async function canGenerateSessions(
         },
         { canGenerateSessions: true }
       ]
+    },
+    select: {
+      ageGroups: true,
+      formats: true,
+      coachLevel: true
     }
   });
 
@@ -316,6 +342,10 @@ export async function canAccessVault(
           },
           { canAccessVault: true }
         ]
+      },
+      select: {
+        ageGroups: true,
+        formats: true
       }
     });
 
@@ -358,6 +388,11 @@ export async function canAccessVault(
           },
           { canAccessVault: true }
         ]
+      },
+      select: {
+        ageGroups: true,
+        formats: true,
+        coachLevel: true
       }
     });
 
@@ -386,6 +421,9 @@ export async function canAccessVault(
         },
         { canAccessVault: true }
       ]
+    },
+    select: {
+      id: true
     }
   });
 
@@ -410,6 +448,9 @@ export async function canAccessVault(
         },
         { canAccessVault: true }
       ]
+    },
+    select: {
+      id: true
     }
   });
 
@@ -443,64 +484,57 @@ export async function canAccessVideoReview(
 
   const userCoachLevel = coachLevel || user.coachLevel;
 
+  try {
     const userSpecific = await prisma.accessPermission.findMany({
       where: {
         AND: [
           { userId },
-        {
-          OR: [
-            { resourceType: "VIDEO_REVIEW" },
-            { resourceType: "BOTH" },
-          ],
+          {
+            OR: [
+              { resourceType: "VIDEO_REVIEW" },
+              { resourceType: "BOTH" },
+            ],
           },
         ],
       },
-      select: {
-        resourceType: true,
-        canAccessVideoReview: true,
-        canAccessVault: true,
-      },
+      select: { canAccessVideoReview: true },
     });
 
     if (userSpecific.length > 0) {
-      // Backward compatibility: older BOTH permissions may have vault allowed
-      // without explicitly setting canAccessVideoReview.
-      return userSpecific.some(
-        (perm) => perm.canAccessVideoReview || (perm.resourceType === "BOTH" && perm.canAccessVault)
-      );
+      return userSpecific.some((perm) => perm.canAccessVideoReview);
     }
 
-  const coachLevelRules = await prisma.accessPermission.findMany({
+    const coachLevelRules = await prisma.accessPermission.findMany({
       where: {
         AND: [
           { userId: null },
-        {
-          OR: [
-            { resourceType: "VIDEO_REVIEW" },
-            { resourceType: "BOTH" },
-          ],
-        },
-        {
-          OR: [
-            { coachLevel: null },
-            { coachLevel: userCoachLevel || undefined },
-          ],
+          {
+            OR: [
+              { resourceType: "VIDEO_REVIEW" },
+              { resourceType: "BOTH" },
+            ],
+          },
+          {
+            OR: [
+              { coachLevel: null },
+              { coachLevel: userCoachLevel || undefined },
+            ],
           },
         ],
       },
-      select: {
-        resourceType: true,
-        canAccessVideoReview: true,
-        canAccessVault: true,
-      },
+      select: { canAccessVideoReview: true },
     });
 
     if (coachLevelRules.length > 0) {
-      // Backward compatibility for coach-level BOTH permissions.
-      return coachLevelRules.some(
-        (perm) => perm.canAccessVideoReview || (perm.resourceType === "BOTH" && perm.canAccessVault)
-      );
+      return coachLevelRules.some((perm) => perm.canAccessVideoReview);
     }
+  } catch (error) {
+    if (isMissingVideoReviewColumnError(error)) {
+      console.warn("[ACCESS_PERMISSIONS] Missing AccessPermission.canAccessVideoReview column; defaulting video review access to true until migrations are applied.");
+      return true;
+    }
+    throw error;
+  }
 
   return true;
 }

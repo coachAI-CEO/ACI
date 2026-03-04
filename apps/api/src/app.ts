@@ -43,7 +43,7 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: corsOrigins && corsOrigins.length > 0 ? corsOrigins : true,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id'],
 }));
 app.use(
