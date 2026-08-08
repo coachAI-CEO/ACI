@@ -67,6 +67,7 @@ type SessionApiResponse = {
     coachLevel?: string;
     ageGroup?: string;
     durationMin?: number;
+    goalsAvailable?: number;
     summary?: string;
     drills: SessionDrill[];
     sessionPlan?: {
@@ -344,10 +345,10 @@ const FORMATION_BY_AGE: Record<string, string[]> = {
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -3463,17 +3464,31 @@ function SessionDemoPageContent() {
 
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
                       {diagram && (
-                        <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
-                          <DrillDiagramCard
-                            title={drill.title}
-                            gameModelId={session.gameModelId}
-                            phase={session.phase || "ATTACKING"}
-                            zone={session.zone || "ATTACKING_THIRD"}
-                            diagram={diagram}
-                            description={humanizeSessionText(drill.description)}
-                            organization={organizationObj ?? undefined}
-                          />
-                        </div>
+                        (() => {
+                          const drillRef = drill as SessionDrill & { id?: unknown; refCode?: unknown };
+                          const diagramDrillId =
+                            typeof drillRef.id === "string"
+                              ? drillRef.id
+                              : typeof drillRef.refCode === "string"
+                              ? drillRef.refCode
+                              : null;
+
+                          return (
+                            <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
+                              <DrillDiagramCard
+                                title={drill.title}
+                                gameModelId={session.gameModelId}
+                                phase={session.phase || "ATTACKING"}
+                                zone={session.zone || "ATTACKING_THIRD"}
+                                diagram={diagram}
+                                drillId={diagramDrillId}
+                                goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
+                                description={humanizeSessionText(drill.description)}
+                                organization={organizationObj ?? undefined}
+                              />
+                            </div>
+                          );
+                        })()
                       )}
 
                       <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">

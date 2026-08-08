@@ -10,10 +10,10 @@
 const API_BASE = "http://localhost:4000";
 
 // 9v9 formations (8 outfield + 1 GK = 9 players)
-const formations9v9 = ["3-2-3", "2-4-2", "3-3-2", "2-3-3", "3-4-1", "2-2-4"];
+const formations9v9 = ["3-2-3", "2-3-2-1", "3-3-2"];
 
-// Age groups typically for 9v9
-const ageGroups = ["U9", "U10"];
+// Age groups for 9v9
+const ageGroups = ["U11", "U12"];
 
 // Game models
 const gameModels = ["POSSESSION", "PRESSING", "TRANSITION", "COACHAI"];

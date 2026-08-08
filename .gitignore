@@ -44,6 +44,9 @@ temp/
 .cache/
 *.swp
 
+# Diagram sandbox output (disposable eval runs)
+apps/api/sandbox-output/
+
 # Logs and debug output
 debug/
 logs/

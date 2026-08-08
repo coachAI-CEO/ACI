@@ -4,16 +4,16 @@ import { useEffect } from "react";
 import { getTopicsForPhaseAndZone } from "@/data/session-topics";
 
 const FORMATION_BY_AGE: Record<string, string[]> = {
-  // 7v7 formations (U8-U12)
+  // 7v7 formations (U8-U10)
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  // 9v9 formations (U13-U14)
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
-  // 11v11 formations (U15-U18)
+  // 9v9 formations (U11-U12)
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  // 11v11 formations (U13-U18)
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -110,9 +110,9 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         // Update helper text
         const helperTexts = document.querySelectorAll(".formation-helper");
         helperTexts.forEach(helperText => {
-          if (["U8", "U9", "U10", "U11", "U12"].includes(ageGroup)) {
+          if (["U8", "U9", "U10"].includes(ageGroup)) {
             helperText.textContent = "7v7 formations";
-          } else if (["U13", "U14"].includes(ageGroup)) {
+          } else if (["U11", "U12"].includes(ageGroup)) {
             helperText.textContent = "9v9 formations";
           } else {
             helperText.textContent = "11v11 formations";

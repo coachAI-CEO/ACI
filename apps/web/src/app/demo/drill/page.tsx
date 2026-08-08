@@ -32,6 +32,7 @@ type DrillApiResponse = {
     zone: string;
     ageGroup?: string;
     durationMin?: number;
+    goalsAvailable?: number;
     json: {
       title?: string;
       diagram?: DiagramV1; // New format
@@ -47,6 +48,7 @@ type DrillApiResponse = {
       progressions?: string[];
       ageGroup?: string;
       durationMin?: number;
+      goalsAvailable?: number;
     };
   };
   qa?: {
@@ -96,16 +98,16 @@ const zoneLabel: Record<string, string> = {
 
 // Formation constraints by age group (prevents clarity issues)
 const FORMATION_BY_AGE: Record<string, string[]> = {
-  // 7v7 formations (U8-U12)
+  // 7v7 formations (U8-U10)
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  // 9v9 formations (U13-U14)
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
-  // 11v11 formations (U15-U18)
+  // 9v9 formations (U11-U12)
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  // 11v11 formations (U13-U18)
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -693,6 +695,8 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
               phase={data.drill.phase}
               zone={data.drill.zone}
               diagram={diagram}
+              drillId={data.drill.id ?? data.drill.refCode}
+              goalsAvailable={data.drill.goalsAvailable ?? data.drill.json?.goalsAvailable ?? config.goalsAvailable}
               description={data.drill.json?.description}
               organization={
                 typeof data.drill.json?.organization === "object" &&

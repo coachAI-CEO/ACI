@@ -353,15 +353,15 @@ function getFormationBucketAge(ageGroup: string): string {
 
 function getDefaultFormationForAgeGroup(ageGroup: string): string {
   const bucket = getFormationBucketAge(ageGroup);
-  if (["U8", "U9", "U10", "U11", "U12"].includes(bucket)) return "2-3-1";
-  if (["U13", "U14"].includes(bucket)) return "3-2-3";
+  if (["U8", "U9", "U10"].includes(bucket)) return "2-3-1";
+  if (["U11", "U12"].includes(bucket)) return "3-2-3";
   return "4-3-3";
 }
 
 function getValidFormationsForAgeGroup(ageGroup: string): string[] {
   const bucket = getFormationBucketAge(ageGroup);
-  if (["U8", "U9", "U10", "U11", "U12"].includes(bucket)) return ["2-3-1", "3-2-1"];
-  if (["U13", "U14"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
+  if (["U8", "U9", "U10"].includes(bucket)) return ["2-3-1", "3-2-1"];
+  if (["U11", "U12"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
   return ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"];
 }
 

@@ -1,9 +1,16 @@
 import { generateText, setMetricsContext, clearMetricsContext } from "../gemini";
 import { prisma } from "../prisma";
-import { buildSessionPrompt, buildSessionQAReviewerPrompt } from "../prompts/session";
+import {
+  buildSessionPrompt,
+  buildSessionQAReviewerPrompt,
+  getGameFormatForAgeGroup,
+  getPlayersPerTeamForFormat,
+  type GameFormat,
+} from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
+import { enforceDiagramGoalAvailability } from "./diagram-goals";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -57,9 +64,97 @@ function isGrassrootsCoachLevel(coachLevel?: string): boolean {
   return String(coachLevel || "").toUpperCase() === "GRASSROOTS";
 }
 
+function getCoachDiagramMinimums(coachLevel?: string) {
+  const level = String(coachLevel || "").toUpperCase();
+  if (level === "USSF_B_PLUS") return { arrows: 7, annotations: 4, safeZones: 2 };
+  if (level === "USSF_C") return { arrows: 5, annotations: 3, safeZones: 1 };
+  return null;
+}
+
+function pickPlayerPairs(players: any[]) {
+  const attackers = players.filter((p: any) => p?.team === "ATT");
+  const defenders = players.filter((p: any) => p?.team === "DEF");
+  const sortedAttackers = [...attackers].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+  const sortedDefenders = [...defenders].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+  return { attackers: sortedAttackers, defenders: sortedDefenders };
+}
+
+function ensureRichCoachDiagramProfile(drill: any, coachLevel?: string) {
+  const minimums = getCoachDiagramMinimums(coachLevel);
+  if (!minimums || !drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
+
+  const diagram = drill.diagram;
+  diagram.pitch = diagram.pitch || {};
+  diagram.pitch.showZones = false;
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  const { attackers, defenders } = pickPlayerPairs(players);
+  const lastAttacker = attackers.length > 0 ? attackers[attackers.length - 1] : null;
+
+  diagram.arrows = Array.isArray(diagram.arrows) ? diagram.arrows : [];
+  const fallbackArrows = [
+    attackers[0] && attackers[1]
+      ? { id: "coach-pass-1", from: { playerId: attackers[0].id }, to: { playerId: attackers[1].id }, type: "pass", label: "1" }
+      : null,
+    attackers[1] && attackers[2]
+      ? { id: "coach-pass-2", from: { playerId: attackers[1].id }, to: { playerId: attackers[2].id }, type: "pass", label: "2" }
+      : null,
+    attackers[2]
+      ? { id: "coach-run-1", from: { playerId: attackers[2].id }, to: { x: Math.max(8, (attackers[2].x ?? 50) - 12), y: attackers[2].y ?? 50 }, type: "run", label: "run" }
+      : null,
+    defenders[0] && attackers[0]
+      ? { id: "coach-press-1", from: { playerId: defenders[0].id }, to: { playerId: attackers[0].id }, type: "press", label: "press" }
+      : null,
+    attackers[0]
+      ? { id: "coach-move-1", from: { playerId: attackers[0].id }, to: { x: Math.max(8, (attackers[0].x ?? 50) - 15), y: Math.max(10, (attackers[0].y ?? 50) - 10) }, type: "movement", label: "support" }
+      : null,
+    lastAttacker
+      ? { id: "coach-run-2", from: { playerId: lastAttacker.id }, to: { x: Math.max(8, (lastAttacker.x ?? 50) - 18), y: Math.min(90, (lastAttacker.y ?? 50) + 8) }, type: "run", label: "depth" }
+      : null,
+    defenders[1] && attackers[1]
+      ? { id: "coach-press-2", from: { playerId: defenders[1].id }, to: { playerId: attackers[1].id }, type: "press", label: "cover" }
+      : null,
+  ].filter(Boolean);
+  for (const arrow of fallbackArrows) {
+    if (diagram.arrows.length >= minimums.arrows) break;
+    if (!diagram.arrows.some((a: any) => a?.id === (arrow as any).id)) diagram.arrows.push(arrow);
+  }
+
+  diagram.annotations = Array.isArray(diagram.annotations) ? diagram.annotations : [];
+  const annotationBase = [
+    { id: "coach-ann-1", text: "FREE PLAYER", x: 50, y: 32, color: "rgba(34, 211, 238, 0.95)" },
+    { id: "coach-ann-2", text: "PRESS TRIGGER", x: 58, y: 54, color: "rgba(248, 113, 113, 0.95)" },
+    { id: "coach-ann-3", text: "LINE BREAK", x: 42, y: 44, color: "rgba(253, 224, 71, 0.95)" },
+    { id: "coach-ann-4", text: "COVER SHAPE", x: 30, y: 66, color: "rgba(196, 181, 253, 0.95)" },
+  ];
+  for (const ann of annotationBase) {
+    if (diagram.annotations.length >= minimums.annotations) break;
+    if (!diagram.annotations.some((a: any) => a?.id === ann.id)) {
+      diagram.annotations.push({
+        ...ann,
+        fontSize: 10,
+        fontWeight: "800",
+        backgroundColor: "rgba(2, 6, 23, 0.82)",
+      });
+    }
+  }
+
+  diagram.safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones : [];
+  const safeZoneBase = [
+    { id: "coach-zone-1", x: 38, y: 0, width: 24, height: 100, team: "ATT", label: "CENTRAL LANE" },
+    { id: "coach-zone-2", x: 0, y: 0, width: 18, height: 100, team: "DEF", label: "PRESS SIDE" },
+  ];
+  for (const zone of safeZoneBase) {
+    if (diagram.safeZones.length >= minimums.safeZones) break;
+    if (!diagram.safeZones.some((z: any) => z?.id === zone.id)) diagram.safeZones.push(zone);
+  }
+}
+
 function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel)) return;
   if (!drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
+  if (!isGrassrootsCoachLevel(coachLevel)) {
+    ensureRichCoachDiagramProfile(drill, coachLevel);
+    return;
+  }
 
   const diagram = drill.diagram;
   diagram.pitch = diagram.pitch || {};
@@ -77,6 +172,201 @@ function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
   if (Array.isArray(diagram.annotations)) {
     diagram.annotations = diagram.annotations.slice(0, 1);
   }
+}
+
+function getFullGameRoles(format: GameFormat): string[] {
+  if (format === "7v7") return ["GK", "RB", "LB", "CM", "LM", "RM", "ST"];
+  if (format === "9v9") return ["GK", "RB", "CB", "LB", "CM", "CM", "LW", "RW", "ST"];
+  return ["GK", "RB", "RCB", "LCB", "LB", "DM", "CM", "AM", "RW", "ST", "LW"];
+}
+
+function buildCanonicalFullGamePlayers(format: GameFormat) {
+  const roles = getFullGameRoles(format);
+  const rows = roles.map((role, idx) => ({
+    role,
+    lane: idx === 0 ? 50 : 20 + ((idx - 1) % 4) * 20,
+    line: idx === 0 ? 0 : Math.floor((idx - 1) / 4),
+  }));
+
+  return [
+    ...rows.map((row, idx) => ({
+      id: `A${idx + 1}`,
+      number: idx === 0 ? 1 : idx + 1,
+      team: "ATT",
+      role: row.role,
+      x: idx === 0 ? 92 : 76 - row.line * 13,
+      y: row.lane,
+      facingAngle: 270,
+    })),
+    ...rows.map((row, idx) => ({
+      id: `D${idx + 1}`,
+      number: idx === 0 ? 1 : idx + 1,
+      team: "DEF",
+      role: row.role,
+      x: idx === 0 ? 8 : 24 + row.line * 13,
+      y: row.lane,
+      facingAngle: 90,
+    })),
+  ];
+}
+
+function buildReducedGamePlayers(format: GameFormat, maxPlayers: number) {
+  const fullPlayers = buildCanonicalFullGamePlayers(format);
+  const perTeam = Math.max(1, Math.floor(maxPlayers / 2));
+  const fullPerTeam = getPlayersPerTeamForFormat(format);
+  return [
+    ...fullPlayers.slice(0, perTeam),
+    ...fullPlayers.slice(fullPerTeam, fullPerTeam + perTeam),
+  ].slice(0, Math.max(0, maxPlayers));
+}
+
+function isGoalkeeper(player: any): boolean {
+  const role = String(player?.role || "").toUpperCase();
+  return player?.number === 1 || role === "GK" || role.includes("GOALKEEPER");
+}
+
+function normalizeGoalkeeperPositions(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+  const gks = players.filter(isGoalkeeper);
+  if (gks.length === 0) return;
+
+  const orientation = diagram.pitch?.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL";
+
+  for (const gk of gks) {
+    const team = String(gk.team || "");
+    const ownGoalCandidates = goals.filter((goal: any) => {
+      const attacks = String(goal?.teamAttacks || "");
+      return attacks && attacks !== team && (attacks === "ATT" || attacks === "DEF");
+    });
+    const candidates = ownGoalCandidates.length > 0 ? ownGoalCandidates : goals;
+    const closestGoal =
+      candidates.length > 0
+        ? candidates.reduce((best: any, goal: any) => {
+            const bestDist =
+              Math.abs(Number(gk.x ?? 50) - Number(best.x ?? 50)) +
+              Math.abs(Number(gk.y ?? 50) - Number(best.y ?? 50));
+            const goalDist =
+              Math.abs(Number(gk.x ?? 50) - Number(goal.x ?? 50)) +
+              Math.abs(Number(gk.y ?? 50) - Number(goal.y ?? 50));
+            return goalDist < bestDist ? goal : best;
+          }, candidates[0])
+        : null;
+
+    if (orientation === "VERTICAL") {
+      const goalY = Number.isFinite(closestGoal?.y) ? Number(closestGoal.y) : Number(gk.y ?? 50);
+      gk.x = Number.isFinite(closestGoal?.x) ? Number(closestGoal.x) : 50;
+      gk.y = goalY < 50 ? Math.max(6, goalY + 3) : Math.min(94, goalY - 3);
+      gk.facingAngle = goalY < 50 ? 90 : 270;
+    } else {
+      const goalX = Number.isFinite(closestGoal?.x) ? Number(closestGoal.x) : Number(gk.x ?? 50);
+      gk.x = goalX < 50 ? Math.max(6, goalX + 3) : Math.min(94, goalX - 3);
+      gk.y = Number.isFinite(closestGoal?.y) ? Number(closestGoal.y) : 50;
+      gk.facingAngle = goalX < 50 ? 0 : 180;
+    }
+  }
+}
+
+function replaceFormatMentions(value: any, replacement: string): any {
+  if (typeof value === "string") {
+    return value.replace(/\b(?:7v7|9v9|11v11)\b/g, replacement);
+  }
+  if (Array.isArray(value)) return value.map((item) => replaceFormatMentions(item, replacement));
+  if (value && typeof value === "object") {
+    for (const key of Object.keys(value)) {
+      value[key] = replaceFormatMentions(value[key], replacement);
+    }
+  }
+  return value;
+}
+
+function enforceConditionedGameFormatDiagram(
+  drill: any,
+  input: { ageGroup: string; numbersMax?: number }
+) {
+  if (!drill || (drill.drillType !== "CONDITIONED_GAME" && drill.drillType !== "FULL_GAME")) return;
+
+  const expectedFormat = getGameFormatForAgeGroup(input.ageGroup);
+  const expectedPerTeam = getPlayersPerTeamForFormat(expectedFormat);
+  const fullFormatTotal = expectedPerTeam * 2;
+  const maxPlayers = Number(input.numbersMax || 0);
+  const canRunFullFormat = maxPlayers >= fullFormatTotal;
+  const activePerTeam = canRunFullFormat ? expectedPerTeam : Math.max(1, Math.floor(maxPlayers / 2));
+  const activeTotal = canRunFullFormat ? fullFormatTotal : Math.max(0, activePerTeam * 2);
+  const activeFormatLabel = canRunFullFormat ? expectedFormat : `${activePerTeam}v${activePerTeam}`;
+  const diagram = (drill.diagram = drill.diagram || {});
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  const attCount = players.filter((p: any) => p?.team === "ATT").length;
+  const defCount = players.filter((p: any) => p?.team === "DEF").length;
+
+  replaceFormatMentions(drill, activeFormatLabel);
+
+  if (attCount === activePerTeam && defCount === activePerTeam && players.length <= maxPlayers) return;
+
+  console.warn(
+    `[SESSION] Rebuilding CONDITIONED_GAME diagram for ${input.ageGroup}/${activeFormatLabel}: ` +
+      `got ATT=${attCount}, DEF=${defCount}, total=${players.length}; expected ${activePerTeam} per team, max=${maxPlayers}`
+  );
+
+  diagram.players = canRunFullFormat
+    ? buildCanonicalFullGamePlayers(expectedFormat)
+    : buildReducedGamePlayers(expectedFormat, activeTotal);
+  diagram.pitch = {
+    variant: expectedFormat === "11v11" ? "FULL" : "HALF",
+    orientation: "HORIZONTAL",
+    showZones: false,
+    ...(diagram.pitch && typeof diagram.pitch === "object" ? diagram.pitch : {}),
+  };
+  diagram.pitch.variant = expectedFormat === "11v11" ? "FULL" : "HALF";
+  diagram.pitch.orientation = "HORIZONTAL";
+  diagram.pitch.showZones = false;
+  diagram.goals = [
+    { id: "G1", type: "BIG", width: 8, x: 6, y: 50, facingAngle: 90, teamAttacks: "ATT" },
+    { id: "G2", type: "BIG", width: 8, x: 94, y: 50, facingAngle: 270, teamAttacks: "DEF" },
+  ];
+  normalizeGoalkeeperPositions(diagram);
+
+  drill.organization = drill.organization && typeof drill.organization === "object" ? drill.organization : {};
+  const setupSteps = Array.isArray(drill.organization.setupSteps) ? drill.organization.setupSteps : [];
+  drill.organization.setupSteps = [
+    canRunFullFormat
+      ? `${expectedFormat} game: ${expectedPerTeam} players per team, including one GK per team.`
+      : `${activeFormatLabel} reduced game using ${expectedFormat} roles; ${activePerTeam} players per team and ${activeTotal} total active players.`,
+    ...setupSteps.filter((step: any) => !/\b(?:7v7|9v9|11v11)\b/i.test(String(step))),
+  ];
+}
+
+function enforceDiagramPlayerLimit(drill: any, maxPlayers?: number) {
+  const max = Number(maxPlayers || 0);
+  if (!max || !drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
+  const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
+  if (players.length <= max) return;
+
+  const gks = players.filter(isGoalkeeper);
+  const attackers = players.filter((p: any) => p?.team === "ATT" && !isGoalkeeper(p));
+  const defenders = players.filter((p: any) => p?.team === "DEF" && !isGoalkeeper(p));
+  const others = players.filter((p: any) => p?.team !== "ATT" && p?.team !== "DEF" && !isGoalkeeper(p));
+  const next: any[] = [];
+
+  for (const gk of gks) {
+    if (next.length < max && !next.some((p) => p.id === gk.id)) next.push(gk);
+  }
+
+  let ai = 0;
+  let di = 0;
+  while (next.length < max && (ai < attackers.length || di < defenders.length)) {
+    if (ai < attackers.length && next.length < max) next.push(attackers[ai++]);
+    if (di < defenders.length && next.length < max) next.push(defenders[di++]);
+  }
+  for (const other of others) {
+    if (next.length >= max) break;
+    next.push(other);
+  }
+
+  console.warn(`[SESSION] Trimmed ${drill.drillType || "drill"} diagram players from ${players.length} to max=${max}`);
+  drill.diagram.players = next;
+  normalizeGoalkeeperPositions(drill.diagram);
 }
 
 const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
@@ -367,7 +657,12 @@ export async function generateAndReviewSession(
     // 1) Generate (longer timeout for sessions - more complex than drills)
     const prompt = buildSessionPrompt(input);
     console.log(`[SESSION] Starting generation with ${prompt.length} char prompt...`);
-    const genText = await generateText(prompt, { timeout: SESSION_GENERATION_TIMEOUT_MS, retries: 0 });
+    const generationModel = process.env.GEMINI_SESSION_MODEL || process.env.GEMINI_GENERATION_MODEL;
+    const genText = await generateText(prompt, {
+      timeout: SESSION_GENERATION_TIMEOUT_MS,
+      retries: 0,
+      model: generationModel,
+    });
     if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Log raw response for debugging (first 5000 chars to see diagram structure)
@@ -531,6 +826,10 @@ export async function generateAndReviewSession(
         if (!Array.isArray(drill.diagram.goals)) {
           drill.diagram.goals = [];
         }
+        enforceConditionedGameFormatDiagram(drill, input);
+        enforceDiagramPlayerLimit(drill, input.numbersMax);
+        enforceDiagramGoalAvailability(drill, input);
+        normalizeGoalkeeperPositions(drill.diagram);
         applyCoachLevelDiagramProfile(drill, input.coachLevel);
         
         // Validate players array is populated
@@ -572,7 +871,13 @@ export async function generateAndReviewSession(
   
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[SESSION] Starting QA with ${qaPrompt.length} char prompt...`);
-  const qaText = await generateText(qaPrompt, { timeout: SESSION_QA_TIMEOUT_MS, retries: 0 });
+  const qaModel = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL;
+  const qaText = await generateText(qaPrompt, {
+    timeout: SESSION_QA_TIMEOUT_MS,
+    retries: 0,
+    model: qaModel,
+    fallbackModel: null,
+  });
   if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error("LLM returned non-JSON QA");
@@ -606,6 +911,11 @@ export async function generateAndReviewSession(
           const reenriched = await reenrichDiagramFromDrillJson(drill);
           if (reenriched) {
             drill.diagram = reenriched;
+            enforceConditionedGameFormatDiagram(drill, input);
+            enforceDiagramPlayerLimit(drill, input.numbersMax);
+            enforceDiagramGoalAvailability(drill, input);
+            normalizeGoalkeeperPositions(drill.diagram);
+            applyCoachLevelDiagramProfile(drill, input.coachLevel);
             if (drill.json && typeof drill.json === "object") {
               drill.json.diagram = reenriched;
             }
@@ -613,6 +923,13 @@ export async function generateAndReviewSession(
         }
       } catch (err: any) {
         console.error("[SESSION] Diagram re-enrichment failed:", err?.message || String(err));
+      }
+      if (drill?.diagram) {
+        enforceConditionedGameFormatDiagram(drill, input);
+        enforceDiagramPlayerLimit(drill, input.numbersMax);
+        enforceDiagramGoalAvailability(drill, input);
+        normalizeGoalkeeperPositions(drill.diagram);
+        applyCoachLevelDiagramProfile(drill, input.coachLevel);
       }
       const drillRefCode = drill.refCode || await generateRefCode("drill");
       
@@ -631,6 +948,8 @@ export async function generateAndReviewSession(
           // Map from input or drill JSON
           numbersMin: drill.numbersMin ?? input.numbersMin,
           numbersMax: drill.numbersMax ?? input.numbersMax,
+          goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
+          goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
           spaceConstraint: drill.spaceConstraint ?? input.spaceConstraint,
           formationUsed: drill.formationUsed ?? input.formationAttacking,
           playerLevel: input.playerLevel as any,
@@ -681,6 +1000,8 @@ export async function generateAndReviewSession(
             data: {
               json: drill,
               coachLevel: input.coachLevel as any,
+              goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
+              goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
             },
           });
         } catch (err: any) {

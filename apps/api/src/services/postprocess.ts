@@ -294,6 +294,7 @@ export function postProcessDrill({ json }: { json: any }, input: any) {
     base.add("2 Mini-goals");
   } else if (goalMode === "LARGE") {
     base.add("1 Full-size goal");
+    if (goalsAvailable === 1) base.add("2 Mini-goals");
   }
 
   // Carry forward only non-goal extras

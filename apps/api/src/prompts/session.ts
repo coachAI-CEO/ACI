@@ -18,6 +18,52 @@ export interface SessionPromptInput {
   focus?: string; // e.g., "technical", "tactical", "match_preparation"
 }
 
+export type GameFormat = "7v7" | "9v9" | "11v11";
+
+export function getGameFormatForAgeGroup(ageGroup: string): GameFormat {
+  const age = Number(String(ageGroup || "").replace(/^U/i, ""));
+  if (age >= 8 && age <= 10) return "7v7";
+  if (age >= 11 && age <= 12) return "9v9";
+  return "11v11";
+}
+
+export function getPlayersPerTeamForFormat(format: GameFormat): number {
+  if (format === "7v7") return 7;
+  if (format === "9v9") return 9;
+  return 11;
+}
+
+function getDefaultFullGameRoles(format: GameFormat): string[] {
+  if (format === "7v7") return ["GK", "RB", "LB", "CM", "LM", "RM", "ST"];
+  if (format === "9v9") return ["GK", "RB", "CB", "LB", "CM", "CM", "LW", "RW", "ST"];
+  return ["GK", "RB", "RCB", "LCB", "LB", "DM", "CM", "AM", "RW", "ST", "LW"];
+}
+
+function buildFullGameExamplePlayers(format: GameFormat) {
+  const roles = getDefaultFullGameRoles(format);
+  const count = roles.length;
+  return [
+    ...roles.map((role, idx) => ({
+      id: `A${idx + 1}`,
+      number: idx === 0 ? 1 : idx + 1,
+      team: "ATT",
+      role,
+      x: idx === 0 ? 90 : 72 - Math.floor((idx - 1) / 3) * 12,
+      y: idx === 0 ? 50 : 25 + ((idx - 1) % 3) * 25,
+      facingAngle: 270,
+    })),
+    ...roles.map((role, idx) => ({
+      id: `D${idx + 1}`,
+      number: idx === 0 ? 1 : idx + 1,
+      team: "DEF",
+      role,
+      x: idx === 0 ? 10 : 28 + Math.floor((idx - 1) / 3) * 12,
+      y: idx === 0 ? 50 : 25 + ((idx - 1) % 3) * 25,
+      facingAngle: 90,
+    })),
+  ];
+}
+
 function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?: string): string {
   const p = phase || "ATTACKING";
   const z = zone || "ATTACKING_THIRD";
@@ -147,12 +193,25 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
   );
   const phaseGuidance = getSessionPhaseGuidance(input.phase, input.zone);
   const isGrassroots = input.coachLevel === "GRASSROOTS";
-  const isUssfCorB =
-    input.coachLevel === "USSF_C" || input.coachLevel === "USSF_B_PLUS";
+  const isUssfC = input.coachLevel === "USSF_C";
+  const isUssfBPlus = input.coachLevel === "USSF_B_PLUS";
+  const isUssfCorB = isUssfC || isUssfBPlus;
   const diagramDetailLabel = isGrassroots ? "SIMPLE" : "FULL";
-  const arrowRange = isGrassroots ? "2-4" : "7-10";
-  const annotationRange = isGrassroots ? "1-2" : "4-6";
-  const safeZoneRange = isGrassroots ? "0-1" : "1-3";
+  const arrowRange = isGrassroots ? "2-4" : isUssfBPlus ? "7-10" : "5-7";
+  const annotationRange = isGrassroots ? "1-2" : isUssfBPlus ? "4-6" : "3-4";
+  const safeZoneRange = isGrassroots ? "0-1" : isUssfBPlus ? "2-3" : "1-2";
+  const gameFormat = getGameFormatForAgeGroup(input.ageGroup);
+  const playersPerTeam = getPlayersPerTeamForFormat(gameFormat);
+  const fullGamePlayerTotal = playersPerTeam * 2;
+  const requestedMaxPlayers = Number(input.numbersMax || 0);
+  const canRunFullGameFormat = requestedMaxPlayers >= fullGamePlayerTotal;
+  const activeGameLabel = canRunFullGameFormat
+    ? gameFormat
+    : `${Math.max(2, Math.floor(requestedMaxPlayers / 2))}v${Math.max(2, Math.floor(requestedMaxPlayers / 2))} conditioned game`;
+  const activePlayersPerTeam = canRunFullGameFormat
+    ? playersPerTeam
+    : Math.max(2, Math.floor(requestedMaxPlayers / 2));
+  const conditionedGameExamplePlayers = buildFullGameExamplePlayers(gameFormat);
   
   const sessionDuration = input.durationMin || 90;
   const is60Min = sessionDuration === 60;
@@ -171,8 +230,11 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     isGrassroots
       ? "- For GRASSROOTS, diagrams must be simple and coach-friendly: no pitch zone overlays, fewer arrows, fewer annotations, and optional safe zones."
       : "- For USSF_C and USSF_B_PLUS, use full tactical diagram detail with richer movement, annotations, and safe-zone context.",
-    ...(isUssfCorB
-      ? ["- USSF_C and USSF_B_PLUS share the same diagram structure and detail level."]
+    ...(isUssfC
+      ? ["- USSF_C diagrams must show tactical cues clearly: 5-7 arrows, 3-4 annotations, and 1-2 safe zones."]
+      : []),
+    ...(isUssfBPlus
+      ? ["- USSF_B_PLUS diagrams must be the richest view: 7-10 arrows, 4-6 annotations, and 2-3 safe zones with advanced tactical labels."]
       : []),
     "COACH LANGUAGE PROFILE (MANDATORY):",
     isGrassroots
@@ -187,6 +249,22 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     ...(isUssfCorB
       ? ["- For USSF_C and USSF_B_PLUS, keep tactical terminology and detail; do not rewrite into grassroots-style simplified language."]
       : []),
+    "AGE/GAME FORMAT LOCK (MANDATORY):",
+    `- ageGroup=${input.ageGroup} uses ${gameFormat}.`,
+    "- U8-U10 must be 7v7, U11-U12 must be 9v9, U13-U18 must be 11v11.",
+    `- The selected active player range is ${input.numbersMin}-${input.numbersMax}; every drill diagram.players length MUST stay inside that range.`,
+    canRunFullGameFormat
+      ? `- If a CONDITIONED_GAME is titled or organized as ${gameFormat}, diagram.players MUST contain exactly ${fullGamePlayerTotal} players: ${playersPerTeam} ATT and ${playersPerTeam} DEF, including one GK on each team.`
+      : `- Do NOT title or organize any drill as full ${gameFormat}; ${gameFormat} would require ${fullGamePlayerTotal} players, above numbersMax=${input.numbersMax}. Use reduced ${gameFormat} roles within ${input.numbersMax} active players instead.`,
+    canRunFullGameFormat
+      ? `- Do NOT label a drill ${gameFormat} unless the diagram has the matching ${playersPerTeam}v${playersPerTeam} player count.`
+      : `- Reduced games may use smaller active formats such as ${activeGameLabel}; describe them as reduced games using ${gameFormat} roles, not as full ${gameFormat}.`,
+    "- Do not mix format labels and player counts: if text says 7v7/9v9/11v11, diagram.players must match that active count exactly.",
+    "GOAL AVAILABILITY LOCK (MANDATORY):",
+    `- goalsAvailable=${input.goalsAvailable}.`,
+    "- If goalsAvailable=1, use exactly one full-size goal with one GK. The opposite end must use two mini-goals or gates and must NOT have a GK.",
+    "- If goalsAvailable=1, do not write 'full-size goals', 'two goals with GKs', or 'game flows through GKs'. Use 'one GK' and 'mini-goal restarts' language.",
+    "- If goalsAvailable>=2, two full goals/GKs are allowed only when the setup explicitly needs them.",
     "",
     "🚨🚨🚨 CRITICAL DIAGRAM REQUIREMENT 🚨🚨🚨",
     "",
@@ -441,14 +519,14 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
         },
         {
           drillType: "CONDITIONED_GAME",
-          title: "7v7 Possession Game with Restrictions",
+          title: `${activeGameLabel} with Restrictions`,
           durationMin: parseInt(conditionedGameDuration),
           description: "Small-sided game focusing on maintaining possession and creating scoring opportunities with modified rules to emphasize game model principles.",
           organization: {
             setupSteps: [
-              "Set up 7v7 game on half field (60x40 yards)",
+              `Set up ${activeGameLabel} on half field (60x40 yards)`,
               "Place two full-size goals with GKs",
-              "Divide players into two teams of 7",
+              `Divide players into two teams of ${activePlayersPerTeam}, keeping total active players within ${input.numbersMax}`,
               "Set offside line at halfway",
               "Start with kickoff"
             ],
@@ -471,23 +549,9 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
           rpeMax: 8,
           diagram: {
             pitch: { variant: "HALF", orientation: "HORIZONTAL", showZones: true },
-            players: [
-              { id: "GK1", number: 1, team: "DEF", role: "GK", x: 10, y: 50, facingAngle: 90 },
-              { id: "D1", number: 2, team: "DEF", role: "RB", x: 30, y: 30, facingAngle: 270 },
-              { id: "D2", number: 4, team: "DEF", role: "CB", x: 30, y: 50, facingAngle: 270 },
-              { id: "D3", number: 5, team: "DEF", role: "CB", x: 30, y: 70, facingAngle: 270 },
-              { id: "D4", number: 3, team: "DEF", role: "LB", x: 30, y: 90, facingAngle: 270 },
-              { id: "D5", number: 6, team: "DEF", role: "DM", x: 45, y: 40, facingAngle: 270 },
-              { id: "D6", number: 8, team: "DEF", role: "CM", x: 45, y: 60, facingAngle: 270 },
-              { id: "GK2", number: 1, team: "ATT", role: "GK", x: 90, y: 50, facingAngle: 270 },
-              { id: "A1", number: 7, team: "ATT", role: "LW", x: 60, y: 30, facingAngle: 90 },
-              { id: "A2", number: 10, team: "ATT", role: "CM", x: 60, y: 50, facingAngle: 90 },
-              { id: "A3", number: 11, team: "ATT", role: "RW", x: 60, y: 70, facingAngle: 90 },
-              { id: "A4", number: 9, team: "ATT", role: "ST", x: 75, y: 50, facingAngle: 90 },
-              { id: "A5", number: 8, team: "ATT", role: "CM", x: 60, y: 60, facingAngle: 90 },
-              { id: "A6", number: 6, team: "ATT", role: "DM", x: 55, y: 40, facingAngle: 90 },
-              { id: "A7", number: 4, team: "ATT", role: "CB", x: 70, y: 50, facingAngle: 90 }
-            ],
+            players: canRunFullGameFormat
+              ? conditionedGameExamplePlayers
+              : conditionedGameExamplePlayers.slice(0, activePlayersPerTeam).concat(conditionedGameExamplePlayers.slice(playersPerTeam, playersPerTeam + activePlayersPerTeam)),
             goals: [
               { id: "G1", type: "BIG", width: 8, x: 10, y: 50, facingAngle: 90, teamAttacks: "ATT" },
               { id: "G2", type: "BIG", width: 8, x: 90, y: 50, facingAngle: 270, teamAttacks: "DEF" }
@@ -626,6 +690,10 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "- Diagram structure: pitch (variant, orientation, showZones:false), players array (with id, number, team, role, x, y, facingAngle), goals array, arrows array (7-10), annotations array (4-6), safeZones array (1-3), optional coach",
     "- ATT attacks bottom→top (y: 80→10), x: 0–100 (left→right)",
     "- Position ATT players per formation=" + input.formationAttacking + ", position DEF players per formation=" + input.formationDefending,
+    canRunFullGameFormat
+      ? `- CONDITIONED_GAME may use full ${gameFormat} for ${input.ageGroup}: exactly ${playersPerTeam} ATT + ${playersPerTeam} DEF (${fullGamePlayerTotal} total), including a GK on both teams.`
+      : `- CONDITIONED_GAME must be a reduced ${gameFormat}-roles game because numbersMax=${input.numbersMax}; do not exceed ${input.numbersMax} total diagram players.`,
+    "- If the drill title, description, setup, or scoring says a format (7v7/9v9/11v11), the diagram.player counts must match that format exactly.",
     "- DEF players face 180° (down) for pressing",
     "- Player counts MUST match: description text = organization.setupSteps = diagram.players array length",
     "- Example: If setupSteps says '4 attackers, 4 defenders, 1 GK', then diagram.players MUST have 9 player objects",

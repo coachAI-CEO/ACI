@@ -1,3 +1,5 @@
+import { resolveFieldFormat, type FieldFormat } from "../data/field-dimensions";
+
 export interface DrillPromptInput {
   gameModelId: string;
   ageGroup: string;
@@ -10,7 +12,13 @@ export interface DrillPromptInput {
   goalsAvailable: number;
   spaceConstraint: string;
   durationMin?: number;
-  
+  /** Real match format this drill's field/goal scale is based on (7v7,
+   * 9v9, 11v11). Optional -- when the caller specifies it explicitly, it's
+   * used as-is; when omitted (existing callers), it falls back to a guess
+   * derived from numbersMax so nothing breaks. Explicit is always better
+   * than guessed -- new callers should set this. */
+  fieldFormat?: FieldFormat;
+
   formationAttacking: string;
   formationDefending: string;
   playerLevel: string;
@@ -273,12 +281,20 @@ function getPhaseGuidance(phase: string, zone: string): string {
     "- Diagram arrows must include at least one phase-defining action sequence.",
   ];
 
+  const directionBase =
+    "DIAGRAM DIRECTION LOCK (MANDATORY, ABSOLUTE, NEVER VARIES): The diagram is ALWAYS horizontal (diagram.pitch.orientation = \"HORIZONTAL\"). NEVER vertical. " +
+    "DEF's own goal is on the RIGHT edge (x→100) -- DEF always defends the right. ATT always attacks TOWARD the RIGHT edge (x→100) too, because ATT is attacking DEF's goal -- they are the SAME location, not opposite ends. ATT's own deep/start position is toward the left (x→0); DEF organizes near the right, pressing out to meet ATT coming from the left. This is fixed for every drill, every phase, every zone -- never flip it, never let the model choose a side. " +
+    "POSITION SIDE LOCK (MANDATORY): a role's Left/Right prefix (LB/LM/LW/LCB/LCM/LWB vs RB/RM/RW/RCB/RCM/RWB) refers to that TEAM's own left/right when facing their attacking direction, not the page's left/right, and it is NOT the same for both teams. ATT faces right (attacks x→100): ATT's Left-prefixed roles go at LOW y (top half, y<40), ATT's Right-prefixed roles go at HIGH y (bottom half, y>60). DEF's nominal attacking direction is the opposite (faces left, toward the incoming ATT), so DEF is mirrored: DEF's Left-prefixed roles go at HIGH y (bottom half, y>60), DEF's Right-prefixed roles go at LOW y (top half, y<40). Getting this backwards for DEF is a common mistake -- double check DEF's L/R roles specifically before output.";
+
   if (phase === "ATTACKING") {
     return [
       ...base,
       "ATTACKING REQUIREMENTS:",
       "- Focus on progression, chance creation, and final action quality.",
       "- Include cues for support depth/width and timing of final-third actions.",
+      directionBase,
+      "- ATT's target (goal or zone) is on the RIGHT edge (x>=80) -- this holds regardless of how deep or advanced ATT's players currently are; only the target's location is fixed, not the players' average position.",
+      "- If goalsAvailable=0 (zone/target-based drill, no goals): any target zone(s) the attacking team is progressing into MUST sit near the RIGHT edge (x>=80), never at mid-field or the left edge. Do not place symmetric target zones on both edges unless the drill explicitly trains a switch-of-play decision -- a single, clearly-committed target communicates the phase objective better than a passive dual target.",
     ].join("\n");
   }
 
@@ -288,6 +304,9 @@ function getPhaseGuidance(phase: string, zone: string): string {
       "DEFENDING REQUIREMENTS:",
       "- Focus on compactness, delay/channel, pressure-cover-balance, and protection of key space.",
       "- Include cues for line distances and deny/force direction.",
+      directionBase,
+      "- DEF's own goal/protected target is on the RIGHT edge (x>=80) -- this holds regardless of how high DEF presses; a high-pressing DEF may sit ahead of ATT (further toward the left), a low-block DEF sits deep near its own goal, but the goal being protected never moves off the right edge.",
+      "- If goalsAvailable=0 (zone/target-based drill, no goals): the zone/space DEF is protecting MUST sit near the RIGHT edge (x>=80), so the diagram reads as 'defend this side,' not an ambiguous central drill.",
     ].join("\n");
   }
 
@@ -297,6 +316,8 @@ function getPhaseGuidance(phase: string, zone: string): string {
       "TRANSITION_TO_ATTACK REQUIREMENTS:",
       "- Focus on first action after regain (0-6 seconds): secure then exploit space quickly.",
       "- Include cues for support runs, first forward pass quality, and fast decision timing.",
+      directionBase,
+      "- The regaining team's target zone/goal (if any) sits near the RIGHT edge (x>=80); the counter-attack run in the diagram's arrows must point rightward toward that edge.",
     ].join("\n");
   }
 
@@ -306,6 +327,8 @@ function getPhaseGuidance(phase: string, zone: string): string {
       "TRANSITION_TO_DEFEND REQUIREMENTS:",
       "- Focus on immediate reaction after loss (0-6 seconds): counterpress or recover shape.",
       "- Include cues for nearest-player pressure and second-line recovery responsibilities.",
+      directionBase,
+      "- The team recovering shape is protecting the RIGHT edge (x>=80, the edge the now-attacking opponent is driving toward); recovery-run arrows must point rightward back toward that edge.",
     ].join("\n");
   }
 
@@ -314,6 +337,8 @@ function getPhaseGuidance(phase: string, zone: string): string {
     "TRANSITION REQUIREMENTS:",
     "- Include both regain-to-attack and loss-to-defend moments in repeated cycles.",
     "- Enforce rapid decision-making around role switches.",
+    directionBase,
+    "- Regardless of which team currently has the ball, DEF's goal (which is always what ATT is attacking) stays fixed on the RIGHT edge across the whole sequence -- do not flip it mid-drill.",
   ].join("\n");
 }
 
@@ -435,11 +460,11 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "   - Position players in diagram according to their team's formation.",
     "7. playerLevel=" + input.playerLevel + ": BEGINNER=simple, INTERMEDIATE=some combinations, ADVANCED=complex, game-realistic.",
     "8. coachLevel=" + input.coachLevel + ": GRASSROOTS=simple language, USSF_C=moderate detail, USSF_B_PLUS=advanced tactical detail.",
-    "9. spaceConstraint=" + input.spaceConstraint + " sets area size; goalsAvailable=" + input.goalsAvailable + " sets goalMode (0=NONE, 1=LARGE, 2+=MINI2).",
-    "10. diagram MUST include arrows and annotations arrays. Include 7-10 arrows and 4-6 annotations (each annotation must include fontSize, color, fontWeight).",
+    "9. spaceConstraint=" + input.spaceConstraint + " sets area size; goalsAvailable=" + input.goalsAvailable + " sets goalMode (0=NONE, 1=LARGE, 2+=MINI2). If goalsAvailable=1, use one full-size goal with one GK and two mini-goals/gates on the opposite end with NO GK on that side.",
+    "10. diagram MUST include arrows and annotations arrays. Include 7-10 arrows and 4-6 annotations (each annotation must include fontSize, color, fontWeight). Every arrow's from/to MUST be a literal {x, y} number pair copied from the actual position of the player (or point) the arrow starts/ends at. Never reference a player by id -- an id that doesn't exactly match diagram.players collapses the arrow to a single point and it disappears from the diagram.",
     "11. diagram.players MUST include EVERY player described in organization.setupSteps (no partial scenario diagrams).",
     "12. diagram.pitch.showZones MUST be false.",
-    "13. diagram.pitch.orientation MUST match the data: goals on top/bottom => VERTICAL, goals on left/right => HORIZONTAL.",
+    "13. diagram.pitch.orientation MUST always be \"HORIZONTAL\". Never output \"VERTICAL\". DEF's goal is on the right edge (x→100); ATT always attacks that same right edge (x→100), since ATT is attacking DEF's goal -- fixed, never flipped, regardless of goals/zone/phase.",
     "14. gameModelId MUST be visible in behaviors:",
     "   - POSSESSION: circulation/overloads/line breaks dominate.",
     "   - PRESSING: triggers/angles/compact regains dominate.",
@@ -459,6 +484,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "{",
     '  "title": string, "ageGroup": "' + input.ageGroup + '", "phase": "' + input.phase + '", "zone": "' + input.zone + '",',
     '  "gameModelId": "' + input.gameModelId + '", "formationAttacking": "' + input.formationAttacking + '", "formationDefending": "' + input.formationDefending + '",',
+    '  "fieldFormat": "' + (input.fieldFormat || resolveFieldFormat(input.numbersMax)) + '",  // Fixed by the caller -- copy exactly, do not change it.',
     '  "playerLevel": "' + input.playerLevel + '", "coachLevel": "' + input.coachLevel + '",',
     '  "description": string,  // MUST be ≥40 chars. 2-3 sentences explaining what players DO (actions, not just objective).',
     '    // ❌ BAD: "A possession game in the final third"',
@@ -492,10 +518,10 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     '  },',
     '  "roleUsage": {"activeAttackRoles": string[], "activeDefendRoles": string[], "activeNeutralRoles": string[], "notes": string},',
     '  "diagram": {',
-    '    "pitch": {"variant": "FULL"|"HALF"|"THIRD"|"QUARTER", "orientation": "HORIZONTAL"|"VERTICAL", "showZones": false},',
+    '    "pitch": {"variant": "FULL"|"HALF"|"THIRD"|"QUARTER", "orientation": "HORIZONTAL", "showZones": false},',
     '    "players": [{"id": string, "number": number, "team": "ATT"|"DEF"|"NEUTRAL", "role": string, "x": number, "y": number, "facingAngle": number}],',
-    '    "coach": {"x": number, "y": number, "label": "Coach", "note": string},',
-    '    "arrows": [{"id": string, "from": {"playerId"?: string, "x"?: number, "y"?: number}, "to": {"playerId"?: string, "x"?: number, "y"?: number}, "type": "pass"|"run"|"press"|"movement", "label"?: string, "color"?: string}], // 7-10 arrows',
+    '    "coach": {"x": number, "y": number, "label": "Coach", "note": string},  // x is the LENGTH axis (0=deep start, 100=DEF\'s goal), y is the WIDTH axis -- the real sideline is where y is near 0 or 100 (NOT where x is near 0 or 100, that\'s the goal line). A coach almost always stands on a sideline, so set y near 5-15 or 85-95 (whichever side fits the setup text) and pick x freely along the length to match where the coach is actually described as standing (e.g. near midfield, near a target zone).',
+    '    "arrows": [{"id": string, "from": {"x": number, "y": number} | {"isCoach": true}, "to": {"x": number, "y": number}, "type": "pass"|"run"|"press"|"movement", "label"?: string, "color"?: string}], // 7-10 arrows -- ALWAYS use numeric x/y, copied from the actual player at that position. Never use a "playerId" reference. EXCEPTION: if this arrow represents the coach serving/passing the first ball (setup steps often say "coach passes to..."), set from to exactly {"isCoach": true} instead of x/y -- the API resolves this to wherever the coach marker actually renders. Only use this when a coach is specified AND the setup steps describe the coach starting the drill with the ball; otherwise use normal player x/y.',
     '    "annotations": [{"id": string, "text": string, "x": number, "y": number, "fontSize": number, "color": string, "fontWeight": string, "backgroundColor"?: string}], // 4-6 annotations',
     '    "safeZones": [{"id": string, "x": number, "y": number, "width": number, "height": number, "team": "ATT"|"DEF"|"NEUTRAL", "label"?: string}], // 1-3 zones',
     '    "goals": [{"id": string, "type": "BIG"|"MINI", "width": number, "x": number, "y": number, "facingAngle": number, "teamAttacks": "ATT"|"DEF"|"NEUTRAL"}]',
@@ -503,7 +529,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     '  "goalMode": string, "goalsAvailable": ' + input.goalsAvailable + ', "gkOptional": ' + (input.gkOptional ? 'true' : 'false'),
     '}',
     "",
-    "DIAGRAM: ATT attacks bottom→top (y: 80→10), x: 0–100. Position ATT players per formationAttacking=" + input.formationAttacking + ". Position DEF players per formationDefending=" + input.formationDefending + ". DEF faces 180° for pressing. Keep spacing realistic and age-appropriate.",
+    "DIAGRAM: Always horizontal. DEF's goal is on the right (x→100); ATT attacks that same right edge -- fixed, never flipped. y: 0–100. Position ATT players per formationAttacking=" + input.formationAttacking + ". Position DEF players per formationDefending=" + input.formationDefending + ". DEF faces left (toward the incoming ATT) for pressing. Keep spacing realistic and age-appropriate.",
     "",
     "⚠️ VALIDATION CHECKLIST - Run this BEFORE outputting JSON (ALL must pass or clarity=2):",
     "",

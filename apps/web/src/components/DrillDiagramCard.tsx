@@ -1,7 +1,7 @@
-import * as React from "react";
+"use client";
+
 import type { DiagramV1 } from "@/types/diagram";
-import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
-import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
+import StoredDrillSvg from "@/components/StoredDrillSvg";
 
 export type DrillDiagramCardOrganization = {
   area?: { 
@@ -18,33 +18,20 @@ type Props = {
   phase: string;
   zone: string;
   diagram: DiagramV1;
+  drillId?: string | null;
+  goalsAvailable?: number | null;
   description?: string;
   organization?: DrillDiagramCardOrganization;
 };
 
 export default function DrillDiagramCard({
-  title,
-  gameModelId,
-  phase,
-  zone,
-  diagram,
-  description,
-  organization,
+  drillId,
+  goalsAvailable,
 }: Props) {
-  const drillData = React.useMemo(
-    () =>
-      tacticalEdgeToUniversalDrillData(diagram, {
-        title,
-        description,
-        organization,
-      }),
-    [diagram, title, description, organization]
-  );
-
   return (
     <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-6 py-5 sm:px-8 sm:py-6">
-      <div className="mx-auto max-w-[950px]">
-        <UniversalDrillDiagram drillData={drillData} size="large" />
+      <div className="mx-auto max-w-[950px] space-y-3">
+        <StoredDrillSvg drillId={drillId} goalsAvailable={goalsAvailable} size="large" className="mx-auto" />
       </div>
     </section>
   );

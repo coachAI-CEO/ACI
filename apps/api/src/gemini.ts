@@ -24,10 +24,9 @@ export function clearMetricsContext() {
   metricsContext = {};
 }
 
-// Use gemini-3.1-flash-lite-preview as primary for faster response times.
-// Fallback to gemini-3-flash-preview for compatibility.
-const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
-const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3-flash-preview";
+// Keep defaults aligned with deployed model configuration.
+const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash";
+const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3.5-flash";
 
 // Performance tuning - balance between speed and reliability
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45000; // 45 seconds (Gemini can be very slow for complex prompts)
@@ -166,18 +165,24 @@ async function storeMetrics(data: {
   }
 }
 
-export async function generateText(prompt: string, options?: { timeout?: number; retries?: number }) {
+export async function generateText(
+  prompt: string,
+  options?: { timeout?: number; retries?: number; model?: string; fallbackModel?: string | null }
+) {
   const timeout = options?.timeout || TIMEOUT_MS;
   const retries = options?.retries ?? MAX_RETRIES;
+  const primaryModel = options?.model || PRIMARY;
+  const fallbackModel = options?.fallbackModel === undefined ? FALLBACK : options.fallbackModel;
   
   try {
-    return await tryGenerate(PRIMARY, prompt, retries, timeout);
+    return await tryGenerate(primaryModel, prompt, retries, timeout);
   } catch (e: any) {
     // Don't try fallback if quota error - it will fail too
     if (isQuotaError(e)) throw e;
+    if (!fallbackModel || fallbackModel === primaryModel) throw e;
     
     console.log(`[Gemini] Primary model failed, trying fallback: ${e.message}`);
-    return await tryGenerate(FALLBACK, prompt, Math.min(retries, 1), timeout);
+    return await tryGenerate(fallbackModel, prompt, Math.min(retries, 1), timeout);
   }
 }
 

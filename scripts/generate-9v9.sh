@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # 9v9 formations (8 outfield + 1 GK = 9 players)
-# Valid for U13-U14 according to FORMATION_BY_AGE
+# Valid for U11-U12 according to FORMATION_BY_AGE
 FORMATIONS=("3-2-3" "2-3-2-1" "3-3-2")
 
-# Age groups for 9v9 (U13-U14)
-AGE_GROUPS=("U13" "U14")
+# Age groups for 9v9 (U11-U12)
+AGE_GROUPS=("U11" "U12")
 
 # Game models
 GAME_MODELS=("POSSESSION" "PRESSING" "TRANSITION" "COACHAI")

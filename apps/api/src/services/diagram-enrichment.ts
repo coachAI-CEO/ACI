@@ -40,7 +40,7 @@ export function buildDiagramEnrichmentPrompt(drillJson: any) {
     "- Output format: { \"diagram\": { ... } }",
     "- Preserve existing pitch/goals/players if present; do not change players count.",
     "- Ensure pitch.showZones = false.",
-    "- Include arrows (7-10) using types pass/movement/press/run.",
+    "- Include arrows (7-10) using types pass/movement/press/run. Every arrow's from/to MUST be a literal {x, y} number pair copied from the actual player position it starts/ends at -- never a playerId reference, since an id that doesn't exactly match diagram.players collapses the arrow to a single point.",
     "- Include annotations (4-6) derived from THIS drill's coachingPoints/setupSteps (no generic defaults).",
     "- Include safeZones (1-3) only if spatial concepts exist (wide channel, zone, third, corridor).",
     "- Use coordinates 0-100.",
@@ -52,6 +52,7 @@ export function buildDiagramEnrichmentPrompt(drillJson: any) {
 
 export async function reenrichDiagramFromDrillJson(drillJson: any) {
   const prompt = buildDiagramEnrichmentPrompt(drillJson);
+  const model = process.env.GEMINI_DIAGRAM_ENRICHMENT_MODEL || process.env.GEMINI_FAST_MODEL;
   setMetricsContext({
     operationType: "diagram_enrichment",
     ageGroup: typeof drillJson?.ageGroup === "string" ? drillJson.ageGroup : undefined,
@@ -60,7 +61,7 @@ export async function reenrichDiagramFromDrillJson(drillJson: any) {
   });
   let text = "";
   try {
-    text = await generateText(prompt, { timeout: 60000, retries: 0 });
+    text = await generateText(prompt, { timeout: 30000, retries: Number(process.env.GEMINI_MAX_RETRIES ?? 1), model });
   } finally {
     clearMetricsContext();
   }

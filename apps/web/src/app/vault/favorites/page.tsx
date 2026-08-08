@@ -3,9 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
-import UniversalDrillDiagram from "@/components/UniversalDrillDiagram";
-import DrillDiagramCard from "@/components/DrillDiagramCard";
-import { tacticalEdgeToUniversalDrillData } from "@/lib/diagram-adapter";
+import StoredDrillSvg from "@/components/StoredDrillSvg";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
@@ -20,6 +18,7 @@ type FavoriteSession = {
   zone?: string;
   durationMin?: number;
   formationUsed?: string;
+  goalsAvailable?: number;
   favoriteCount: number;
   createdAt: string;
   json: any;
@@ -45,6 +44,7 @@ type FavoriteDrill = {
   zone: string;
   durationMin?: number;
   drillType?: string;
+  goalsAvailable?: number;
   favoriteCount: number;
   createdAt: string;
   json: any;
@@ -707,6 +707,7 @@ export default function FavoritesPage() {
                       const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
                       const description = drill.description ?? drill.json?.description;
                       const organization = drill.organization ?? drill.json?.organization;
+                      const svgDrillId = drill.id ?? drill.refCode ?? drill.json?.refCode;
 
                       return (
                       <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
@@ -730,13 +731,11 @@ export default function FavoritesPage() {
                           {/* Left: Diagram */}
                           {diagram && (
                             <div className="flex items-center justify-center">
-                              <UniversalDrillDiagram
-                                drillData={tacticalEdgeToUniversalDrillData(diagram, {
-                                  title: drill.title ?? "Diagram",
-                                  description,
-                                  organization,
-                                })}
+                              <StoredDrillSvg
+                                drillId={svgDrillId}
+                                goalsAvailable={drill.goalsAvailable ?? drill.json?.goalsAvailable ?? selectedSession.goalsAvailable ?? selectedSession.json?.goalsAvailable}
                                 size="small"
+                                showRegenerate={false}
                               />
                             </div>
                           )}
@@ -880,12 +879,9 @@ export default function FavoritesPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
-                      <UniversalDrillDiagram
-                        drillData={tacticalEdgeToUniversalDrillData(selectedDrill.json.diagram, {
-                          title: selectedDrill.title ?? "Diagram",
-                          description: selectedDrill.json.description,
-                          organization: selectedDrill.json.organization,
-                        })}
+                      <StoredDrillSvg
+                        drillId={selectedDrill.id ?? selectedDrill.refCode ?? selectedDrill.json?.refCode}
+                        goalsAvailable={selectedDrill.goalsAvailable ?? selectedDrill.json?.goalsAvailable}
                         size="small"
                       />
                     </div>

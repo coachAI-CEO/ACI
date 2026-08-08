@@ -142,6 +142,10 @@ model Drill {
   json           Json
   visualThumbSvg String?
   visualHash     String? @unique
+  diagramSvg              String?
+  diagramSvgGeneratedAt   DateTime?
+  diagramSvgModel         String?
+  diagramSvgPromptVersion String?
 
   generatedBy    String?  // User ID who generated this drill
   user           User?    @relation("GeneratedDrills", fields: [generatedBy], references: [id], onDelete: SetNull)
