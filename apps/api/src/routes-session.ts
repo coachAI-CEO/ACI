@@ -60,7 +60,7 @@ function normalizeCoachLevel(value: unknown): string {
   const v = String(value || "")
     .trim()
     .toUpperCase();
-  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_D") return "USSF_D";
   if (v === "USSF_C") return "USSF_C";
   if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
   return v;
@@ -70,10 +70,10 @@ function applyCoachLevelGuardrails<T extends { coachLevel?: unknown; playerLevel
   const next = { ...(input || {}) } as T;
   const coachLevel = normalizeCoachLevel(next.coachLevel);
 
-  if (coachLevel === "GRASSROOTS" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
+  if (coachLevel === "USSF_D" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
     next.coachLevel = coachLevel;
   }
-  if (coachLevel === "GRASSROOTS") {
+  if (coachLevel === "USSF_D") {
     next.playerLevel = "BEGINNER";
   }
 

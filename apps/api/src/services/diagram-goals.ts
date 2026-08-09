@@ -100,7 +100,32 @@ function rewriteGoalText(value: any): any {
 
 export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabilityInput) {
   const goalsAvailable = Number(drill?.goalsAvailable ?? input.goalsAvailable ?? 0);
-  if (!drill || !drill.diagram || goalsAvailable !== 1) return;
+  if (!drill || !drill.diagram) return;
+
+  // goalsAvailable counts FULL-SIZE goals with a GK specifically -- it does
+  // NOT mean "no goals at all." goalsAvailable=0 still allows mini-goals
+  // (common, cheap equipment most coaches have regardless), it just rules
+  // out a BIG/full-size goal and a dedicated GK. Strip only the big goal
+  // deterministically (prompt-only isn't reliable enough on its own, same
+  // reasoning as every other LOCK here); leave any mini-goals untouched.
+  if (goalsAvailable === 0) {
+    const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
+    const hadBigGoal = goals.some(isBigGoal);
+    if (hadBigGoal) {
+      drill.diagram.goals = goals.filter((g: any) => !isBigGoal(g));
+      const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
+      for (const player of players) {
+        if (!isGoalkeeper(player)) continue;
+        const role = String(player.role || "").toUpperCase();
+        player.role = role === "GK" || role.includes("GOALKEEPER") ? "CB" : player.role;
+        if (String(player.team || "").toUpperCase() === "GK") player.team = "DEF";
+        player.number = typeof player.number === "number" && player.number !== 1 ? player.number : undefined;
+      }
+    }
+    return;
+  }
+
+  if (goalsAvailable !== 1) return;
 
   const diagram = drill.diagram;
   const existingGoals = Array.isArray(diagram.goals) ? diagram.goals : [];

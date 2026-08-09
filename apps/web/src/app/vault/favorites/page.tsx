@@ -83,7 +83,7 @@ const zoneLabel: Record<string, string> = {
 };
 
 const coachLevelLabel: Record<string, string> = {
-  GRASSROOTS: "Grassroots",
+  USSF_D: "USSF D",
   USSF_C: "USSF C",
   USSF_B_PLUS: "USSF B+",
 };

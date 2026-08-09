@@ -9,7 +9,7 @@ const AUTH_ME_URL = "/api/auth/me";
 const AUTH_REFRESH_URL = "/api/auth/refresh";
 const AUTH_PASSWORD_CHANGE_URL = "/api/auth/password/change";
 
-type CoachLevel = "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | "";
+type CoachLevel = "USSF_D" | "USSF_C" | "USSF_B_PLUS" | "";
 
 interface UserProfile {
   id: string;
@@ -379,7 +379,7 @@ export default function SettingsPage() {
                 disabled={profileSaving}
               >
                 <option value="">Not set</option>
-                <option value="GRASSROOTS">Grassroots</option>
+                <option value="USSF_D">USSF D</option>
                 <option value="USSF_C">USSF C</option>
                 <option value="USSF_B_PLUS">USSF B+</option>
               </select>

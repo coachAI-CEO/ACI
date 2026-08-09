@@ -11,15 +11,15 @@ function isMissingVideoReviewColumnError(error: unknown): boolean {
 
 /**
  * Get format from age group
- * U8-U12 = 7v7
- * U13-U14 = 9v9
- * U15-U18 = 11v11
+ * U8-U10 = 7v7
+ * U11-U12 = 9v9
+ * U13-U18 = 11v11
  */
 export function getFormatFromAgeGroup(ageGroup: string): string {
   const age = parseInt(ageGroup.replace("U", ""));
-  if (age >= 8 && age <= 12) return "7v7";
-  if (age >= 13 && age <= 14) return "9v9";
-  if (age >= 15 && age <= 18) return "11v11";
+  if (age >= 8 && age <= 10) return "7v7";
+  if (age >= 11 && age <= 12) return "9v9";
+  if (age >= 13 && age <= 18) return "11v11";
   return "7v7"; // default
 }
 

@@ -44,7 +44,7 @@ enum PlayerLevel {
 }
 
 enum CoachLevel {
-  GRASSROOTS
+  USSF_D
   USSF_C
   USSF_B_PLUS
 }

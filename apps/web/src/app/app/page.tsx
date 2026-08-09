@@ -201,10 +201,9 @@ export default function Home() {
   const drillOfDay = drillOfDayEntries[drillIndex];
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
-    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
     if (v === "USSF_C") return "USSF_C";
     if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-    if (v === "USSF_D") return "GRASSROOTS";
     return undefined;
   };
 

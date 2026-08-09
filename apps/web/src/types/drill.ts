@@ -42,7 +42,7 @@ export type PlayerLevelId =
   | "ADVANCED";
 
 export type CoachLevelId =
-  | "GRASSROOTS"
+  | "USSF_D"
   | "D_LICENSE"
   | "C_LICENSE"
   | "B_LICENSE"

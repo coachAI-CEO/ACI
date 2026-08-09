@@ -86,7 +86,7 @@ const ALLOWED_AGE_GROUPS = new Set([
 ]);
 
 const ALLOWED_TEAM_COLORS = new Set(["blue", "red", "white", "black", "yellow", "green"]);
-const ALLOWED_COACH_LEVELS = new Set(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]);
+const ALLOWED_COACH_LEVELS = new Set(["USSF_D", "USSF_C", "USSF_B_PLUS"]);
 const ALLOWED_PLAYER_LEVELS = new Set(["BEGINNER", "INTERMEDIATE", "ADVANCED"]);
 const REF_CHARSET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const VIDEO_ANALYSIS_PROMPT_VERSION = "2026-02-21-v2";
@@ -125,7 +125,7 @@ function normalizeCoachLevel(value: unknown): string {
     .replace(/\s+/g, "_");
   if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
   if (v === "USSF_C") return "USSF_C";
-  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_D") return "USSF_D";
   return v;
 }
 
@@ -169,8 +169,8 @@ function getFormationBucketAge(ageGroup: string): string {
 
 function getValidFormationsForAgeGroup(ageGroup: string): string[] {
   const bucket = getFormationBucketAge(ageGroup);
-  if (["U8", "U9", "U10", "U11", "U12"].includes(bucket)) return ["2-3-1", "3-2-1"];
-  if (["U13", "U14"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
+  if (["U8", "U9", "U10"].includes(bucket)) return ["2-3-1", "3-2-1"];
+  if (["U11", "U12"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
   return ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"];
 }
 
@@ -866,7 +866,7 @@ r.post("/ai/video-analysis/run", async (req: AuthRequest, res) => {
   });
 
   const opponentTeamColor = normalized.opponentTeamColor || "UNKNOWN";
-  const modelName = input.model || process.env.GEMINI_MODEL_PRIMARY || "gemini-3-flash-preview";
+  const modelName = input.model || process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash";
   const contract = buildAnalysisContract({
     promptVersion: VIDEO_ANALYSIS_PROMPT_VERSION,
     ageGroup: normalized.ageGroup,

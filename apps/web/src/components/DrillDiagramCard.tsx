@@ -19,6 +19,8 @@ type Props = {
   zone: string;
   diagram: DiagramV1;
   drillId?: string | null;
+  drillType?: string | null;
+  sessionSummary?: string | null;
   goalsAvailable?: number | null;
   description?: string;
   organization?: DrillDiagramCardOrganization;
@@ -26,8 +28,28 @@ type Props = {
 
 export default function DrillDiagramCard({
   drillId,
+  drillType,
+  sessionSummary,
   goalsAvailable,
 }: Props) {
+  const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
+
+  if (isCooldown) {
+    return (
+      <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-6 py-5 sm:px-8 sm:py-6">
+        <div className="mx-auto max-w-[950px] space-y-3">
+          <h4 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
+            Session Summary
+          </h4>
+          <p className="text-sm leading-relaxed text-slate-300">
+            {sessionSummary?.trim() ||
+              "Cooldown -- no tactical diagram needed. Wind the players down and recap the session's key coaching points."}
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-6 py-5 sm:px-8 sm:py-6">
       <div className="mx-auto max-w-[950px] space-y-3">

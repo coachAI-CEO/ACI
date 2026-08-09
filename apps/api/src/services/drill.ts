@@ -211,6 +211,40 @@ export function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[
     }
     normalizeGoalkeeperPositions();
 
+    // Force each L/R-prefixed role (LB/LM/LW/LCB/LCM/LWB vs their R-
+    // prefixed counterparts) onto the correct half of the pitch width,
+    // per drill-optimized-v2.ts's POSITION SIDE LOCK: ATT faces right, so
+    // ATT's Left-prefixed roles belong at low y (top half) and Right-
+    // prefixed at high y (bottom half); DEF faces the opposite way
+    // (toward the incoming ATT), so DEF is mirrored -- DEF's Left-prefixed
+    // roles belong at high y (bottom half), Right-prefixed at low y (top
+    // half). This is exactly the kind of side-relative spatial reasoning
+    // the model gets right most of the time but not reliably (the sandbox's
+    // roleSide scorer exists because of that) -- like orientation and goal
+    // direction above, don't leave it purely to the prompt: mirror any
+    // player that landed on the wrong half instead of trusting the model's
+    // y value as-is.
+    for (const p of safePlayers) {
+      const team = String((p as any)?.team || "").toUpperCase();
+      if (team !== "ATT" && team !== "DEF") continue;
+      const role = String((p as any)?.role || "").toUpperCase();
+      const match = role.match(/^([LR])[A-Z]/);
+      if (!match) continue;
+      const y = Number((p as any).y);
+      if (!Number.isFinite(y) || (y >= 40 && y <= 60)) continue; // too central to judge reliably
+
+      const isLeftRole = match[1] === "L";
+      // ATT: left->top (y<50), right->bottom (y>50). DEF: mirrored.
+      const wantsTopHalf = team === "ATT" ? isLeftRole : !isLeftRole;
+      const isTopHalf = y < 50;
+      if (isTopHalf !== wantsTopHalf) {
+        (p as any).y = 100 - y;
+        warnings.push(
+          `${prefix}Mirrored ${team} role="${(p as any).role}" from y=${y} to y=${100 - y} (POSITION SIDE LOCK: wrong half for that team/side)`
+        );
+      }
+    }
+
     // Do not auto-insert generic arrows/annotations/safeZones.
     // These must be provided in the drill JSON itself.
     if (!Array.isArray(diagram.arrows)) diagram.arrows = [];
@@ -218,11 +252,25 @@ export function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[
     if (!Array.isArray(diagram.safeZones)) diagram.safeZones = [];
   };
 
-  if (drill.diagram) {
-    ensureDiagramVisuals(drill.diagram, drill.diagram.players, "");
-  }
-  if (drill.json?.diagram) {
-    ensureDiagramVisuals(drill.json.diagram, drill.json.diagram.players, "[json] ");
+  // COOLDOWN drills don't need a tactical diagram -- there's no formation,
+  // no ball work, nothing spatial to draw. The prompt already asks the
+  // model to omit it, but that's a request, not a guarantee (and older
+  // stored drills may still carry one from before this rule existed), so
+  // strip it deterministically instead of rendering whatever the model
+  // returned. The UI shows the session summary in its place.
+  if (String(drill.drillType || "").toUpperCase() === "COOLDOWN") {
+    if (drill.diagram) {
+      delete drill.diagram;
+      warnings.push("Removed diagram from COOLDOWN drill (not needed -- session summary shown instead)");
+    }
+    if (drill.json?.diagram) delete drill.json.diagram;
+  } else {
+    if (drill.diagram) {
+      ensureDiagramVisuals(drill.diagram, drill.diagram.players, "");
+    }
+    if (drill.json?.diagram) {
+      ensureDiagramVisuals(drill.json.diagram, drill.json.diagram.players, "[json] ");
+    }
   }
   
   // 6. Convert organization from string to structured object
@@ -588,9 +636,12 @@ export async function generateAndReviewDrill(
     // never hard-crash on post-processing, but log the error
   }
 
-  // Re-enrich diagram with LLM if tactical elements are generic/missing
+  // Re-enrich diagram with LLM if tactical elements are generic/missing.
+  // Skip entirely for COOLDOWN -- it has no diagram to enrich, and calling
+  // needsDiagramEnrichment(undefined) would return true and trigger a
+  // wasted Gemini call to generate one.
   try {
-    if (needsDiagramEnrichment(drill?.diagram)) {
+    if (String(input.drillType || "").toUpperCase() !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram)) {
       const reenriched = await reenrichDiagramFromDrillJson(drill);
       if (reenriched) {
         drill.diagram = reenriched;

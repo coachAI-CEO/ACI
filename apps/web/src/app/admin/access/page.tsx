@@ -49,7 +49,7 @@ type PermForm = {
 const AGE_GROUPS = ["U8","U9","U10","U11","U12","U13","U14","U15","U16","U17","U18"];
 const ALL_FORMATS = ["7v7", "9v9", "11v11"] as const;
 const RESOURCE_TYPES = ["SESSION", "VAULT", "VIDEO_REVIEW", "BOTH"] as const;
-const COACH_LEVELS = ["", "GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+const COACH_LEVELS = ["", "USSF_D", "USSF_C", "USSF_B_PLUS"] as const;
 const RESOURCE_TYPE_LABELS: Record<PermForm["resourceType"], string> = {
   SESSION: "Session",
   VAULT: "Vault",
@@ -86,8 +86,8 @@ function resourceTypeFromFlags(flags: {
 
 function getFormatFromAgeGroup(ageGroup: string): "7v7" | "9v9" | "11v11" {
   const age = Number(ageGroup.replace("U", ""));
-  if (age >= 8 && age <= 12) return "7v7";
-  if (age >= 13 && age <= 14) return "9v9";
+  if (age >= 8 && age <= 10) return "7v7";
+  if (age >= 11 && age <= 12) return "9v9";
   return "11v11";
 }
 
@@ -99,11 +99,11 @@ function deriveFormatsFromAgeGroups(ageGroups: string[]): string[] {
 function ageGroupsForFormat(format: string): string[] {
   switch (format) {
     case "7v7":
-      return ["U8", "U9", "U10", "U11", "U12"];
+      return ["U8", "U9", "U10"];
     case "9v9":
-      return ["U13", "U14"];
+      return ["U11", "U12"];
     case "11v11":
-      return ["U15", "U16", "U17", "U18"];
+      return ["U13", "U14", "U15", "U16", "U17", "U18"];
     default:
       return [];
   }

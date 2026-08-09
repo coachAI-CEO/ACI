@@ -193,6 +193,12 @@ diagramSvgRouter.post("/generate", async (req, res) => {
   });
   if (!drill) return res.status(404).json({ error: "drill not found" });
 
+  // COOLDOWN has no formation/ball work to draw -- don't spend a Gemini
+  // call drawing one. The client shows the session summary instead.
+  if (String(drill.drillType || "").toUpperCase() === "COOLDOWN") {
+    return res.json({ svg: null, cooldown: true });
+  }
+
   const currentSvg = drill.diagramSvg;
   const currentPromptVersion = drill.diagramSvgPromptVersion;
   const needsRegen = force || !currentSvg || currentPromptVersion !== DRAWER_PROMPT_VERSION;

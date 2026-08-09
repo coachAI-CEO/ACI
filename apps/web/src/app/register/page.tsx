@@ -160,7 +160,7 @@ export default function RegisterPage() {
               disabled={loading}
             >
               <option value="">Select level</option>
-              <option value="GRASSROOTS">Grassroots</option>
+              <option value="USSF_D">USSF D</option>
               <option value="USSF_C">USSF C</option>
               <option value="USSF_B_PLUS">USSF B+</option>
             </select>

@@ -5,6 +5,7 @@ import * as React from "react";
 type StoredDrillSvgProps = {
   drillId?: string | null;
   goalsAvailable?: number | null;
+  drillType?: string | null;
   size?: "small" | "large";
   className?: string;
   showRegenerate?: boolean;
@@ -13,10 +14,12 @@ type StoredDrillSvgProps = {
 export default function StoredDrillSvg({
   drillId,
   goalsAvailable,
+  drillType,
   size = "large",
   className = "",
   showRegenerate = true,
 }: StoredDrillSvgProps) {
+  const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
   const [svg, setSvg] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -57,11 +60,13 @@ export default function StoredDrillSvg({
   React.useEffect(() => {
     setSvg(null);
     setError(null);
-    if (drillId) void loadSvg(false);
-  }, [drillId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (drillId && !isCooldown) void loadSvg(false);
+  }, [drillId, isCooldown]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxWidth = size === "small" ? "max-w-[420px]" : "max-w-[760px]";
   const padding = size === "small" ? "p-2" : "";
+
+  if (isCooldown) return null;
 
   if (!drillId) {
     return (

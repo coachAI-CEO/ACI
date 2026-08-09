@@ -189,12 +189,12 @@ const zoneLabel: Record<string, string> = {
 };
 
 const coachLevelLabel: Record<string, string> = {
-  GRASSROOTS: "Grassroots",
+  USSF_D: "USSF D",
   USSF_C: "USSF C",
   USSF_B_PLUS: "USSF B+",
 };
 const coachLevelOptions = [
-  { key: "GRASSROOTS", label: "Grassroots" },
+  { key: "USSF_D", label: "USSF D" },
   { key: "USSF_C", label: "USSF C" },
   { key: "USSF_B_PLUS", label: "USSF B+" },
 ] as const;
@@ -203,15 +203,15 @@ function normalizeCoachLevel(value?: string): string {
   const v = String(value || "").toUpperCase();
   if (v === "USSF_B_PLUS" || v === "USSF B+" || v === "USSF_B") return "USSF_B_PLUS";
   if (v === "USSF_C" || v === "USSF C") return "USSF_C";
-  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
   return v;
 }
 
 function getLanguageLevelBadge(coachLevel?: string) {
   const key = normalizeCoachLevel(coachLevel);
-  if (key === "GRASSROOTS") {
+  if (key === "USSF_D") {
     return {
-      label: "Language: Grassroots",
+      label: "Language: USSF D",
       className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
     };
   }
@@ -366,7 +366,7 @@ function getDefaultFormation(ageGroup: string): string {
 
 function getDefaultConfig(): SessionConfig {
   const ageGroup = "U12";
-  const coachLevel = "GRASSROOTS";
+  const coachLevel = "USSF_D";
   const balanced = getBalancedDefaultCombo(coachLevel);
   const phase: Phase = balanced.phase;
   const zone: Zone = balanced.zone;
@@ -380,7 +380,7 @@ function getDefaultConfig(): SessionConfig {
     formationAttacking: getDefaultFormation(ageGroup),
     formationDefending: getDefaultFormation(ageGroup),
     playerLevel: "BEGINNER",
-    coachLevel: "GRASSROOTS",
+    coachLevel: "USSF_D",
     numbersMin: 10,
     numbersMax: 14,
     goalsAvailable: 2,
@@ -413,11 +413,8 @@ function getConfigFromSearchParams(
   const defaults = getDefaultConfig();
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
-  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
-  const guardedPlayerLevelDefault =
-    coachLevel === "GRASSROOTS" ? "BEGINNER" : defaults.playerLevel;
-  const rawPlayerLevel = parseStringOrDefault(searchParams.get("playerLevel"), guardedPlayerLevelDefault);
-  const playerLevel = coachLevel === "GRASSROOTS" ? "BEGINNER" : rawPlayerLevel;
+  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "USSF_D");
+  const playerLevel = parseStringOrDefault(searchParams.get("playerLevel"), defaults.playerLevel);
   
   // Get topic from params, or default to first topic for the phase/zone + coach level combination
   const topicParam = searchParams.get("topic");
@@ -932,10 +929,9 @@ function SessionDemoPageContent() {
   const effectiveGameModelId = enforcedGameModelId || config.gameModelId;
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
-    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
     if (v === "USSF_C") return "USSF_C";
     if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-    if (v === "USSF_D") return "GRASSROOTS";
     return undefined;
   };
   const hasParams = searchParams.toString().length > 0;
@@ -1123,7 +1119,7 @@ function SessionDemoPageContent() {
     drills.forEach((drill: any) => {
       const refCode = drill.refCode;
       if (!refCode) return;
-      if (data?.session?.coachLevel === "GRASSROOTS") return;
+      if (normalizeCoachLevel(data?.session?.coachLevel) === "USSF_D") return;
       if (diagramOverrides[refCode]) return;
       if (diagramFetchInFlight.current.has(refCode)) return;
       const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
@@ -2224,7 +2220,7 @@ function SessionDemoPageContent() {
                         defaultValue={config.coachLevel}
                         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                       >
-                        <option value="GRASSROOTS">Grassroots</option>
+                        <option value="USSF_D">USSF D</option>
                         <option value="USSF_C">USSF C</option>
                         <option value="USSF_B_PLUS">USSF B+</option>
                       </select>
@@ -3463,7 +3459,7 @@ function SessionDemoPageContent() {
                     )}
 
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
-                      {diagram && (
+                      {(diagram || drill.drillType === "COOLDOWN") && (
                         (() => {
                           const drillRef = drill as SessionDrill & { id?: unknown; refCode?: unknown };
                           const diagramDrillId =
@@ -3482,6 +3478,8 @@ function SessionDemoPageContent() {
                                 zone={session.zone || "ATTACKING_THIRD"}
                                 diagram={diagram}
                                 drillId={diagramDrillId}
+                                drillType={drill.drillType}
+                                sessionSummary={session.summary}
                                 goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}

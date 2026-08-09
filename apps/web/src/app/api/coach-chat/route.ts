@@ -39,7 +39,7 @@ These are the parameters needed to generate a good session. Ask about important 
 
 **HELPFUL CONTEXT - Ask when relevant:**
 - coachLevel: What's your coaching background?
-  - GRASSROOTS: New/parent coach, basic drills
+  - USSF_D: D License, foundational tactics
   - USSF_C: C License, intermediate tactics
   - USSF_B_PLUS: B+ (or higher) license, advanced/high-level tactics
 - playerLevel: BEGINNER, INTERMEDIATE, ADVANCED
@@ -74,7 +74,7 @@ Respond ONLY with valid JSON:
     "topic": "specific focus" | null,
     "numberOfSessions": 1,
     "playerLevel": "INTERMEDIATE" | null,
-    "coachLevel": "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | null,
+    "coachLevel": "USSF_D" | "USSF_C" | "USSF_B_PLUS" | null,
     "durationMin": 90 | null,
     "numbersMin": 16 | null,
     "numbersMax": 20 | null,
@@ -238,7 +238,7 @@ Analyze this request and respond in the JSON format specified above.`;
 
     const formatCoachLevel = (value: string) => {
       const labels: Record<string, string> = {
-        GRASSROOTS: "Grassroots",
+        USSF_D: "USSF D",
         USSF_C: "USSF C",
         USSF_B_PLUS: "USSF B+",
       };
@@ -403,9 +403,9 @@ function extractBasicParams(message: string): any {
 
   // Coach level
   if (lower.includes("grassroot") || lower.includes("parent coach") || lower.includes("volunteer")) {
-    params.coachLevel = "GRASSROOTS";
+    params.coachLevel = "USSF_D"; // TODO: grassroots/low-level coaching is planned as a separate, independent area -- revisit this mapping once that exists
   } else if (lower.includes("d license") || lower.includes("d-license")) {
-    params.coachLevel = "GRASSROOTS";
+    params.coachLevel = "USSF_D";
   } else if (lower.includes("c license") || lower.includes("c-license")) {
     params.coachLevel = "USSF_C";
   } else if (lower.includes("b+ license") || lower.includes("b plus")) {

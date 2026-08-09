@@ -53,7 +53,7 @@ type User = {
 
 const ROLES = ["FREE", "COACH", "CLUB", "ADMIN", "TRIAL"] as const;
 const ADMIN_ROLES = ["", "SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"] as const;
-const COACH_LEVELS = ["", "GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+const COACH_LEVELS = ["", "USSF_D", "USSF_C", "USSF_B_PLUS"] as const;
 const PLANS = [
   "FREE", "TRIAL", "COACH_BASIC", "COACH_PRO", "CLUB_STANDARD", "CLUB_PREMIUM"
 ] as const;

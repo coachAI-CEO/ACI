@@ -1,6 +1,6 @@
 export type Phase = "ATTACKING" | "DEFENDING" | "TRANSITION";
 export type Zone = "DEFENSIVE_THIRD" | "MIDDLE_THIRD" | "ATTACKING_THIRD";
-export type CoachLevel = "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | string;
+export type CoachLevel = "USSF_D" | "USSF_C" | "USSF_B_PLUS" | string;
 
 const COMBO_TOPICS: Record<string, string[]> = {
   "ATTACKING|DEFENSIVE_THIRD": [
@@ -294,7 +294,7 @@ const COMBO_TOPICS: Record<string, string[]> = {
 };
 
 type TopicLevelVariants = {
-  grassroots: string;
+  ussfD: string;
   ussfC: string;
   ussfBPlus: string;
 };
@@ -304,152 +304,152 @@ type TopicLevelVariants = {
 const TOPIC_VARIANTS: Record<string, TopicLevelVariants> = {
   // ATTACKING | ATTACKING_THIRD
   "Final Third Penetration": {
-    grassroots: "Final Third Penetration",
+    ussfD: "Final Third Penetration",
     ussfC: "Final Third Penetration – combinations & overloads",
     ussfBPlus: "Final Third Penetration – breaking lines vs compact blocks",
   },
   "Chance Creation": {
-    grassroots: "Chance Creation",
+    ussfD: "Chance Creation",
     ussfC: "Chance Creation – triggers for the final pass",
     ussfBPlus: "Chance Creation – manipulating the back line & keeper",
   },
   "Crossing & Finishing": {
-    grassroots: "Crossing & Finishing",
+    ussfD: "Crossing & Finishing",
     ussfC: "Crossing & Finishing – timing of runs & delivery",
     ussfBPlus: "Crossing & Finishing – exploiting weak-side & cutback zones",
   },
   "Cutbacks & Box Entries": {
-    grassroots: "Cutbacks & Box Entries",
+    ussfD: "Cutbacks & Box Entries",
     ussfC: "Cutbacks & Box Entries – zones & arrival timing",
     ussfBPlus: "Cutbacks & Box Entries – creating overloads in the assist zone",
   },
   "Combination Play in the Box": {
-    grassroots: "Combination Play in the Box",
+    ussfD: "Combination Play in the Box",
     ussfC: "Combination Play in the Box – 1‑2s & third‑man runs",
     ussfBPlus: "Combination Play in the Box – breaking tight blocks centrally",
   },
   "Through Balls & Timing": {
-    grassroots: "Through Balls & Timing",
+    ussfD: "Through Balls & Timing",
     ussfC: "Through Balls & Timing – cues, angles & runs",
     ussfBPlus: "Through Balls & Timing – exploiting spaces between & behind lines",
   },
   "Third-Man Runs to Goal": {
-    grassroots: "Third-Man Runs to Goal",
+    ussfD: "Third-Man Runs to Goal",
     ussfC: "Third-Man Runs to Goal – timing support & release",
     ussfBPlus: "Third-Man Runs to Goal – dismarking & breaking the last line",
   },
   "Attacking the Near Post": {
-    grassroots: "Attacking the Near Post",
+    ussfD: "Attacking the Near Post",
     ussfC: "Attacking the Near Post – first contact & body shape",
     ussfBPlus: "Attacking the Near Post – front‑zone occupation & rotations",
   },
   "Attacking the Far Post": {
-    grassroots: "Attacking the Far Post",
+    ussfD: "Attacking the Far Post",
     ussfC: "Attacking the Far Post – blindside runs",
     ussfBPlus: "Attacking the Far Post – weak‑side overloads & second phase",
   },
   "1v1 to Beat Defender": {
-    grassroots: "1v1 to Beat Defender",
+    ussfD: "1v1 to Beat Defender",
     ussfC: "1v1 to Beat Defender – moves, deception & finish",
     ussfBPlus: "1v1 to Beat Defender – isolations, support & rest defense",
   },
   "Finishing Under Pressure": {
-    grassroots: "Finishing Under Pressure",
+    ussfD: "Finishing Under Pressure",
     ussfC: "Finishing Under Pressure – speed of action & decisions",
     ussfBPlus: "Finishing Under Pressure – shot selection vs block & keeper",
   },
   "Quick Combinations (Give & Go)": {
-    grassroots: "Quick Combinations (Give & Go)",
+    ussfD: "Quick Combinations (Give & Go)",
     ussfC: "Quick Combinations – 1‑2s to enter the box",
     ussfBPlus: "Quick Combinations – disorganising the last line centrally",
   },
   "Creating 2v1s Wide": {
-    grassroots: "Creating 2v1s Wide",
+    ussfD: "Creating 2v1s Wide",
     ussfC: "Creating 2v1s Wide – roles of winger & fullback",
     ussfBPlus: "Creating 2v1s Wide – fixing inside & exploiting outside",
   },
   "Switch to Weak Side Finish": {
-    grassroots: "Switch to Weak Side Finish",
+    ussfD: "Switch to Weak Side Finish",
     ussfC: "Switch to Weak Side Finish – circulation & timing",
     ussfBPlus: "Switch to Weak Side Finish – stretch & isolate far‑side defender",
   },
   "Arrivals from Midfield": {
-    grassroots: "Arrivals from Midfield",
+    ussfD: "Arrivals from Midfield",
     ussfC: "Arrivals from Midfield – late box runs",
     ussfBPlus: "Arrivals from Midfield – timing from second line vs markers",
   },
   "Attacking Set Pieces": {
-    grassroots: "Attacking Set Pieces",
+    ussfD: "Attacking Set Pieces",
     ussfC: "Attacking Set Pieces – roles & runs",
     ussfBPlus: "Attacking Set Pieces – routines vs zonal & mixed blocks",
   },
   "Decision Making in Final Third": {
-    grassroots: "Decision Making in Final Third",
+    ussfD: "Decision Making in Final Third",
     ussfC: "Decision Making in Final Third – shoot, pass or cross",
     ussfBPlus: "Decision Making in Final Third – selecting best option vs structure",
   },
   "Tempo in the Final Pass": {
-    grassroots: "Tempo in the Final Pass",
+    ussfD: "Tempo in the Final Pass",
     ussfC: "Tempo in the Final Pass – when to slow or speed up",
     ussfBPlus: "Tempo in the Final Pass – controlling rhythm to unbalance lines",
   },
   "Body Shape for Finishing": {
-    grassroots: "Body Shape for Finishing",
+    ussfD: "Body Shape for Finishing",
     ussfC: "Body Shape for Finishing – first touch & preparation",
     ussfBPlus: "Body Shape for Finishing – disguising finish & attacking rebounds",
   },
   "Rebounds & Second Balls": {
-    grassroots: "Rebounds & Second Balls",
+    ussfD: "Rebounds & Second Balls",
     ussfC: "Rebounds & Second Balls – reacting in the box",
     ussfBPlus: "Rebounds & Second Balls – box occupation after first shot",
   },
   "One-Touch Finishes": {
-    grassroots: "One-Touch Finishes",
+    ussfD: "One-Touch Finishes",
     ussfC: "One-Touch Finishes – timing & body orientation",
     ussfBPlus: "One-Touch Finishes – attacking front & back zones",
   },
   "Finishing from Cutbacks": {
-    grassroots: "Finishing from Cutbacks",
+    ussfD: "Finishing from Cutbacks",
     ussfC: "Finishing from Cutbacks – positioning around penalty spot",
     ussfBPlus: "Finishing from Cutbacks – timing breaks from second line",
   },
   "Create Separation in Box": {
-    grassroots: "Create Separation in Box",
+    ussfD: "Create Separation in Box",
     ussfC: "Create Separation in Box – double movements",
     ussfBPlus: "Create Separation in Box – manipulating markers & screening",
   },
   "Timing of Crosses": {
-    grassroots: "Timing of Crosses",
+    ussfD: "Timing of Crosses",
     ussfC: "Timing of Crosses – relate runner & crosser",
     ussfBPlus: "Timing of Crosses – early vs late delivery to exploit spaces",
   },
   "Near Post Runs": {
-    grassroots: "Near Post Runs",
+    ussfD: "Near Post Runs",
     ussfC: "Near Post Runs – cues & starting positions",
     ussfBPlus: "Near Post Runs – attacking front space vs zonal lines",
   },
   "Far Post Runs": {
-    grassroots: "Far Post Runs",
+    ussfD: "Far Post Runs",
     ussfC: "Far Post Runs – weak‑side timing",
     ussfBPlus: "Far Post Runs – blindside attacking & overloads",
   },
   "Blindside Runs": {
-    grassroots: "Blindside Runs",
+    ussfD: "Blindside Runs",
     ussfC: "Blindside Runs – starting positions & triggers",
     ussfBPlus: "Blindside Runs – attacking defenders’ blind shoulder in box",
   },
   "Second Phase Attacks": {
-    grassroots: "Second Phase Attacks",
+    ussfD: "Second Phase Attacks",
     ussfC: "Second Phase Attacks – organise around cleared balls",
     ussfBPlus: "Second Phase Attacks – structure for sustained pressure",
   },
   "Quick Shot Selection": {
-    grassroots: "Quick Shot Selection",
+    ussfD: "Quick Shot Selection",
     ussfC: "Quick Shot Selection – first touch to finish",
     ussfBPlus: "Quick Shot Selection – choosing finish based on pressure & angle",
   },
   "Combining with 9": {
-    grassroots: "Combining with 9",
+    ussfD: "Combining with 9",
     ussfC: "Combining with 9 – set, spin & third‑man",
     ussfBPlus: "Combining with 9 – using the striker to fix & free runners",
   },
@@ -460,7 +460,7 @@ function applyCoachLevelToTopics(
   coachLevel?: CoachLevel
 ): string[] {
   const levelKey =
-    (coachLevel && (coachLevel as string).toUpperCase()) || "GRASSROOTS";
+    (coachLevel && (coachLevel as string).toUpperCase()) || "USSF_D";
 
   return topics.map((base) => {
     const variant = TOPIC_VARIANTS[base];
@@ -475,8 +475,8 @@ function applyCoachLevelToTopics(
     if (levelKey === "USSF_B_PLUS") {
       return variant.ussfBPlus;
     }
-    // Default / GRASSROOTS
-    return variant.grassroots;
+    // Default / USSF_D
+    return variant.ussfD;
   });
 }
 

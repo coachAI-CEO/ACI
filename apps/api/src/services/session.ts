@@ -60,8 +60,8 @@ function humanizeGameModelText(value: any, parentKey?: string): any {
   return value;
 }
 
-function isGrassrootsCoachLevel(coachLevel?: string): boolean {
-  return String(coachLevel || "").toUpperCase() === "GRASSROOTS";
+function isUssfDCoachLevel(coachLevel?: string): boolean {
+  return String(coachLevel || "").toUpperCase() === "USSF_D";
 }
 
 function getCoachDiagramMinimums(coachLevel?: string) {
@@ -151,7 +151,7 @@ function ensureRichCoachDiagramProfile(drill: any, coachLevel?: string) {
 
 function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
   if (!drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
-  if (!isGrassrootsCoachLevel(coachLevel)) {
+  if (!isUssfDCoachLevel(coachLevel)) {
     ensureRichCoachDiagramProfile(drill, coachLevel);
     return;
   }
@@ -369,7 +369,7 @@ function enforceDiagramPlayerLimit(drill: any, maxPlayers?: number) {
   normalizeGoalkeeperPositions(drill.diagram);
 }
 
-const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
+const USSF_D_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bmeticulously\b/gi, "carefully"],
   [/\bcomprehensive\b/gi, "complete"],
   [/\btactical intelligence\b/gi, "decision-making"],
@@ -399,9 +399,9 @@ const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bspatial awareness\b/gi, "awareness of space"],
 ];
 
-function simplifyGrassrootsText(text: string): string {
+function simplifyUssfDText(text: string): string {
   let out = String(text || "");
-  for (const [pattern, replacement] of GRASSROOTS_LANGUAGE_REPLACEMENTS) {
+  for (const [pattern, replacement] of USSF_D_LANGUAGE_REPLACEMENTS) {
     out = out.replace(pattern, replacement);
   }
   out = out
@@ -421,7 +421,7 @@ function simplifyGrassrootsText(text: string): string {
   return out.trim();
 }
 
-function toGrassrootsCoachVoice(text: string): string {
+function toUssfDCoachVoice(text: string): string {
   let out = String(text || "").trim();
   if (!out) return out;
 
@@ -442,18 +442,18 @@ function toGrassrootsCoachVoice(text: string): string {
   return out.replace(/\s{2,}/g, " ").trim();
 }
 
-function simplifyGrassrootsStringArray(values: any): any {
+function simplifyUssfDStringArray(values: any): any {
   if (!Array.isArray(values)) return values;
   return values.map((value) =>
-    typeof value === "string" ? toGrassrootsCoachVoice(simplifyGrassrootsText(value)) : value
+    typeof value === "string" ? toUssfDCoachVoice(simplifyUssfDText(value)) : value
   );
 }
 
 function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel) || !session || typeof session !== "object") return;
+  if (!isUssfDCoachLevel(coachLevel) || !session || typeof session !== "object") return;
 
   if (typeof session.summary === "string") {
-    session.summary = toGrassrootsCoachVoice(simplifyGrassrootsText(session.summary));
+    session.summary = toUssfDCoachVoice(simplifyUssfDText(session.summary));
   }
 
   if (!Array.isArray(session.drills)) return;
@@ -461,41 +461,41 @@ function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
     if (!drill || typeof drill !== "object") return;
 
     if (typeof drill.description === "string") {
-      drill.description = toGrassrootsCoachVoice(simplifyGrassrootsText(drill.description));
+      drill.description = toUssfDCoachVoice(simplifyUssfDText(drill.description));
     }
-    drill.coachingPoints = simplifyGrassrootsStringArray(drill.coachingPoints);
-    drill.progressions = simplifyGrassrootsStringArray(drill.progressions);
-    drill.constraints = simplifyGrassrootsStringArray(drill.constraints);
+    drill.coachingPoints = simplifyUssfDStringArray(drill.coachingPoints);
+    drill.progressions = simplifyUssfDStringArray(drill.progressions);
+    drill.constraints = simplifyUssfDStringArray(drill.constraints);
 
     if (drill.loadNotes && typeof drill.loadNotes === "object") {
       if (typeof drill.loadNotes.rationale === "string") {
-        drill.loadNotes.rationale = simplifyGrassrootsText(drill.loadNotes.rationale);
+        drill.loadNotes.rationale = simplifyUssfDText(drill.loadNotes.rationale);
       }
       if (typeof drill.loadNotes.structure === "string") {
-        drill.loadNotes.structure = simplifyGrassrootsText(drill.loadNotes.structure);
+        drill.loadNotes.structure = simplifyUssfDText(drill.loadNotes.structure);
       }
     }
 
     if (drill.organization && typeof drill.organization === "object") {
       if (Array.isArray(drill.organization.setupSteps)) {
-        drill.organization.setupSteps = simplifyGrassrootsStringArray(drill.organization.setupSteps);
+        drill.organization.setupSteps = simplifyUssfDStringArray(drill.organization.setupSteps);
       }
       if (typeof drill.organization.rotation === "string") {
-        drill.organization.rotation = simplifyGrassrootsText(drill.organization.rotation);
+        drill.organization.rotation = simplifyUssfDText(drill.organization.rotation);
       }
       if (typeof drill.organization.restarts === "string") {
-        drill.organization.restarts = simplifyGrassrootsText(drill.organization.restarts);
+        drill.organization.restarts = simplifyUssfDText(drill.organization.restarts);
       }
       if (typeof drill.organization.scoring === "string") {
-        drill.organization.scoring = simplifyGrassrootsText(drill.organization.scoring);
+        drill.organization.scoring = simplifyUssfDText(drill.organization.scoring);
       }
     }
 
-    // Keep cues short and practical at grassroots level.
+    // Keep cues short and practical at D-license level.
     if (Array.isArray(drill.coachingPoints)) {
       drill.coachingPoints = drill.coachingPoints.map((point: any) => {
-        const text = simplifyGrassrootsText(String(point || ""));
-        const coachVoice = toGrassrootsCoachVoice(text);
+        const text = simplifyUssfDText(String(point || ""));
+        const coachVoice = toUssfDCoachVoice(text);
         const words = coachVoice.split(/\s+/).filter(Boolean);
         return words.length > 18 ? `${words.slice(0, 18).join(" ")}.` : coachVoice;
       });
@@ -727,6 +727,14 @@ export async function generateAndReviewSession(
         zone: input.zone,
       });
 
+      // COOLDOWN has no formation/ball work to draw -- the UI shows the
+      // session summary in its place instead of a diagram. Strip it here
+      // rather than just skipping the normalization below, so a diagram
+      // the model returned anyway never reaches storage or the client.
+      if (drill.drillType === "COOLDOWN" && drill.diagram) {
+        delete drill.diagram;
+      }
+
       if (drill.drillType !== "COOLDOWN" && drill.diagram) {
         const inferOrientation = (diagram: any) => {
           const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
@@ -907,7 +915,7 @@ export async function generateAndReviewSession(
     finalSession.drills.map(async (drill: any) => {
       if (isCancelled()) throw new Error("REQUEST_CANCELLED");
       try {
-        if (needsDiagramEnrichment(drill?.diagram)) {
+        if (drill.drillType !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram)) {
           const reenriched = await reenrichDiagramFromDrillJson(drill);
           if (reenriched) {
             drill.diagram = reenriched;
@@ -979,7 +987,7 @@ export async function generateAndReviewSession(
     })
   ) : [];
 
-  // Final grassroots enforcement after any re-enrichment mutations.
+  // Final D-license enforcement after any re-enrichment mutations.
   if (Array.isArray(drillsWithRefCodes)) {
     drillsWithRefCodes.forEach((drill: any) =>
       applyCoachLevelDiagramProfile(drill, input.coachLevel)

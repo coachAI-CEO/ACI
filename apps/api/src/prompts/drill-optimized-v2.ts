@@ -459,7 +459,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "   - Defending formation: " + input.formationDefending + " → DEF team roles (e.g., 4-4-2 uses CB/LB/RB, not generic 'defender').",
     "   - Position players in diagram according to their team's formation.",
     "7. playerLevel=" + input.playerLevel + ": BEGINNER=simple, INTERMEDIATE=some combinations, ADVANCED=complex, game-realistic.",
-    "8. coachLevel=" + input.coachLevel + ": GRASSROOTS=simple language, USSF_C=moderate detail, USSF_B_PLUS=advanced tactical detail.",
+    "8. coachLevel=" + input.coachLevel + ": USSF_D=simple language, USSF_C=moderate detail, USSF_B_PLUS=advanced tactical detail.",
     "9. spaceConstraint=" + input.spaceConstraint + " sets area size; goalsAvailable=" + input.goalsAvailable + " sets goalMode (0=NONE, 1=LARGE, 2+=MINI2). If goalsAvailable=1, use one full-size goal with one GK and two mini-goals/gates on the opposite end with NO GK on that side.",
     "10. diagram MUST include arrows and annotations arrays. Include 7-10 arrows and 4-6 annotations (each annotation must include fontSize, color, fontWeight). Every arrow's from/to MUST be a literal {x, y} number pair copied from the actual position of the player (or point) the arrow starts/ends at. Never reference a player by id -- an id that doesn't exactly match diagram.players collapses the arrow to a single point and it disappears from the diagram.",
     "11. diagram.players MUST include EVERY player described in organization.setupSteps (no partial scenario diagrams).",

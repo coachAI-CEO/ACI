@@ -15,7 +15,7 @@ r.use(authenticate);
 // --- REQUEST VALIDATION SCHEMAS ---
 
 const PlayerLevelSchema = z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]);
-const CoachLevelSchema = z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]);
+const CoachLevelSchema = z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]);
 const FormationUsedSchema = z.enum([
   // 7v7
   "2-3-1", "3-2-1",

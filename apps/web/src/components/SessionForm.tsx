@@ -123,7 +123,7 @@ export default function SessionForm({ children }: { children: React.ReactNode })
       const updateTopics = () => {
         const phase = phaseSelect.value || "ATTACKING";
         const zone = zoneSelect.value || "ATTACKING_THIRD";
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
+        const coachLevel = coachLevelSelect.value || "USSF_D";
         const validTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
         const currentTopic = topicSelect.value;
         const currentOptions = Array.from(topicSelect.options).map(opt => opt.value);
@@ -148,60 +148,22 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         }
       };
 
-      const updatePlayerLevelGuardrail = () => {
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
-        const isGrassroots = coachLevel === "GRASSROOTS";
-        const playerOptions = Array.from(playerLevelSelect.options);
-
-        playerLevelSelect.disabled = isGrassroots;
-
-        playerOptions.forEach((option) => {
-          option.disabled = isGrassroots && option.value !== "BEGINNER";
-        });
-
-        if (isGrassroots && playerLevelSelect.value !== "BEGINNER") {
-          playerLevelSelect.value = "BEGINNER";
-          playerLevelSelect.dispatchEvent(new Event("change", { bubbles: true }));
-        }
-
-        const hint = document.getElementById("playerLevelGuardrailHint");
-        if (hint) {
-          hint.textContent = isGrassroots
-            ? "Grassroots guardrail: player level is locked to Beginner."
-            : "";
-        }
-      };
-      const enforcePlayerLevelGuardrail = () => {
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
-        if (coachLevel === "GRASSROOTS" && playerLevelSelect.value !== "BEGINNER") {
-          playerLevelSelect.value = "BEGINNER";
-          const hint = document.getElementById("playerLevelGuardrailHint");
-          if (hint) {
-            hint.textContent = "Grassroots guardrail: player level is fixed to Beginner.";
-          }
-        }
-      };
 
       // Run once immediately to fix any mismatches
       updateFormations();
       updateTopics();
-      updatePlayerLevelGuardrail();
-      
+
       // Listen for changes that should impact formations/topics
       ageGroupSelect.addEventListener("change", updateFormations);
       phaseSelect.addEventListener("change", updateTopics);
       zoneSelect.addEventListener("change", updateTopics);
       coachLevelSelect.addEventListener("change", updateTopics);
-      coachLevelSelect.addEventListener("change", updatePlayerLevelGuardrail);
-      playerLevelSelect.addEventListener("change", enforcePlayerLevelGuardrail);
-      
+
       return () => {
         ageGroupSelect.removeEventListener("change", updateFormations);
         phaseSelect.removeEventListener("change", updateTopics);
         zoneSelect.removeEventListener("change", updateTopics);
         coachLevelSelect.removeEventListener("change", updateTopics);
-        coachLevelSelect.removeEventListener("change", updatePlayerLevelGuardrail);
-        playerLevelSelect.removeEventListener("change", enforcePlayerLevelGuardrail);
       };
     };
 

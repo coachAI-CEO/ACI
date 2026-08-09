@@ -135,7 +135,7 @@ function getDefaultConfig(): GeneratorConfig {
     formationAttacking: getDefaultFormation(ageGroup), // Ensures valid formation for age
     formationDefending: getDefaultFormation(ageGroup), // Default to same as attacking
     playerLevel: "INTERMEDIATE",
-    coachLevel: "GRASSROOTS",
+    coachLevel: "USSF_D",
     numbersMin: 8,
     numbersMax: 10,
     gkOptional: false,
@@ -581,7 +581,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   defaultValue={config.coachLevel}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                 >
-                  <option value="GRASSROOTS">Grassroots</option>
+                  <option value="USSF_D">USSF D</option>
                   <option value="USSF_C">USSF C</option>
                   <option value="USSF_B_PLUS">USSF B+</option>
                 </select>
@@ -686,7 +686,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
         </details>
 
         {/* Main diagram + details layout */}
-        {hasDrill && data && diagram ? (
+        {hasDrill && data && (diagram || config.drillType === "COOLDOWN") ? (
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
           <div className="max-w-xl space-y-4">
             <DrillDiagramCard
@@ -696,6 +696,8 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
               zone={data.drill.zone}
               diagram={diagram}
               drillId={data.drill.id ?? data.drill.refCode}
+              drillType={config.drillType}
+              sessionSummary={data.drill.json?.description}
               goalsAvailable={data.drill.goalsAvailable ?? data.drill.json?.goalsAvailable ?? config.goalsAvailable}
               description={data.drill.json?.description}
               organization={

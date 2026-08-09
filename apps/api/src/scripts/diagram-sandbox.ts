@@ -113,7 +113,7 @@ const phases = ["ATTACKING", "DEFENDING", "TRANSITION"];
 const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"];
 const drillTypes = ["TECHNICAL", "TACTICAL", "CONDITIONED_GAME", "FULL_GAME"];
 const playerLevels = ["BEGINNER", "INTERMEDIATE", "ADVANCED"];
-const coachLevels = ["GRASSROOTS", "USSF_C", "USSF_B_PLUS"];
+const coachLevels = ["USSF_D", "USSF_C", "USSF_B_PLUS"];
 const spaceConstraints = ["THIRD", "HALF", "FULL", "QUARTER"];
 const durations = [60, 90];
 

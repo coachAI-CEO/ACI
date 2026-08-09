@@ -71,7 +71,7 @@ const stripJobStatus = {
 
 // Primary model pricing defaults (per 1M tokens).
 // Keep configurable so analytics stay aligned with deployed model choices.
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash";
 const GEMINI_INPUT_PRICE_PER_1M = Number(process.env.GEMINI_INPUT_PRICE_PER_1M) || 0.50;
 const GEMINI_OUTPUT_PRICE_PER_1M = Number(process.env.GEMINI_OUTPUT_PRICE_PER_1M) || 3.00;
 
@@ -618,10 +618,9 @@ function pick<T>(arr: T[]): T {
 
 function formationsForAge(ageGroup: string): string[] {
   // Keep these conservative/compatible with current prompts
-  if (ageGroup === "U8" || ageGroup === "U9") return ["2-3-1", "3-2-1"];
-  if (ageGroup === "U10" || ageGroup === "U11") return ["2-3-1", "3-2-1"];
-  if (ageGroup === "U12" || ageGroup === "U13") return ["3-3-2", "2-3-3"];
-  if (ageGroup === "U14" || ageGroup === "U15") return ["4-3-3", "3-4-3"];
+  if (ageGroup === "U8" || ageGroup === "U9" || ageGroup === "U10") return ["2-3-1", "3-2-1"];
+  if (ageGroup === "U11" || ageGroup === "U12") return ["3-2-3", "2-3-2-1", "3-3-2"];
+  if (ageGroup === "U13" || ageGroup === "U14" || ageGroup === "U15") return ["4-3-3", "3-4-3"];
   if (ageGroup === "U16" || ageGroup === "U17") return ["4-3-3", "4-2-3-1"];
   if (ageGroup === "U18") return ["4-3-3", "4-2-3-1"];
   return ["4-3-3", "4-2-3-1"];
@@ -643,7 +642,7 @@ async function runRandomSessionJob(jobId: string) {
   const phases = ["ATTACKING", "DEFENDING", "TRANSITION"] as const;
   const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"] as const;
   const playerLevels = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;
-  const coachLevels = ["GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+  const coachLevels = ["USSF_D", "USSF_C", "USSF_B_PLUS"] as const;
   const spaceConstraints = ["FULL", "HALF", "THIRD", "QUARTER"] as const;
 
   for (let i = 0; i < job.total; i++) {
@@ -1605,7 +1604,7 @@ r.post("/admin/drills/regenerate", requireAdminPermission('canReviewQA'), async 
     formationAttacking: drillJson.formationAttacking || "4-3-3",
     formationDefending: drillJson.formationDefending || drillJson.formationAttacking || "4-3-3",
     playerLevel: drillJson.playerLevel || "INTERMEDIATE",
-    coachLevel: drillJson.coachLevel || "GRASSROOTS",
+    coachLevel: drillJson.coachLevel || "USSF_D",
     numbersMin: drillRow.numbersMin ?? drillJson.numbersMin ?? 8,
     numbersMax: drillRow.numbersMax ?? drillJson.numbersMax ?? 12,
     goalsAvailable: drillJson.goalsAvailable ?? 2,
@@ -1720,7 +1719,7 @@ r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), asyn
     formationAttacking: formation,
     formationDefending: formation,
     playerLevel: (sessionRow.playerLevel as any) || sessionJson.playerLevel || "INTERMEDIATE",
-    coachLevel: (sessionRow.coachLevel as any) || sessionJson.coachLevel || "GRASSROOTS",
+    coachLevel: (sessionRow.coachLevel as any) || sessionJson.coachLevel || "USSF_D",
     numbersMin: (sessionRow.numbersMin as any) ?? sessionJson.numbersMin ?? 8,
     numbersMax: (sessionRow.numbersMax as any) ?? sessionJson.numbersMax ?? 12,
     goalsAvailable: (sessionRow.goalsAvailable as any) ?? sessionJson.goalsAvailable ?? 2,
@@ -2158,7 +2157,7 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
     adminRole: z.enum(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"]).optional(),
     password: z.string().min(8).optional().or(z.literal("").transform(() => undefined)),
     autoVerifyEmail: z.boolean().optional(),
-    coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).optional(),
+    coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).optional(),
     teamAgeGroups: z.array(z.string()).optional(),
   });
 
@@ -2993,7 +2992,7 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
     const { coachLevel, teamAgeGroups, promoteToCoach } = req.body;
     
     const schema = z.object({
-      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       teamAgeGroups: z.array(z.string()).optional(),
       promoteToCoach: z.boolean().optional(),
     });
@@ -3241,7 +3240,7 @@ r.post("/admin/access-permissions", requireAdminPermission('canManageUsers'), as
       id: z.string().uuid().optional(), // If provided, update existing
       userId: z.string().uuid().nullable().optional(), // Specific user ID (if set, overrides coachLevel)
       resourceType: z.enum(["SESSION", "VAULT", "BOTH", "VIDEO_REVIEW"]),
-      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       ageGroups: z.array(z.string()).default([]), // Empty = all age groups
       formats: z.array(z.enum(["7v7", "9v9", "11v11"])).default([]), // Empty = all formats
       canGenerateSessions: z.boolean().default(false),

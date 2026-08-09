@@ -10,7 +10,8 @@
     "start": "node dist/index.js",
     "bulk:sessions": "ts-node --project tsconfig.json src/scripts/generate-bulk-sessions.ts",
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts",
-    "sandbox:diagram": "ts-node --project tsconfig.json src/scripts/diagram-sandbox.ts"
+    "sandbox:diagram": "ts-node --project tsconfig.json src/scripts/diagram-sandbox.ts",
+    "sandbox:session-quality": "ts-node --project tsconfig.json src/scripts/session-quality-sandbox.ts"
   },
   "keywords": [],
   "author": "",

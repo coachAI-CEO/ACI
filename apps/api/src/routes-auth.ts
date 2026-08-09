@@ -90,7 +90,7 @@ const RegisterSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().optional(),
-  coachLevel: z.enum(['GRASSROOTS', 'USSF_C', 'USSF_B_PLUS']).optional(),
+  coachLevel: z.enum(['USSF_D', 'USSF_C', 'USSF_B_PLUS']).optional(),
 });
 
 const LoginSchema = z.object({
@@ -109,7 +109,7 @@ const ResetPasswordSchema = z.object({
 
 const UpdateProfileSchema = z.object({
   name: z.string().min(0).max(200).optional(),
-  coachLevel: z.enum(['GRASSROOTS', 'USSF_C', 'USSF_B_PLUS']).optional().nullable(),
+  coachLevel: z.enum(['USSF_D', 'USSF_C', 'USSF_B_PLUS']).optional().nullable(),
   organizationName: z.string().min(0).max(200).optional().nullable(),
   teamAgeGroups: z.array(z.string().max(20)).max(20).optional(),
   preferences: z.record(z.string(), z.unknown()).optional(),

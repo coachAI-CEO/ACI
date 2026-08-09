@@ -21,12 +21,12 @@ function parseJsonSafe(text: string) {
   }
 }
 
-function isGrassrootsCoachLevel(coachLevel?: string): boolean {
-  return String(coachLevel || "").toUpperCase() === "GRASSROOTS";
+function isUssfDCoachLevel(coachLevel?: string): boolean {
+  return String(coachLevel || "").toUpperCase() === "USSF_D";
 }
 
 function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel)) return;
+  if (!isUssfDCoachLevel(coachLevel)) return;
   if (!drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
 
   const diagram = drill.diagram;
@@ -47,7 +47,7 @@ function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
   }
 }
 
-const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
+const USSF_D_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bmeticulously\b/gi, "carefully"],
   [/\bcomprehensive\b/gi, "complete"],
   [/\btactical intelligence\b/gi, "decision-making"],
@@ -77,9 +77,9 @@ const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bspatial awareness\b/gi, "awareness of space"],
 ];
 
-function simplifyGrassrootsText(text: string): string {
+function simplifyUssfDText(text: string): string {
   let out = String(text || "");
-  for (const [pattern, replacement] of GRASSROOTS_LANGUAGE_REPLACEMENTS) {
+  for (const [pattern, replacement] of USSF_D_LANGUAGE_REPLACEMENTS) {
     out = out.replace(pattern, replacement);
   }
   out = out
@@ -98,7 +98,7 @@ function simplifyGrassrootsText(text: string): string {
   return out.trim();
 }
 
-function toGrassrootsCoachVoice(text: string): string {
+function toUssfDCoachVoice(text: string): string {
   let out = String(text || "").trim();
   if (!out) return out;
 
@@ -117,18 +117,18 @@ function toGrassrootsCoachVoice(text: string): string {
   return out.replace(/\s{2,}/g, " ").trim();
 }
 
-function simplifyGrassrootsStringArray(values: any): any {
+function simplifyUssfDStringArray(values: any): any {
   if (!Array.isArray(values)) return values;
   return values.map((value) =>
-    typeof value === "string" ? toGrassrootsCoachVoice(simplifyGrassrootsText(value)) : value
+    typeof value === "string" ? toUssfDCoachVoice(simplifyUssfDText(value)) : value
   );
 }
 
 function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel) || !session || typeof session !== "object") return;
+  if (!isUssfDCoachLevel(coachLevel) || !session || typeof session !== "object") return;
 
   if (typeof session.summary === "string") {
-    session.summary = toGrassrootsCoachVoice(simplifyGrassrootsText(session.summary));
+    session.summary = toUssfDCoachVoice(simplifyUssfDText(session.summary));
   }
 
   if (!Array.isArray(session.drills)) return;
@@ -136,40 +136,40 @@ function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
     if (!drill || typeof drill !== "object") return;
 
     if (typeof drill.description === "string") {
-      drill.description = toGrassrootsCoachVoice(simplifyGrassrootsText(drill.description));
+      drill.description = toUssfDCoachVoice(simplifyUssfDText(drill.description));
     }
-    drill.coachingPoints = simplifyGrassrootsStringArray(drill.coachingPoints);
-    drill.progressions = simplifyGrassrootsStringArray(drill.progressions);
-    drill.constraints = simplifyGrassrootsStringArray(drill.constraints);
+    drill.coachingPoints = simplifyUssfDStringArray(drill.coachingPoints);
+    drill.progressions = simplifyUssfDStringArray(drill.progressions);
+    drill.constraints = simplifyUssfDStringArray(drill.constraints);
 
     if (drill.loadNotes && typeof drill.loadNotes === "object") {
       if (typeof drill.loadNotes.rationale === "string") {
-        drill.loadNotes.rationale = simplifyGrassrootsText(drill.loadNotes.rationale);
+        drill.loadNotes.rationale = simplifyUssfDText(drill.loadNotes.rationale);
       }
       if (typeof drill.loadNotes.structure === "string") {
-        drill.loadNotes.structure = simplifyGrassrootsText(drill.loadNotes.structure);
+        drill.loadNotes.structure = simplifyUssfDText(drill.loadNotes.structure);
       }
     }
 
     if (drill.organization && typeof drill.organization === "object") {
       if (Array.isArray(drill.organization.setupSteps)) {
-        drill.organization.setupSteps = simplifyGrassrootsStringArray(drill.organization.setupSteps);
+        drill.organization.setupSteps = simplifyUssfDStringArray(drill.organization.setupSteps);
       }
       if (typeof drill.organization.rotation === "string") {
-        drill.organization.rotation = simplifyGrassrootsText(drill.organization.rotation);
+        drill.organization.rotation = simplifyUssfDText(drill.organization.rotation);
       }
       if (typeof drill.organization.restarts === "string") {
-        drill.organization.restarts = simplifyGrassrootsText(drill.organization.restarts);
+        drill.organization.restarts = simplifyUssfDText(drill.organization.restarts);
       }
       if (typeof drill.organization.scoring === "string") {
-        drill.organization.scoring = simplifyGrassrootsText(drill.organization.scoring);
+        drill.organization.scoring = simplifyUssfDText(drill.organization.scoring);
       }
     }
 
     if (Array.isArray(drill.coachingPoints)) {
       drill.coachingPoints = drill.coachingPoints.map((point: any) => {
-        const text = simplifyGrassrootsText(String(point || ""));
-        const coachVoice = toGrassrootsCoachVoice(text);
+        const text = simplifyUssfDText(String(point || ""));
+        const coachVoice = toUssfDCoachVoice(text);
         const words = coachVoice.split(/\s+/).filter(Boolean);
         return words.length > 18 ? `${words.slice(0, 18).join(" ")}.` : coachVoice;
       });
@@ -186,7 +186,12 @@ async function generateSingleProgressiveSession(
   const prompt = buildProgressiveSessionPrompt(input);
   console.log(`[PROGRESSIVE_SESSION] Generating Session ${input.sessionNumber}/${input.totalSessions} with ${prompt.length} char prompt...`);
   
-  const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
+  const generationModel = process.env.GEMINI_SESSION_MODEL || process.env.GEMINI_GENERATION_MODEL;
+  const genText = await generateText(prompt, {
+    timeout: Number(process.env.PROGRESSIVE_SESSION_GENERATION_TIMEOUT_MS || 90000),
+    retries: 0,
+    model: generationModel,
+  });
   
   let session: any = parseJsonSafe(genText);
   if (!session) throw new Error(`LLM returned non-JSON session for Session ${input.sessionNumber}`);
@@ -196,6 +201,11 @@ async function generateSingleProgressiveSession(
   // Normalize diagram format (same as regular session generation)
   if (session.drills && Array.isArray(session.drills)) {
     session.drills.forEach((drill: any) => {
+      // COOLDOWN has no formation/ball work to draw -- the UI shows the
+      // session summary in its place instead.
+      if (drill.drillType === "COOLDOWN" && drill.diagram) {
+        delete drill.diagram;
+      }
       if (drill.drillType !== "COOLDOWN" && drill.diagram) {
         if (Array.isArray(drill.diagram.elements) && (!Array.isArray(drill.diagram.players) || drill.diagram.players.length === 0)) {
           const playerElements = drill.diagram.elements.filter((el: any) => 
@@ -243,7 +253,13 @@ async function generateSingleProgressiveSession(
   
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[PROGRESSIVE_SESSION] Running QA for Session ${input.sessionNumber}...`);
-  const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+  const qaModel = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL;
+  const qaText = await generateText(qaPrompt, {
+    timeout: Number(process.env.PROGRESSIVE_SESSION_QA_TIMEOUT_MS || 30000),
+    retries: 0,
+    model: qaModel,
+    fallbackModel: null,
+  });
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error(`LLM returned non-JSON QA for Session ${input.sessionNumber}`);
 
