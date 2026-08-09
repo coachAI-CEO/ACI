@@ -11,6 +11,7 @@ import { fixSessionDecision } from "./fixer";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
+import { generateDrillDiagramSvg } from "./drill-diagram-svg";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -645,6 +646,20 @@ export async function generateAndReviewSession(
   const SESSION_GENERATION_TIMEOUT_MS = Number(process.env.SESSION_GENERATION_TIMEOUT_MS || 150000);
   const SESSION_QA_TIMEOUT_MS = Number(process.env.SESSION_QA_TIMEOUT_MS || 90000);
 
+  // USSF_C and USSF_B_PLUS coaches are never paired with BEGINNER players --
+  // real-world these licenses coach competitive teams, not brand-new ones,
+  // and it's also the one combination every model tested struggles with
+  // (advanced tactical vocabulary fighting genuinely simple constraints in
+  // the same output). Auto-correct rather than reject: a coach with an old
+  // saved link or an API caller who doesn't know this rule still gets a
+  // session, just at the nearest valid difficulty, instead of an error.
+  if (String(input.coachLevel || "").toUpperCase() !== "USSF_D" && String(input.playerLevel || "").toUpperCase() === "BEGINNER") {
+    console.warn(
+      `[SESSION] coachLevel=${input.coachLevel} cannot pair with playerLevel=BEGINNER -- bumping to INTERMEDIATE`
+    );
+    input = { ...input, playerLevel: "INTERMEDIATE" };
+  }
+
   // Set metrics context for tracking
   setMetricsContext({
     operationType: "session",
@@ -911,11 +926,12 @@ export async function generateAndReviewSession(
   if (isCancelled()) throw new Error("REQUEST_CANCELLED");
   
   // Add ref codes to embedded drills in the session JSON and persist as standalone records
+  const enrichmentStart = Date.now();
   const drillsWithRefCodes = finalSession.drills ? await Promise.all(
     finalSession.drills.map(async (drill: any) => {
       if (isCancelled()) throw new Error("REQUEST_CANCELLED");
       try {
-        if (drill.drillType !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram)) {
+        if (drill.drillType !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
           const reenriched = await reenrichDiagramFromDrillJson(drill);
           if (reenriched) {
             drill.diagram = reenriched;
@@ -986,6 +1002,7 @@ export async function generateAndReviewSession(
       };
     })
   ) : [];
+  console.log(`[SESSION] Ref-code generation + diagram enrichment + upsert took ${Date.now() - enrichmentStart}ms`);
 
   // Final D-license enforcement after any re-enrichment mutations.
   if (Array.isArray(drillsWithRefCodes)) {
@@ -998,10 +1015,38 @@ export async function generateAndReviewSession(
   humanizeGameModelText(finalSession);
 
   // Persist final post-processed drill JSON so later drill lookups match what session view shows.
+  const diagramDrawStart = Date.now();
   if (Array.isArray(finalSession.drills)) {
     await Promise.all(
       finalSession.drills.map(async (drill: any) => {
         if (!drill?.refCode) return;
+
+        // Draw the diagram SVG now, in parallel across every drill, so the
+        // session response already carries a rendered picture per drill.
+        // Previously the client fetched each drill's SVG separately after
+        // the session text had already rendered, showing "Drawing SVG..."
+        // for several seconds per drill even though the rest of the
+        // session was already visible -- generating them here means the
+        // session and its diagrams show up together.
+        let diagramResult: Awaited<ReturnType<typeof generateDrillDiagramSvg>> | null = null;
+        if (String(drill.drillType || "").toUpperCase() !== "COOLDOWN") {
+          try {
+            diagramResult = await generateDrillDiagramSvg({
+              title: drill.title || "Drill",
+              json: drill,
+              drillType: drill.drillType || "TECHNICAL",
+              durationMin: drill.durationMin ?? input.durationMin ?? 25,
+              rpeMin: drill.rpeMin ?? 5,
+              rpeMax: drill.rpeMax ?? 7,
+              numbersMin: input.numbersMin,
+              numbersMax: input.numbersMax,
+            });
+            drill.diagramSvg = diagramResult.svg;
+          } catch (err: any) {
+            console.error(`[SESSION] Failed to draw diagram for drill ${drill.refCode}:`, err?.message);
+          }
+        }
+
         try {
           await prisma.drill.update({
             where: { refCode: drill.refCode },
@@ -1010,6 +1055,14 @@ export async function generateAndReviewSession(
               coachLevel: input.coachLevel as any,
               goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
               goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
+              ...(diagramResult
+                ? {
+                    diagramSvg: diagramResult.svg,
+                    diagramSvgGeneratedAt: new Date(),
+                    diagramSvgModel: diagramResult.model,
+                    diagramSvgPromptVersion: diagramResult.promptVersion,
+                  }
+                : {}),
             },
           });
         } catch (err: any) {
@@ -1017,6 +1070,7 @@ export async function generateAndReviewSession(
         }
       })
     );
+    console.log(`[SESSION] Diagram drawing + persist took ${Date.now() - diagramDrawStart}ms`);
   }
 
   // JSON we persist to the DB

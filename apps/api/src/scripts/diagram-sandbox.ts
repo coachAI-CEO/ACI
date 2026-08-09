@@ -10,7 +10,7 @@ import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "../service
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 import { drillToDrawerParams } from "../mappers/drill-to-drawer-params";
 import { renderDeterministicDiagramSVG } from "../services/deterministic-drawer-svg";
-import { applyGoalOverlay } from "../routes/diagram-svg";
+import { applyGoalOverlay } from "../services/goal-overlay";
 import { computeTokenRadius, coverageRatio, scaleFactorFromTokenRadius, shouldZoomOut, ZOOM_OUT_THRESHOLD, type FieldFormat } from "../data/field-dimensions";
 import type { DrawerParams } from "../types/drawer";
 

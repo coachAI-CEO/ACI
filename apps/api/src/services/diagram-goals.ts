@@ -145,15 +145,23 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   diagram.miniGoals = 2;
   normalizeSingleGoalPlayers(diagram, bigGoal);
 
-  rewriteGoalText(drill);
-  drill.goalsAvailable = 1;
-  drill.goalMode = "LARGE";
-
+  // Filter the model's own goal-related setup steps out BEFORE rewriteGoalText
+  // runs -- rewriteGoalText normalizes any phrasing ("two full-size goals",
+  // "with GKs", etc.) into a singular "one full-size goal..." form, which
+  // then no longer matches a plural-only filter regex applied afterward.
+  // That ordering bug let every original goal-related step survive, each
+  // reworded into a near-duplicate of the line below. Filter first, on the
+  // model's original wording, with a regex broad enough to catch singular
+  // forms too ("goal", "GK") -- not just the plural phrases.
   drill.organization = drill.organization && typeof drill.organization === "object" ? drill.organization : {};
   const setupSteps = Array.isArray(drill.organization.setupSteps) ? drill.organization.setupSteps : [];
   const normalizedGoalStep = "Use one full-size goal with one GK and two mini-goals on the opposite end; no GK defends the mini-goal side.";
   drill.organization.setupSteps = [
     normalizedGoalStep,
-    ...setupSteps.filter((step: any) => !/full[-\s]?size goals|with GKs|two goals|2 goals/i.test(String(step))),
+    ...setupSteps.filter((step: any) => !/\bgoals?\b|\bgks?\b|goalkeeper/i.test(String(step))),
   ];
+
+  rewriteGoalText(drill);
+  drill.goalsAvailable = 1;
+  drill.goalMode = "LARGE";
 }

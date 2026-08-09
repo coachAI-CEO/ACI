@@ -6,7 +6,7 @@ import { computeLegendLayout } from "../services/legend-layout";
 const FIELD_Y = 239.38;
 const FIELD_H = 313.24;
 
-export const DRAWER_PROMPT_VERSION = "v41-coach-sideline-axis";
+export const DRAWER_PROMPT_VERSION = "v43-injected-chrome";
 
 export function buildDrawerPrompt(params: DrawerParams): string {
   return DRAWER_PROMPT_TEMPLATE.replace("{{DIAGRAM_DATA}}", serializeDrillData(params));
@@ -278,7 +278,7 @@ Incorrect: fill=#ffffff    stroke=none    x=0
 
 CANVAS AND CARD
 Use exactly: <svg viewBox="0 0 800 760" xmlns="http://www.w3.org/2000/svg">
-Background: <rect x="0" y="0" width="800" height="760" fill="#08111f"/>
+Do NOT draw the background rect yourself -- the API injects it, along with <defs> (see DEFS below). Start your own drawing from the HEADER content.
 The whole output is one TacticalEdge-style diagram card. Do not draw an outer rounded card; the web app supplies the container.
 
 HEADER
@@ -293,10 +293,8 @@ Context line: only draw it if at least one of MatchFormat/Phase/GameModel/Zone/F
 Title and meta text must be human-readable title case. Never output raw enum text with underscores such as "CONDITIONED_GAME" or title text with underscores such as "ROCKLIN_FC". Convert them to "Conditioned Game" and "Rocklin FC". The same applies to the context line's Phase/GameModel/Zone values.
 
 FIELD - always landscape, same orientation and same size:
-Field rect is x="117.92" y="239.38" width="564.16" height="313.24" (this is inset ~18% within the card's field panel, x="56" y="205" width="688" height="382" -- leave that panel margin empty/background-colored so the practice area has visible breathing room instead of running flush to the card edge. This margin must be wide enough for the coach marker to sit fully outside the field rect -- see COACH below).
-Fill the field with a single flat color: rect x="117.92" y="239.38" width="564.16" height="313.24" fill="#1c5134". Do NOT draw multiple horizontal "tactical channel" bands of alternating shade -- those are decorative and visually compete with real data-driven zones (see Zones in DRILL DATA, e.g. a "Target Zone"), making it unclear to a coach which band is real. One flat color only.
-Field border: rect x="117.92" y="239.38" width="564.16" height="313.24" rx="6" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2".
-Corner cones: at each of the field rect's 4 corners, draw a small cone silhouette: path d="M {x} {y-7} L {x-6} {y+5} L {x+6} {y+5} Z" fill="#f97316" stroke="#7c2d12" stroke-width="1" (x,y = the corner's coordinates). These represent the cones coaches use to mark the practice area boundary. Nothing -- not even the coach -- may be drawn inside this boundary except players, goals, zones, and arrows that belong on the field.
+Field rect is x="117.92" y="239.38" width="564.16" height="313.24" (this is inset ~18% within the card's field panel, x="56" y="205" width="688" height="382" -- that panel margin stays empty/background-colored so the practice area has visible breathing room instead of running flush to the card edge. This margin must be wide enough for the coach marker to sit fully outside the field rect -- see COACH below).
+Do NOT draw the field fill, field border, or corner cones yourself -- the API injects all of them at the exact coordinates above, in the same single flat color (#1c5134) every time. Nothing -- not even the coach -- may be drawn inside the field boundary except players, goals, zones, and arrows that belong on the field.
 Halfway line and center circle: draw ONLY if Zoom is IN (see DRILL DATA). If Zoom is OUT, do not draw them -- a small practice grid has no real halfway point. When drawn: Center line: line x1="400" y1="239.38" x2="400" y2="552.62" stroke="rgba(255,255,255,0.42)" stroke-width="1.5". Center circle: circle cx="400" cy="396" r="43.85" fill="none" stroke="rgba(255,255,255,0.38)" stroke-width="1.5". Center spot: circle cx="400" cy="396" r="3" fill="rgba(255,255,255,0.55)".
 Do not draw penalty area boxes at all. The API overlays a penalty box after generation, only next to edges that actually have a real full-size goal -- drawing them here would show a penalty box even on mini-goal or goal-less edges. Top/bottom penalty boxes are never used. If full goals are present, draw the goal on the nearest left or right field edge, not above or below the field.
 Dimension labels: draw the real practice area size using the Field line from DRILL DATA ("{width}x{length}yd"). Above the field: line x1="117.92" y1="227.38" x2="682.08" y2="227.38" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (length in yards, e.g. "40 yds") centered at x="400" y="219.38" font-size="12" font-weight="700" fill="rgba(255,255,255,0.6)". Left of the field: line x1="105.92" y1="239.38" x2="105.92" y2="552.62" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (width in yards, e.g. "30 yds") rotated -90 degrees and centered at the line's midpoint, same font style.
@@ -325,16 +323,7 @@ If a team attacks right, the team's right side is toward the bottom of the SVG a
 In game formats like 7v7, 9v9, or 11v11 with two full goals, each team should have a goalkeeper. If a team has no explicit GK role and both goals are full goals, the deepest player nearest that team's own goal is labelled GK.
 If the drill data includes mini goals or gate goals, do NOT infer extra goalkeepers on the mini-goal side. Mini goals never have a GK. Only players explicitly listed as pos=GK should be labelled GK in one-full-goal + mini-goal layouts.
 
-ALWAYS INCLUDE IN <defs>:
-<filter id="ps" x="-30%" y="-30%" width="160%" height="180%">
-  <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="rgba(0,0,0,0.4)"/>
-</filter>
-<marker id="mPass" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mRun" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mPress" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ef4444"/></marker>
-<marker id="mCounter" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#22c55e"/></marker>
-<marker id="mDeliver" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ffffff"/></marker>
-<marker id="mFinish" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#fbbf24"/></marker>
+DEFS: Do NOT write a <defs> block yourself -- omit it entirely from your output, right after the opening <svg> tag. The API injects it automatically after generation, with these ids already available for you to reference elsewhere in your output: filter id="ps" (drop shadow, use as filter="url(#ps)" on player tokens), and markers id="mPass"/"mRun"/"mPress"/"mCounter"/"mDeliver"/"mFinish" (arrowheads, colored per arrow type -- use as marker-end="url(#mPass)" etc. per the ARROWS section below). Reference these ids freely; do not redefine them.
 
 PLAYER COLORS - match existing renderer exactly:
 home / ATT:   fill="#3b82f6" stroke="#2563eb"
@@ -425,7 +414,7 @@ Do not draw a coaching picture sentence.
 Do not put a black sidebar next to the field.
 
 DRAW ORDER:
-1. background 2. defs 3. field fill 4. field border 5. field lines
+1. background 2. defs 3. field fill 4. field border (all four of these are injected by the API, not drawn by you -- see CANVAS AND CARD / FIELD / DEFS above) 5. field lines
 (dimension labels + zone reference bar, both in the margin, never covered by anything)
 6. zone backgrounds (rect only, no label) 7. goals 8. arrows 9. players
 10. coach 11. zone labels (pill + text, drawn last of the field content so

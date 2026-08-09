@@ -12,12 +12,35 @@ function parseJsonSafe(text: string) {
   }
 }
 
-export function needsDiagramEnrichment(diagram: any) {
+// Minimum arrow/annotation/safeZone counts, per coachLevel -- must stay in
+// sync with the arrowRange/annotationRange/safeZoneRange targets in
+// buildSessionPrompt (session.ts): USSF_D 2-4/1-2/0-1, USSF_C 5-7/3-4/1-2,
+// USSF_B_PLUS 7-10/4-6/2-3. Previously this used one fixed threshold
+// (7/4/1) for every level -- effectively the B+ minimum -- so a USSF_C or
+// USSF_D session that correctly followed its own coachLevel's (lower)
+// target still failed this check almost every time, forcing an
+// unnecessary extra generation round-trip (~5s) per drill for the two
+// coach levels that are supposed to have LESS diagram detail, not more.
+function minimumsForCoachLevel(coachLevel?: string) {
+  const level = String(coachLevel || "").toUpperCase();
+  if (level === "USSF_D") return { arrows: 2, annotations: 1, safeZones: 0 };
+  if (level === "USSF_B_PLUS") return { arrows: 7, annotations: 4, safeZones: 2 };
+  // USSF_C or unknown -- unknown keeps the previous (strictest, B+-shaped)
+  // behavior only for arrows/annotations minima that used to apply
+  // universally; C's own real target is looser, so default to it when the
+  // level is actually USSF_C, and fall back to the old fixed numbers only
+  // when coachLevel wasn't provided at all (existing callers that don't
+  // pass one, e.g. the admin audit tool).
+  return coachLevel ? { arrows: 5, annotations: 3, safeZones: 1 } : { arrows: 7, annotations: 4, safeZones: 1 };
+}
+
+export function needsDiagramEnrichment(diagram: any, coachLevel?: string) {
   if (!diagram) return true;
+  const { arrows: minArrows, annotations: minAnnotations, safeZones: minSafeZones } = minimumsForCoachLevel(coachLevel);
   const arrows = Array.isArray(diagram.arrows) ? diagram.arrows.length : 0;
   const annotations = Array.isArray(diagram.annotations) ? diagram.annotations.length : 0;
   const safeZones = Array.isArray(diagram.safeZones) ? diagram.safeZones.length : 0;
-  if (arrows < 7 || annotations < 4 || safeZones < 1) return true;
+  if (arrows < minArrows || annotations < minAnnotations || safeZones < minSafeZones) return true;
   const defaultAnnTexts = new Set([
     "PRESS TRIGGER",
     "STAY COMPACT",

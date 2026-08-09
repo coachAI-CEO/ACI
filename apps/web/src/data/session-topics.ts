@@ -293,204 +293,20 @@ const COMBO_TOPICS: Record<string, string[]> = {
   ],
 };
 
-type TopicLevelVariants = {
-  ussfD: string;
-  ussfC: string;
-  ussfBPlus: string;
-};
-
-// Hand-authored level-specific labels for key topics.
-// If a topic is not present here, all coach levels will just see the base text.
-const TOPIC_VARIANTS: Record<string, TopicLevelVariants> = {
-  // ATTACKING | ATTACKING_THIRD
-  "Final Third Penetration": {
-    ussfD: "Final Third Penetration",
-    ussfC: "Final Third Penetration – combinations & overloads",
-    ussfBPlus: "Final Third Penetration – breaking lines vs compact blocks",
-  },
-  "Chance Creation": {
-    ussfD: "Chance Creation",
-    ussfC: "Chance Creation – triggers for the final pass",
-    ussfBPlus: "Chance Creation – manipulating the back line & keeper",
-  },
-  "Crossing & Finishing": {
-    ussfD: "Crossing & Finishing",
-    ussfC: "Crossing & Finishing – timing of runs & delivery",
-    ussfBPlus: "Crossing & Finishing – exploiting weak-side & cutback zones",
-  },
-  "Cutbacks & Box Entries": {
-    ussfD: "Cutbacks & Box Entries",
-    ussfC: "Cutbacks & Box Entries – zones & arrival timing",
-    ussfBPlus: "Cutbacks & Box Entries – creating overloads in the assist zone",
-  },
-  "Combination Play in the Box": {
-    ussfD: "Combination Play in the Box",
-    ussfC: "Combination Play in the Box – 1‑2s & third‑man runs",
-    ussfBPlus: "Combination Play in the Box – breaking tight blocks centrally",
-  },
-  "Through Balls & Timing": {
-    ussfD: "Through Balls & Timing",
-    ussfC: "Through Balls & Timing – cues, angles & runs",
-    ussfBPlus: "Through Balls & Timing – exploiting spaces between & behind lines",
-  },
-  "Third-Man Runs to Goal": {
-    ussfD: "Third-Man Runs to Goal",
-    ussfC: "Third-Man Runs to Goal – timing support & release",
-    ussfBPlus: "Third-Man Runs to Goal – dismarking & breaking the last line",
-  },
-  "Attacking the Near Post": {
-    ussfD: "Attacking the Near Post",
-    ussfC: "Attacking the Near Post – first contact & body shape",
-    ussfBPlus: "Attacking the Near Post – front‑zone occupation & rotations",
-  },
-  "Attacking the Far Post": {
-    ussfD: "Attacking the Far Post",
-    ussfC: "Attacking the Far Post – blindside runs",
-    ussfBPlus: "Attacking the Far Post – weak‑side overloads & second phase",
-  },
-  "1v1 to Beat Defender": {
-    ussfD: "1v1 to Beat Defender",
-    ussfC: "1v1 to Beat Defender – moves, deception & finish",
-    ussfBPlus: "1v1 to Beat Defender – isolations, support & rest defense",
-  },
-  "Finishing Under Pressure": {
-    ussfD: "Finishing Under Pressure",
-    ussfC: "Finishing Under Pressure – speed of action & decisions",
-    ussfBPlus: "Finishing Under Pressure – shot selection vs block & keeper",
-  },
-  "Quick Combinations (Give & Go)": {
-    ussfD: "Quick Combinations (Give & Go)",
-    ussfC: "Quick Combinations – 1‑2s to enter the box",
-    ussfBPlus: "Quick Combinations – disorganising the last line centrally",
-  },
-  "Creating 2v1s Wide": {
-    ussfD: "Creating 2v1s Wide",
-    ussfC: "Creating 2v1s Wide – roles of winger & fullback",
-    ussfBPlus: "Creating 2v1s Wide – fixing inside & exploiting outside",
-  },
-  "Switch to Weak Side Finish": {
-    ussfD: "Switch to Weak Side Finish",
-    ussfC: "Switch to Weak Side Finish – circulation & timing",
-    ussfBPlus: "Switch to Weak Side Finish – stretch & isolate far‑side defender",
-  },
-  "Arrivals from Midfield": {
-    ussfD: "Arrivals from Midfield",
-    ussfC: "Arrivals from Midfield – late box runs",
-    ussfBPlus: "Arrivals from Midfield – timing from second line vs markers",
-  },
-  "Attacking Set Pieces": {
-    ussfD: "Attacking Set Pieces",
-    ussfC: "Attacking Set Pieces – roles & runs",
-    ussfBPlus: "Attacking Set Pieces – routines vs zonal & mixed blocks",
-  },
-  "Decision Making in Final Third": {
-    ussfD: "Decision Making in Final Third",
-    ussfC: "Decision Making in Final Third – shoot, pass or cross",
-    ussfBPlus: "Decision Making in Final Third – selecting best option vs structure",
-  },
-  "Tempo in the Final Pass": {
-    ussfD: "Tempo in the Final Pass",
-    ussfC: "Tempo in the Final Pass – when to slow or speed up",
-    ussfBPlus: "Tempo in the Final Pass – controlling rhythm to unbalance lines",
-  },
-  "Body Shape for Finishing": {
-    ussfD: "Body Shape for Finishing",
-    ussfC: "Body Shape for Finishing – first touch & preparation",
-    ussfBPlus: "Body Shape for Finishing – disguising finish & attacking rebounds",
-  },
-  "Rebounds & Second Balls": {
-    ussfD: "Rebounds & Second Balls",
-    ussfC: "Rebounds & Second Balls – reacting in the box",
-    ussfBPlus: "Rebounds & Second Balls – box occupation after first shot",
-  },
-  "One-Touch Finishes": {
-    ussfD: "One-Touch Finishes",
-    ussfC: "One-Touch Finishes – timing & body orientation",
-    ussfBPlus: "One-Touch Finishes – attacking front & back zones",
-  },
-  "Finishing from Cutbacks": {
-    ussfD: "Finishing from Cutbacks",
-    ussfC: "Finishing from Cutbacks – positioning around penalty spot",
-    ussfBPlus: "Finishing from Cutbacks – timing breaks from second line",
-  },
-  "Create Separation in Box": {
-    ussfD: "Create Separation in Box",
-    ussfC: "Create Separation in Box – double movements",
-    ussfBPlus: "Create Separation in Box – manipulating markers & screening",
-  },
-  "Timing of Crosses": {
-    ussfD: "Timing of Crosses",
-    ussfC: "Timing of Crosses – relate runner & crosser",
-    ussfBPlus: "Timing of Crosses – early vs late delivery to exploit spaces",
-  },
-  "Near Post Runs": {
-    ussfD: "Near Post Runs",
-    ussfC: "Near Post Runs – cues & starting positions",
-    ussfBPlus: "Near Post Runs – attacking front space vs zonal lines",
-  },
-  "Far Post Runs": {
-    ussfD: "Far Post Runs",
-    ussfC: "Far Post Runs – weak‑side timing",
-    ussfBPlus: "Far Post Runs – blindside attacking & overloads",
-  },
-  "Blindside Runs": {
-    ussfD: "Blindside Runs",
-    ussfC: "Blindside Runs – starting positions & triggers",
-    ussfBPlus: "Blindside Runs – attacking defenders’ blind shoulder in box",
-  },
-  "Second Phase Attacks": {
-    ussfD: "Second Phase Attacks",
-    ussfC: "Second Phase Attacks – organise around cleared balls",
-    ussfBPlus: "Second Phase Attacks – structure for sustained pressure",
-  },
-  "Quick Shot Selection": {
-    ussfD: "Quick Shot Selection",
-    ussfC: "Quick Shot Selection – first touch to finish",
-    ussfBPlus: "Quick Shot Selection – choosing finish based on pressure & angle",
-  },
-  "Combining with 9": {
-    ussfD: "Combining with 9",
-    ussfC: "Combining with 9 – set, spin & third‑man",
-    ussfBPlus: "Combining with 9 – using the striker to fix & free runners",
-  },
-};
-
-function applyCoachLevelToTopics(
-  topics: string[],
-  coachLevel?: CoachLevel
-): string[] {
-  const levelKey =
-    (coachLevel && (coachLevel as string).toUpperCase()) || "USSF_D";
-
-  return topics.map((base) => {
-    const variant = TOPIC_VARIANTS[base];
-    if (!variant) {
-      // No hand-authored variant yet: keep a single, clean label for all levels
-      return base;
-    }
-
-    if (levelKey === "USSF_C") {
-      return variant.ussfC;
-    }
-    if (levelKey === "USSF_B_PLUS") {
-      return variant.ussfBPlus;
-    }
-    // Default / USSF_D
-    return variant.ussfD;
-  });
-}
-
 export function getTopicsForPhaseAndZone(
   phase?: Phase | string,
   zone?: Zone | string,
+  // coachLevel is no longer applied here -- kept in the signature so
+  // existing call sites don't need to change. Level-specific teaching of a
+  // given topic happens in the backend TOPIC LOCK instead, one topic string
+  // shared by all levels.
   coachLevel?: CoachLevel
 ): string[] {
   const phaseKey = phase || "ATTACKING";
   const zoneKey = zone || "ATTACKING_THIRD";
   const key = `${phaseKey}|${zoneKey}`;
   const list = COMBO_TOPICS[key] || COMBO_TOPICS["ATTACKING|ATTACKING_THIRD"];
-  const levelled = applyCoachLevelToTopics(list, coachLevel);
-  return levelled.slice(0, 30);
+  return list.slice(0, 30);
 }
 
 export function getRandomTopic(

@@ -45,6 +45,10 @@ type SessionDrill = {
   constraints?: string[];
   diagram?: DiagramV1;
   diagramV1?: DiagramV1;
+  // Drawn server-side, in parallel, as part of session generation -- see
+  // generateDrillDiagramSvg in the API -- so the diagram can render
+  // alongside the session text instead of fetching separately after.
+  diagramSvg?: string | null;
   json?: any;
   rpeMin?: number;
   rpeMax?: number;
@@ -2240,7 +2244,7 @@ function SessionDemoPageContent() {
                         <option value="INTERMEDIATE">Intermediate</option>
                         <option value="ADVANCED">Advanced</option>
                       </select>
-                      <p id="playerLevelGuardrailHint" className="min-h-[14px] text-[10px] text-amber-300" />
+                      <p id="playerLevelRuleHint" className="min-h-[14px] text-[10px] text-amber-300" />
                     </div>
                   </div>
                 </div>
@@ -3483,6 +3487,7 @@ function SessionDemoPageContent() {
                                 goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
+                                initialSvg={typeof drill.diagramSvg === "string" ? drill.diagramSvg : null}
                               />
                             </div>
                           );

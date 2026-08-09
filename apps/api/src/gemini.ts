@@ -25,8 +25,12 @@ export function clearMetricsContext() {
 }
 
 // Keep defaults aligned with deployed model configuration.
-const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash";
-const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3.5-flash";
+// gemini-3.5-flash and gemini-3.6-flash (non-lite) are banned from this
+// codebase -- $21.5 and $76.5 respectively in a single day's spend versus
+// $1.24/$1.29 combined for the lite variants doing the same job. Never let
+// a missing env var silently fall back to one of the banned models.
+const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash-lite";
+const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3.5-flash-lite";
 
 // Performance tuning - balance between speed and reliability
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45000; // 45 seconds (Gemini can be very slow for complex prompts)

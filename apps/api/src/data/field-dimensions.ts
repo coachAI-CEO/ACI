@@ -107,3 +107,69 @@ export function computeTokenRadius(
 export function scaleFactorFromTokenRadius(tokenRadius: number): number {
   return tokenRadius / TOKEN_RADIUS_BASELINE;
 }
+
+/**
+ * The field rect drawn on every diagram is a fixed size and shape -- it does
+ * NOT shrink to match a small drill's real footprint. Previously that meant
+ * a 25x25-yard grid still got positioned by its raw 0-100 percent
+ * coordinates against that same full-size box: correct decoration
+ * (shouldZoomOut hides the halfway line) and correct token scaling
+ * (computeTokenRadius), but the actual camera/viewport never reframed, so
+ * the drill's real content still rendered crammed into whatever fraction of
+ * the box its coordinates happened to fall into -- looking like a huge
+ * empty pitch with a tiny cluster of players in one corner.
+ *
+ * This computes the sub-window (in 0-100 percent space) that the drill's
+ * actual content occupies, so callers can remap every coordinate to fill
+ * the box instead of sitting inside it at native scale.
+ */
+export type ContentWindow = { minX: number; maxX: number; minY: number; maxY: number };
+
+const CONTENT_WINDOW_PADDING_PERCENT = 10;
+// Never zoom in tighter than this span -- a couple of players standing
+// close together shouldn't fill the whole box as if they were the entire
+// drill; this keeps some visible margin/context even for a very tight
+// cluster.
+const CONTENT_WINDOW_MIN_SPAN_PERCENT = 40;
+
+export function computeContentWindow(points: Array<{ x: number; y: number }>): ContentWindow {
+  if (points.length === 0) return { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+
+  let minX = Math.min(...points.map((p) => p.x)) - CONTENT_WINDOW_PADDING_PERCENT;
+  let maxX = Math.max(...points.map((p) => p.x)) + CONTENT_WINDOW_PADDING_PERCENT;
+  let minY = Math.min(...points.map((p) => p.y)) - CONTENT_WINDOW_PADDING_PERCENT;
+  let maxY = Math.max(...points.map((p) => p.y)) + CONTENT_WINDOW_PADDING_PERCENT;
+
+  [minX, maxX] = ensureMinSpan(minX, maxX, CONTENT_WINDOW_MIN_SPAN_PERCENT);
+  [minY, maxY] = ensureMinSpan(minY, maxY, CONTENT_WINDOW_MIN_SPAN_PERCENT);
+  [minX, maxX] = clampWindowToBounds(minX, maxX);
+  [minY, maxY] = clampWindowToBounds(minY, maxY);
+
+  return { minX, maxX, minY, maxY };
+}
+
+function ensureMinSpan(min: number, max: number, minSpan: number): [number, number] {
+  const span = max - min;
+  if (span >= minSpan) return [min, max];
+  const center = (min + max) / 2;
+  return [center - minSpan / 2, center + minSpan / 2];
+}
+
+// Clamp into [0,100] by shifting the whole window first (preserving its
+// span), only shrinking as a last resort if the span itself is >100.
+function clampWindowToBounds(min: number, max: number): [number, number] {
+  if (min < 0) {
+    max -= min;
+    min = 0;
+  }
+  if (max > 100) {
+    min -= max - 100;
+    max = 100;
+  }
+  return [Math.max(0, min), Math.min(100, max)];
+}
+
+export function remapToWindow(value: number, min: number, max: number): number {
+  const span = Math.max(1e-6, max - min);
+  return Math.max(0, Math.min(100, ((value - min) / span) * 100));
+}

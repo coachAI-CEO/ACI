@@ -149,21 +149,48 @@ export default function SessionForm({ children }: { children: React.ReactNode })
       };
 
 
+      // USSF_C and USSF_B_PLUS coaches are never paired with Beginner
+      // players -- these licenses coach competitive teams in practice, and
+      // it's also the one combination that tested unreliably across every
+      // model (advanced tactical vocabulary fighting genuinely simple
+      // constraints in the same output). Disable the option rather than
+      // hide it, so it's clear it's a rule, not a missing choice.
+      const updatePlayerLevelOptions = () => {
+        const coachLevel = coachLevelSelect.value || "USSF_D";
+        const beginnerOption = Array.from(playerLevelSelect.options).find((opt) => opt.value === "BEGINNER");
+        if (!beginnerOption) return;
+        const beginnerAllowed = coachLevel === "USSF_D";
+        beginnerOption.disabled = !beginnerAllowed;
+        if (!beginnerAllowed && playerLevelSelect.value === "BEGINNER") {
+          playerLevelSelect.value = "INTERMEDIATE";
+          playerLevelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        const hint = document.getElementById("playerLevelRuleHint");
+        if (hint) {
+          hint.textContent = beginnerAllowed
+            ? ""
+            : `${coachLevel === "USSF_C" ? "USSF C" : "USSF B+"} coaches are paired with Intermediate or Advanced players.`;
+        }
+      };
+
       // Run once immediately to fix any mismatches
       updateFormations();
       updateTopics();
+      updatePlayerLevelOptions();
 
       // Listen for changes that should impact formations/topics
       ageGroupSelect.addEventListener("change", updateFormations);
       phaseSelect.addEventListener("change", updateTopics);
       zoneSelect.addEventListener("change", updateTopics);
       coachLevelSelect.addEventListener("change", updateTopics);
+      coachLevelSelect.addEventListener("change", updatePlayerLevelOptions);
 
       return () => {
         ageGroupSelect.removeEventListener("change", updateFormations);
         phaseSelect.removeEventListener("change", updateTopics);
         zoneSelect.removeEventListener("change", updateTopics);
         coachLevelSelect.removeEventListener("change", updateTopics);
+        coachLevelSelect.removeEventListener("change", updatePlayerLevelOptions);
       };
     };
 

@@ -18,6 +18,10 @@ export interface SessionPromptInput {
   
   // Optional: specific drill types to include
   focus?: string; // e.g., "technical", "tactical", "match_preparation"
+
+  // Optional: the specific tactical subject selected for this session (e.g.
+  // "Rest Defense Setup"). See TOPIC LOCK in buildSessionPrompt.
+  topic?: string;
 }
 
 export type GameFormat = "7v7" | "9v9" | "11v11";
@@ -307,6 +311,19 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "⚠️ PHASE LOCK:",
     phaseGuidance,
     "",
+    ...(input.topic
+      ? [
+          "⚠️ TOPIC LOCK (MANDATORY):",
+          `- topic="${input.topic}" is the specific subject this session is built around. The TACTICAL drill's title, description, and coachingNotes MUST explicitly center on this topic (name it or its direct meaning in the title/description, not just a loosely related theme) -- and the WARMUP/TECHNICAL drills should build toward it where realistic. The session-level title/summary should also reflect it, not just the broader gameModelId.`,
+          `- Teach topic="${input.topic}" through the lens of gameModelId=${input.gameModelId} -- the game model is HOW this club plays, the topic is WHAT is being taught today; connect them (e.g. explain the topic as this team's way of expressing that game model), don't treat them as unrelated instructions.`,
+          isUssfD
+            ? `- Explain topic="${input.topic}" the USSF_D way: in plain, concrete language per the COACH LANGUAGE PROFILE above -- do not introduce it by name if the name itself is jargon; describe the idea in ordinary words.`
+            : isUssfC
+            ? `- Explain topic="${input.topic}" the USSF_C way: name it plainly and explain the single concept behind it in the same or next sentence, per the COACH LANGUAGE PROFILE above.`
+            : `- Explain topic="${input.topic}" the USSF_B_PLUS way: assume the coach already knows the term, and connect it to how it interacts with the surrounding phase/game-model, per the COACH LANGUAGE PROFILE above.`,
+          "",
+        ]
+      : []),
     "SESSION STRUCTURE FOR " + sessionDuration + "-MINUTE SESSION:",
     "",
     "1. WARMUP (" + warmupDuration + " minutes):",
@@ -525,8 +542,45 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
 /**
  * QA reviewer prompt for sessions
  */
+/**
+ * The QA rubric below only ever checks whether diagram.players/arrows/
+ * annotations/safeZones are non-empty and roughly the right size (e.g.
+ * "players matching setupSteps count") -- it never scores actual
+ * coordinates, colors, or shapes. Sending the full diagram (every player's
+ * x/y/role, every arrow's from/to, etc.) was pure waste: a real session's
+ * QA prompt was 50k+ chars, dominated by diagram arrays the reviewer
+ * structurally can't use for anything beyond "is this populated and
+ * roughly this many items." Replacing each array with its length (plus a
+ * populated flag) keeps every check in the rubric answerable while cutting
+ * the bulk of the prompt -- and therefore the token cost -- of every QA
+ * call, which runs on every single session generated.
+ */
+function summarizeDiagramForQa(diagram: any): any {
+  if (!diagram || typeof diagram !== "object") return diagram;
+  const countOf = (value: unknown) => (Array.isArray(value) ? value.length : 0);
+  return {
+    hasPitch: Boolean(diagram.pitch),
+    playersCount: countOf(diagram.players),
+    arrowsCount: countOf(diagram.arrows),
+    annotationsCount: countOf(diagram.annotations),
+    safeZonesCount: countOf(diagram.safeZones),
+    goalsCount: countOf(diagram.goals),
+  };
+}
+
+function summarizeSessionForQa(session: any): any {
+  if (!session || typeof session !== "object") return session;
+  const drills = Array.isArray(session.drills)
+    ? session.drills.map((drill: any) => ({
+        ...drill,
+        diagram: drill?.diagram ? summarizeDiagramForQa(drill.diagram) : drill?.diagram,
+      }))
+    : session.drills;
+  return { ...session, drills };
+}
+
 export function buildSessionQAReviewerPrompt(session: any): string {
-  const prettySession = JSON.stringify(session, null, 2);
+  const prettySession = JSON.stringify(summarizeSessionForQa(session), null, 2);
 
   return [
     "You are CoachAI-Reviewer, a UEFA A-license coach.",
@@ -540,10 +594,12 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "",
     "Scoring (1-5): 1=broken, 2=serious issues, 3=fixable, 4=strong, 5=excellent.",
     "",
+    "NOTE: each drill's diagram field below is summarized as counts (playersCount, arrowsCount, annotationsCount, safeZonesCount, goalsCount, hasPitch) rather than the full arrays -- judge diagram completeness by whether these counts are non-zero and reasonable, not by inspecting coordinates.",
+    "",
     "STRUCTURE (rate overall session structure):",
-    "- 5: Session has complete drills array (4-5 drills), each drill has complete organization object with setupSteps (5-8), area (numeric), rotation, restarts, scoring, AND diagram field with populated players array plus arrows, annotations, and safeZones",
-    "- 3: Some drills missing organization details, diagrams, or diagrams have empty players arrays",
-    "- 1-2: Missing drills, drills missing organization/diagrams, OR any drill has diagram.players = [] (empty array) or missing arrows/annotations/safeZones - this is a critical failure",
+    "- 5: Session has complete drills array (4-5 drills), each drill has complete organization object with setupSteps (5-8), area (numeric), rotation, restarts, scoring, AND diagram field with playersCount/arrowsCount/annotationsCount/safeZonesCount all > 0",
+    "- 3: Some drills missing organization details, or diagrams have playersCount = 0",
+    "- 1-2: Missing drills, drills missing organization/diagrams, OR any drill has diagram.playersCount = 0 or arrowsCount/annotationsCount = 0 - this is a critical failure",
     "",
     "PROGRESSION (rate drill progression within session):",
     "- 5: Clear progression WARMUP → TECHNICAL → TACTICAL → CONDITIONED_GAME → (COOLDOWN), with logical flow and building complexity",
@@ -560,8 +616,8 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "- Each drill has 3-4 meaningful progressions",
     "- Each drill has organization.area with numeric lengthYards AND widthYards (both numbers)",
     "- Each drill has organization.rotation, restarts, scoring as clear, non-empty strings",
-    "- Each drill (except COOLDOWN) has diagram field with pitch, players array, goals array, arrows array, annotations array",
-    "- ⚠️ CRITICAL: Each drill's diagram.players is a NON-EMPTY array with player objects matching setupSteps player count (no partial scenario diagrams)",
+    "- Each drill (except COOLDOWN) has diagram field with hasPitch=true and playersCount/goalsCount/arrowsCount/annotationsCount all > 0",
+    "- ⚠️ CRITICAL: Each drill's diagram.playersCount is > 0 and roughly matches the player count implied by setupSteps (no partial scenario diagrams)",
     "- No age mismatches (all mentions = session.ageGroup)",
     "- Drill durations sum to approximately session.durationMin",
     "",
@@ -581,7 +637,7 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "- Multiple drills missing organization.area or area fields are strings (not numbers)",
     "- Multiple drills missing organization.rotation, restarts, or scoring",
     "- Multiple drills missing diagram field (except COOLDOWN)",
-    "- ⚠️ ANY drill (except COOLDOWN) has diagram.players = [] (empty array) - this is a critical failure",
+    "- ⚠️ ANY drill (except COOLDOWN) has diagram.playersCount = 0 - this is a critical failure",
     "- Multiple age mismatches in critical fields",
     "- Major duration mismatches",
     "",

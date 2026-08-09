@@ -9,6 +9,14 @@ type StoredDrillSvgProps = {
   size?: "small" | "large";
   className?: string;
   showRegenerate?: boolean;
+  // Session generation now draws every drill's diagram server-side, in
+  // parallel, before the session response is even sent back -- so the
+  // session and its diagrams can render together instead of the diagram
+  // popping in several seconds after the text (each drill previously
+  // fetched its own SVG separately, on mount, after the session was
+  // already visible). When the caller already has this, skip the fetch
+  // entirely instead of re-requesting something already in hand.
+  initialSvg?: string | null;
 };
 
 export default function StoredDrillSvg({
@@ -18,9 +26,10 @@ export default function StoredDrillSvg({
   size = "large",
   className = "",
   showRegenerate = true,
+  initialSvg,
 }: StoredDrillSvgProps) {
   const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
-  const [svg, setSvg] = React.useState<string | null>(null);
+  const [svg, setSvg] = React.useState<string | null>(initialSvg || null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -58,10 +67,14 @@ export default function StoredDrillSvg({
   );
 
   React.useEffect(() => {
-    setSvg(null);
     setError(null);
+    if (initialSvg) {
+      setSvg(initialSvg);
+      return;
+    }
+    setSvg(null);
     if (drillId && !isCooldown) void loadSvg(false);
-  }, [drillId, isCooldown]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [drillId, isCooldown, initialSvg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxWidth = size === "small" ? "max-w-[420px]" : "max-w-[760px]";
   const padding = size === "small" ? "p-2" : "";

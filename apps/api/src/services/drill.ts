@@ -641,7 +641,7 @@ export async function generateAndReviewDrill(
   // needsDiagramEnrichment(undefined) would return true and trigger a
   // wasted Gemini call to generate one.
   try {
-    if (String(input.drillType || "").toUpperCase() !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram)) {
+    if (String(input.drillType || "").toUpperCase() !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
       const reenriched = await reenrichDiagramFromDrillJson(drill);
       if (reenriched) {
         drill.diagram = reenriched;

@@ -27,7 +27,10 @@ import { buildSessionPrompt, buildSessionQAReviewerPrompt, type SessionPromptInp
  *
  * Usage:
  *   pnpm --filter api sandbox:session-quality -- --count 1
- *   pnpm --filter api sandbox:session-quality -- --models gemini-3.6-flash,gemini-3.5-flash --coachLevels USSF_D,USSF_B_PLUS
+ *   pnpm --filter api sandbox:session-quality -- --models gemini-3.5-flash-lite,gemini-3.1-flash-lite-preview --coachLevels USSF_D,USSF_B_PLUS
+ *
+ * gemini-3.5-flash and gemini-3.6-flash (non-lite) are banned -- see
+ * gemini.ts for the cost comparison. Do not pass them via --models.
  */
 
 // ---------------------------------------------------------------------------
@@ -63,12 +66,17 @@ function parseArgs(): Args {
   const concurrency = Number(getArgValue("--concurrency") || 2);
   const latencyTargetMs = Number(getArgValue("--latencyTargetMs") || 40000);
   return {
-    models: parseListArg("--models", ["gemini-3.6-flash", "gemini-3.1-flash-lite-preview", "gemini-3.5-flash"]),
+    // gemini-3.5-flash and gemini-3.6-flash (non-lite) are banned as
+    // defaults -- $21.5 and $76.5 in a single day's spend versus
+    // $1.24/$1.29 combined for the lite variants. Pass --models explicitly
+    // if a deliberate one-off comparison against a non-lite model is
+    // needed; the default set here must never silently bill one.
+    models: parseListArg("--models", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite-preview"]),
     coachLevels: parseListArg("--coachLevels", ["USSF_D", "USSF_C", "USSF_B_PLUS"]),
     playerLevels: parseListArg("--playerLevels", ["BEGINNER", "ADVANCED"]),
     count: Number.isFinite(count) && count > 0 ? count : 1,
     concurrency: Number.isFinite(concurrency) && concurrency > 0 ? concurrency : 2,
-    judgeModel: getArgValue("--judgeModel") || "gemini-3.6-flash",
+    judgeModel: getArgValue("--judgeModel") || "gemini-3.5-flash-lite",
     qaModel: getArgValue("--qaModel") || process.env.GEMINI_QA_MODEL || "gemini-3.1-flash-lite-preview",
     out: getArgValue("--out"),
     latencyTargetMs: Number.isFinite(latencyTargetMs) && latencyTargetMs > 0 ? latencyTargetMs : 40000,

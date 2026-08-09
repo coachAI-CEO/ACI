@@ -866,7 +866,8 @@ r.post("/ai/video-analysis/run", async (req: AuthRequest, res) => {
   });
 
   const opponentTeamColor = normalized.opponentTeamColor || "UNKNOWN";
-  const modelName = input.model || process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash";
+  // gemini-3.5-flash (non-lite) is banned -- see gemini.ts for why.
+  const modelName = input.model || process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash-lite";
   const contract = buildAnalysisContract({
     promptVersion: VIDEO_ANALYSIS_PROMPT_VERSION,
     ageGroup: normalized.ageGroup,

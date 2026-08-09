@@ -1,6 +1,13 @@
 import type { Drill } from "@prisma/client";
 import { randomUUID } from "crypto";
-import { computeTokenRadius, resolveFieldFormat, type FieldFormat } from "../data/field-dimensions";
+import {
+  computeContentWindow,
+  computeTokenRadius,
+  remapToWindow,
+  resolveFieldFormat,
+  shouldZoomOut,
+  type FieldFormat,
+} from "../data/field-dimensions";
 import type {
   DrawerAnnotation,
   DrawerArrow,
@@ -36,7 +43,7 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
     };
   });
 
-  const goals: DrawerGoal[] = (Array.isArray(diagram.goals) ? diagram.goals : []).map((raw: unknown) => {
+  let goals: DrawerGoal[] = (Array.isArray(diagram.goals) ? diagram.goals : []).map((raw: unknown) => {
     const g = asRecord(raw);
     return {
       id: stringOr(g.id, randomUUID()),
@@ -98,6 +105,70 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
   const widthYardsValue = numberOr(area.widthYards, 30);
   const lengthYardsValue = numberOr(area.lengthYards, 40);
   const fieldFormatValue = resolveDrawerFieldFormat(json.fieldFormat, players.length);
+
+  // The field rect is always drawn at the same fixed size, representing the
+  // drill's declared area -- but players/zones only ever occupied whatever
+  // raw 0-100 percent coordinates the model gave them, which (especially
+  // for a small enclosed grid relative to a real full-size pitch) tends to
+  // cluster in one corner rather than spanning the box. When this drill's
+  // area is small relative to a real pitch (shouldZoomOut), reframe the
+  // camera to the drill's actual content instead of the raw coordinate
+  // space, so the box fills with the real action instead of mostly empty
+  // field. Full-size/near-full-size drills (shouldZoomOut false) are left
+  // untouched -- their content already reasonably fills the box.
+  if (shouldZoomOut(widthYardsValue, lengthYardsValue, fieldFormatValue)) {
+    const contentPoints = [
+      ...players.map((p) => ({ x: p.x, y: p.y })),
+      ...areaZones.flatMap((z) => [
+        { x: z.x, y: z.y },
+        { x: z.x + z.width, y: z.y + z.height },
+      ]),
+      ...safeZones.flatMap((z) => [
+        { x: z.x, y: z.y },
+        { x: z.x + z.width, y: z.y + z.height },
+      ]),
+    ];
+    const window = computeContentWindow(contentPoints);
+    const remapX = (x: number) => remapToWindow(x, window.minX, window.maxX);
+    const remapY = (y: number) => remapToWindow(y, window.minY, window.maxY);
+    const withinWindow = (x: number, y: number) =>
+      x >= window.minX && x <= window.maxX && y >= window.minY && y <= window.maxY;
+
+    for (const player of players) {
+      player.x = remapX(player.x);
+      player.y = remapY(player.y);
+    }
+    for (const zone of [...areaZones, ...safeZones]) {
+      const x2 = remapX(zone.x + zone.width);
+      const y2 = remapY(zone.y + zone.height);
+      zone.x = remapX(zone.x);
+      zone.y = remapY(zone.y);
+      zone.width = Math.max(0, x2 - zone.x);
+      zone.height = Math.max(0, y2 - zone.y);
+    }
+    for (const arrow of arrows) {
+      if (!arrow.from.isCoach) {
+        arrow.from.x = remapX(arrow.from.x);
+        arrow.from.y = remapY(arrow.from.y);
+      }
+      if (!arrow.to.isCoach) {
+        arrow.to.x = remapX(arrow.to.x);
+        arrow.to.y = remapY(arrow.to.y);
+      }
+    }
+    if (coach) {
+      coach.x = remapX(coach.x);
+      coach.y = remapY(coach.y);
+    }
+    // A goal positioned for a real match pitch (e.g. a full-size goal ~50+
+    // yards from a small warmup grid) falls well outside the content
+    // window -- drop it rather than remap it into the frame, since drawing
+    // it there would misrepresent a goal the drill doesn't actually use as
+    // sitting right next to the grid.
+    goals = goals
+      .filter((goal) => withinWindow(goal.x, goal.y))
+      .map((goal) => ({ ...goal, x: remapX(goal.x), y: remapY(goal.y) }));
+  }
 
   // Detection alone (the spacing scorer) doesn't stop overlapping tokens
   // from shipping -- nothing corrected the model's raw positions. This
