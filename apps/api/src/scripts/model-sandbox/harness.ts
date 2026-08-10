@@ -1,5 +1,20 @@
-import { generateTextWithMetrics, setMetricsContext, clearMetricsContext } from "../../gemini";
+import { generateTextWithMetrics as generateGemini, setMetricsContext, clearMetricsContext } from "../../gemini";
+import { generateTextWithMetrics as generateDeepseek } from "../../services/deepseek";
+import { generateTextWithMetrics as generateMinimax } from "../../services/minimax";
 import { estimateCostUsd } from "./pricing";
+
+// Dispatch by model-name prefix so the sandbox can compare across providers
+// with the same result shape. Add a new provider by adding a prefix here
+// and a generateTextWithMetrics(prompt, {model, timeout}) implementation.
+async function generateForModel(model: string, prompt: string, timeout?: number) {
+  if (model.startsWith("deepseek-")) {
+    return generateDeepseek(prompt, { model, timeout });
+  }
+  if (model.startsWith("MiniMax-")) {
+    return generateMinimax(prompt, { model, timeout });
+  }
+  return generateGemini(prompt, { model, fallbackModel: null, timeout });
+}
 
 export type ModelRunResult = {
   model: string;
@@ -36,11 +51,7 @@ export async function runScenario(
     models.map(async (model): Promise<ModelRunResult & { validation?: { ok: boolean; note?: string } }> => {
       setMetricsContext({ operationType: `sandbox_${scenario.name}` });
       try {
-        const r = await generateTextWithMetrics(prompt, {
-          model,
-          fallbackModel: null,
-          timeout: opts?.timeout,
-        });
+        const r = await generateForModel(model, prompt, opts?.timeout);
         const validation = scenario.validate ? scenario.validate(r.text) : undefined;
         return {
           model,
