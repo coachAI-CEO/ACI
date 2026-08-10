@@ -1,6 +1,7 @@
 import { generateTextWithMetrics as generateGemini, setMetricsContext, clearMetricsContext } from "../../gemini";
 import { generateTextWithMetrics as generateDeepseek } from "../../services/deepseek";
 import { generateTextWithMetrics as generateMinimax } from "../../services/minimax";
+import { generateTextWithMetrics as generateOpenAI } from "../../services/openai";
 import { estimateCostUsd } from "./pricing";
 
 // Dispatch by model-name prefix so the sandbox can compare across providers
@@ -12,6 +13,9 @@ async function generateForModel(model: string, prompt: string, timeout?: number)
   }
   if (model.startsWith("MiniMax-")) {
     return generateMinimax(prompt, { model, timeout });
+  }
+  if (model.startsWith("gpt-")) {
+    return generateOpenAI(prompt, { model, timeout });
   }
   return generateGemini(prompt, { model, fallbackModel: null, timeout });
 }

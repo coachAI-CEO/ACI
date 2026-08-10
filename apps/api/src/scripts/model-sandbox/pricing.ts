@@ -16,6 +16,8 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   // Source: https://platform.minimax.io/docs/guides/pricing-paygo, checked 2026-08-10.
   "MiniMax-M2.7": { input: 0.3, output: 1.2 },
   "MiniMax-M2.7-highspeed": { input: 0.6, output: 2.4 },
+  // Source: https://developers.openai.com/api/docs/pricing, checked 2026-08-10.
+  "gpt-5-nano": { input: 0.05, output: 0.4 },
 };
 
 // Models this harness will run without a confirmation prompt. Keep this in
@@ -29,6 +31,7 @@ export const SANDBOX_ALLOWED_MODELS = [
   "deepseek-v4-flash",
   "MiniMax-M2.7",
   "MiniMax-M2.7-highspeed",
+  "gpt-5-nano",
 ];
 
 export function estimateCostUsd(model: string, promptTokens: number | null, completionTokens: number | null): number | null {
