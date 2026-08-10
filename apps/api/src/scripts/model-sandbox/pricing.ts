@@ -18,6 +18,7 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   "MiniMax-M2.7-highspeed": { input: 0.6, output: 2.4 },
   // Source: https://developers.openai.com/api/docs/pricing, checked 2026-08-10.
   "gpt-5-nano": { input: 0.05, output: 0.4 },
+  "gpt-5-mini": { input: 0.25, output: 2.0 },
 };
 
 // Models this harness will run without a confirmation prompt. Keep this in
@@ -32,6 +33,7 @@ export const SANDBOX_ALLOWED_MODELS = [
   "MiniMax-M2.7",
   "MiniMax-M2.7-highspeed",
   "gpt-5-nano",
+  "gpt-5-mini",
 ];
 
 export function estimateCostUsd(model: string, promptTokens: number | null, completionTokens: number | null): number | null {

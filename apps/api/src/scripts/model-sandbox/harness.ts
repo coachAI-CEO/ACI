@@ -7,15 +7,20 @@ import { estimateCostUsd } from "./pricing";
 // Dispatch by model-name prefix so the sandbox can compare across providers
 // with the same result shape. Add a new provider by adding a prefix here
 // and a generateTextWithMetrics(prompt, {model, timeout}) implementation.
-async function generateForModel(model: string, prompt: string, timeout?: number) {
+async function generateForModel(
+  model: string,
+  prompt: string,
+  timeout?: number,
+  reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high"
+) {
   if (model.startsWith("deepseek-")) {
-    return generateDeepseek(prompt, { model, timeout });
+    return generateDeepseek(prompt, { model, timeout, reasoningEffort });
   }
   if (model.startsWith("MiniMax-")) {
     return generateMinimax(prompt, { model, timeout });
   }
   if (model.startsWith("gpt-")) {
-    return generateOpenAI(prompt, { model, timeout });
+    return generateOpenAI(prompt, { model, timeout, reasoningEffort });
   }
   return generateGemini(prompt, { model, fallbackModel: null, timeout });
 }
@@ -47,7 +52,7 @@ export type Scenario = {
 export async function runScenario(
   scenario: Scenario,
   models: string[],
-  opts?: { timeout?: number }
+  opts?: { timeout?: number; reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" }
 ): Promise<{ scenario: string; prompt: string; results: (ModelRunResult & { validation?: { ok: boolean; note?: string } })[] }> {
   const prompt = scenario.buildPrompt();
 
@@ -55,7 +60,7 @@ export async function runScenario(
     models.map(async (model): Promise<ModelRunResult & { validation?: { ok: boolean; note?: string } }> => {
       setMetricsContext({ operationType: `sandbox_${scenario.name}` });
       try {
-        const r = await generateForModel(model, prompt, opts?.timeout);
+        const r = await generateForModel(model, prompt, opts?.timeout, opts?.reasoningEffort);
         const validation = scenario.validate ? scenario.validate(r.text) : undefined;
         return {
           model,

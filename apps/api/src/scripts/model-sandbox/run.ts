@@ -58,8 +58,11 @@ async function main() {
 
   console.log(`\nRunning scenario "${scenario.name}" against: ${models.join(", ")}\n`);
 
+  const reasoningEffort = getArgValue("--reasoningEffort") as "none" | "minimal" | "low" | "medium" | "high" | undefined;
+
   const { prompt, results } = await runScenario(scenario, models, {
     timeout: Number(getArgValue("--timeoutMs") || 45000),
+    reasoningEffort,
   });
 
   const rows = results.map((r) => ({

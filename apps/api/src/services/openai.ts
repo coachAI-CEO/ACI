@@ -7,7 +7,7 @@ const TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS) || 45000;
 
 export async function generateTextWithMetrics(
   prompt: string,
-  options?: { timeout?: number; model?: string }
+  options?: { timeout?: number; model?: string; reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" }
 ): Promise<{
   text: string;
   model: string;
@@ -35,6 +35,7 @@ export async function generateTextWithMetrics(
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: prompt }],
+        ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
       }),
       signal: controller.signal,
     });
