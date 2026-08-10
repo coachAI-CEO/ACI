@@ -12,6 +12,7 @@ import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
 import { generateDrillDiagramSvg } from "./drill-diagram-svg";
+import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -226,7 +227,7 @@ function isGoalkeeper(player: any): boolean {
   return player?.number === 1 || role === "GK" || role.includes("GOALKEEPER");
 }
 
-function normalizeGoalkeeperPositions(diagram: any) {
+export function normalizeGoalkeeperPositions(diagram: any) {
   if (!diagram || typeof diagram !== "object") return;
   const players = Array.isArray(diagram.players) ? diagram.players : [];
   const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
@@ -269,7 +270,7 @@ function normalizeGoalkeeperPositions(diagram: any) {
   }
 }
 
-function replaceFormatMentions(value: any, replacement: string): any {
+export function replaceFormatMentions(value: any, replacement: string): any {
   if (typeof value === "string") {
     return value.replace(/\b(?:7v7|9v9|11v11)\b/g, replacement);
   }
@@ -282,11 +283,19 @@ function replaceFormatMentions(value: any, replacement: string): any {
   return value;
 }
 
-function enforceConditionedGameFormatDiagram(
+// Returns the actual format label this drill ended up using (e.g. "9v9"
+// when numbersMax couldn't support the age group's real 11v11 match
+// format), or undefined for a non-CONDITIONED_GAME/FULL_GAME drill. Callers
+// use this to also correct the session-level summary/coachingNotes text --
+// those are written by the model against the ageGroup's real match format
+// and never got fixed up when the drill itself was downgraded to a
+// reduced format, so a coach could read "11v11" in the summary right next
+// to a drill that actually says "9v9".
+export function enforceConditionedGameFormatDiagram(
   drill: any,
   input: { ageGroup: string; numbersMax?: number }
-) {
-  if (!drill || (drill.drillType !== "CONDITIONED_GAME" && drill.drillType !== "FULL_GAME")) return;
+): string | undefined {
+  if (!drill || (drill.drillType !== "CONDITIONED_GAME" && drill.drillType !== "FULL_GAME")) return undefined;
 
   const expectedFormat = getGameFormatForAgeGroup(input.ageGroup);
   const expectedPerTeam = getPlayersPerTeamForFormat(expectedFormat);
@@ -303,7 +312,7 @@ function enforceConditionedGameFormatDiagram(
 
   replaceFormatMentions(drill, activeFormatLabel);
 
-  if (attCount === activePerTeam && defCount === activePerTeam && players.length <= maxPlayers) return;
+  if (attCount === activePerTeam && defCount === activePerTeam && players.length <= maxPlayers) return activeFormatLabel;
 
   console.warn(
     `[SESSION] Rebuilding CONDITIONED_GAME diagram for ${input.ageGroup}/${activeFormatLabel}: ` +
@@ -336,9 +345,11 @@ function enforceConditionedGameFormatDiagram(
       : `${activeFormatLabel} reduced game using ${expectedFormat} roles; ${activePerTeam} players per team and ${activeTotal} total active players.`,
     ...setupSteps.filter((step: any) => !/\b(?:7v7|9v9|11v11)\b/i.test(String(step))),
   ];
+
+  return activeFormatLabel;
 }
 
-function enforceDiagramPlayerLimit(drill: any, maxPlayers?: number) {
+export function enforceDiagramPlayerLimit(drill: any, maxPlayers?: number) {
   const max = Number(maxPlayers || 0);
   if (!max || !drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
   const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
@@ -501,6 +512,12 @@ function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
         return words.length > 18 ? `${words.slice(0, 18).join(" ")}.` : coachVoice;
       });
     }
+
+    if (drill.debrief && typeof drill.debrief === "object") {
+      drill.debrief.keyTakeaways = simplifyUssfDStringArray(drill.debrief.keyTakeaways);
+      drill.debrief.questionsToAsk = simplifyUssfDStringArray(drill.debrief.questionsToAsk);
+      drill.debrief.watchFor = simplifyUssfDStringArray(drill.debrief.watchFor);
+    }
   });
 }
 
@@ -609,6 +626,14 @@ function enforceModelConstraintsOnDrill(
   drill: any,
   input: { gameModelId: string; phase?: string; zone?: string }
 ) {
+  // COOLDOWN has no tactical constraints to enforce -- it's a wind-down/
+  // debrief, not a drill with rules to play by. Padding it up to 2+ with
+  // generic gameModel/phase defaults produced real, coach-visible nonsense
+  // like a "bonus point for a line-breaking pass" attached to a stretching
+  // session. Every other per-drill enforcement function in this file
+  // already skips COOLDOWN; this one was the one exception.
+  if (String(drill?.drillType || "").toUpperCase() === "COOLDOWN") return;
+
   const current = Array.isArray(drill?.constraints) ? drill.constraints : [];
   const cleaned = uniqueNonEmpty(current.map((c: any) => String(c)));
   const modelDefaults = modelConstraintDefaults(input.gameModelId, input.phase, input.zone);
@@ -734,6 +759,13 @@ export async function generateAndReviewSession(
   }
 
   // Normalize diagram format: convert elements to players if needed
+  // Captured from the CONDITIONED_GAME drill's own format correction below,
+  // then applied to the session-level summary/coachingNotes after this
+  // loop -- those are written by the model against the ageGroup's real
+  // match format and never got corrected when numbersMax forced the drill
+  // itself down to a reduced format, so a coach could read "11v11" in the
+  // summary right next to a drill whose own text correctly says "9v9".
+  let conditionedGameFormatLabel: string | undefined;
   if (session.drills && Array.isArray(session.drills)) {
     session.drills.forEach((drill: any, index: number) => {
       enforceModelConstraintsOnDrill(drill, {
@@ -849,7 +881,8 @@ export async function generateAndReviewSession(
         if (!Array.isArray(drill.diagram.goals)) {
           drill.diagram.goals = [];
         }
-        enforceConditionedGameFormatDiagram(drill, input);
+        const formatLabel = enforceConditionedGameFormatDiagram(drill, input);
+        if (formatLabel) conditionedGameFormatLabel = formatLabel;
         enforceDiagramPlayerLimit(drill, input.numbersMax);
         enforceDiagramGoalAvailability(drill, input);
         normalizeGoalkeeperPositions(drill.diagram);
@@ -882,6 +915,23 @@ export async function generateAndReviewSession(
       }
     });
   }
+
+  // The model writes summary/coachingNotes against the ageGroup's real
+  // match format (e.g. "11v11 reduced framework" for U16) -- if numbersMax
+  // forced the CONDITIONED_GAME drill itself down to a smaller active
+  // format, that drill's own text gets corrected above via
+  // replaceFormatMentions, but the session-level prose never did. Apply
+  // the same correction here so the summary a coach reads first doesn't
+  // contradict the actual drill two paragraphs later.
+  if (conditionedGameFormatLabel) {
+    if (typeof session.summary === "string") {
+      session.summary = replaceFormatMentions(session.summary, conditionedGameFormatLabel);
+    }
+    if (typeof session.coachingNotes === "string") {
+      session.coachingNotes = replaceFormatMentions(session.coachingNotes, conditionedGameFormatLabel);
+    }
+  }
+
   applyCoachLevelLanguageProfile(session, input.coachLevel);
 
   // 2) QA Review - update metrics context
@@ -955,6 +1005,21 @@ export async function generateAndReviewSession(
         normalizeGoalkeeperPositions(drill.diagram);
         applyCoachLevelDiagramProfile(drill, input.coachLevel);
       }
+
+      try {
+        if (needsDescriptionExpansion(drill?.description)) {
+          const expanded = await expandDrillDescription(drill, input.coachLevel);
+          if (expanded) {
+            drill.description = expanded;
+            if (drill.json && typeof drill.json === "object") {
+              drill.json.description = expanded;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error("[SESSION] Description expansion failed:", err?.message || String(err));
+      }
+
       const drillRefCode = drill.refCode || await generateRefCode("drill");
       
       // Persist drill as standalone record (upsert by refCode)

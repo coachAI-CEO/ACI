@@ -49,6 +49,14 @@ type SessionDrill = {
   // generateDrillDiagramSvg in the API -- so the diagram can render
   // alongside the session text instead of fetching separately after.
   diagramSvg?: string | null;
+  // COOLDOWN-only: a coach debrief (reinforcement points, questions to ask
+  // players, what to watch for next session) generated from this session's
+  // actual content -- replaces the old generic "stretch and reflect" slot.
+  debrief?: {
+    keyTakeaways?: string[];
+    questionsToAsk?: string[];
+    watchFor?: string[];
+  } | null;
   json?: any;
   rpeMin?: number;
   rpeMax?: number;
@@ -3488,6 +3496,7 @@ function SessionDemoPageContent() {
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
                                 initialSvg={typeof drill.diagramSvg === "string" ? drill.diagramSvg : null}
+                                debrief={drill.debrief ?? null}
                               />
                             </div>
                           );

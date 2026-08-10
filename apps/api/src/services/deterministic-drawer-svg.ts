@@ -33,8 +33,6 @@ const FIELD_MARGIN_RATIO = 0.18;
 
 export function renderDeterministicDiagramSVG(params: DrawerParams): string {
   const geometry = getGeometry(params);
-  const titleLines = splitTitleLines(humanizeText(params.title || "Drill"));
-  const header = renderHeader(params, titleLines);
   const field = renderField(params, geometry);
   const zoneBackgrounds = params.zones.map((zone) => renderZoneBackground(zone, geometry)).join("");
   const zoneLabels = params.zones.map((zone) => renderZoneLabel(zone, geometry)).join("");
@@ -53,7 +51,6 @@ export function renderDeterministicDiagramSVG(params: DrawerParams): string {
     players,
     coach,
     zoneLabels,
-    header,
     legend,
     `</svg>`,
   ].join("");
@@ -63,8 +60,16 @@ function getGeometry(params: DrawerParams): Geometry {
   const hasTopBottomGoal = params.goals.some((goal) => goal.y <= 15 || goal.y >= 85);
   const hasLeftRightGoal = params.goals.some((goal) => goal.x <= 15 || goal.x >= 85);
 
+  // The title/type/duration header used to be baked into the picture itself
+  // (drawn here AND rendered as real HTML in every page that shows this
+  // diagram next to its own title) -- panelY=205 was sized to leave room
+  // for that header above the field. Now that the header is gone (see the
+  // removed renderHeader/HEADER section, and the matching prompt change),
+  // this only needs a small top margin, not header-sized space -- and the
+  // canvas height below shrinks by the same amount so the diagram card is
+  // actually shorter, not just padded with now-empty space.
   const panelX = 56;
-  const panelY = 205;
+  const panelY = 40;
   const panelW = 688;
   const panelH = 382;
   const fieldW = panelW * (1 - FIELD_MARGIN_RATIO);
@@ -80,7 +85,7 @@ function getGeometry(params: DrawerParams): Geometry {
 
   return {
     svgWidth: 800,
-    svgHeight: 760,
+    svgHeight: 595,
     fieldX,
     fieldY,
     fieldW,
@@ -217,45 +222,6 @@ ${pitchFill}
 ${renderCornerCones(geometry)}
 ${renderDimensionLabels(params, geometry)}
 ${renderZoneReference(params, geometry)}
-</g>`;
-}
-
-function renderHeader(params: DrawerParams, titleLines: [string, string?]): string {
-  const type = humanizeText(params.drillType || "Drill");
-  const format = escapeXml(params.format || deriveFormat(params));
-  const meta = `${format}${format ? " · " : ""}${params.widthYards}x${params.lengthYards} yards · ${type}`;
-  // Phase/gameModel/zone context, visible on the diagram itself -- not just
-  // in surrounding report chrome -- so a screenshot alone is enough to
-  // check whether the drawn content (e.g. which team counter-attacks)
-  // actually matches the intended phase, without guessing from the title.
-  const contextParts = [
-    params.fieldFormat && humanizeFieldFormat(params.fieldFormat),
-    params.phase && `Phase: ${humanizeText(params.phase)}`,
-    params.gameModelId && `Model: ${humanizeText(params.gameModelId)}`,
-    params.zone && `Zone: ${humanizeText(params.zone)}`,
-    (params.formationAttacking || params.formationDefending) &&
-      `ATT ${params.formationAttacking || "?"} vs DEF ${params.formationDefending || "?"}`,
-  ].filter(Boolean);
-  const context = contextParts.length ? escapeXml(contextParts.join("  ·  ")) : "";
-  const contextLine = context
-    ? `<text x="56" y="{Y}" font-family="Arial" font-size="12" font-weight="700" fill="#5eead4">${context}</text>`
-    : "";
-
-  if (titleLines[1]) {
-    return `<g id="header">
-<text x="56" y="76" font-family="Arial" font-size="14" font-weight="800" letter-spacing="3" fill="#10f0a0">TACTICAL DIAGRAM</text>
-<text x="56" y="112" font-family="Arial" font-size="27" font-weight="800" fill="#f8fafc">${escapeXml(titleLines[0])}</text>
-<text x="56" y="144" font-family="Arial" font-size="27" font-weight="800" fill="#f8fafc">${escapeXml(titleLines[1])}</text>
-<text x="56" y="172" font-family="Arial" font-size="14" font-weight="700" fill="#94a3b8">${escapeXml(meta)}</text>
-${contextLine.replace("{Y}", "191")}
-</g>`;
-  }
-
-  return `<g id="header">
-<text x="56" y="76" font-family="Arial" font-size="14" font-weight="800" letter-spacing="3" fill="#10f0a0">TACTICAL DIAGRAM</text>
-<text x="56" y="122" font-family="Arial" font-size="32" font-weight="800" fill="#f8fafc">${escapeXml(titleLines[0])}</text>
-<text x="56" y="150" font-family="Arial" font-size="14" font-weight="700" fill="#94a3b8">${escapeXml(meta)}</text>
-${contextLine.replace("{Y}", "169")}
 </g>`;
 }
 
@@ -408,13 +374,6 @@ function normalizePositionLabel(player: DrawerPlayer): string {
   return normalized.slice(0, 2).padEnd(2, player.team === "away" ? "F" : "T");
 }
 
-function deriveFormat(params: DrawerParams): string {
-  const attackCount = params.players.filter((player) => player.team === "home" || player.team === "gk").length;
-  const defendCount = params.players.filter((player) => player.team === "away").length;
-  const neutralCount = params.players.filter((player) => player.team === "neutral").length;
-  return `${attackCount}v${defendCount}${neutralCount ? `+${neutralCount}` : ""}`;
-}
-
 function toSvgPoint(point: Point, geometry: Geometry): Point {
   const oriented = orientPoint(point, geometry);
   return { x: svgX(oriented.x, geometry), y: svgY(oriented.y, geometry) };
@@ -484,28 +443,6 @@ function resolveCoachPoint(coach: Point, geometry: Geometry): Point {
   if (nearest === "right") return { x: geometry.fieldX + geometry.fieldW + COACH_OFFSET_X, y: svgY(y, geometry) };
   if (nearest === "top") return { x: svgX(x, geometry), y: geometry.fieldY - COACH_OFFSET_Y };
   return { x: svgX(x, geometry), y: geometry.fieldY + geometry.fieldH + COACH_OFFSET_Y };
-}
-
-function splitTitleLines(title: string): [string, string?] {
-  const maxLength = 42;
-  if (title.length <= maxLength) return [title];
-  const words = title.split(/\s+/);
-  const lines = [""];
-  for (const word of words) {
-    const active = lines[lines.length - 1];
-    const candidate = active ? `${active} ${word}` : word;
-    if (candidate.length <= maxLength || lines.length === 2) {
-      lines[lines.length - 1] = candidate;
-    } else {
-      lines.push(word);
-    }
-  }
-  if (lines[1] && lines[1].length > maxLength) lines[1] = `${lines[1].slice(0, maxLength - 3).trim()}...`;
-  return [lines[0], lines[1]];
-}
-
-function humanizeFieldFormat(value: string): string {
-  return value.toLowerCase(); // "7V7" -> "7v7"
 }
 
 function humanizeText(value: string): string {

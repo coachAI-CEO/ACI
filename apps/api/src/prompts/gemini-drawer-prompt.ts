@@ -3,10 +3,17 @@ import { computeTokenRadius, shouldZoomOut } from "../data/field-dimensions";
 import { computeLegendLayout } from "../services/legend-layout";
 
 // Must match the FIELD rect used throughout this prompt (see FIELD section).
-const FIELD_Y = 239.38;
+// FIELD_Y moved up from 239.38 -- the diagram no longer draws its own
+// title/type/duration header (every page that shows this diagram already
+// renders that as real HTML next to it, so the picture was repeating it as
+// unselectable pixels for no reason). Removing the header freed the space
+// above the field entirely, rather than just deleting text and leaving a
+// blank gap -- see the matching canvas height reduction (800x760 -> 800x595)
+// below.
+const FIELD_Y = 74.38;
 const FIELD_H = 313.24;
 
-export const DRAWER_PROMPT_VERSION = "v43-injected-chrome";
+export const DRAWER_PROMPT_VERSION = "v44-no-header";
 
 export function buildDrawerPrompt(params: DrawerParams): string {
   return DRAWER_PROMPT_TEMPLATE.replace("{{DIAGRAM_DATA}}", serializeDrillData(params));
@@ -277,29 +284,19 @@ Correct:   fill="#ffffff"  stroke="none"  x="0"
 Incorrect: fill=#ffffff    stroke=none    x=0
 
 CANVAS AND CARD
-Use exactly: <svg viewBox="0 0 800 760" xmlns="http://www.w3.org/2000/svg">
-Do NOT draw the background rect yourself -- the API injects it, along with <defs> (see DEFS below). Start your own drawing from the HEADER content.
+Use exactly: <svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg">
+Do NOT draw the background rect yourself -- the API injects it, along with <defs> (see DEFS below). Start your own drawing from the FIELD content.
 The whole output is one TacticalEdge-style diagram card. Do not draw an outer rounded card; the web app supplies the container.
-
-HEADER
-Draw:
-<text x="56" y="76" font-family="Arial" font-size="14" font-weight="800" letter-spacing="3" fill="#10f0a0">TACTICAL DIAGRAM</text>
-Use the provided Title line 1 and optional Title line 2 from DRILL DATA.
-If there is one title line: draw it at x="56" y="122" using font-size="32", font-weight="800", fill="#f8fafc"; draw meta at y="150"; draw context line at y="169".
-If there are two title lines: draw line 1 at x="56" y="112" and line 2 at x="56" y="144" using font-size="27", font-weight="800", fill="#f8fafc"; draw meta at y="172"; draw context line at y="191".
-Title text must fit inside x=56 to x=744. Never let the title run past the right edge. Use the provided split title lines; do not output a single long title line when Title line 2 exists.
-Meta format must be: "{Format} · {Field width}x{Field length} yards", font-size="14", font-weight="700", fill="#94a3b8".
-Context line: only draw it if at least one of MatchFormat/Phase/GameModel/Zone/Formations from DRILL DATA is non-empty. Format: "{MatchFormat}  ·  Phase: {Phase}  ·  Model: {GameModel}  ·  Zone: {Zone}  ·  {Formations}" (omit any part whose value is empty, including its label; MatchFormat and Formations have no label of their own -- MatchFormat is already "7v7"/"9v9"/"11v11", Formations is already "ATT X vs DEF Y"). font-size="12", font-weight="700", fill="#5eead4". This line exists so a screenshot of just the diagram is enough to check whether the drawn content matches its intended real match format/phase/model/zone/formation, without needing surrounding context.
-Title and meta text must be human-readable title case. Never output raw enum text with underscores such as "CONDITIONED_GAME" or title text with underscores such as "ROCKLIN_FC". Convert them to "Conditioned Game" and "Rocklin FC". The same applies to the context line's Phase/GameModel/Zone values.
+Do NOT draw a title, drill type, duration, or any other text header -- the page displaying this diagram already renders that as real HTML next to it. This diagram is the tactical picture only: field, players, arrows, goals, zones, coach, legend.
 
 FIELD - always landscape, same orientation and same size:
-Field rect is x="117.92" y="239.38" width="564.16" height="313.24" (this is inset ~18% within the card's field panel, x="56" y="205" width="688" height="382" -- that panel margin stays empty/background-colored so the practice area has visible breathing room instead of running flush to the card edge. This margin must be wide enough for the coach marker to sit fully outside the field rect -- see COACH below).
+Field rect is x="117.92" y="74.38" width="564.16" height="313.24" (this is inset ~18% within the card's field panel, x="56" y="40" width="688" height="382" -- that panel margin stays empty/background-colored so the practice area has visible breathing room instead of running flush to the card edge. This margin must be wide enough for the coach marker to sit fully outside the field rect -- see COACH below).
 Do NOT draw the field fill, field border, or corner cones yourself -- the API injects all of them at the exact coordinates above, in the same single flat color (#1c5134) every time. Nothing -- not even the coach -- may be drawn inside the field boundary except players, goals, zones, and arrows that belong on the field.
-Halfway line and center circle: draw ONLY if Zoom is IN (see DRILL DATA). If Zoom is OUT, do not draw them -- a small practice grid has no real halfway point. When drawn: Center line: line x1="400" y1="239.38" x2="400" y2="552.62" stroke="rgba(255,255,255,0.42)" stroke-width="1.5". Center circle: circle cx="400" cy="396" r="43.85" fill="none" stroke="rgba(255,255,255,0.38)" stroke-width="1.5". Center spot: circle cx="400" cy="396" r="3" fill="rgba(255,255,255,0.55)".
+Halfway line and center circle: draw ONLY if Zoom is IN (see DRILL DATA). If Zoom is OUT, do not draw them -- a small practice grid has no real halfway point. When drawn: Center line: line x1="400" y1="74.38" x2="400" y2="387.62" stroke="rgba(255,255,255,0.42)" stroke-width="1.5". Center circle: circle cx="400" cy="231" r="43.85" fill="none" stroke="rgba(255,255,255,0.38)" stroke-width="1.5". Center spot: circle cx="400" cy="231" r="3" fill="rgba(255,255,255,0.55)".
 Do not draw penalty area boxes at all. The API overlays a penalty box after generation, only next to edges that actually have a real full-size goal -- drawing them here would show a penalty box even on mini-goal or goal-less edges. Top/bottom penalty boxes are never used. If full goals are present, draw the goal on the nearest left or right field edge, not above or below the field.
-Dimension labels: draw the real practice area size using the Field line from DRILL DATA ("{width}x{length}yd"). Above the field: line x1="117.92" y1="227.38" x2="682.08" y2="227.38" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (length in yards, e.g. "40 yds") centered at x="400" y="219.38" font-size="12" font-weight="700" fill="rgba(255,255,255,0.6)". Left of the field: line x1="105.92" y1="239.38" x2="105.92" y2="552.62" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (width in yards, e.g. "30 yds") rotated -90 degrees and centered at the line's midpoint, same font style.
+Dimension labels: draw the real practice area size using the Field line from DRILL DATA ("{width}x{length}yd"). Above the field: line x1="117.92" y1="62.38" x2="682.08" y2="62.38" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (length in yards, e.g. "40 yds") centered at x="400" y="54.38" font-size="12" font-weight="700" fill="rgba(255,255,255,0.6)". Left of the field: line x1="105.92" y1="74.38" x2="105.92" y2="387.62" stroke="rgba(255,255,255,0.35)" stroke-width="1", with text (width in yards, e.g. "30 yds") rotated -90 degrees and centered at the line's midpoint, same font style.
 
-Zone reference bar: only draw if Zone from DRILL DATA is one of "Defensive Third", "Middle Third", or "Attacking Third" (skip entirely otherwise). This is a small "which third of the real pitch is this drill in" legend -- three 44x12 segments starting at x=550.08 y=215.38, left to right: Attacking 3rd (x=550.08), Mid 3rd (x=594.08), DEF 3rd (x=638.08). Each segment is a rect (width=44, height=12) immediately followed by a centered text label inside it (font-size=6.5, font-weight=800, y = segment y + 9.5). The segment matching DRILL DATA's Zone is highlighted: fill="#10f0a0" stroke="#10f0a0" stroke-width="1" text fill="#08111f"; the other two are inactive: fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)" stroke-width="1" text fill="rgba(255,255,255,0.45)". This does NOT reposition the practice area or change any player/goal coordinates -- it's a separate small legend, not a change to the field itself.
+Zone reference bar: only draw if Zone from DRILL DATA is one of "Defensive Third", "Middle Third", or "Attacking Third" (skip entirely otherwise). This is a small "which third of the real pitch is this drill in" legend -- three 44x12 segments starting at x=550.08 y=50.38, left to right: Attacking 3rd (x=550.08), Mid 3rd (x=594.08), DEF 3rd (x=638.08). Each segment is a rect (width=44, height=12) immediately followed by a centered text label inside it (font-size=6.5, font-weight=800, y = segment y + 9.5). The segment matching DRILL DATA's Zone is highlighted: fill="#10f0a0" stroke="#10f0a0" stroke-width="1" text fill="#08111f"; the other two are inactive: fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.25)" stroke-width="1" text fill="rgba(255,255,255,0.45)". This does NOT reposition the practice area or change any player/goal coordinates -- it's a separate small legend, not a change to the field itself.
 
 COORDINATE CONVERSION
 Player, goal, zone, and arrow positions are percentages from 0-100.
@@ -311,8 +308,8 @@ Use rotated coordinates for players, goals, arrows, zones, and labels. This maps
 to the right edge and bottom goals to the left edge, with the whole drill shape rotated together.
 Convert to SVG pixels using:
   svgX = 117.92 + (x / 100) * 564.16
-  svgY = 239.38 + (y / 100) * 313.24
-Keep everything inside the field. Clamp labels and arrows so they do not enter the header or legend.
+  svgY = 74.38 + (y / 100) * 313.24
+Keep everything inside the field. Clamp labels and arrows so they do not enter the legend.
 Do not rearrange players into a standard formation.
 Do not move players based on role names like ST, GK, or CB.
 Use the x/y coordinates exactly as provided. If the data has the attacking team going right-to-left, keep the striker/forward on the data-provided left side.
@@ -357,11 +354,11 @@ COACH
 The coach stands on the sideline, OUTSIDE the marked practice area -- never inside the field rect, never on top of the field fill or overlapping the field border. If DRILL DATA says "Coach: none specified", do not draw a coach marker at all. Otherwise, compute its position like this:
 1. Take the Coach line's x/y from DRILL DATA and apply the same rotation as COORDINATE CONVERSION if applicable, giving oriented x/y in 0-100.
 2. Find which edge it's nearest to. x is the length axis (goal-to-goal) and y is the width axis, so the real sidelines are the TOP/BOTTOM edges, not left/right (left/right are the goal-line edges, and a coach standing behind a goal line is essentially never correct). Compute goalLineDist = min(x, 100-x) and sidelineDist = min(y, 100-y). Only pick left/right if goalLineDist + 12 < sidelineDist (i.e. clearly, meaningfully closer to a goal line); otherwise pick top (if y <= 100-y) or bottom (otherwise). This biases ambiguous/corner coordinates toward a sideline placement, matching real coaching practice.
-3. Compute X,Y using the field rect (x="117.92" y="239.38" width="564.16" height="313.24") like this:
-   - Nearest = left:   X = 117.92 - 40,            Y = 239.38 + (y/100)*313.24
-   - Nearest = right:  X = 117.92 + 564.16 + 40,   Y = 239.38 + (y/100)*313.24
-   - Nearest = top:    X = 117.92 + (x/100)*564.16, Y = 239.38 - 26
-   - Nearest = bottom: X = 117.92 + (x/100)*564.16, Y = 239.38 + 313.24 + 26
+3. Compute X,Y using the field rect (x="117.92" y="74.38" width="564.16" height="313.24") like this:
+   - Nearest = left:   X = 117.92 - 40,            Y = 74.38 + (y/100)*313.24
+   - Nearest = right:  X = 117.92 + 564.16 + 40,   Y = 74.38 + (y/100)*313.24
+   - Nearest = top:    X = 117.92 + (x/100)*564.16, Y = 74.38 - 26
+   - Nearest = bottom: X = 117.92 + (x/100)*564.16, Y = 74.38 + 313.24 + 26
    This deliberately does NOT use the normal player coordinate conversion -- that would place the coach inside the field, which is wrong.
 4. Draw at the computed X,Y:
 <g transform="translate(X,Y)">
@@ -418,10 +415,10 @@ DRAW ORDER:
 (dimension labels + zone reference bar, both in the margin, never covered by anything)
 6. zone backgrounds (rect only, no label) 7. goals 8. arrows 9. players
 10. coach 11. zone labels (pill + text, drawn last of the field content so
-they're never hidden under a player) 12. header 13. legend
+they're never hidden under a player) 12. legend
 Draw player token groups after arrows so token labels remain visible on top of all lines.
 Zone labels must be the LAST thing drawn on the field itself -- after players and the
-coach, before header/legend.
+coach, before the legend.
 
 DRILL DATA:
 {{DIAGRAM_DATA}}

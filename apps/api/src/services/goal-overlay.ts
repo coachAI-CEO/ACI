@@ -17,7 +17,7 @@ function resolveSvgGeometry(goals: DrawerGoal[]): SvgGeometry {
   const hasLeftRightGoal = goals.some((goal) => goal.x <= 15 || goal.x >= 85);
   return {
     fieldX: 117.92,
-    fieldY: 239.38,
+    fieldY: 74.38,
     fieldW: 564.16,
     fieldH: 313.24,
     rotateVerticalData: hasTopBottomGoal && !hasLeftRightGoal,

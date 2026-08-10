@@ -54,15 +54,37 @@ function normalizeSingleGoalPlayers(diagram: any, bigGoal: any) {
   if (!players.length) return;
 
   const gks = players.filter(isGoalkeeper);
+  // If the model never labeled ANY player as a goalkeeper for this drill,
+  // there was nothing here to reposition -- the loop below only relabels
+  // an EXISTING gk-marked player, so a roster with zero of them left the
+  // real goal drawn on the field with nobody defending it. Fall back to
+  // promoting whichever player is already closest to the goal, same
+  // selection logic as when a GK candidate does exist, so a real goal
+  // never ships without a keeper.
+  const candidates = gks.length > 0 ? gks : players;
   const keep =
-    gks.length > 0
-      ? [...gks].sort((a, b) => distanceToGoal(a, bigGoal) - distanceToGoal(b, bigGoal))[0]
+    candidates.length > 0
+      ? [...candidates].sort((a, b) => distanceToGoal(a, bigGoal) - distanceToGoal(b, bigGoal))[0]
       : null;
+
+  // Whichever team does NOT attack this goal is the team that defends it --
+  // that's who the kept GK actually belongs to, regardless of which team
+  // the model originally put them on.
+  const defendingTeam = String(bigGoal.teamAttacks || "").toUpperCase() === "ATT" ? "DEF" : "ATT";
 
   for (const player of players) {
     if (player === keep) {
       player.role = "GK";
       player.number = 1;
+      // Previously this repositioned the GK next to the real goal but left
+      // player.team unchanged -- normalizeGoalkeeperPositions (the very
+      // next step in the pipeline) derives "which goal is this GK's own"
+      // from player.team, so a stale team value made it recompute the
+      // WRONG own-goal and drag the correctly-placed GK right back to the
+      // mini-goal end that explicitly isn't supposed to have one. Setting
+      // team here keeps the two functions agreeing on which side this
+      // player is actually defending.
+      player.team = defendingTeam;
       player.x = Number(bigGoal.x ?? 50) < 50 ? Math.max(6, Number(bigGoal.x ?? 6) + 3) : Math.min(94, Number(bigGoal.x ?? 94) - 3);
       player.y = Number.isFinite(bigGoal.y) ? bigGoal.y : 50;
       continue;
