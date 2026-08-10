@@ -12,7 +12,8 @@
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts",
     "sandbox:diagram": "ts-node --project tsconfig.json src/scripts/diagram-sandbox.ts",
     "sandbox:session-quality": "ts-node --project tsconfig.json src/scripts/session-quality-sandbox.ts",
-    "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts"
+    "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",
+    "sandbox:models:report": "ts-node --project tsconfig.json src/scripts/model-sandbox/report.ts"
   },
   "keywords": [],
   "author": "",
