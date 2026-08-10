@@ -19,6 +19,9 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
+# Model sandbox run output (raw generated text + token dumps, not source)
+apps/api/src/scripts/model-sandbox/results/
+
 # Jest & Coverage
 coverage/
 .jest-cache/

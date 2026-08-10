@@ -94,8 +94,8 @@ async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RET
         durationMs: elapsed,
         success: true,
       }).catch(e => console.error("[Gemini] Failed to store metrics:", e.message));
-      
-      return responseText;
+
+      return { text: responseText, promptTokens, completionTokens, totalTokens, durationMs: elapsed };
     } catch (e: any) {
       const elapsed = Date.now() - startTime;
       console.log(`[Gemini] Error after ${elapsed}ms: ${e.message || e}`);
@@ -169,7 +169,7 @@ async function storeMetrics(data: {
   }
 }
 
-export async function generateText(
+export async function generateTextWithMetrics(
   prompt: string,
   options?: { timeout?: number; retries?: number; model?: string; fallbackModel?: string | null }
 ) {
@@ -177,17 +177,27 @@ export async function generateText(
   const retries = options?.retries ?? MAX_RETRIES;
   const primaryModel = options?.model || PRIMARY;
   const fallbackModel = options?.fallbackModel === undefined ? FALLBACK : options.fallbackModel;
-  
+
   try {
-    return await tryGenerate(primaryModel, prompt, retries, timeout);
+    const result = await tryGenerate(primaryModel, prompt, retries, timeout);
+    return { ...result, model: primaryModel };
   } catch (e: any) {
     // Don't try fallback if quota error - it will fail too
     if (isQuotaError(e)) throw e;
     if (!fallbackModel || fallbackModel === primaryModel) throw e;
-    
+
     console.log(`[Gemini] Primary model failed, trying fallback: ${e.message}`);
-    return await tryGenerate(fallbackModel, prompt, Math.min(retries, 1), timeout);
+    const result = await tryGenerate(fallbackModel, prompt, Math.min(retries, 1), timeout);
+    return { ...result, model: fallbackModel };
   }
+}
+
+export async function generateText(
+  prompt: string,
+  options?: { timeout?: number; retries?: number; model?: string; fallbackModel?: string | null }
+) {
+  const result = await generateTextWithMetrics(prompt, options);
+  return result.text;
 }
 
 export async function pingGemini() {
