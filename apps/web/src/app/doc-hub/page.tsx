@@ -241,13 +241,13 @@ export default function DocHubPage() {
             </section>
           </div>
 
-          <div className="border-t border-cyan-500/[0.08] p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-cyan-200">Topic Discussion Board</h2>
+          <div className="border-t border-slate-800 p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">Topic Discussion Board</h2>
               <button className={btnSecondary}>Create Topic</button>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-xs">
+              <table className="min-w-full text-left text-sm">
                 <thead className="text-slate-400">
                   <tr className="border-b border-slate-800">
                     <th className="py-2 pr-3 font-medium">Topic</th>
@@ -261,12 +261,12 @@ export default function DocHubPage() {
                 <tbody>
                   {topicBoard.map((topic) => (
                     <tr key={topic.topic} className="border-b border-slate-900/80">
-                      <td className="py-2 pr-3 text-slate-200">{topic.topic}</td>
-                      <td className="py-2 pr-3 text-slate-300">{topic.owner}</td>
-                      <td className="py-2 pr-3 text-slate-200">{topic.participants}</td>
-                      <td className="py-2 pr-3 text-slate-200">{topic.updates}</td>
-                      <td className="py-2 pr-3 text-slate-400">{topic.lastUpdate}</td>
-                      <td className="py-2">
+                      <td className="py-2.5 pr-3 text-slate-200">{topic.topic}</td>
+                      <td className="py-2.5 pr-3 text-slate-300">{topic.owner}</td>
+                      <td className="py-2.5 pr-3 text-slate-200">{topic.participants}</td>
+                      <td className="py-2.5 pr-3 text-slate-200">{topic.updates}</td>
+                      <td className="py-2.5 pr-3 text-slate-400">{topic.lastUpdate}</td>
+                      <td className="py-2.5">
                         <button className={btnQuiet}>Open Thread</button>
                       </td>
                     </tr>
@@ -276,17 +276,17 @@ export default function DocHubPage() {
             </div>
           </div>
 
-          <div className="border-t border-cyan-500/[0.08] p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-cyan-200">AI Agent Monitoring</h2>
-              <span className="text-[11px] text-slate-400">Detects planning gaps and repetitive coaching patterns</span>
+          <div className="border-t border-slate-800 p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">AI Agent Monitoring</h2>
+              <span className="text-sm text-slate-400">Planning gaps and repetitive patterns</span>
             </div>
             <div className="mb-3 flex flex-wrap gap-2">
               <button className={btnSecondary}>Run Agent Scan</button>
               <button className={btnPrimary}>Auto Resolve Suggestions</button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
-              <table className="min-w-full text-left text-xs">
+            <div className="overflow-x-auto rounded-lg border border-slate-800 bg-[#071121] p-4">
+              <table className="min-w-full text-left text-sm">
                 <thead className="text-slate-400">
                   <tr className="border-b border-slate-800">
                     <th className="py-2 pr-3 font-medium">Coach</th>
@@ -300,16 +300,16 @@ export default function DocHubPage() {
                 <tbody>
                   {aiAgentFindings.map((row) => (
                     <tr key={`${row.coach}-${row.issue}`} className="border-b border-slate-900/80 align-top">
-                      <td className="py-2 pr-3 text-slate-200">{row.coach}</td>
-                      <td className="py-2 pr-3 text-slate-300">{row.issue}</td>
-                      <td className="py-2 pr-3">
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${severityPill(row.severity)}`}>
+                      <td className="py-2.5 pr-3 text-slate-200">{row.coach}</td>
+                      <td className="py-2.5 pr-3 text-slate-300">{row.issue}</td>
+                      <td className="py-2.5 pr-3">
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${severityPill(row.severity)}`}>
                           {row.severity}
                         </span>
                       </td>
-                      <td className="py-2 pr-3 text-slate-300">{row.details}</td>
-                      <td className="py-2 pr-3 text-slate-300">{row.recommendation}</td>
-                      <td className="py-2">
+                      <td className="py-2.5 pr-3 text-slate-300">{row.details}</td>
+                      <td className="py-2.5 pr-3 text-slate-300">{row.recommendation}</td>
+                      <td className="py-2.5">
                         <button className={btnQuiet}>Create Task</button>
                       </td>
                     </tr>
@@ -319,10 +319,10 @@ export default function DocHubPage() {
             </div>
           </div>
 
-          <div className="border-t border-cyan-500/[0.08] p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-cyan-200">Coaches Weekly Calendar</h2>
-              <span className="text-[11px] text-slate-400">Session titles from Vault with reference codes</span>
+          <div className="border-t border-slate-800 p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-white">Coaches Weekly Calendar</h2>
+              <span className="text-sm text-slate-400">Vault sessions with reference codes</span>
             </div>
             <div className="mb-3 grid gap-2 md:grid-cols-5">
               <select className="min-h-11 rounded-md border border-slate-700 bg-[#081221] px-3 text-sm text-slate-200">
@@ -346,8 +346,8 @@ export default function DocHubPage() {
               <button className={btnSecondary}>Add to Coach</button>
               <button className={btnPrimary}>Auto Populate Week</button>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
-              <table className="min-w-full text-left text-xs">
+            <div className="overflow-x-auto rounded-lg border border-slate-800 bg-[#071121] p-4">
+              <table className="min-w-full text-left text-sm">
                 <thead className="text-slate-400">
                   <tr className="border-b border-slate-800">
                     <th className="py-2 pr-3 font-medium">Day</th>
@@ -359,35 +359,35 @@ export default function DocHubPage() {
                 <tbody>
                   {coachCalendar.map((row) => (
                     <tr key={row.day} className="border-b border-slate-900/80 align-top">
-                      <td className="py-2 pr-3 text-slate-200">{row.day}</td>
-                      <td className="py-2 pr-3 text-slate-300">
+                      <td className="py-2.5 pr-3 text-slate-200">{row.day}</td>
+                      <td className="py-2.5 pr-3 text-slate-300">
                         {row.coachA ? (
                           <div className="space-y-1">
                             <div>{row.coachA.title}</div>
-                            <div className="text-[11px] text-cyan-300">{row.coachA.code} • {row.coachA.time}</div>
+                            <div className="text-xs text-slate-400">{row.coachA.code} · {row.coachA.time}</div>
                           </div>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
-                      <td className="py-2 pr-3 text-slate-300">
+                      <td className="py-2.5 pr-3 text-slate-300">
                         {row.coachB ? (
                           <div className="space-y-1">
                             <div>{row.coachB.title}</div>
-                            <div className="text-[11px] text-cyan-300">{row.coachB.code} • {row.coachB.time}</div>
+                            <div className="text-xs text-slate-400">{row.coachB.code} · {row.coachB.time}</div>
                           </div>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
-                      <td className="py-2 text-slate-300">
+                      <td className="py-2.5 text-slate-300">
                         {row.coachC ? (
                           <div className="space-y-1">
                             <div>{row.coachC.title}</div>
-                            <div className="text-[11px] text-cyan-300">{row.coachC.code} • {row.coachC.time}</div>
+                            <div className="text-xs text-slate-400">{row.coachC.code} · {row.coachC.time}</div>
                           </div>
                         ) : (
-                          <span className="text-slate-500">-</span>
+                          <span className="text-slate-500">—</span>
                         )}
                       </td>
                     </tr>
