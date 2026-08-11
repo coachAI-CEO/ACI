@@ -108,22 +108,17 @@ function severityPill(severity: string) {
 
 export default function DocHubPage() {
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[#060a13] text-slate-50">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-32 -left-32 h-[500px] w-[500px] rounded-full bg-cyan-600/[0.08] blur-[120px]" />
-        <div className="absolute top-1/3 -right-40 h-[420px] w-[420px] rounded-full bg-blue-600/[0.06] blur-[120px]" />
-      </div>
-
+    <main className="relative min-h-dvh bg-[#060a13] text-slate-50">
       <div className="relative mx-auto w-full max-w-7xl p-4 md:p-6">
-        <section className="rounded-2xl border border-cyan-500/[0.12] bg-gradient-to-b from-[#08131a]/85 to-[#090f1a]/70 shadow-[0_0_30px_-12px_rgba(6,182,212,0.12)]">
-          <div className="border-b border-cyan-500/[0.08] bg-gradient-to-r from-cyan-950/25 to-transparent px-5 py-4">
+        <section className="rounded-2xl border border-slate-800 bg-[#090f1a]">
+          <div className="border-b border-slate-800 px-5 py-4">
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">DOC Hub</h1>
               <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-300">
                 Beta
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400">Mockup view for Director of Coaching oversight, coach adoption, and tactical discussion flow.</p>
+            <p className="mt-1 text-sm text-slate-400">Club oversight: coach adoption, game model, and weekly session coverage.</p>
           </div>
 
           <div className="grid gap-3 border-b border-cyan-500/[0.08] p-5 md:grid-cols-2 xl:grid-cols-4">
