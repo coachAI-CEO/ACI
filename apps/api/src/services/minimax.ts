@@ -9,7 +9,7 @@ const TIMEOUT_MS = Number(process.env.MINIMAX_TIMEOUT_MS) || 45000;
 
 export async function generateTextWithMetrics(
   prompt: string,
-  options?: { timeout?: number; model?: string }
+  options?: { timeout?: number; model?: string; reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" }
 ): Promise<{
   text: string;
   model: string;
@@ -37,6 +37,9 @@ export async function generateTextWithMetrics(
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+        ...(options?.reasoningEffort === "none"
+          ? { chat_template_kwargs: { thinking: false }, reasoning: { exclude: true } }
+          : {}),
       }),
       signal: controller.signal,
     });

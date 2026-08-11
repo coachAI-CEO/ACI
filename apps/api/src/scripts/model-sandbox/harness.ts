@@ -17,7 +17,7 @@ async function generateForModel(
     return generateDeepseek(prompt, { model, timeout, reasoningEffort });
   }
   if (model.startsWith("MiniMax-")) {
-    return generateMinimax(prompt, { model, timeout });
+    return generateMinimax(prompt, { model, timeout, reasoningEffort });
   }
   if (model.startsWith("gpt-")) {
     return generateOpenAI(prompt, { model, timeout, reasoningEffort });
