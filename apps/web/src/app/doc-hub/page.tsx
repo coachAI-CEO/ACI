@@ -106,6 +106,13 @@ function severityPill(severity: string) {
   return "bg-cyan-500/15 text-cyan-300 border-cyan-400/30";
 }
 
+const btnSecondary =
+  "inline-flex min-h-11 items-center justify-center rounded-md border border-slate-600 bg-transparent px-3 text-sm text-slate-200";
+const btnPrimary =
+  "inline-flex min-h-11 items-center justify-center rounded-md bg-emerald-600 px-3 text-sm font-medium text-white";
+const btnQuiet =
+  "inline-flex min-h-11 items-center justify-center rounded-md border border-slate-700 bg-transparent px-3 text-sm text-slate-300";
+
 export default function DocHubPage() {
   return (
     <main className="relative min-h-dvh bg-[#060a13] text-slate-50">
@@ -121,24 +128,24 @@ export default function DocHubPage() {
             <p className="mt-1 text-sm text-slate-400">Club oversight: coach adoption, game model, and weekly session coverage.</p>
           </div>
 
-          <div className="grid gap-3 border-b border-cyan-500/[0.08] p-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 border-b border-slate-800 p-5 md:grid-cols-2 xl:grid-cols-4">
             {summaryStats.map((stat) => (
-              <div key={stat.label} className="rounded-xl border border-cyan-500/20 bg-[#071121]/70 p-4">
-                <div className="text-[11px] uppercase tracking-wide text-slate-400">{stat.label}</div>
+              <div key={stat.label} className="rounded-lg border border-slate-800 bg-[#071121] p-4">
+                <div className="text-xs uppercase tracking-wide text-slate-400">{stat.label}</div>
                 <div className="mt-1 text-2xl font-semibold text-white">{stat.value}</div>
-                <div className="mt-1 text-xs text-slate-400">{stat.detail}</div>
+                <div className="mt-1 text-sm text-slate-400">{stat.detail}</div>
               </div>
             ))}
           </div>
 
           <div className="grid gap-4 p-5 xl:grid-cols-[1.2fr_1fr]">
-            <section className="rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-cyan-200">Coach Usage Snapshot</h2>
-                <span className="text-xs text-slate-400">Heavy users and adoption gaps</span>
+            <section className="rounded-lg border border-slate-800 bg-[#071121] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-white">Coach Usage Snapshot</h2>
+                <span className="text-sm text-slate-400">Heavy users and adoption gaps</span>
               </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-xs">
+                <table className="min-w-full text-left text-sm">
                   <thead className="text-slate-400">
                     <tr className="border-b border-slate-800">
                       <th className="py-2 pr-3 font-medium">Coach</th>
@@ -151,12 +158,12 @@ export default function DocHubPage() {
                   <tbody>
                     {coachUsage.map((row) => (
                       <tr key={row.coach} className="border-b border-slate-900/80">
-                        <td className="py-2 pr-3 text-slate-200">{row.coach}</td>
-                        <td className="py-2 pr-3 text-slate-300">{row.role}</td>
-                        <td className="py-2 pr-3 text-slate-200">{row.runs}</td>
-                        <td className="py-2 pr-3 text-slate-400">{row.lastActive}</td>
-                        <td className="py-2">
-                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize ${statusPill(row.status)}`}>
+                        <td className="py-2.5 pr-3 text-slate-200">{row.coach}</td>
+                        <td className="py-2.5 pr-3 text-slate-300">{row.role}</td>
+                        <td className="py-2.5 pr-3 text-slate-200">{row.runs}</td>
+                        <td className="py-2.5 pr-3 text-slate-400">{row.lastActive}</td>
+                        <td className="py-2.5">
+                          <span className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${statusPill(row.status)}`}>
                             {row.status}
                           </span>
                         </td>
@@ -167,35 +174,31 @@ export default function DocHubPage() {
               </div>
             </section>
 
-            <section className="rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
-              <h2 className="text-sm font-semibold text-cyan-200">Director Alerts</h2>
-              <ul className="mt-3 space-y-2 text-xs text-slate-300">
+            <section className="rounded-lg border border-slate-800 bg-[#071121] p-4">
+              <h2 className="text-lg font-semibold text-white">Director Alerts</h2>
+              <ul className="mt-3 space-y-2 text-sm text-slate-300">
                 {alerts.map((a) => (
-                  <li key={a} className="rounded-lg border border-cyan-500/20 bg-[#0a1628]/70 px-3 py-2">
+                  <li key={a} className="border-b border-slate-800 px-0 py-2 last:border-b-0">
                     {a}
                   </li>
                 ))}
               </ul>
-              <div className="mt-4 rounded-lg border border-slate-700/80 bg-[#081221] p-3">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Broadcast to Coaches</div>
-                <p className="mt-2 text-xs text-slate-300">"Prioritize build-out support angles this week. Share one clip in DOC Hub by Friday."</p>
+              <div className="mt-4 border-t border-slate-800 pt-4">
+                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Broadcast to Coaches</div>
+                <p className="mt-2 text-sm text-slate-300">Prioritize build-out support angles this week. Share one clip in DOC Hub by Friday.</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2 py-1.5 text-xs text-cyan-200">
-                    Schedule Message
-                  </button>
-                  <button className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-200">
-                    Send Now
-                  </button>
+                  <button className={btnSecondary}>Schedule Message</button>
+                  <button className={btnPrimary}>Send Now</button>
                 </div>
               </div>
             </section>
           </div>
 
-          <div className="border-t border-cyan-500/[0.08] p-5">
-            <section className="rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-cyan-200">Game Model Direction</h2>
-                <span className="text-[11px] text-slate-400">Club skeleton across 4 stages</span>
+          <div className="border-t border-slate-800 p-5">
+            <section className="p-0">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-white">Game Model Direction</h2>
+                <span className="text-sm text-slate-400">Club skeleton across 4 stages</span>
               </div>
               <div className="grid gap-3">
                 <label className="text-xs text-slate-300">
@@ -232,12 +235,8 @@ export default function DocHubPage() {
                 </label>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <button className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs text-cyan-200">
-                  Save Game Model
-                </button>
-                <button className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-200">
-                  Push to All Coaches
-                </button>
+                <button className={btnSecondary}>Save Game Model</button>
+                <button className={btnPrimary}>Push to All Coaches</button>
               </div>
             </section>
           </div>
@@ -245,9 +244,7 @@ export default function DocHubPage() {
           <div className="border-t border-cyan-500/[0.08] p-5">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-cyan-200">Topic Discussion Board</h2>
-              <button className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs text-cyan-200">
-                Create Topic
-              </button>
+              <button className={btnSecondary}>Create Topic</button>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-xs">
@@ -270,9 +267,7 @@ export default function DocHubPage() {
                       <td className="py-2 pr-3 text-slate-200">{topic.updates}</td>
                       <td className="py-2 pr-3 text-slate-400">{topic.lastUpdate}</td>
                       <td className="py-2">
-                        <button className="rounded-md border border-slate-600/80 bg-slate-700/20 px-2 py-1 text-[11px] text-slate-200">
-                          Open Thread
-                        </button>
+                        <button className={btnQuiet}>Open Thread</button>
                       </td>
                     </tr>
                   ))}
@@ -287,12 +282,8 @@ export default function DocHubPage() {
               <span className="text-[11px] text-slate-400">Detects planning gaps and repetitive coaching patterns</span>
             </div>
             <div className="mb-3 flex flex-wrap gap-2">
-              <button className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs text-cyan-200">
-                Run Agent Scan
-              </button>
-              <button className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs text-emerald-200">
-                Auto Resolve Suggestions
-              </button>
+              <button className={btnSecondary}>Run Agent Scan</button>
+              <button className={btnPrimary}>Auto Resolve Suggestions</button>
             </div>
             <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
               <table className="min-w-full text-left text-xs">
@@ -319,9 +310,7 @@ export default function DocHubPage() {
                       <td className="py-2 pr-3 text-slate-300">{row.details}</td>
                       <td className="py-2 pr-3 text-slate-300">{row.recommendation}</td>
                       <td className="py-2">
-                        <button className="rounded-md border border-slate-600/80 bg-slate-700/20 px-2 py-1 text-[11px] text-slate-200">
-                          Create Task
-                        </button>
+                        <button className={btnQuiet}>Create Task</button>
                       </td>
                     </tr>
                   ))}
@@ -336,30 +325,26 @@ export default function DocHubPage() {
               <span className="text-[11px] text-slate-400">Session titles from Vault with reference codes</span>
             </div>
             <div className="mb-3 grid gap-2 md:grid-cols-5">
-              <select className="rounded-md border border-slate-700 bg-[#081221] px-2 py-2 text-xs text-slate-200">
+              <select className="min-h-11 rounded-md border border-slate-700 bg-[#081221] px-3 text-sm text-slate-200">
                 <option>Select coach</option>
                 <option>Coach A</option>
                 <option>Coach B</option>
                 <option>Coach C</option>
               </select>
-              <select className="rounded-md border border-slate-700 bg-[#081221] px-2 py-2 text-xs text-slate-200">
+              <select className="min-h-11 rounded-md border border-slate-700 bg-[#081221] px-3 text-sm text-slate-200">
                 <option>Select day</option>
                 <option>Monday</option>
                 <option>Tuesday</option>
                 <option>Wednesday</option>
               </select>
-              <select className="rounded-md border border-slate-700 bg-[#081221] px-2 py-2 text-xs text-slate-200">
+              <select className="min-h-11 rounded-md border border-slate-700 bg-[#081221] px-3 text-sm text-slate-200">
                 <option>Select Vault session</option>
                 <option>Build Out Under Pressure (S-E5RW)</option>
                 <option>Pressing Triggers (S-K2FM)</option>
                 <option>Transition to Attack (S-T4PA)</option>
               </select>
-              <button className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-2 text-xs text-cyan-200">
-                Add to Coach
-              </button>
-              <button className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-200">
-                Auto Populate Week
-              </button>
+              <button className={btnSecondary}>Add to Coach</button>
+              <button className={btnPrimary}>Auto Populate Week</button>
             </div>
             <div className="overflow-x-auto rounded-xl border border-cyan-500/20 bg-[#071121]/65 p-4">
               <table className="min-w-full text-left text-xs">
