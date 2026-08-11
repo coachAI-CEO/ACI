@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
 import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from './email';
+import { listClubMembershipsForUser } from './club-memberships';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key-change-in-production';
@@ -134,7 +135,8 @@ export async function registerUser(data: {
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.role);
   const refreshToken = await createRefreshToken(user.id, data.ipAddress, data.userAgent);
-  
+  const clubMemberships = await listClubMembershipsForUser(user.id);
+
   return {
     user: {
       id: user.id,
@@ -144,6 +146,7 @@ export async function registerUser(data: {
       subscriptionPlan: user.subscriptionPlan,
       adminRole: (user as any).adminRole ?? null,
       emailVerified: user.emailVerified,
+      clubMemberships,
     },
     tokens: {
       accessToken,
@@ -217,7 +220,8 @@ export async function loginUser(email: string, password: string, ipAddress?: str
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.role);
   const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
-  
+  const clubMemberships = await listClubMembershipsForUser(updatedUser!.id);
+
   return {
     user: {
       id: updatedUser!.id,
@@ -227,6 +231,7 @@ export async function loginUser(email: string, password: string, ipAddress?: str
       subscriptionPlan: updatedUser!.subscriptionPlan,
       adminRole: (updatedUser as any).adminRole ?? null,
       emailVerified: updatedUser!.emailVerified,
+      clubMemberships,
     },
     tokens: {
       accessToken,

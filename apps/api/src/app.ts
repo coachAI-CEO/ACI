@@ -19,6 +19,7 @@ import calendarRoutes from "./routes-calendar";
 import organizationRoutes from "./routes-organization";
 import billingRoutes from "./routes-billing";
 import videoAnalysisRoutes from "./routes-video-analysis";
+import docHubRoutes from "./routes-doc-hub";
 import { diagramSvgRouter } from "./routes/diagram-svg";
 
 const app = express();
@@ -77,5 +78,6 @@ app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)
 app.use(videoAnalysisRoutes); // Video analysis routes
+app.use(docHubRoutes); // DOC Hub access + future club-scoped endpoints
 
 export default app;

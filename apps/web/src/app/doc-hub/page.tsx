@@ -1,5 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
+
 const summaryStats = [
   { label: "Coaches Managed", value: "20", detail: "2 inactive this week" },
   { label: "Weekly AI Sessions", value: "146", detail: "+18% vs last week" },
@@ -114,6 +118,79 @@ const btnQuiet =
   "inline-flex min-h-11 items-center justify-center rounded-md border border-slate-700 bg-transparent px-3 text-sm text-slate-300";
 
 export default function DocHubPage() {
+  const [access, setAccess] = useState<"checking" | "allowed" | "denied">("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const applyUser = (user: unknown) => {
+      if (cancelled) return;
+      setAccess(canAccessDocHub(user as any) ? "allowed" : "denied");
+    };
+
+    // Fast path from localStorage (post-login / after /me refresh)
+    applyUser(readStoredUser());
+
+    // Refresh memberships from API so gating stays correct after backfill
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      setAccess("denied");
+      return;
+    }
+
+    fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.ok && data.user) {
+          try {
+            const existing = readStoredUser() || {};
+            localStorage.setItem("user", JSON.stringify({ ...existing, ...data.user }));
+            window.dispatchEvent(new Event("userLogin"));
+          } catch {
+            /* ignore storage errors */
+          }
+          applyUser(data.user);
+        }
+      })
+      .catch(() => {
+        /* keep localStorage decision */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (access === "checking") {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-[#060a13] text-slate-400">
+        Checking DOC Hub access…
+      </main>
+    );
+  }
+
+  if (access === "denied") {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-[#060a13] px-4 text-slate-50">
+        <div className="max-w-md rounded-2xl border border-slate-700/60 bg-[#090f1a] p-8 text-center">
+          <h1 className="text-lg font-semibold text-white">DOC or Section Director access required</h1>
+          <p className="mt-2 text-sm text-slate-400">
+            DOC Hub is for club directors. Coaches and other roles use Session Builder, Vault, and Calendar instead.
+          </p>
+          <Link
+            href="/app"
+            className="mt-6 inline-flex min-h-11 items-center justify-center rounded-md bg-emerald-600 px-4 text-sm font-medium text-white"
+          >
+            Back to app
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="relative min-h-dvh bg-[#060a13] text-slate-50">
       <div className="relative mx-auto w-full max-w-7xl p-4 md:p-6">

@@ -8,6 +8,7 @@ import { DrillDiagram } from "@/components/DrillDiagram";
 import { SAMPLE_DIAGRAM_V1 } from "@/sample-diagram-v1";
 import type { DiagramV1 } from "@/types/diagram";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
+import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
 
 const coachQuotes = [
   {
@@ -169,6 +170,18 @@ export default function Home() {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [drillIndex, setDrillIndex] = useState(0);
   const [greeting, setGreeting] = useState("Good evening");
+  const [showDocHub, setShowDocHub] = useState(false);
+
+  useEffect(() => {
+    const syncDocHub = () => setShowDocHub(canAccessDocHub(readStoredUser()));
+    syncDocHub();
+    window.addEventListener("userLogin", syncDocHub);
+    window.addEventListener("storage", syncDocHub);
+    return () => {
+      window.removeEventListener("userLogin", syncDocHub);
+      window.removeEventListener("storage", syncDocHub);
+    };
+  }, []);
 
   useEffect(() => {
     const quoteKey = "dashboardCoachQuoteIndex";
@@ -199,6 +212,7 @@ export default function Home() {
   }, []);
 
   const drillOfDay = drillOfDayEntries[drillIndex];
+  const visibleQuickLinks = quickLinks.filter((link) => link.href !== "/doc-hub" || showDocHub);
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
     if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
@@ -224,7 +238,7 @@ export default function Home() {
             <p className="mt-0.5 text-[13px] text-slate-500">Ready to build something great today?</p>
           </div>
           <div className="flex gap-2.5">
-            {quickLinks.map((link) => (
+            {visibleQuickLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}

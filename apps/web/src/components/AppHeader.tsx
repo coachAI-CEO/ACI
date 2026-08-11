@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, type ComponentType } from "react";
 import AuthButton from "@/components/AuthButton";
+import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
 
 type SidebarItem = {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
   beta?: boolean;
+  /** When true, only show if canAccessDocHub(user) */
+  docHubOnly?: boolean;
 };
 
 const navItems: SidebarItem[] = [
@@ -18,7 +21,7 @@ const navItems: SidebarItem[] = [
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/video-analysis", label: "Video Analysis", icon: VideoAnalysisIcon, beta: true },
-  { href: "/doc-hub", label: "DOC Hub", icon: DocHubIcon, beta: true },
+  { href: "/doc-hub", label: "DOC Hub", icon: DocHubIcon, beta: true, docHubOnly: true },
 ];
 
 const bottomItems: SidebarItem[] = [
@@ -39,6 +42,7 @@ export default function AppHeader() {
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showDocHub, setShowDocHub] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -65,27 +69,24 @@ export default function AppHeader() {
     window.dispatchEvent(new Event("sidebarCollapsedChange"));
   }, [collapsed]);
 
-  // Check admin role
+  // Check admin + DOC Hub roles from stored user (refreshed on login)
   useEffect(() => {
-    const checkAdmin = () => {
+    const syncRoles = () => {
       try {
-        const stored = localStorage.getItem("user");
-        if (stored) {
-          const user = JSON.parse(stored);
-          setIsAdmin(user.adminRole === "SUPER_ADMIN");
-        } else {
-          setIsAdmin(false);
-        }
+        const user = readStoredUser();
+        setIsAdmin(user?.adminRole === "SUPER_ADMIN");
+        setShowDocHub(canAccessDocHub(user));
       } catch {
         setIsAdmin(false);
+        setShowDocHub(false);
       }
     };
-    checkAdmin();
-    window.addEventListener("userLogin", checkAdmin);
-    window.addEventListener("storage", checkAdmin);
+    syncRoles();
+    window.addEventListener("userLogin", syncRoles);
+    window.addEventListener("storage", syncRoles);
     return () => {
-      window.removeEventListener("userLogin", checkAdmin);
-      window.removeEventListener("storage", checkAdmin);
+      window.removeEventListener("userLogin", syncRoles);
+      window.removeEventListener("storage", syncRoles);
     };
   }, []);
 
@@ -98,6 +99,7 @@ export default function AppHeader() {
 
   const expanded = !isDesktop || !collapsed || hovering;
   const showLabels = expanded;
+  const visibleNavItems = navItems.filter((item) => !item.docHubOnly || showDocHub);
 
   return (
     <>
@@ -157,7 +159,7 @@ export default function AppHeader() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-1 scrollbar-none">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const active = isActive(item.href);
           const Icon = item.icon;
           return (

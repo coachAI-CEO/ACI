@@ -16,6 +16,7 @@ import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
 import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
 import { getEnforcedClubGameModelId } from './services/club-game-model-scope';
+import { listClubMembershipsForUser } from './services/club-memberships';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
 type SubscriptionFeatures = {
@@ -82,6 +83,13 @@ interface AuthMeUser {
   emailVerifiedAt: Date | null;
   createdAt: Date;
   enforcedGameModelId?: string | null;
+  clubMemberships?: Array<{
+    id: string;
+    clubId: string;
+    clubName: string;
+    sectionId: string | null;
+    role: string;
+  }>;
 }
 
 const r = express.Router();
@@ -231,6 +239,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
     const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const clubMemberships = await listClubMembershipsForUser(req.userId);
     
     // Get usage limits
     const sessionLimit = await checkUsageLimit(req.userId, 'session');
@@ -246,6 +255,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
       ok: true,
       user: {
         ...user,
+        clubMemberships,
         enforcedGameModelId,
         limits: {
           sessions: sessionLimit,
