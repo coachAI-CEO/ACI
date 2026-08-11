@@ -12,6 +12,7 @@ import {
   getCoachUsageSnapshot,
   resolveSectionScope,
 } from './services/club-coach-overview';
+import { getClubAttention } from './services/club-attention';
 import {
   ClubCalendarAssignError,
   assignSessionToCoach,
@@ -191,6 +192,27 @@ r.get(
       const days = Number(req.query.days) || 7;
       const snapshot = await getCoachUsageSnapshot({ clubId, sectionId, days });
       return res.json({ ok: true, ...snapshot });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/attention?weekStart=&sectionId=
+ * Club Attention (Director Alerts v1) — rule-ranked visibility into dark / empty coaches.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/attention',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const sectionId = sectionScopeFromRequest(req);
+      const weekStart =
+        typeof req.query.weekStart === 'string' ? req.query.weekStart : null;
+      const attention = await getClubAttention({ clubId, sectionId, weekStart });
+      return res.json({ ok: true, ...attention });
     } catch (error: any) {
       return res.status(500).json({ ok: false, error: error.message });
     }

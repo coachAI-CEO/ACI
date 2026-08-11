@@ -1,53 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
 
-const topicBoard = [
-  { topic: "Defensive Transition Press", owner: "Coach A", participants: 7, updates: 16, lastUpdate: "2h ago" },
-  { topic: "U10 Build-Out Shape", owner: "Coach B", participants: 9, updates: 21, lastUpdate: "4h ago" },
-  { topic: "Set-Piece Organization", owner: "Coach C", participants: 5, updates: 8, lastUpdate: "Yesterday" },
-  { topic: "Player Decision Speed", owner: "Coach D", participants: 6, updates: 11, lastUpdate: "Yesterday" },
-];
+type AttentionItem = {
+  id: string;
+  ruleId: string;
+  severity: string;
+  coachUserId: string;
+  coachName: string;
+  title: string;
+  detail: string;
+  weekStart: string;
+  action: { type: "assign" | "calendar" | "none" };
+};
 
-const alerts = [
-  "2 coaches have not opened Session Builder this week.",
-  "Video Analysis usage up 31% among U10-U12 staff.",
-  "Most discussed topic: U10 Build-Out Shape.",
-];
-
-const aiAgentFindings = [
-  {
-    coach: "Coach D",
-    issue: "No practices scheduled",
-    severity: "high",
-    details: "No sessions assigned for the next 10 days.",
-    recommendation: "Auto-populate 2 foundational sessions and notify coach.",
-  },
-  {
-    coach: "Coach E",
-    issue: "No calendar activity",
-    severity: "high",
-    details: "No additions or edits in weekly calendar this month.",
-    recommendation: "Trigger DOC check-in and assign minimum weekly plan.",
-  },
-  {
-    coach: "Coach B",
-    issue: "Repetitive topic trend",
-    severity: "medium",
-    details: "7 of last 9 sessions focus on pressing triggers.",
-    recommendation: "Balance with build-up and transition modules.",
-  },
-  {
-    coach: "Coach A",
-    issue: "Low variation in age focus",
-    severity: "low",
-    details: "U10 content repeated with minimal tactical progression.",
-    recommendation: "Inject one progression layer this week.",
-  },
-];
-
+type AttentionSummary = {
+  coachesManaged: number;
+  activeCoaches: number;
+  emptyWeekCount: number;
+  weeklyAiSessions: number;
+};
 type CoachUsageRow = {
   userId: string;
   name: string;
@@ -180,6 +154,13 @@ export default function DocHubPage() {
   const [assignMessage, setAssignMessage] = useState<string | null>(null);
   const [reassignEventId, setReassignEventId] = useState<string | null>(null);
   const [reassignToCoachId, setReassignToCoachId] = useState("");
+  const [attentionLoading, setAttentionLoading] = useState(false);
+  const [attentionError, setAttentionError] = useState<string | null>(null);
+  const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
+  const [attentionSummary, setAttentionSummary] = useState<AttentionSummary | null>(null);
+  const [attentionWarning, setAttentionWarning] = useState<string | null>(null);
+  const [laterOpen, setLaterOpen] = useState(false);
+  const calendarSectionRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -410,6 +391,52 @@ export default function DocHubPage() {
     }
   }, [access, selectedClubId, loadVaultSessions]);
 
+  const loadAttention = useCallback(async (clubId: string, week: string) => {
+    if (!clubId) return;
+    setAttentionLoading(true);
+    setAttentionError(null);
+    try {
+      const qs = new URLSearchParams({ weekStart: week });
+      const res = await fetch(`/api/doc-hub/clubs/${clubId}/attention?${qs}`, {
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Failed to load club attention");
+      }
+      setAttentionItems(data.items || []);
+      setAttentionSummary(data.summary || null);
+      setAttentionWarning(
+        Array.isArray(data.warnings) && data.warnings.length
+          ? data.warnings.join(", ")
+          : null
+      );
+    } catch (e: any) {
+      setAttentionError(e?.message || "Failed to load club attention");
+      setAttentionItems([]);
+      setAttentionSummary(null);
+    } finally {
+      setAttentionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (access === "allowed" && selectedClubId) {
+      void loadAttention(selectedClubId, weekStart);
+    }
+  }, [access, selectedClubId, weekStart, loadAttention]);
+
+  function handleAttentionAction(item: AttentionItem) {
+    setCalendarCoachFilter(item.coachUserId);
+    setAssignMessage(null);
+    if (item.action.type === "assign") {
+      setAssignMessage(`Assign a vault session to ${item.coachName} below.`);
+    }
+    requestAnimationFrame(() => {
+      calendarSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function scheduledDateForAssignDay(dayLabel: string, week: string): string {
     const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const idx = Math.max(0, labels.indexOf(dayLabel));
@@ -446,6 +473,7 @@ export default function DocHubPage() {
       }
       setAssignMessage("Session added to coach calendar.");
       await loadCalendar(selectedClubId, weekStart, calendarCoachFilter);
+      await loadAttention(selectedClubId, weekStart);
     } catch (e: any) {
       setCalendarError(e?.message || "Assign failed");
     } finally {
@@ -481,6 +509,7 @@ export default function DocHubPage() {
       const skipped = data.skipped?.length || 0;
       setAssignMessage(`Auto-populated ${created} day(s); skipped ${skipped}.`);
       await loadCalendar(selectedClubId, weekStart, calendarCoachFilter);
+      await loadAttention(selectedClubId, weekStart);
     } catch (e: any) {
       setCalendarError(e?.message || "Auto-populate failed");
     } finally {
@@ -604,33 +633,40 @@ export default function DocHubPage() {
             {[
               {
                 label: "Coaches Managed",
-                value: usageSummary ? String(usageSummary.coachesManaged) : "—",
+                value: String(
+                  attentionSummary?.coachesManaged ?? usageSummary?.coachesManaged ?? "—"
+                ),
                 detail: usageSummary
                   ? `${usageSummary.inactiveThisWeek} inactive this week`
-                  : usageLoading
+                  : usageLoading || attentionLoading
                     ? "Loading…"
                     : "No club data yet",
               },
               {
                 label: "Weekly AI Sessions",
-                value: usageSummary ? String(usageSummary.weeklyAiSessions) : "—",
+                value: String(
+                  attentionSummary?.weeklyAiSessions ?? usageSummary?.weeklyAiSessions ?? "—"
+                ),
                 detail: "Generated in last 7 days",
               },
               {
-                label: "Topics Created",
-                value: "—",
-                detail: "Phase 4 — discussion board",
+                label: "Empty weeks",
+                value: attentionSummary ? String(attentionSummary.emptyWeekCount) : "—",
+                detail: attentionWarning
+                  ? "Calendar unavailable"
+                  : "Coaches with no Mon–today sessions",
               },
               {
                 label: "Active Coaches",
-                value: usageSummary
-                  ? `${usageSummary.activeCoaches}/${usageSummary.coachesManaged}`
-                  : "—",
-                detail: usageSummary
-                  ? usageSummary.coachesManaged
-                    ? `${Math.round((usageSummary.activeCoaches / usageSummary.coachesManaged) * 100)}% adoption`
-                    : "No coaches"
-                  : "Last 7 days with ≥1 session",
+                value: (() => {
+                  const managed =
+                    attentionSummary?.coachesManaged ?? usageSummary?.coachesManaged;
+                  const active =
+                    attentionSummary?.activeCoaches ?? usageSummary?.activeCoaches;
+                  if (managed == null || active == null) return "—";
+                  return `${active}/${managed}`;
+                })(),
+                detail: "Last 7 days with ≥1 session",
               },
             ].map((stat) => (
               <div key={stat.label} className="rounded-lg border border-slate-800 bg-[#071121] p-4">
@@ -690,22 +726,53 @@ export default function DocHubPage() {
             </section>
 
             <section className="rounded-lg border border-slate-800 bg-[#071121] p-4">
-              <h2 className="text-lg font-semibold text-white">Director Alerts</h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-300">
-                {alerts.map((a) => (
-                  <li key={a} className="border-b border-slate-800 px-0 py-2 last:border-b-0">
-                    {a}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-4 border-t border-slate-800 pt-4">
-                <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Broadcast to Coaches</div>
-                <p className="mt-2 text-sm text-slate-300">Prioritize build-out support angles this week. Share one clip in DOC Hub by Friday.</p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button className={btnSecondary}>Schedule Message</button>
-                  <button className={btnPrimary}>Send Now</button>
-                </div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-white">Club Attention</h2>
+                <span className="text-sm text-slate-400">Who’s dark · empty week</span>
               </div>
+              {attentionLoading ? (
+                <p className="text-sm text-slate-400">Loading attention…</p>
+              ) : attentionError ? (
+                <p className="text-sm text-rose-300">{attentionError}</p>
+              ) : attentionItems.length === 0 ? (
+                <p className="text-sm text-slate-400">All coaches look covered this week.</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-slate-300">
+                  {attentionItems.map((item) => (
+                    <li
+                      key={item.id}
+                      className="border-b border-slate-800 px-0 py-2.5 last:border-b-0"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${severityPill(item.severity)}`}
+                            >
+                              {item.severity}
+                            </span>
+                            <span className="font-medium text-slate-100">{item.coachName}</span>
+                          </div>
+                          <div className="mt-1 text-slate-200">{item.title}</div>
+                          <div className="mt-0.5 text-xs text-slate-500">{item.detail}</div>
+                        </div>
+                        {item.action.type !== "none" ? (
+                          <button
+                            type="button"
+                            className={btnQuiet}
+                            onClick={() => handleAttentionAction(item)}
+                          >
+                            {item.action.type === "assign" ? "Assign" : "Calendar"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {attentionWarning ? (
+                <p className="mt-3 text-xs text-amber-300/90">Warning: {attentionWarning}</p>
+              ) : null}
             </section>
           </div>
 
@@ -834,84 +901,28 @@ export default function DocHubPage() {
           </div>
 
           <div className="border-t border-slate-800 p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-white">Topic Discussion Board</h2>
-              <button className={btnSecondary}>Create Topic</button>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="text-slate-400">
-                  <tr className="border-b border-slate-800">
-                    <th className="py-2 pr-3 font-medium">Topic</th>
-                    <th className="py-2 pr-3 font-medium">Owner</th>
-                    <th className="py-2 pr-3 font-medium">Participants</th>
-                    <th className="py-2 pr-3 font-medium">Updates</th>
-                    <th className="py-2 pr-3 font-medium">Last Update</th>
-                    <th className="py-2 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topicBoard.map((topic) => (
-                    <tr key={topic.topic} className="border-b border-slate-900/80">
-                      <td className="py-2.5 pr-3 text-slate-200">{topic.topic}</td>
-                      <td className="py-2.5 pr-3 text-slate-300">{topic.owner}</td>
-                      <td className="py-2.5 pr-3 text-slate-200">{topic.participants}</td>
-                      <td className="py-2.5 pr-3 text-slate-200">{topic.updates}</td>
-                      <td className="py-2.5 pr-3 text-slate-400">{topic.lastUpdate}</td>
-                      <td className="py-2.5">
-                        <button className={btnQuiet}>Open Thread</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-left"
+              onClick={() => setLaterOpen((v) => !v)}
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-white">Later</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  Topic board and AI agent monitoring — deferred until Attention is in use
+                </p>
+              </div>
+              <span className="text-sm text-slate-400">{laterOpen ? "Hide" : "Show"}</span>
+            </button>
+            {laterOpen ? (
+              <p className="mt-3 text-sm text-slate-500">
+                No schema yet for discussion threads or LLM quality scans. Club Attention is the
+                Phase 4 wedge; these surfaces stay stubbed on purpose.
+              </p>
+            ) : null}
           </div>
 
-          <div className="border-t border-slate-800 p-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-white">AI Agent Monitoring</h2>
-              <span className="text-sm text-slate-400">Planning gaps and repetitive patterns</span>
-            </div>
-            <div className="mb-3 flex flex-wrap gap-2">
-              <button className={btnSecondary}>Run Agent Scan</button>
-              <button className={btnPrimary}>Auto Resolve Suggestions</button>
-            </div>
-            <div className="overflow-x-auto rounded-lg border border-slate-800 bg-[#071121] p-4">
-              <table className="min-w-full text-left text-sm">
-                <thead className="text-slate-400">
-                  <tr className="border-b border-slate-800">
-                    <th className="py-2 pr-3 font-medium">Coach</th>
-                    <th className="py-2 pr-3 font-medium">Issue</th>
-                    <th className="py-2 pr-3 font-medium">Severity</th>
-                    <th className="py-2 pr-3 font-medium">Details</th>
-                    <th className="py-2 pr-3 font-medium">Recommendation</th>
-                    <th className="py-2 font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {aiAgentFindings.map((row) => (
-                    <tr key={`${row.coach}-${row.issue}`} className="border-b border-slate-900/80 align-top">
-                      <td className="py-2.5 pr-3 text-slate-200">{row.coach}</td>
-                      <td className="py-2.5 pr-3 text-slate-300">{row.issue}</td>
-                      <td className="py-2.5 pr-3">
-                        <span className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${severityPill(row.severity)}`}>
-                          {row.severity}
-                        </span>
-                      </td>
-                      <td className="py-2.5 pr-3 text-slate-300">{row.details}</td>
-                      <td className="py-2.5 pr-3 text-slate-300">{row.recommendation}</td>
-                      <td className="py-2.5">
-                        <button className={btnQuiet}>Create Task</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-800 p-5">
+          <div ref={calendarSectionRef} className="border-t border-slate-800 p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-white">Coaches Weekly Calendar</h2>
