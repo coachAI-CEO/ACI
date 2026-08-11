@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Lock,
   Cpu,
+  Compass,
 } from "lucide-react";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
@@ -56,6 +57,13 @@ const NAV: NavItem[] = [
         label: "Club Management",
         href: "/admin/clubs",
         icon: Building2,
+        layer: "L5",
+        badge: "NEW",
+      },
+      {
+        label: "Game Models",
+        href: "/admin/game-models",
+        icon: Compass,
         layer: "L5",
         badge: "NEW",
       },
@@ -107,7 +115,7 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
     <Link
       href={item.href}
       className={`
-        group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all
+        group flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all
         ${
           isActive
             ? "bg-emerald-500/15 text-emerald-300 shadow-sm"
@@ -120,26 +128,23 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
           isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"
         }`}
       />
-      <span className="truncate">{item.label}</span>
-      {item.layer && (
-        <span
-          className={`ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-            LAYER_COLORS[item.layer] ?? "bg-slate-700 text-slate-400"
-          }`}
-        >
-          {item.layer}
-        </span>
-      )}
-      {item.badge && !item.layer && (
-        <span className="ml-auto shrink-0 rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300 border border-emerald-500/30">
-          {item.badge}
-        </span>
-      )}
-      {item.badge && item.layer && (
-        <span className="shrink-0 rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300 border border-emerald-500/30">
-          {item.badge}
-        </span>
-      )}
+      <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        {item.layer ? (
+          <span
+            className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+              LAYER_COLORS[item.layer] ?? "bg-slate-700 text-slate-400"
+            }`}
+          >
+            {item.layer}
+          </span>
+        ) : null}
+        {item.badge ? (
+          <span className="rounded-md border border-emerald-500/30 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+            {item.badge}
+          </span>
+        ) : null}
+      </span>
     </Link>
   );
 }
@@ -148,7 +153,7 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
 
 function AdminSidebar({ pathname }: { pathname: string }) {
   return (
-    <aside className="sticky top-0 z-20 flex h-screen w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
+    <aside className="sticky top-0 z-20 flex h-screen w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
       {/* Logo / brand */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-800 px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 border border-emerald-500/30">
@@ -233,6 +238,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/admin/users":     ["Admin", "Users"],
   "/admin/access":    ["Admin", "Access Control", "Permissions"],
   "/admin/clubs":     ["Admin", "Access Control", "Club Management"],
+  "/admin/game-models": ["Admin", "Access Control", "Game Models"],
   "/admin/analytics": ["Admin", "Analytics"],
   "/admin/content":   ["Admin", "Content & QA"],
   "/admin/system":    ["Admin", "System"],

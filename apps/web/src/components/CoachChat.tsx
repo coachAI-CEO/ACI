@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 type Message = {
   id: string;
@@ -106,6 +107,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   onGenerateRequest,
 }) => {
   const router = useRouter();
+  const { enforcedGameModelId } = useEnforcedGameModelScope();
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -257,6 +259,11 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       return undefined;
     };
 
+    const scopedParams = {
+      ...(params || {}),
+      ...(enforcedGameModelId ? { gameModelId: enforcedGameModelId } : {}),
+    };
+
     const buildSessionQuery = (input: any) => {
       const queryParams = new URLSearchParams();
       if (input?.ageGroup) queryParams.set("ageGroup", input.ageGroup);
@@ -285,14 +292,14 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       return queryParams.toString();
     };
 
-    const query = buildSessionQuery(params || {});
+    const query = buildSessionQuery(scopedParams);
     const targetUrl = `/demo/session?${query}`;
 
     // Let parent run any local UI side-effects (e.g. closing chat panel), but do not
     // depend on client router transitions for this action.
     if (onGenerateRequest) {
       try {
-        onGenerateRequest(params);
+        onGenerateRequest(scopedParams);
       } catch (err) {
         console.warn("[COACH_CHAT] onGenerateRequest side-effects failed", err);
       }
@@ -303,7 +310,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       try {
         sessionStorage.setItem(
           "coachAssistant.pendingGenerate",
-          JSON.stringify({ params, targetUrl, ts: Date.now() })
+          JSON.stringify({ params: scopedParams, targetUrl, ts: Date.now() })
         );
       } catch {
         // best effort only

@@ -4,6 +4,7 @@ import FormationSelect from "@/components/FormationSelect";
 import PlayerCountInputs from "@/components/PlayerCountInputs";
 import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillActions from "@/components/DrillActions";
+import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 import type { DiagramV1 } from "@/types/diagram";
 import { cookies } from "next/headers";
 
@@ -435,17 +436,11 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
                   Game model
                 </label>
-                <select
+                <ScopedGameModelSelect
                   name="gameModelId"
                   defaultValue={config.gameModelId}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                >
-                  <option value="POSSESSION">Possession</option>
-                  <option value="PRESSING">Pressing</option>
-                  <option value="TRANSITION">Transition</option>
-                  <option value="COACHAI">Balanced (CoachAI)</option>
-                  <option value="ROCKLIN_FC">Rocklin FC</option>
-                </select>
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-70"
+                />
               </div>
 
               {/* Phase */}

@@ -1,5 +1,6 @@
 import { ClubRole, GameModelId } from '@prisma/client';
 import { prisma } from '../prisma';
+import { getGameModelTemplatePhilosophy } from './game-model-templates';
 
 export type ClubPhilosophyStages = {
   attackingOrganization: string | null;
@@ -68,9 +69,15 @@ export async function getClubPhilosophy(clubId: string): Promise<ClubPhilosophyR
   };
 }
 
+export const CLUB_GAME_MODEL_IDS = new Set<string>(Object.values(GameModelId));
+
+export function isClubGameModelId(value: unknown): value is GameModelId {
+  return typeof value === 'string' && CLUB_GAME_MODEL_IDS.has(value);
+}
+
 export async function updateClubPhilosophy(
   clubId: string,
-  patch: Partial<ClubPhilosophyStages>,
+  patch: Partial<ClubPhilosophyStages> & { gameModelId?: GameModelId },
   updatedByUserId: string
 ): Promise<ClubPhilosophyRecord | null> {
   const existing = await prisma.club.findUnique({
@@ -79,9 +86,14 @@ export async function updateClubPhilosophy(
   });
   if (!existing) return null;
 
+  if (patch.gameModelId !== undefined && !isClubGameModelId(patch.gameModelId)) {
+    throw new Error('Invalid game model for club');
+  }
+
   await prisma.club.update({
     where: { id: clubId },
     data: {
+      ...(patch.gameModelId !== undefined ? { gameModelId: patch.gameModelId } : {}),
       ...(patch.attackingOrganization !== undefined
         ? { philosophyAttackingOrganization: clampPhilosophyText(patch.attackingOrganization) }
         : {}),
@@ -105,6 +117,8 @@ export async function updateClubPhilosophy(
 /**
  * Resolve club game model + philosophy for a session-generating user.
  * Prefers ClubMembership → Club; falls back to organizationName mapping.
+ * Applies to club COACH, DOC, and SECTION_DIRECTOR members (any ClubMembership).
+ * Platform admins keep free model choice.
  */
 export async function resolveClubSessionScope(userId?: string): Promise<{
   gameModelId: string | null;
@@ -149,15 +163,20 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
     memberships.find((m) => m.role === ClubRole.COACH) || memberships[0] || null;
 
   if (preferred?.club) {
+    const clubPhilosophy = {
+      attackingOrganization: preferred.club.philosophyAttackingOrganization,
+      defensiveTransition: preferred.club.philosophyDefensiveTransition,
+      defensiveOrganization: preferred.club.philosophyDefensiveOrganization,
+      attackingTransition: preferred.club.philosophyAttackingTransition,
+    };
+    const philosophy = philosophyHasContent(clubPhilosophy)
+      ? clubPhilosophy
+      : await getGameModelTemplatePhilosophy(preferred.club.gameModelId);
+
     return {
       gameModelId: preferred.club.gameModelId,
       clubId: preferred.club.id,
-      philosophy: {
-        attackingOrganization: preferred.club.philosophyAttackingOrganization,
-        defensiveTransition: preferred.club.philosophyDefensiveTransition,
-        defensiveOrganization: preferred.club.philosophyDefensiveOrganization,
-        attackingTransition: preferred.club.philosophyAttackingTransition,
-      },
+      philosophy,
     };
   }
 
@@ -181,14 +200,19 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
   });
   if (!club) return null;
 
+  const clubPhilosophy = {
+    attackingOrganization: club.philosophyAttackingOrganization,
+    defensiveTransition: club.philosophyDefensiveTransition,
+    defensiveOrganization: club.philosophyDefensiveOrganization,
+    attackingTransition: club.philosophyAttackingTransition,
+  };
+  const philosophy = philosophyHasContent(clubPhilosophy)
+    ? clubPhilosophy
+    : await getGameModelTemplatePhilosophy(club.gameModelId);
+
   return {
     gameModelId: club.gameModelId,
     clubId: club.id,
-    philosophy: {
-      attackingOrganization: club.philosophyAttackingOrganization,
-      defensiveTransition: club.philosophyDefensiveTransition,
-      defensiveOrganization: club.philosophyDefensiveOrganization,
-      attackingTransition: club.philosophyAttackingTransition,
-    },
+    philosophy,
   };
 }

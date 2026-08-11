@@ -22,8 +22,17 @@ export function getScopedGameModelOptions(enforcedGameModelId: string | null) {
   return GAME_MODEL_OPTIONS.filter((option) => option.value === enforcedGameModelId);
 }
 
+type ScopeState = {
+  enforcedGameModelId: string | null;
+  /** False until /auth/me finishes — avoid flashing every game model. */
+  scopeReady: boolean;
+};
+
 export function useEnforcedGameModelScope() {
-  const [enforcedGameModelId, setEnforcedGameModelId] = useState<string | null>(null);
+  const [state, setState] = useState<ScopeState>({
+    enforcedGameModelId: null,
+    scopeReady: false,
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -32,7 +41,7 @@ export function useEnforcedGameModelScope() {
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         if (!token) {
-          if (mounted) setEnforcedGameModelId(null);
+          if (mounted) setState({ enforcedGameModelId: null, scopeReady: true });
           return;
         }
 
@@ -40,20 +49,28 @@ export function useEnforcedGameModelScope() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) {
-          if (mounted) setEnforcedGameModelId(null);
+          if (mounted) setState({ enforcedGameModelId: null, scopeReady: true });
           return;
         }
         const data = await res.json().catch(() => ({}));
         const scoped = String(data?.user?.enforcedGameModelId || "").trim();
-        if (mounted) setEnforcedGameModelId(scoped || null);
+        if (mounted) {
+          setState({
+            enforcedGameModelId: scoped || null,
+            scopeReady: true,
+          });
+        }
       } catch {
-        if (mounted) setEnforcedGameModelId(null);
+        if (mounted) setState({ enforcedGameModelId: null, scopeReady: true });
       }
     };
 
     run();
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "accessToken") run();
+      if (e.key === "accessToken") {
+        setState((prev) => ({ ...prev, scopeReady: false }));
+        run();
+      }
     };
     window.addEventListener("storage", onStorage);
     return () => {
@@ -63,10 +80,13 @@ export function useEnforcedGameModelScope() {
   }, []);
 
   const scopedGameModelOptions = useMemo(
-    () => getScopedGameModelOptions(enforcedGameModelId),
-    [enforcedGameModelId]
+    () => getScopedGameModelOptions(state.enforcedGameModelId),
+    [state.enforcedGameModelId]
   );
 
-  return { enforcedGameModelId, scopedGameModelOptions };
+  return {
+    enforcedGameModelId: state.enforcedGameModelId,
+    scopeReady: state.scopeReady,
+    scopedGameModelOptions,
+  };
 }
-

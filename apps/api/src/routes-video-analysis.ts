@@ -5,6 +5,7 @@ import { canAccessVideoReview } from "./services/access-permissions";
 import { buildVideoAnalysisPrompt } from "./prompts/video-analysis";
 import { prisma } from "./prisma";
 import { createHash } from "crypto";
+import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
 
 const r = Router();
 
@@ -768,7 +769,11 @@ r.post("/ai/video-analysis/run", async (req: AuthRequest, res) => {
     });
   }
 
-  const input = parsed.data;
+  const input = { ...parsed.data };
+  const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+  if (enforcedGameModelId) {
+    input.gameModelId = enforcedGameModelId as typeof input.gameModelId;
+  }
   const normalized = {
     ...input,
     ageGroup: normalizeAgeGroup(input.ageGroup),
@@ -1212,7 +1217,11 @@ r.post("/vault/video-analysis/save", async (req: AuthRequest, res) => {
     });
   }
 
-  const input = parsed.data;
+  const input = { ...parsed.data };
+  const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+  if (enforcedGameModelId) {
+    input.gameModelId = enforcedGameModelId;
+  }
   const normalized = {
     ...input,
     ageGroup: normalizeAgeGroup(input.ageGroup),

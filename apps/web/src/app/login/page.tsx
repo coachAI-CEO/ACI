@@ -3,6 +3,7 @@
 import { Suspense, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 
 export default function LoginPage() {
   return (
@@ -32,14 +33,6 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  
-  const setAuthCookie = (token: string | null) => {
-    if (!token) {
-      document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
-      return;
-    }
-    document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
-  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -60,27 +53,24 @@ function LoginContent() {
         throw new Error(data.error || "Login failed");
       }
 
-      // Store tokens
+      // Replace any previous session fully (avoids sticky prior-user cookie/localStorage).
+      clearAuthStorage();
+
       if (data.tokens) {
         localStorage.setItem("accessToken", data.tokens.accessToken);
         localStorage.setItem("refreshToken", data.tokens.refreshToken);
-        setAuthCookie(data.tokens.accessToken);
+        setAccessTokenCookie(data.tokens.accessToken);
       }
 
-      // Store user info
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user));
-        // Dispatch custom event to notify AuthButton
         window.dispatchEvent(new Event("userLogin"));
-        
-        // Show verification notice if email not verified
+
         if (data.user.emailVerified === false) {
-          // Don't redirect immediately - show notice
           setError("Please check your email to verify your account. You can still use the platform, but some features may be limited.");
         }
       }
 
-      // Redirect to app home (unless showing verification notice)
       if (data.user?.emailVerified !== false) {
         router.push(redirectTo);
         router.refresh();

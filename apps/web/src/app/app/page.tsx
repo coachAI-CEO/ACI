@@ -148,7 +148,7 @@ const quickLinks = [
   },
   {
     href: "/doc-hub",
-    label: "DOC Hub",
+    label: "DOC Console",
     desc: "Club coach oversight & game model",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">

@@ -7,6 +7,8 @@ import {
   getClubPhilosophy,
   updateClubPhilosophy,
 } from './services/club-philosophy';
+import { assistClubPhilosophyStage } from './services/club-philosophy-assist';
+import { importClubPhilosophyFromDocument } from './services/club-philosophy-import';
 import {
   getClubCalendarWeek,
   getCoachUsageSnapshot,
@@ -61,6 +63,26 @@ function sendAssignError(res: express.Response, error: unknown) {
 
 const r = express.Router();
 
+const PhilosophyAssistSchema = z.object({
+  stageKey: z.enum([
+    'attackingOrganization',
+    'defensiveTransition',
+    'defensiveOrganization',
+    'attackingTransition',
+  ]),
+  mode: z.enum(['polish', 'expand', 'shorten', 'draft', 'align']),
+  currentText: z.string().max(4000).optional().default(''),
+  notes: z.string().max(2000).nullable().optional(),
+  otherStages: z
+    .object({
+      attackingOrganization: z.string().max(4000).nullable().optional(),
+      defensiveTransition: z.string().max(4000).nullable().optional(),
+      defensiveOrganization: z.string().max(4000).nullable().optional(),
+      attackingTransition: z.string().max(4000).nullable().optional(),
+    })
+    .optional(),
+});
+
 const PhilosophyPatchSchema = z
   .object({
     attackingOrganization: z.string().max(4000).nullable().optional(),
@@ -74,7 +96,7 @@ const PhilosophyPatchSchema = z
       body.defensiveTransition !== undefined ||
       body.defensiveOrganization !== undefined ||
       body.attackingTransition !== undefined,
-    { message: 'At least one philosophy stage is required' }
+    { message: 'At least one philosophy field is required' }
   );
 
 /**
@@ -145,7 +167,8 @@ r.get(
 
 /**
  * PATCH /doc-hub/clubs/:clubId/philosophy
- * DOC owns Club DNA. SUPER_ADMIN may preview-write. Section directors read-only.
+ * DOC owns club DNA (4 stages). Game model assignment stays platform-admin only.
+ * SUPER_ADMIN may preview-write. Section directors read-only.
  */
 r.patch(
   '/doc-hub/clubs/:clubId/philosophy',
@@ -173,7 +196,108 @@ r.patch(
 
       return res.json({ ok: true, ...record });
     } catch (error: any) {
+      if (error?.message === 'Invalid game model for club') {
+        return res.status(400).json({ ok: false, error: error.message });
+      }
       return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/philosophy/assist
+ * AI writing assistant for one philosophy stage (DOC + SUPER_ADMIN).
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/philosophy/assist',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ ok: false, error: 'Authentication required' });
+      }
+
+      const parsed = PhilosophyAssistSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid assist payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const result = await assistClubPhilosophyStage({
+        clubId,
+        stageKey: parsed.data.stageKey,
+        mode: parsed.data.mode,
+        currentText: parsed.data.currentText || '',
+        notes: parsed.data.notes,
+        otherStages: parsed.data.otherStages,
+      });
+
+      return res.json({ ok: true, ...result, stageKey: parsed.data.stageKey, mode: parsed.data.mode });
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      if (message === 'Club not found') {
+        return res.status(404).json({ ok: false, error: message });
+      }
+      return res.status(500).json({ ok: false, error: message });
+    }
+  }
+);
+
+const PhilosophyImportSchema = z.object({
+  fileName: z.string().min(1).max(200),
+  mimeType: z.string().min(1).max(100),
+  base64: z.string().min(100).max(8_000_000),
+});
+
+/**
+ * POST /doc-hub/clubs/:clubId/philosophy/import
+ * Upload a club game-model PDF → AI draft of 4 stages (DOC reviews before save).
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/philosophy/import',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ ok: false, error: 'Authentication required' });
+      }
+
+      const parsed = PhilosophyImportSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid import payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const result = await importClubPhilosophyFromDocument({
+        clubId,
+        fileName: parsed.data.fileName,
+        mimeType: parsed.data.mimeType,
+        base64: parsed.data.base64,
+      });
+
+      return res.json({ ok: true, ...result });
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      if (message === 'Club not found') {
+        return res.status(404).json({ ok: false, error: message });
+      }
+      if (
+        message.includes('Only PDF') ||
+        message.includes('too large') ||
+        message.includes('Empty') ||
+        message.includes('No usable')
+      ) {
+        return res.status(400).json({ ok: false, error: message });
+      }
+      return res.status(500).json({ ok: false, error: message });
     }
   }
 );

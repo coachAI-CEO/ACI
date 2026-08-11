@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 
 interface User {
   id: string;
@@ -31,18 +32,15 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("accessToken");
     if (token) {
-      document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+      setAccessTokenCookie(token);
     } else {
-      document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+      setAccessTokenCookie(null);
     }
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
       } catch (e) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
-        document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+        clearAuthStorage();
         setUser(null);
       }
     } else {
@@ -73,12 +71,10 @@ export default function AuthButton({ compact = false }: { compact?: boolean }) {
   }, [pathname]);
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    clearAuthStorage();
     setUser(null);
     setMenuOpen(false);
+    window.dispatchEvent(new Event("userLogin"));
     router.push("/login");
     router.refresh();
   };

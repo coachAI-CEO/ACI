@@ -74,10 +74,10 @@ app.use(skillFocusRoutes); // Skill focus routes
 app.use(calendarRoutes); // Calendar routes (BEFORE admin routes to avoid conflicts)
 app.use(favoritesRoutes); // Favorites routes (BEFORE admin routes to avoid conflicts)
 app.use(billingRoutes); // Stripe checkout, portal, and webhook routes
+app.use(docHubRoutes); // DOC Hub before admin so club DOCs are never blocked by admin gate
 app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)
 app.use(videoAnalysisRoutes); // Video analysis routes
-app.use(docHubRoutes); // DOC Hub access + future club-scoped endpoints
 
 export default app;

@@ -14,6 +14,7 @@ import {
   philosophyHasContent,
   resolveClubSessionScope,
 } from "./services/club-philosophy";
+import { getGameModelTemplatePhilosophy } from "./services/game-model-templates";
 import {
   clearGenerationCancelled,
   isGenerationCancelled,
@@ -258,6 +259,11 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
     }
     if (philosophyHasContent(clubScope?.philosophy)) {
       body.clubPhilosophy = clubScope!.philosophy;
+    } else if (body.gameModelId) {
+      const templatePhilosophy = await getGameModelTemplatePhilosophy(String(body.gameModelId));
+      if (philosophyHasContent(templatePhilosophy)) {
+        body.clubPhilosophy = templatePhilosophy;
+      }
     }
 
     // Check access permissions
@@ -402,6 +408,11 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
     }
     if (philosophyHasContent(clubScope?.philosophy)) {
       baseInput.clubPhilosophy = clubScope!.philosophy;
+    } else if (baseInput.gameModelId) {
+      const templatePhilosophy = await getGameModelTemplatePhilosophy(String(baseInput.gameModelId));
+      if (philosophyHasContent(templatePhilosophy)) {
+        baseInput.clubPhilosophy = templatePhilosophy;
+      }
     }
     const numberOfSessions = Number(body.numberOfSessions) || 3;
 

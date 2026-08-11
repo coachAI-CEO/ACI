@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 
 export default function RegisterPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -16,14 +17,6 @@ export default function RegisterPage() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const setAuthCookie = (token: string | null) => {
-    if (!token) {
-      document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
-      return;
-    }
-    document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
@@ -69,9 +62,10 @@ export default function RegisterPage() {
 
       // Store tokens
       if (data.tokens) {
+        clearAuthStorage();
         localStorage.setItem("accessToken", data.tokens.accessToken);
         localStorage.setItem("refreshToken", data.tokens.refreshToken);
-        setAuthCookie(data.tokens.accessToken);
+        setAccessTokenCookie(data.tokens.accessToken);
       }
 
       // Store user info

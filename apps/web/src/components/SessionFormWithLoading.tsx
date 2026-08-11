@@ -1,9 +1,9 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent } from "react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 import ThemedConfirmModal from "@/components/ThemedConfirmModal";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 function normalizeCoachLevel(value: unknown): "USSF_D" | "USSF_C" | "USSF_B_PLUS" {
   const raw = String(value || "").trim().toUpperCase();
@@ -19,13 +19,17 @@ function normalizeCoachLevel(value: unknown): "USSF_D" | "USSF_C" | "USSF_B_PLUS
 
 export default function SessionFormWithLoading({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { enforcedGameModelId, scopeReady } = useEnforcedGameModelScope();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!scopeReady) {
+      return;
+    }
 
     const form = e.currentTarget;
     const formData = new FormData(form);
@@ -39,6 +43,10 @@ export default function SessionFormWithLoading({ children }: { children: React.R
         params.append(key, value.toString());
       }
     });
+
+    if (enforcedGameModelId) {
+      params.set("gameModelId", enforcedGameModelId);
+    }
 
     const normalizedCoachLevel = normalizeCoachLevel(formData.get("coachLevel"));
     params.set("coachLevel", normalizedCoachLevel);

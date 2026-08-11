@@ -21,8 +21,10 @@ async function proxy(
   const searchParams = request.nextUrl.searchParams.toString();
   const url = `${API_URL}/doc-hub/${pathStr}${searchParams ? `?${searchParams}` : ""}`;
 
+  // PDF philosophy import can take longer than normal DOC Hub calls.
+  const timeoutMs = pathStr.includes("philosophy/import") ? 90000 : 30000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {

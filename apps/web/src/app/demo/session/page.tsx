@@ -17,9 +17,11 @@ import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
+import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 
 type OrganizationObject = {
   setupSteps?: string[];
@@ -516,16 +518,13 @@ async function fetchSession(
     const refreshData = await refreshRes.json().catch(() => ({}));
     if (!refreshData?.accessToken) return null;
     localStorage.setItem("accessToken", refreshData.accessToken);
-    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    setAccessTokenCookie(refreshData.accessToken);
     return refreshData.accessToken as string;
   };
 
   const clearAuthState = () => {
     if (typeof window === "undefined") return;
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    clearAuthStorage();
     window.dispatchEvent(new Event("userLogin"));
   };
 
@@ -672,16 +671,13 @@ async function fetchProgressiveSeries(
     const refreshData = await refreshRes.json().catch(() => ({}));
     if (!refreshData?.accessToken) return null;
     localStorage.setItem("accessToken", refreshData.accessToken);
-    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    setAccessTokenCookie(refreshData.accessToken);
     return refreshData.accessToken as string;
   };
 
   const clearAuthState = () => {
     if (typeof window === "undefined") return;
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    clearAuthStorage();
     window.dispatchEvent(new Event("userLogin"));
   };
 
@@ -935,7 +931,7 @@ function SessionDemoPageContent() {
     seriesId: string | null;
   } | null>(null);
   const pendingSeriesIdRef = useRef<string | null>(null);
-  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
+  const { enforcedGameModelId } = useEnforcedGameModelScope();
 
   const config = getConfigFromSearchParams(searchParams);
   const effectiveGameModelId = enforcedGameModelId || config.gameModelId;
@@ -2123,18 +2119,11 @@ function SessionDemoPageContent() {
                       <label className="block uppercase tracking-wide text-[10px] text-slate-400">
                         Game model
                       </label>
-                      <select
-                        key={effectiveGameModelId}
+                      <ScopedGameModelSelect
                         name="gameModelId"
                         defaultValue={effectiveGameModelId}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                      >
-                        {scopedGameModelOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-70"
+                      />
                     </div>
 
                     <div className="space-y-1">

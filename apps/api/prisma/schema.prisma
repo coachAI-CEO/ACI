@@ -743,6 +743,24 @@ model Club {
   @@map("clubs")
 }
 
+// System-level 4-moment DNA for each GameModelId. Clubs may override with
+// Club.philosophy*; when club DNA is empty, session generation uses this
+// template so every model has a real document — not only club-exclusive PDFs.
+model GameModelTemplate {
+  gameModelId                     GameModelId @id @map("game_model_id")
+  label                           String
+  summary                         String?
+  exclusive                       Boolean     @default(false)
+  attackingOrganization           String?     @map("attacking_organization") @db.Text
+  defensiveTransition             String?     @map("defensive_transition") @db.Text
+  defensiveOrganization           String?     @map("defensive_organization") @db.Text
+  attackingTransition             String?     @map("attacking_transition") @db.Text
+  updatedAt                       DateTime    @updatedAt @map("updated_at")
+  updatedBy                       String?     @map("updated_by")
+
+  @@map("game_model_templates")
+}
+
 // Optional per-club subdivision (an "age group," a "girls academy," whatever
 // the club actually calls it -- free-text name, not a fixed enum, since
 // every org's structure is different). A club with zero Sections and a club

@@ -6,6 +6,7 @@ import { runDrillQA } from "./services/qa";
 import { normalizeDiagramLegacyToV1 } from "./services/diagram";
 import { authenticate, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
+import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
 
 const r = Router();
 
@@ -192,7 +193,11 @@ r.post("/coach/generate-drill-vetted", async (req: AuthRequest, res) => {
     });
   }
 
-  const input = parseResult.data;
+  const input = { ...parseResult.data };
+  const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+  if (enforcedGameModelId) {
+    input.gameModelId = enforcedGameModelId as typeof input.gameModelId;
+  }
 
   const attemptsSummary: Array<{
     title: string | null;

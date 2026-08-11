@@ -21,7 +21,7 @@ const navItems: SidebarItem[] = [
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/video-analysis", label: "Video Analysis", icon: VideoAnalysisIcon, beta: true },
-  { href: "/doc-hub", label: "DOC Hub", icon: DocHubIcon, beta: true, docHubOnly: true },
+  { href: "/doc-hub", label: "DOC Console", icon: DocHubIcon, beta: true, docHubOnly: true },
 ];
 
 const bottomItems: SidebarItem[] = [
@@ -38,7 +38,9 @@ export default function AppHeader() {
     pathname.startsWith("/register") ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
-    pathname.startsWith("/verify-email");
+    pathname.startsWith("/verify-email") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/doc-hub");
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);

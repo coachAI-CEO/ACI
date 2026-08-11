@@ -200,6 +200,65 @@ export async function generateText(
   return result.text;
 }
 
+export type GeminiContentPart =
+  | string
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Multimodal generate (PDF/image + text). Uses the lite primary model.
+ * Prefer this for small club documents rather than expensive non-lite models.
+ */
+export async function generateMultimodalText(
+  parts: GeminiContentPart[],
+  options?: { timeout?: number; model?: string }
+): Promise<string> {
+  const modelName = options?.model || PRIMARY;
+  const timeoutMs = options?.timeout || TIMEOUT_MS;
+  const m = newModel(modelName);
+  const startTime = Date.now();
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("LLM_TIMEOUT")), timeoutMs)
+  );
+
+  try {
+    const generatePromise = m.generateContent(parts as any);
+    const r: any = await Promise.race([generatePromise, timeoutPromise]);
+    const responseText = r.response.text();
+    const usageMetadata = r.response?.usageMetadata;
+    storeMetrics({
+      model: modelName,
+      promptLength: parts.reduce((n, p) => {
+        if (typeof p === "string") return n + p.length;
+        if ("text" in p) return n + p.text.length;
+        if ("inlineData" in p) return n + (p.inlineData.data?.length || 0);
+        return n;
+      }, 0),
+      responseLength: responseText.length,
+      promptTokens: usageMetadata?.promptTokenCount || null,
+      completionTokens: usageMetadata?.candidatesTokenCount || null,
+      totalTokens: usageMetadata?.totalTokenCount || null,
+      durationMs: Date.now() - startTime,
+      success: true,
+    }).catch(() => undefined);
+    return responseText;
+  } catch (e: any) {
+    storeMetrics({
+      model: modelName,
+      promptLength: 0,
+      responseLength: null,
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+      durationMs: Date.now() - startTime,
+      success: false,
+      errorMessage: e?.message || String(e),
+    }).catch(() => undefined);
+    throw e;
+  }
+}
+
 export async function pingGemini() {
   return generateText("Say: ACI online");
 }
