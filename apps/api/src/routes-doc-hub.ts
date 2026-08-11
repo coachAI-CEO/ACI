@@ -1,14 +1,84 @@
 import express from 'express';
+import { z } from 'zod';
 import { ClubRole } from '@prisma/client';
 import { requireClubRole, ClubAuthRequest } from './middleware/club-auth';
 import { DOC_HUB_ROLES, listClubMembershipsForUser } from './services/club-memberships';
+import {
+  getClubPhilosophy,
+  updateClubPhilosophy,
+} from './services/club-philosophy';
+import {
+  getClubCalendarWeek,
+  getCoachUsageSnapshot,
+  resolveSectionScope,
+} from './services/club-coach-overview';
+import {
+  ClubCalendarAssignError,
+  assignSessionToCoach,
+  autoPopulateCoachWeek,
+  listClubVaultSessions,
+  reassignCalendarEvent,
+} from './services/club-calendar-assign';
+import { prisma } from './prisma';
+
+function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
+  return resolveSectionScope({
+    membershipSectionId: req.clubMembership?.sectionId,
+    membershipRole: req.clubMembership?.role,
+    viaSuperAdmin: req.clubAccessViaSuperAdmin,
+    requestedSectionId:
+      typeof req.query.sectionId === 'string' ? req.query.sectionId : null,
+  });
+}
+
+function assignScopeFromRequest(req: ClubAuthRequest, clubId: string) {
+  if (!req.userId) {
+    throw new ClubCalendarAssignError(401, 'UNAUTHENTICATED', 'Authentication required');
+  }
+  return {
+    clubId,
+    requesterUserId: req.userId,
+    membershipRole: req.clubMembership?.role,
+    membershipSectionId: req.clubMembership?.sectionId,
+    viaSuperAdmin: Boolean(req.clubAccessViaSuperAdmin),
+    sectionFilter: sectionScopeFromRequest(req),
+  };
+}
+
+function sendAssignError(res: express.Response, error: unknown) {
+  if (error instanceof ClubCalendarAssignError) {
+    return res.status(error.status).json({
+      ok: false,
+      error: error.code,
+      message: error.message,
+      details: error.details,
+    });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
 
 const r = express.Router();
+
+const PhilosophyPatchSchema = z
+  .object({
+    attackingOrganization: z.string().max(4000).nullable().optional(),
+    defensiveTransition: z.string().max(4000).nullable().optional(),
+    defensiveOrganization: z.string().max(4000).nullable().optional(),
+    attackingTransition: z.string().max(4000).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.attackingOrganization !== undefined ||
+      body.defensiveTransition !== undefined ||
+      body.defensiveOrganization !== undefined ||
+      body.attackingTransition !== undefined,
+    { message: 'At least one philosophy stage is required' }
+  );
 
 /**
  * GET /doc-hub/access
  * Confirms the caller may enter DOC Hub (DOC | SECTION_DIRECTOR, or SUPER_ADMIN preview).
- * Soft client gates mirror this; real data endpoints will reuse requireClubRole with clubId.
  */
 r.get(
   '/doc-hub/access',
@@ -24,14 +94,271 @@ r.get(
         DOC_HUB_ROLES.includes(m.role as ClubRole)
       );
 
+      let previewClubs: Array<{ id: string; name: string; gameModelId: string }> | undefined;
+      if (req.clubAccessViaSuperAdmin && directorMemberships.length === 0) {
+        previewClubs = await prisma.club.findMany({
+          where: { active: true },
+          select: { id: true, name: true, gameModelId: true },
+          orderBy: { name: 'asc' },
+          take: 50,
+        });
+      }
+
       return res.json({
         ok: true,
         access: true,
         viaSuperAdmin: Boolean(req.clubAccessViaSuperAdmin),
         memberships: directorMemberships,
+        canEditPhilosophy: Boolean(
+          req.clubAccessViaSuperAdmin ||
+            directorMemberships.some((m) => m.role === ClubRole.DOC)
+        ),
+        previewClubs,
       });
     } catch (error: any) {
       return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/philosophy
+ * Read club game-model DNA (4 stages). DOC | SECTION_DIRECTOR | SUPER_ADMIN.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/philosophy',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const record = await getClubPhilosophy(clubId);
+      if (!record) {
+        return res.status(404).json({ ok: false, error: 'Club not found' });
+      }
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/philosophy
+ * DOC owns Club DNA. SUPER_ADMIN may preview-write. Section directors read-only.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/philosophy',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ ok: false, error: 'Authentication required' });
+      }
+
+      const parsed = PhilosophyPatchSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid philosophy payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const record = await updateClubPhilosophy(clubId, parsed.data, req.userId);
+      if (!record) {
+        return res.status(404).json({ ok: false, error: 'Club not found' });
+      }
+
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/coaches/usage?sectionId=&days=7
+ * Coach adoption snapshot for the last N days (session generations).
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/coaches/usage',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const sectionId = sectionScopeFromRequest(req);
+      const days = Number(req.query.days) || 7;
+      const snapshot = await getCoachUsageSnapshot({ clubId, sectionId, days });
+      return res.json({ ok: true, ...snapshot });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/calendar/week?weekStart=YYYY-MM-DD&coachUserId=&sectionId=
+ * Multi-coach weekly calendar grid (Mon–Sun UTC week).
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/calendar/week',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const sectionId = sectionScopeFromRequest(req);
+      const weekStart =
+        typeof req.query.weekStart === 'string' ? req.query.weekStart : null;
+      const coachUserId =
+        typeof req.query.coachUserId === 'string' ? req.query.coachUserId : null;
+      const week = await getClubCalendarWeek({
+        clubId,
+        sectionId,
+        weekStart,
+        coachUserId,
+      });
+      return res.json({ ok: true, ...week });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message });
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/vault/sessions?ageGroup=&limit=
+ * Vault sessions matching the club's game model (for assign picker).
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/vault/sessions',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const ageGroup =
+        typeof req.query.ageGroup === 'string' ? req.query.ageGroup : null;
+      const limit = Number(req.query.limit) || 100;
+      const result = await listClubVaultSessions({ clubId, ageGroup, limit });
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return sendAssignError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/calendar/assign
+ * Assign one vault session onto a coach calendar (Add to Coach).
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/calendar/assign',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const body = req.body || {};
+      const coachUserId = String(body.coachUserId || '').trim();
+      const sessionId = String(body.sessionId || '').trim();
+      const scheduledDateRaw = body.scheduledDate;
+      if (!coachUserId || !sessionId || !scheduledDateRaw) {
+        return res.status(400).json({
+          ok: false,
+          error: 'coachUserId, sessionId, and scheduledDate are required',
+        });
+      }
+      const scheduledDate = new Date(scheduledDateRaw);
+      if (Number.isNaN(scheduledDate.getTime())) {
+        return res.status(400).json({ ok: false, error: 'Invalid scheduledDate' });
+      }
+
+      const event = await assignSessionToCoach(assignScopeFromRequest(req, clubId), {
+        coachUserId,
+        sessionId,
+        scheduledDate,
+        durationMin: body.durationMin != null ? Number(body.durationMin) : undefined,
+        notes: body.notes != null ? String(body.notes) : undefined,
+        location: body.location != null ? String(body.location) : undefined,
+        teamName: body.teamName != null ? String(body.teamName) : undefined,
+        allowConflict: Boolean(body.allowConflict),
+      });
+      return res.status(201).json({ ok: true, event });
+    } catch (error) {
+      return sendAssignError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/calendar/auto-populate
+ * Fill empty Mon–Fri slots for a coach from vault sessions.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/calendar/auto-populate',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const body = req.body || {};
+      const coachUserId = String(body.coachUserId || '').trim();
+      if (!coachUserId) {
+        return res.status(400).json({ ok: false, error: 'coachUserId is required' });
+      }
+
+      const result = await autoPopulateCoachWeek(assignScopeFromRequest(req, clubId), {
+        coachUserId,
+        weekStart: body.weekStart != null ? String(body.weekStart) : null,
+        sessionIds: Array.isArray(body.sessionIds)
+          ? body.sessionIds.map((id: unknown) => String(id))
+          : undefined,
+        defaultTime: body.defaultTime != null ? String(body.defaultTime) : '17:00',
+        ageGroup: body.ageGroup != null ? String(body.ageGroup) : null,
+        skipDaysWithEvents: body.skipDaysWithEvents !== false,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return sendAssignError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/calendar/reassign
+ * Move an event to a substitute coach with audit trail.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/calendar/reassign',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const body = req.body || {};
+      const eventId = String(body.eventId || '').trim();
+      const toCoachUserId = String(body.toCoachUserId || '').trim();
+      if (!eventId || !toCoachUserId) {
+        return res.status(400).json({
+          ok: false,
+          error: 'eventId and toCoachUserId are required',
+        });
+      }
+
+      let scheduledDate: Date | null = null;
+      if (body.scheduledDate != null && body.scheduledDate !== '') {
+        scheduledDate = new Date(body.scheduledDate);
+        if (Number.isNaN(scheduledDate.getTime())) {
+          return res.status(400).json({ ok: false, error: 'Invalid scheduledDate' });
+        }
+      }
+
+      const event = await reassignCalendarEvent(assignScopeFromRequest(req, clubId), {
+        eventId,
+        toCoachUserId,
+        scheduledDate,
+        notes: body.notes !== undefined ? (body.notes == null ? null : String(body.notes)) : undefined,
+        allowConflict: Boolean(body.allowConflict),
+      });
+      return res.json({ ok: true, event });
+    } catch (error) {
+      return sendAssignError(res, error);
     }
   }
 );

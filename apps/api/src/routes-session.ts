@@ -11,6 +11,10 @@ import { checkUsageLimit, incrementUsage } from "./services/auth";
 import { canGenerateSessions } from "./services/access-permissions";
 import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
 import {
+  philosophyHasContent,
+  resolveClubSessionScope,
+} from "./services/club-philosophy";
+import {
   clearGenerationCancelled,
   isGenerationCancelled,
   markGenerationCancelled,
@@ -248,9 +252,12 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
 
   try {
     const body = applyCoachLevelGuardrails((req.body || {}) as SessionPromptInput);
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
-    if (enforcedGameModelId) {
-      body.gameModelId = enforcedGameModelId;
+    const clubScope = await resolveClubSessionScope(req.userId);
+    if (clubScope?.gameModelId) {
+      body.gameModelId = clubScope.gameModelId;
+    }
+    if (philosophyHasContent(clubScope?.philosophy)) {
+      body.clubPhilosophy = clubScope!.philosophy;
     }
 
     // Check access permissions
@@ -389,9 +396,12 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
   try {
     const body = req.body || {};
     const baseInput = applyCoachLevelGuardrails((body.baseInput || body) as SessionPromptInput);
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
-    if (enforcedGameModelId) {
-      baseInput.gameModelId = enforcedGameModelId;
+    const clubScope = await resolveClubSessionScope(req.userId);
+    if (clubScope?.gameModelId) {
+      baseInput.gameModelId = clubScope.gameModelId;
+    }
+    if (philosophyHasContent(clubScope?.philosophy)) {
+      baseInput.clubPhilosophy = clubScope!.philosophy;
     }
     const numberOfSessions = Number(body.numberOfSessions) || 3;
 

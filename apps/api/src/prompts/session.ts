@@ -1,5 +1,12 @@
 import { FIELD_SPECS, type FieldFormat as RealFieldFormat } from "../data/field-dimensions";
 
+export type ClubPhilosophyPromptInput = {
+  attackingOrganization?: string | null;
+  defensiveTransition?: string | null;
+  defensiveOrganization?: string | null;
+  attackingTransition?: string | null;
+};
+
 export interface SessionPromptInput {
   gameModelId: string;
   ageGroup: string;
@@ -22,6 +29,9 @@ export interface SessionPromptInput {
   // Optional: the specific tactical subject selected for this session (e.g.
   // "Rest Defense Setup"). See TOPIC LOCK in buildSessionPrompt.
   topic?: string;
+
+  /** Club-authored 4-moment DNA from DOC Hub; preferred over hardcoded model profiles. */
+  clubPhilosophy?: ClubPhilosophyPromptInput | null;
 }
 
 export type GameFormat = "7v7" | "9v9" | "11v11";
@@ -58,7 +68,63 @@ function getSpaceConstraintDimensions(gameFormat: GameFormat, spaceConstraint: s
   return { ...dims, label: `${dims.lengthYards}x${dims.widthYards} yards`, full, half, third, quarter };
 }
 
-function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?: string): string {
+function clubPhilosophyGuidance(
+  philosophy: ClubPhilosophyPromptInput,
+  gameModelId: string,
+  common: string[]
+): string {
+  const lines = [
+    ...common,
+    "CLUB PHILOSOPHY PROFILE (DOC-authored — MANDATORY):",
+    `- gameModelId=${gameModelId} is the club's locked model; every drill must reflect the stages below.`,
+  ];
+  if (philosophy.attackingOrganization) {
+    lines.push(
+      "Stage 1 — Attacking Organization (in possession):",
+      philosophy.attackingOrganization
+    );
+  }
+  if (philosophy.defensiveTransition) {
+    lines.push(
+      "Stage 2 — Defensive Transition (on ball loss):",
+      philosophy.defensiveTransition
+    );
+  }
+  if (philosophy.defensiveOrganization) {
+    lines.push(
+      "Stage 3 — Defensive Organization (out of possession):",
+      philosophy.defensiveOrganization
+    );
+  }
+  if (philosophy.attackingTransition) {
+    lines.push(
+      "Stage 4 — Attacking Transition (on ball regain):",
+      philosophy.attackingTransition
+    );
+  }
+  lines.push(
+    "- CONDITIONED_GAME must explicitly test the same club philosophy decisions trained earlier.",
+    "- Do not invent a conflicting club identity; stay inside these four stages."
+  );
+  return lines.join("\n");
+}
+
+function philosophyHasContent(philosophy?: ClubPhilosophyPromptInput | null): boolean {
+  if (!philosophy) return false;
+  return Boolean(
+    philosophy.attackingOrganization ||
+      philosophy.defensiveTransition ||
+      philosophy.defensiveOrganization ||
+      philosophy.attackingTransition
+  );
+}
+
+function getSessionGameModelGuidance(
+  gameModelId: string,
+  phase?: string,
+  zone?: string,
+  clubPhilosophy?: ClubPhilosophyPromptInput | null
+): string {
   const p = phase || "ATTACKING";
   const z = zone || "ATTACKING_THIRD";
   const common = [
@@ -68,6 +134,11 @@ function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?:
     "- Across the session, include at least 8 model-specific cues (coaching points + constraints + progressions).",
     "- CONDITIONED_GAME must explicitly test the same game model decisions trained earlier.",
   ];
+
+  // Prefer live DOC-authored Club DNA when present (any club, including Rocklin).
+  if (philosophyHasContent(clubPhilosophy)) {
+    return clubPhilosophyGuidance(clubPhilosophy!, gameModelId, common);
+  }
 
   if (gameModelId === "POSSESSION") {
     return [
@@ -102,6 +173,7 @@ function getSessionGameModelGuidance(gameModelId: string, phase?: string, zone?:
     ].join("\n");
   }
 
+  // Fallback only when Club.philosophy* rows are still empty (pre-DOC save).
   if (gameModelId === "ROCKLIN_FC") {
     return [
       ...common,
@@ -183,7 +255,8 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
   const gameModelGuidance = getSessionGameModelGuidance(
     input.gameModelId,
     input.phase,
-    input.zone
+    input.zone,
+    input.clubPhilosophy
   );
   const phaseGuidance = getSessionPhaseGuidance(input.phase, input.zone);
   const isUssfD = input.coachLevel === "USSF_D";
