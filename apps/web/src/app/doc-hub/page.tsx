@@ -118,8 +118,8 @@ export default function DocHubPage() {
         <section className="rounded-2xl border border-cyan-500/[0.12] bg-gradient-to-b from-[#08131a]/85 to-[#090f1a]/70 shadow-[0_0_30px_-12px_rgba(6,182,212,0.12)]">
           <div className="border-b border-cyan-500/[0.08] bg-gradient-to-r from-cyan-950/25 to-transparent px-5 py-4">
             <div className="flex items-center gap-3">
-              <h1 className="text-base font-semibold text-white/90">DOC Hub</h1>
-              <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
+              <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">DOC Hub</h1>
+              <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-300">
                 Beta
               </span>
             </div>
