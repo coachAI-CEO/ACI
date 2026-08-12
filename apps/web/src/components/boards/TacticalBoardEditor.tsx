@@ -15,6 +15,8 @@ import {
   FORMATIONS_BY_FORMAT,
   applyFormationToTeam,
   buildDefaultMatchDiagram,
+  formationSize,
+  playerCountOptions,
   type FormationId,
 } from "@/lib/board-formations";
 import {
@@ -36,10 +38,21 @@ import BoardToolbar, {
   type BoardTool,
 } from "@/components/boards/BoardToolbar";
 import {
+  arrowHasHead,
+  arrowPitchPolyline,
+  buildPointRef,
   createLineArrow,
+  curveBulgeSign,
+  defaultCurveControl,
   eraseArrowAtIndex,
   findArrowIndexAtScreenPoint,
+  flipCurveControl,
+  polylineToPathD,
+  resolveEndpoint,
+  sampleQuadratic,
+  shortenPolylineForTokens,
 } from "@/lib/board-lines";
+import type { LineGeometry } from "@/components/boards/BoardToolbar";
 
 const WIDTH = 900;
 const HEIGHT = 560;
@@ -65,22 +78,44 @@ type Props = {
 type Selection =
   | { kind: "player"; id: string }
   | { kind: "ball"; index: number }
+  | { kind: "arrow"; index: number }
   | null;
 
 type DragTarget =
   | { kind: "player"; id: string; pointerId: number }
-  | { kind: "ball"; index: number; pointerId: number };
+  | { kind: "ball"; index: number; pointerId: number }
+  | { kind: "arrow-end"; index: number; end: "from" | "to"; pointerId: number }
+  | {
+      kind: "arrow-move";
+      index: number;
+      pointerId: number;
+      startPos: { x: number; y: number };
+      originFrom: { x: number; y: number };
+      originTo: { x: number; y: number };
+      originControl?: { x: number; y: number };
+      originPath?: Array<{ x: number; y: number }>;
+      undoRecorded?: boolean;
+    };
 
 type DrawDraft =
   | {
       mode: "line";
       from: { x: number; y: number; playerId?: string };
       to: { x: number; y: number; playerId?: string };
-      meta: { type: DiagramArrow["type"]; style: DiagramArrow["style"]; weight: DiagramArrow["weight"] };
+      meta: {
+        type: DiagramArrow["type"];
+        style: DiagramArrow["style"];
+        weight: DiagramArrow["weight"];
+        arrowhead: boolean;
+        geometry: LineGeometry;
+        curveBulge?: number;
+      };
+      path?: Array<{ x: number; y: number }>;
+      control?: { x: number; y: number };
     }
   | {
       mode: "shape";
-      shape: "rect" | "circle";
+      shape: "rect" | "circle" | "spotlight";
       from: { x: number; y: number };
       to: { x: number; y: number };
     };
@@ -264,6 +299,8 @@ export default function TacticalBoardEditor({
   const [awayFormation, setAwayFormation] = React.useState<FormationId>(
     () => DEFAULT_FORMATIONS[format].away
   );
+  /** Per-side player cap; "all" = full formation. */
+  const [playersPerSide, setPlayersPerSide] = React.useState<number | "all">("all");
   const undoStack = React.useRef<DiagramV1[]>([]);
   const skipPropSync = React.useRef(false);
   const dragRef = React.useRef<DragTarget | null>(null);
@@ -333,14 +370,26 @@ export default function TacticalBoardEditor({
         e.preventDefault();
         undo();
       }
-      if ((e.key === "Backspace" || e.key === "Delete") && selection?.kind === "player" && tool === "select") {
+      if ((e.key === "Backspace" || e.key === "Delete") && tool === "select" && selection) {
         e.preventDefault();
-        const id = selection.id;
-        commitDiagram({
-          ...diagram,
-          players: diagram.players.filter((p) => p.id !== id),
-          arrows: diagram.arrows.filter((a) => a.from.playerId !== id && a.to.playerId !== id),
-        });
+        if (selection.kind === "player") {
+          const id = selection.id;
+          commitDiagram({
+            ...diagram,
+            players: diagram.players.filter((p) => p.id !== id),
+            arrows: diagram.arrows.filter((a) => a.from.playerId !== id && a.to.playerId !== id),
+          });
+        } else if (selection.kind === "arrow") {
+          commitDiagram({
+            ...diagram,
+            arrows: eraseArrowAtIndex(diagram.arrows, selection.index),
+          });
+        } else if (selection.kind === "ball") {
+          commitDiagram({
+            ...diagram,
+            balls: (diagram.balls || []).filter((_, j) => j !== selection.index),
+          });
+        }
         setSelection(null);
       }
     };
@@ -391,6 +440,24 @@ export default function TacticalBoardEditor({
       balls[idx] = { x: pending.x, y: pending.y };
       next = { ...prev, balls };
     }
+    diagramRef.current = next;
+    skipPropSync.current = true;
+    setDiagram(next);
+    onDirtyChange(true);
+    onChange({ diagram: next, title, shareMode });
+  };
+
+  const applyArrowLive = (
+    index: number,
+    from: DiagramArrow["from"],
+    to: DiagramArrow["to"],
+    extras?: Partial<Pick<DiagramArrow, "control" | "path">>
+  ) => {
+    const prev = diagramRef.current;
+    const next: DiagramV1 = {
+      ...prev,
+      arrows: prev.arrows.map((a, i) => (i === index ? { ...a, from, to, ...extras } : a)),
+    };
     diagramRef.current = next;
     skipPropSync.current = true;
     setDiagram(next);
@@ -483,10 +550,14 @@ export default function TacticalBoardEditor({
       from,
       to: { ...from },
       meta,
+      path: meta.geometry === "freehand" ? [{ x: from.x, y: from.y }] : undefined,
+      control:
+        meta.geometry === "curve"
+          ? defaultCurveControl(from, from, meta.curveBulge ?? 0.28)
+          : undefined,
     };
     draftRef.current = next;
     setDraft(next);
-    // Capture on the SVG so move/up handlers on svg keep receiving events
     svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
@@ -548,16 +619,77 @@ export default function TacticalBoardEditor({
     if (drag && drag.pointerId === e.pointerId) {
       if (drag.kind === "player") {
         pendingPos.current = { kind: "player", idOrIndex: drag.id, x: pos.x, y: pos.y };
-      } else {
-        pendingPos.current = { kind: "ball", idOrIndex: drag.index, x: pos.x, y: pos.y };
+        if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
+        return;
       }
-      if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
-      return;
+      if (drag.kind === "ball") {
+        pendingPos.current = { kind: "ball", idOrIndex: drag.index, x: pos.x, y: pos.y };
+        if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
+        return;
+      }
+      if (drag.kind === "arrow-end") {
+        const arrow = diagramRef.current.arrows[drag.index];
+        if (!arrow) return;
+        const near = findNearestPlayer(
+          sx,
+          sy,
+          diagramRef.current.players,
+          orientation,
+          layout,
+          viewport,
+          spec,
+          hitR * 1.75
+        );
+        const ref = buildPointRef(near, pos.x, pos.y);
+        const nextFrom = drag.end === "from" ? ref : arrow.from;
+        const nextTo = drag.end === "to" ? ref : arrow.to;
+        const extras: Partial<Pick<DiagramArrow, "control" | "path">> = {};
+        if (arrow.control) {
+          const fromPt = resolveEndpoint(nextFrom, diagramRef.current.players) || pos;
+          const toPt = resolveEndpoint(nextTo, diagramRef.current.players) || pos;
+          const sign = curveBulgeSign(fromPt, toPt, arrow.control);
+          extras.control = defaultCurveControl(
+            drag.end === "from" ? pos : fromPt,
+            drag.end === "to" ? pos : toPt,
+            0.28 * sign
+          );
+        }
+        applyArrowLive(drag.index, nextFrom, nextTo, extras);
+        return;
+      }
+      if (drag.kind === "arrow-move") {
+        const dx = pos.x - drag.startPos.x;
+        const dy = pos.y - drag.startPos.y;
+        if (Math.hypot(dx, dy) < 0.4) return;
+        if (!drag.undoRecorded) {
+          pushUndo(diagramRef.current);
+          drag.undoRecorded = true;
+        }
+        const extras: Partial<Pick<DiagramArrow, "control" | "path">> = {};
+        if (drag.originControl) {
+          extras.control = {
+            x: clamp(drag.originControl.x + dx),
+            y: clamp(drag.originControl.y + dy),
+          };
+        }
+        if (drag.originPath) {
+          extras.path = drag.originPath.map((p) => ({
+            x: clamp(p.x + dx),
+            y: clamp(p.y + dy),
+          }));
+        }
+        applyArrowLive(
+          drag.index,
+          { x: clamp(drag.originFrom.x + dx), y: clamp(drag.originFrom.y + dy) },
+          { x: clamp(drag.originTo.x + dx), y: clamp(drag.originTo.y + dy) },
+          extras
+        );
+        return;
+      }
     }
 
     const d = draftRef.current;
     if (!d) return;
-    // Generous snap so endpoints link to players easily
     const near = findNearestPlayer(
       sx,
       sy,
@@ -569,12 +701,36 @@ export default function TacticalBoardEditor({
       hitR * 1.75
     );
     if (d.mode === "line") {
-      const next: DrawDraft = {
-        ...d,
-        to: { x: pos.x, y: pos.y, playerId: near || undefined },
-      };
-      draftRef.current = next;
-      setDraft(next);
+      if (d.meta.geometry === "freehand") {
+        const prevPath = d.path || [{ x: d.from.x, y: d.from.y }];
+        const last = prevPath[prevPath.length - 1];
+        const dist = Math.hypot(pos.x - last.x, pos.y - last.y);
+        const path =
+          dist >= 1.2 && prevPath.length < 100 ? [...prevPath, { x: pos.x, y: pos.y }] : prevPath;
+        const next: DrawDraft = {
+          ...d,
+          to: { x: pos.x, y: pos.y, playerId: near || undefined },
+          path,
+        };
+        draftRef.current = next;
+        setDraft(next);
+      } else if (d.meta.geometry === "curve") {
+        const to = { x: pos.x, y: pos.y, playerId: near || undefined };
+        const next: DrawDraft = {
+          ...d,
+          to,
+          control: defaultCurveControl(d.from, to, d.meta.curveBulge ?? 0.28),
+        };
+        draftRef.current = next;
+        setDraft(next);
+      } else {
+        const next: DrawDraft = {
+          ...d,
+          to: { x: pos.x, y: pos.y, playerId: near || undefined },
+        };
+        draftRef.current = next;
+        setDraft(next);
+      }
     } else {
       const next: DrawDraft = { ...d, to: pos };
       draftRef.current = next;
@@ -621,6 +777,16 @@ export default function TacticalBoardEditor({
         type: d.meta.type,
         style: d.meta.style,
         weight: d.meta.weight,
+        arrowhead: d.meta.arrowhead,
+        control:
+          d.meta.geometry === "curve"
+            ? d.control ||
+              defaultCurveControl({ x: fromX, y: fromY }, { x: toX, y: toY }, d.meta.curveBulge ?? 0.28)
+            : undefined,
+        path:
+          d.meta.geometry === "freehand"
+            ? [...(d.path || []), { x: toX, y: toY }].slice(0, 100)
+            : undefined,
       });
       if (!arrow) return;
       commitDiagram({
@@ -642,14 +808,52 @@ export default function TacticalBoardEditor({
   const onSvgPointerUp = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (drag && drag.pointerId === e.pointerId) {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        flushDrag();
+      if (drag.kind === "player" || drag.kind === "ball") {
+        if (rafRef.current != null) {
+          cancelAnimationFrame(rafRef.current);
+          flushDrag();
+        }
       }
       dragRef.current = null;
       return;
     }
     if (draftRef.current) finishDraft();
+  };
+
+  const beginArrowEndDrag = (e: React.PointerEvent, index: number, end: "from" | "to") => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!canEdit || tool !== "select") return;
+    setSelection({ kind: "arrow", index });
+    pushUndo(diagramRef.current);
+    dragRef.current = { kind: "arrow-end", index, end, pointerId: e.pointerId };
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+  };
+
+  const beginArrowMoveDrag = (e: React.PointerEvent, index: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!canEdit || tool !== "select") return;
+    const arrow = diagramRef.current.arrows[index];
+    if (!arrow) return;
+    const from = resolveEndpoint(arrow.from, diagramRef.current.players);
+    const to = resolveEndpoint(arrow.to, diagramRef.current.players);
+    if (!from || !to) return;
+    const { sx, sy } = clientToSvg(e.clientX, e.clientY);
+    const pos = fromScreen(sx, sy, orientation, layout, viewport, spec);
+    setSelection({ kind: "arrow", index });
+    dragRef.current = {
+      kind: "arrow-move",
+      index,
+      pointerId: e.pointerId,
+      startPos: pos,
+      originFrom: { x: from.x, y: from.y },
+      originTo: { x: to.x, y: to.y },
+      originControl: arrow.control ? { ...arrow.control } : undefined,
+      originPath: arrow.path ? arrow.path.map((p) => ({ ...p })) : undefined,
+      undoRecorded: false,
+    };
+    svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
   const onPitchPointerDown = (e: React.PointerEvent) => {
@@ -719,10 +923,11 @@ export default function TacticalBoardEditor({
       return;
     }
 
-    if (tool === "shape-rect" || tool === "shape-circle") {
+    if (tool === "shape-rect" || tool === "shape-circle" || tool === "shape-spotlight") {
       const next: DrawDraft = {
         mode: "shape",
-        shape: tool === "shape-rect" ? "rect" : "circle",
+        shape:
+          tool === "shape-rect" ? "rect" : tool === "shape-spotlight" ? "spotlight" : "circle",
         from: pos,
         to: pos,
       };
@@ -738,38 +943,72 @@ export default function TacticalBoardEditor({
   };
 
   const setPitchVariant = (variant: PitchZoom) => {
-    commitDiagram({
-      ...diagram,
-      pitch: {
-        ...diagram.pitch,
-        variant,
-        orientation: "HORIZONTAL",
-        format,
-      },
-    });
+    const nextPitch = {
+      ...diagram.pitch,
+      variant,
+      orientation: "HORIZONTAL" as const,
+      format,
+    };
+    if (playersPerSide === "all") {
+      commitDiagram({ ...diagram, pitch: nextPitch });
+      return;
+    }
+    const visibleY = visibleYFor(format, variant);
+    const opts = { limit: playersPerSide, visibleY };
+    let next: DiagramV1 = { ...diagram, pitch: nextPitch };
+    next = applyFormationToTeam(next, "DEF", awayFormation, "away", opts);
+    next = applyFormationToTeam(next, "ATT", homeFormation, "home", opts);
+    commitDiagram(next);
   };
 
   const setPitchFormat = (nextFormat: PitchFormatId) => {
     const defaults = DEFAULT_FORMATIONS[nextFormat];
     setHomeFormation(defaults.home);
     setAwayFormation(defaults.away);
+    setPlayersPerSide("all");
     commitDiagram(buildDefaultMatchDiagram(nextFormat));
+  };
+
+  const visibleYFor = (fmt: PitchFormatId, zoom: PitchZoom) => {
+    const s = PITCH_SPECS[fmt];
+    const vp = viewportFor(fmt, zoom);
+    return {
+      min: (vp.originLengthYds / s.lengthYards) * 100,
+      max: ((vp.originLengthYds + vp.lengthYds) / s.lengthYards) * 100,
+    };
+  };
+
+  const formationOpts = (visibleY?: { min: number; max: number }) => {
+    const y = visibleY || visibleYFor(format, pitchVariant);
+    return playersPerSide === "all" ? { visibleY: y } : { limit: playersPerSide, visibleY: y };
   };
 
   const applyHomeFormation = (id: FormationId) => {
     setHomeFormation(id);
-    commitDiagram(applyFormationToTeam(diagram, "ATT", id, "home"));
+    commitDiagram(applyFormationToTeam(diagram, "ATT", id, "home", formationOpts()));
   };
 
   const applyAwayFormation = (id: FormationId) => {
     setAwayFormation(id);
-    commitDiagram(applyFormationToTeam(diagram, "DEF", id, "away"));
+    commitDiagram(applyFormationToTeam(diagram, "DEF", id, "away", formationOpts()));
+  };
+
+  const setPlayersPerSideAndApply = (next: number | "all") => {
+    setPlayersPerSide(next);
+    const opts =
+      next === "all"
+        ? { visibleY: visibleYFor(format, pitchVariant) }
+        : { limit: next, visibleY: visibleYFor(format, pitchVariant) };
+    let d = applyFormationToTeam(diagram, "DEF", awayFormation, "away", opts);
+    d = applyFormationToTeam(d, "ATT", homeFormation, "home", opts);
+    commitDiagram(d);
   };
 
   const resetMatchSetup = () => {
     const defaults = DEFAULT_FORMATIONS[format];
     setHomeFormation(defaults.home);
     setAwayFormation(defaults.away);
+    setPlayersPerSide("all");
     commitDiagram(buildDefaultMatchDiagram(format));
   };
 
@@ -777,6 +1016,8 @@ export default function TacticalBoardEditor({
     selection?.kind === "player"
       ? diagram.players.find((p) => p.id === selection.id) || null
       : null;
+  const selectedArrow =
+    selection?.kind === "arrow" ? diagram.arrows[selection.index] || null : null;
 
   const renderArea = (area: DiagramArea, i: number, preview = false) => {
     if (typeof area.x !== "number" || typeof area.y !== "number") return null;
@@ -789,6 +1030,38 @@ export default function TacticalBoardEditor({
     const rw = Math.abs(b.sx - a.sx);
     const rh = Math.abs(b.sy - a.sy);
     const stroke = preview ? "#fbbf24" : "#fde68a";
+    if (area.shape === "spotlight") {
+      const gradId = `spotlight-grad-${i < 0 ? "draft" : i}`;
+      const cx = x + rw / 2;
+      const cy = y + rh / 2;
+      const rx = rw / 2;
+      const ry = rh / 2;
+      return (
+        <g key={`area-${i}`} className="pointer-events-none">
+          <defs>
+            <radialGradient id={gradId} cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#fff7c2" stopOpacity={preview ? 0.55 : 0.7} />
+              <stop offset="45%" stopColor="#fde68a" stopOpacity={preview ? 0.28 : 0.38} />
+              <stop offset="100%" stopColor="#fde68a" stopOpacity={0} />
+            </radialGradient>
+          </defs>
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${gradId})`} />
+          {preview ? (
+            <ellipse
+              cx={cx}
+              cy={cy}
+              rx={rx}
+              ry={ry}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={1.25}
+              strokeDasharray="4 4"
+              opacity={0.7}
+            />
+          ) : null}
+        </g>
+      );
+    }
     if (area.shape === "circle") {
       return (
         <ellipse
@@ -887,6 +1160,199 @@ export default function TacticalBoardEditor({
         </label>
       </div>
 
+      {canEdit ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-[#07111f]/90 p-2 backdrop-blur">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Board
+              </span>
+              <div className="flex items-center gap-1.5">
+                {PITCH_FORMAT_OPTIONS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setPitchFormat(f.id)}
+                    title={`${f.ages} · ${PITCH_SPECS[f.id].lengthYards}×${PITCH_SPECS[f.id].widthYards} yds`}
+                    className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
+                      format === f.id
+                        ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                        : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Zoom
+              </span>
+              <div className="flex items-center gap-1.5">
+                {(["FULL", "HALF", "THIRD"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setPitchVariant(v)}
+                    className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
+                      pitchVariant === v
+                        ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                        : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    {v === "FULL" ? "Full" : v === "HALF" ? "Half" : "Third"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Players
+              </span>
+              <select
+                value={playersPerSide === "all" ? "all" : String(playersPerSide)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setPlayersPerSideAndApply(v === "all" ? "all" : Number(v));
+                }}
+                className="h-10 rounded-lg border border-white/10 bg-black/40 px-2 text-[12px] text-slate-200"
+                title="Players per side (All = full formation). Reduce when zooming."
+              >
+                {playerCountOptions(format).map((opt) => {
+                  const allCount = Math.max(
+                    formationSize(homeFormation),
+                    formationSize(awayFormation)
+                  );
+                  if (opt === "all") {
+                    return (
+                      <option key="all" value="all">
+                        All ({allCount})
+                      </option>
+                    );
+                  }
+                  return (
+                    <option key={opt} value={String(opt)}>
+                      {opt} / side
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                Formations
+              </span>
+              <div className="flex items-center gap-1.5">
+                <label className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-500/30 bg-black/40 px-2 text-[12px] text-rose-100">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-300/80">
+                    DEF
+                  </span>
+                  <select
+                    value={
+                      formationOptions.some((o) => o.id === awayFormation)
+                        ? awayFormation
+                        : formationOptions[0].id
+                    }
+                    onChange={(e) => applyAwayFormation(e.target.value as FormationId)}
+                    className="bg-transparent outline-none"
+                  >
+                    {formationOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex h-10 items-center gap-1.5 rounded-lg border border-sky-500/30 bg-black/40 px-2 text-[12px] text-sky-100">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-300/80">
+                    ATT
+                  </span>
+                  <select
+                    value={
+                      formationOptions.some((o) => o.id === homeFormation)
+                        ? homeFormation
+                        : formationOptions[0].id
+                    }
+                    onChange={(e) => applyHomeFormation(e.target.value as FormationId)}
+                    className="bg-transparent outline-none"
+                  >
+                    {formationOptions.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                View
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={resetMatchSetup}
+                  className="flex h-10 items-center rounded-lg border border-white/10 bg-black/30 px-3 text-[12px] text-slate-300 hover:bg-white/5 hover:text-white"
+                >
+                  Reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const hasBall = (diagram.balls || []).length > 0;
+                    commitDiagram({
+                      ...diagram,
+                      balls: hasBall ? [] : [{ x: 50, y: 50 }],
+                    });
+                    if (hasBall && selection?.kind === "ball") setSelection(null);
+                  }}
+                  title={(diagram.balls || []).length > 0 ? "Remove ball" : "Add ball at centre"}
+                  className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
+                    (diagram.balls || []).length > 0
+                      ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                      : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  Ball
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    commitDiagram({
+                      ...diagram,
+                      pitch: {
+                        ...diagram.pitch,
+                        showZones: !diagram.pitch.showZones,
+                      },
+                    });
+                  }}
+                  title="Toggle five-lane field segregation"
+                  className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
+                    diagram.pitch.showZones
+                      ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                      : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  Lanes
+                </button>
+              </div>
+            </div>
+
+            <div className="ml-auto self-end pb-2 text-[10px] text-slate-500">
+              {spec.lengthYards}×{spec.widthYards} yds · {spec.ages}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {statusMessage ? <p className="text-xs text-slate-400">{statusMessage}</p> : null}
+
       <BoardToolbar
         tool={tool}
         onToolChange={(t) => {
@@ -899,92 +1365,6 @@ export default function TacticalBoardEditor({
         onUndo={undo}
         disabled={!canEdit}
       />
-
-      {canEdit ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-          <span className="text-slate-500">Board</span>
-          {PITCH_FORMAT_OPTIONS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setPitchFormat(f.id)}
-              className={`min-h-10 rounded-lg border px-3 ${
-                format === f.id
-                  ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100"
-                  : "border-white/10 text-slate-400 hover:bg-white/5"
-              }`}
-              title={`${f.ages} · ${PITCH_SPECS[f.id].lengthYards}×${PITCH_SPECS[f.id].widthYards} yds`}
-            >
-              {f.label}
-            </button>
-          ))}
-
-          <span className="ml-2 text-slate-500">Zoom</span>
-          {(["FULL", "HALF", "THIRD"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setPitchVariant(v)}
-              className={`min-h-10 rounded-lg border px-3 ${
-                pitchVariant === v
-                  ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100"
-                  : "border-white/10 text-slate-400 hover:bg-white/5"
-              }`}
-            >
-              {v === "FULL" ? "Full" : v === "HALF" ? "Half" : "Third"}
-            </button>
-          ))}
-
-          <span className="ml-2 text-slate-500">ATT</span>
-          <select
-            value={
-              formationOptions.some((o) => o.id === homeFormation)
-                ? homeFormation
-                : formationOptions[0].id
-            }
-            onChange={(e) => applyHomeFormation(e.target.value as FormationId)}
-            className="min-h-10 rounded-lg border border-sky-500/30 bg-black/40 px-2 text-sky-100"
-          >
-            {formationOptions.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-
-          <span className="text-slate-500">DEF</span>
-          <select
-            value={
-              formationOptions.some((o) => o.id === awayFormation)
-                ? awayFormation
-                : formationOptions[0].id
-            }
-            onChange={(e) => applyAwayFormation(e.target.value as FormationId)}
-            className="min-h-10 rounded-lg border border-rose-500/30 bg-black/40 px-2 text-rose-100"
-          >
-            {formationOptions.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={resetMatchSetup}
-            className="min-h-10 rounded-lg border border-white/10 px-3 text-slate-400 hover:bg-white/5"
-          >
-            Reset lineup
-          </button>
-
-          <span className="ml-auto text-[11px] text-slate-500">
-            {spec.lengthYards}×{spec.widthYards} yds · view {Math.round(viewport.lengthYds)}×
-            {Math.round(viewport.widthYds)} · {spec.ages}
-          </span>
-        </div>
-      ) : null}
-
-      {statusMessage ? <p className="text-xs text-slate-400">{statusMessage}</p> : null}
 
       <div className="overflow-auto rounded-2xl border border-white/10 bg-[#06261c] p-2">
         <svg
@@ -1001,6 +1381,7 @@ export default function TacticalBoardEditor({
             orientation={orientation}
             layout={layout}
             viewport={viewport}
+            showLanes={!!diagram.pitch.showZones}
           />
 
           <defs>
@@ -1038,48 +1419,112 @@ export default function TacticalBoardEditor({
             const from = resolvePoint(a.from, diagram.players, orientation, layout, viewport, spec);
             const to = resolvePoint(a.to, diagram.players, orientation, layout, viewport, spec);
             if (!from || !to) return null;
-            const marker =
-              a.type === "run"
+            const fromPad = a.from.playerId ? hitR + 2 : 0;
+            const toPad = a.to.playerId ? hitR + 6 : arrowHasHead(a) ? 4 : 0;
+            const pitchPoly = arrowPitchPolyline(a, diagram.players);
+            if (!pitchPoly || pitchPoly.length < 2) return null;
+            const screenPoly = pitchPoly.map((p) =>
+              toScreen(p, orientation, layout, viewport, spec)
+            );
+            const trimmedPts = shortenPolylineForTokens(
+              screenPoly.map((p) => ({ x: p.sx, y: p.sy })),
+              fromPad,
+              toPad
+            );
+            if (!trimmedPts) return null;
+            const pathD = polylineToPathD(trimmedPts);
+            const isSelected = selection?.kind === "arrow" && selection.index === i;
+            const marker = arrowHasHead(a)
+              ? a.type === "run"
                 ? "url(#arrowHeadRun)"
                 : a.type === "press" || a.type === "cover"
                   ? "url(#arrowHeadPress)"
-                  : "url(#arrowHead)";
+                  : "url(#arrowHead)"
+              : undefined;
+            const canHit = canEdit && (tool === "select" || tool === "eraser");
+            const ends = {
+              x1: trimmedPts[0].x,
+              y1: trimmedPts[0].y,
+              x2: trimmedPts[trimmedPts.length - 1].x,
+              y2: trimmedPts[trimmedPts.length - 1].y,
+            };
             return (
               <g key={`arr-${i}`}>
-                {/* Wide invisible stroke for eraser / hit testing */}
-                <line
-                  x1={from.sx}
-                  y1={from.sy}
-                  x2={to.sx}
-                  y2={to.sy}
+                <path
+                  d={pathD}
+                  fill="none"
                   stroke="transparent"
-                  strokeWidth={14}
-                  className={tool === "eraser" ? "cursor-pointer" : "pointer-events-none"}
+                  strokeWidth={16}
+                  className={canHit ? (tool === "select" ? "cursor-move" : "cursor-pointer") : "pointer-events-none"}
                   onPointerDown={
-                    tool === "eraser"
+                    canHit
                       ? (ev) => {
-                          ev.stopPropagation();
-                          commitDiagram({
-                            ...diagram,
-                            arrows: eraseArrowAtIndex(diagram.arrows, i),
-                          });
+                          if (tool === "eraser") {
+                            ev.stopPropagation();
+                            ev.preventDefault();
+                            commitDiagram({
+                              ...diagram,
+                              arrows: eraseArrowAtIndex(diagram.arrows, i),
+                            });
+                            if (selection?.kind === "arrow" && selection.index === i) {
+                              setSelection(null);
+                            }
+                            return;
+                          }
+                          beginArrowMoveDrag(ev, i);
                         }
                       : undefined
                   }
                 />
-                <line
-                  x1={from.sx}
-                  y1={from.sy}
-                  x2={to.sx}
-                  y2={to.sy}
-                  stroke={arrowStroke(a.type)}
+                {isSelected ? (
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="#fbbf24"
+                    strokeWidth={(a.weight === "bold" ? 2.75 : 2) + 4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.45}
+                    className="pointer-events-none"
+                  />
+                ) : null}
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={isSelected ? "#fde68a" : arrowStroke(a.type)}
                   strokeWidth={a.weight === "bold" ? 2.75 : 2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                   strokeDasharray={
                     a.style === "dashed" ? "6 6" : a.style === "dotted" ? "2 6" : undefined
                   }
                   markerEnd={marker}
                   className="pointer-events-none"
                 />
+                {isSelected && canEdit && tool === "select" ? (
+                  <>
+                    <circle
+                      cx={ends.x1}
+                      cy={ends.y1}
+                      r={7}
+                      fill="#fbbf24"
+                      stroke="#0f172a"
+                      strokeWidth={1.5}
+                      className="cursor-nwse-resize"
+                      onPointerDown={(ev) => beginArrowEndDrag(ev, i, "from")}
+                    />
+                    <circle
+                      cx={ends.x2}
+                      cy={ends.y2}
+                      r={7}
+                      fill="#fbbf24"
+                      stroke="#0f172a"
+                      strokeWidth={1.5}
+                      className="cursor-nwse-resize"
+                      onPointerDown={(ev) => beginArrowEndDrag(ev, i, "to")}
+                    />
+                  </>
+                ) : null}
               </g>
             );
           })}
@@ -1088,15 +1533,50 @@ export default function TacticalBoardEditor({
             ? (() => {
                 const from = toScreen(draft.from, orientation, layout, viewport, spec);
                 const to = toScreen(draft.to, orientation, layout, viewport, spec);
+                const fromPad = draft.from.playerId ? hitR + 2 : 0;
+                const toPad = draft.to.playerId ? hitR + 6 : draft.meta.arrowhead ? 4 : 0;
+                let screenPts: Array<{ x: number; y: number }>;
+                if (draft.meta.geometry === "freehand" && draft.path && draft.path.length >= 2) {
+                  screenPts = draft.path.map((p) => {
+                    const s = toScreen(p, orientation, layout, viewport, spec);
+                    return { x: s.sx, y: s.sy };
+                  });
+                  const end = toScreen(draft.to, orientation, layout, viewport, spec);
+                  screenPts = [...screenPts, { x: end.sx, y: end.sy }];
+                } else if (draft.meta.geometry === "curve" && draft.control) {
+                  const c = toScreen(draft.control, orientation, layout, viewport, spec);
+                  screenPts = sampleQuadratic(
+                    { x: from.sx, y: from.sy },
+                    { x: c.sx, y: c.sy },
+                    { x: to.sx, y: to.sy },
+                    20
+                  );
+                } else {
+                  screenPts = [
+                    { x: from.sx, y: from.sy },
+                    { x: to.sx, y: to.sy },
+                  ];
+                }
+                const trimmed = shortenPolylineForTokens(screenPts, fromPad, toPad);
+                if (!trimmed) return null;
+                const pathD = polylineToPathD(trimmed);
+                const marker = draft.meta.arrowhead
+                  ? draft.meta.type === "run"
+                    ? "url(#arrowHeadRun)"
+                    : draft.meta.type === "press"
+                      ? "url(#arrowHeadPress)"
+                      : "url(#arrowHead)"
+                  : undefined;
                 return (
-                  <line
-                    x1={from.sx}
-                    y1={from.sy}
-                    x2={to.sx}
-                    y2={to.sy}
+                  <path
+                    d={pathD}
+                    fill="none"
                     stroke={arrowStroke(draft.meta.type)}
                     strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                     strokeDasharray={draft.meta.style === "dashed" ? "6 6" : undefined}
+                    markerEnd={marker}
                     opacity={0.85}
                     className="pointer-events-none"
                   />
@@ -1214,6 +1694,74 @@ export default function TacticalBoardEditor({
                   (a) =>
                     a.from.playerId !== selectedPlayer.id && a.to.playerId !== selectedPlayer.id
                 ),
+              });
+              setSelection(null);
+            }}
+            className="min-h-10 rounded-lg border border-rose-500/30 px-3 text-rose-200 hover:bg-rose-500/10"
+          >
+            Remove
+          </button>
+        </div>
+      ) : null}
+
+      {canEdit && selectedArrow && selection?.kind === "arrow" ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
+          <span className="font-medium text-amber-100/90">
+            Selected line · {selectedArrow.type}
+            {selectedArrow.from.playerId || selectedArrow.to.playerId ? " · linked" : " · free"}
+          </span>
+          <span className="text-slate-500">Drag line to move · drag handles to resize</span>
+          <label className="inline-flex items-center gap-1">
+            Type
+            <select
+              value={selectedArrow.type}
+              onChange={(e) => {
+                const type = e.target.value as DiagramArrow["type"];
+                const style: DiagramArrow["style"] =
+                  type === "run" ? "dashed" : selectedArrow.style === "dashed" ? "solid" : selectedArrow.style;
+                const weight: DiagramArrow["weight"] =
+                  type === "press" || type === "cover" ? "bold" : "normal";
+                commitDiagram({
+                  ...diagram,
+                  arrows: diagram.arrows.map((a, i) =>
+                    i === selection.index ? { ...a, type, style, weight } : a
+                  ),
+                });
+              }}
+              className="rounded border border-white/10 bg-black/40 px-2 py-1"
+            >
+              <option value="pass">Pass</option>
+              <option value="run">Run</option>
+              <option value="press">Press</option>
+              <option value="transition">Line</option>
+            </select>
+          </label>
+          {selectedArrow.control ? (
+            <button
+              type="button"
+              onClick={() => {
+                const from = resolveEndpoint(selectedArrow.from, diagram.players);
+                const to = resolveEndpoint(selectedArrow.to, diagram.players);
+                if (!from || !to || !selectedArrow.control) return;
+                const control = flipCurveControl(from, to, selectedArrow.control);
+                commitDiagram({
+                  ...diagram,
+                  arrows: diagram.arrows.map((a, i) =>
+                    i === selection.index ? { ...a, control } : a
+                  ),
+                });
+              }}
+              className="min-h-10 rounded-lg border border-white/10 px-3 text-slate-200 hover:bg-white/5"
+            >
+              Flip curve
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              commitDiagram({
+                ...diagram,
+                arrows: eraseArrowAtIndex(diagram.arrows, selection.index),
               });
               setSelection(null);
             }}

@@ -14,6 +14,8 @@ type Props = {
   orientation: DiagramV1["pitch"]["orientation"];
   layout: PitchLayout;
   viewport: PitchViewport;
+  /** Five-lane field segregation (wide / half-space / centre). */
+  showLanes?: boolean;
 };
 
 /**
@@ -25,6 +27,7 @@ export default function ScaledPitchMarkings({
   orientation,
   layout,
   viewport,
+  showLanes = false,
 }: Props) {
   const spec = PITCH_SPECS[format];
   const horizontal = orientation !== "VERTICAL";
@@ -193,6 +196,82 @@ export default function ScaledPitchMarkings({
 
   const center = toScreen(midL, midW);
 
+  // Lane boundaries from penalty / 6-yard widths (goal → goal bands across the pitch)
+  const penHalf = spec.penaltyWidthYds / 2;
+  const sixHalf = spec.goalAreaWidthYds / 2;
+  const laneBands: Array<{
+    id: string;
+    w0: number;
+    w1: number;
+    highlight?: boolean;
+  }> = [
+    { id: "wide-top", w0: 0, w1: midW - penHalf },
+    {
+      id: "half-top",
+      w0: midW - penHalf,
+      w1: midW - sixHalf,
+      highlight: true,
+    },
+    { id: "centre", w0: midW - sixHalf, w1: midW + sixHalf },
+    {
+      id: "half-bot",
+      w0: midW + sixHalf,
+      w1: midW + penHalf,
+      highlight: true,
+    },
+    { id: "wide-bot", w0: midW + penHalf, w1: spec.widthYards },
+  ];
+
+  const renderLanes = () => {
+    if (!showLanes) return null;
+    const len0 = viewport.originLengthYds;
+    const len1 = viewport.originLengthYds + viewport.lengthYds;
+    const boundaries = [0, midW - penHalf, midW - sixHalf, midW + sixHalf, midW + penHalf, spec.widthYards];
+
+    return (
+      <g>
+        {laneBands.map((band) => {
+          if (!band.highlight) return null;
+          const a = toScreen(len0, band.w0);
+          const b = toScreen(len1, band.w1);
+          if (!a || !b) return null;
+          const x = Math.min(a.sx, b.sx);
+          const y = Math.min(a.sy, b.sy);
+          const w = Math.abs(b.sx - a.sx);
+          const h = Math.abs(b.sy - a.sy);
+          return (
+            <rect
+              key={band.id}
+              x={x}
+              y={y}
+              width={w}
+              height={h}
+              fill="rgba(255, 255, 255, 0.08)"
+            />
+          );
+        })}
+        {boundaries.map((wYds, i) => {
+          if (i === 0 || i === boundaries.length - 1) return null;
+          const p0 = toScreen(len0, wYds);
+          const p1 = toScreen(len1, wYds);
+          if (!p0 || !p1) return null;
+          return (
+            <line
+              key={`lane-div-${i}`}
+              x1={p0.sx}
+              y1={p0.sy}
+              x2={p1.sx}
+              y2={p1.sy}
+              stroke="rgba(226, 232, 240, 0.55)"
+              strokeWidth={1}
+              strokeDasharray="5 6"
+            />
+          );
+        })}
+      </g>
+    );
+  };
+
   return (
     <g className="pointer-events-none">
       <rect
@@ -205,6 +284,8 @@ export default function ScaledPitchMarkings({
         stroke={LINE}
         strokeWidth={2}
       />
+
+      {renderLanes()}
 
       {midVisible && center ? (
         <>

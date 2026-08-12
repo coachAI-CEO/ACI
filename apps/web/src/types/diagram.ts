@@ -60,6 +60,12 @@ export interface DiagramArrow {
   type: DiagramArrowType;
   style: DiagramArrowStyle;
   weight: DiagramArrowWeight;
+  /** Explicit arrowhead; when omitted, inferred from type (transition = none). */
+  arrowhead?: boolean;
+  /** Quadratic curve control point in pitch coords (0–100). */
+  control?: { x: number; y: number };
+  /** Freehand polyline in pitch coords; from/to remain endpoints. */
+  path?: Array<{ x: number; y: number }>;
 }
 
 export interface DiagramArea {
@@ -68,8 +74,8 @@ export interface DiagramArea {
   y?: number;
   width?: number;
   height?: number;
-  /** rect = zone box; circle = oval/spotlight (width×height bounding box) */
-  shape?: "rect" | "circle";
+  /** rect = zone box; circle = outlined oval; spotlight = soft radial highlight */
+  shape?: "rect" | "circle" | "spotlight";
 }
 
 export interface DiagramLabel {

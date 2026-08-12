@@ -50,6 +50,9 @@ export type WebDiagramV1 = {
     type: 'pass' | 'run' | 'press' | 'cover' | 'transition';
     style: 'solid' | 'dashed' | 'dotted';
     weight: 'normal' | 'bold';
+    arrowhead?: boolean;
+    control?: { x: number; y: number };
+    path?: Array<{ x: number; y: number }>;
   }>;
   areas: Array<{
     label?: string;
@@ -57,7 +60,7 @@ export type WebDiagramV1 = {
     y?: number;
     width?: number;
     height?: number;
-    shape?: 'rect' | 'circle';
+    shape?: 'rect' | 'circle' | 'spotlight';
   }>;
   labels: Array<{ text: string; x: number; y: number }>;
 };
@@ -77,12 +80,12 @@ type FormationSlot = { number: number; role: string; x: number; depth: number };
 const FORMATION_4_4_2: FormationSlot[] = [
   { number: 1, role: 'GK', x: 50, depth: 0.06 },
   { number: 2, role: 'RB', x: 82, depth: 0.22 },
-  { number: 5, role: 'CB', x: 62, depth: 0.2 },
-  { number: 6, role: 'CB', x: 38, depth: 0.2 },
+  { number: 4, role: 'CB', x: 62, depth: 0.2 },
+  { number: 5, role: 'CB', x: 38, depth: 0.2 },
   { number: 3, role: 'LB', x: 18, depth: 0.22 },
   { number: 7, role: 'RM', x: 82, depth: 0.42 },
   { number: 8, role: 'CM', x: 62, depth: 0.4 },
-  { number: 4, role: 'CM', x: 38, depth: 0.4 },
+  { number: 6, role: 'CM', x: 38, depth: 0.4 },
   { number: 11, role: 'LM', x: 18, depth: 0.42 },
   { number: 9, role: 'ST', x: 60, depth: 0.62 },
   { number: 10, role: 'ST', x: 40, depth: 0.62 },
@@ -91,15 +94,29 @@ const FORMATION_4_4_2: FormationSlot[] = [
 const FORMATION_4_3_3: FormationSlot[] = [
   { number: 1, role: 'GK', x: 50, depth: 0.06 },
   { number: 2, role: 'RB', x: 82, depth: 0.22 },
-  { number: 5, role: 'CB', x: 62, depth: 0.2 },
-  { number: 6, role: 'CB', x: 38, depth: 0.2 },
+  { number: 4, role: 'CB', x: 62, depth: 0.2 },
+  { number: 5, role: 'CB', x: 38, depth: 0.2 },
   { number: 3, role: 'LB', x: 18, depth: 0.22 },
-  { number: 8, role: 'CM', x: 50, depth: 0.36 },
-  { number: 4, role: 'CM', x: 32, depth: 0.4 },
+  { number: 6, role: 'CDM', x: 50, depth: 0.36 },
+  { number: 8, role: 'CM', x: 32, depth: 0.4 },
   { number: 10, role: 'CM', x: 68, depth: 0.4 },
   { number: 7, role: 'RW', x: 80, depth: 0.6 },
   { number: 9, role: 'ST', x: 50, depth: 0.66 },
   { number: 11, role: 'LW', x: 20, depth: 0.6 },
+];
+
+const FORMATION_4_2_3_1: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.06 },
+  { number: 2, role: 'RB', x: 82, depth: 0.22 },
+  { number: 4, role: 'CB', x: 62, depth: 0.2 },
+  { number: 5, role: 'CB', x: 38, depth: 0.2 },
+  { number: 3, role: 'LB', x: 18, depth: 0.22 },
+  { number: 6, role: 'CDM', x: 38, depth: 0.36 },
+  { number: 8, role: 'CDM', x: 62, depth: 0.36 },
+  { number: 7, role: 'RAM', x: 78, depth: 0.52 },
+  { number: 10, role: 'CAM', x: 50, depth: 0.54 },
+  { number: 11, role: 'LAM', x: 22, depth: 0.52 },
+  { number: 9, role: 'ST', x: 50, depth: 0.68 },
 ];
 
 function clampPitch(n: number) {
@@ -122,7 +139,8 @@ function formationPlayers(
     number: slot.number,
     team,
     role: slot.role,
-    x: clampPitch(slot.x),
+    // Mirror lateral for away (L→R) so right-sided roles stay on the team's right.
+    x: clampPitch(side === 'away' ? 100 - slot.x : slot.x),
     y: yFromDepth(side, slot.depth),
     labelStyle: 'number-only' as const,
   }));
@@ -130,13 +148,13 @@ function formationPlayers(
 
 /**
  * Default new-board seed:
- * FULL horizontal pitch, home ATT 4-4-2 (right) vs away DEF 4-3-3 (left), ball centre, both goals.
+ * FULL horizontal pitch, home ATT 4-3-3 (right) vs away DEF 4-2-3-1 (left), ball centre, both goals.
  */
 export const DEFAULT_MATCH_BOARD_DIAGRAM: WebDiagramV1 = {
   pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format: '11V11', showZones: false },
   players: [
-    ...formationPlayers(FORMATION_4_4_2, 'ATT', 'home'),
-    ...formationPlayers(FORMATION_4_3_3, 'DEF', 'away'),
+    ...formationPlayers(FORMATION_4_3_3, 'ATT', 'home'),
+    ...formationPlayers(FORMATION_4_2_3_1, 'DEF', 'away'),
   ],
   balls: [{ x: 50, y: 50 }],
   goals: [
@@ -252,7 +270,31 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
               y: isFiniteNumber(a.to.y) ? clamp01to100(a.to.y) : undefined,
             }
           : {};
-      return { from, to, type, style, weight };
+      const arrowhead = typeof a.arrowhead === 'boolean' ? a.arrowhead : undefined;
+      const control =
+        a.control &&
+        typeof a.control === 'object' &&
+        isFiniteNumber(a.control.x) &&
+        isFiniteNumber(a.control.y)
+          ? { x: clamp01to100(a.control.x), y: clamp01to100(a.control.y) }
+          : undefined;
+      const pathRaw = Array.isArray(a.path) ? a.path : [];
+      const path = pathRaw
+        .filter(
+          (p: any) => p && typeof p === 'object' && isFiniteNumber(p.x) && isFiniteNumber(p.y)
+        )
+        .slice(0, 100)
+        .map((p: any) => ({ x: clamp01to100(p.x), y: clamp01to100(p.y) }));
+      return {
+        from,
+        to,
+        type,
+        style,
+        weight,
+        ...(arrowhead !== undefined ? { arrowhead } : {}),
+        ...(control ? { control } : {}),
+        ...(path.length >= 2 ? { path } : {}),
+      };
     });
 
   const areasRaw = Array.isArray(src.areas)
@@ -268,7 +310,10 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
       y: isFiniteNumber(a.y) ? clamp01to100(a.y) : undefined,
       width: isFiniteNumber(a.width) ? a.width : undefined,
       height: isFiniteNumber(a.height) ? a.height : undefined,
-      shape: a.shape === 'circle' || a.shape === 'rect' ? a.shape : undefined,
+      shape:
+        a.shape === 'circle' || a.shape === 'rect' || a.shape === 'spotlight'
+          ? a.shape
+          : undefined,
     }));
 
   const labelsRaw = Array.isArray(src.labels) ? src.labels : [];

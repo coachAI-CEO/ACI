@@ -108,6 +108,25 @@ export const WebDiagramV1Schema = z
             type: z.enum(['pass', 'run', 'press', 'cover', 'transition']),
             style: z.enum(['solid', 'dashed', 'dotted']),
             weight: z.enum(['normal', 'bold']),
+            arrowhead: z.boolean().optional(),
+            control: z
+              .object({
+                x: z.number().min(0).max(100),
+                y: z.number().min(0).max(100),
+              })
+              .strict()
+              .optional(),
+            path: z
+              .array(
+                z
+                  .object({
+                    x: z.number().min(0).max(100),
+                    y: z.number().min(0).max(100),
+                  })
+                  .strict()
+              )
+              .max(100)
+              .optional(),
           })
           .strict()
       )
@@ -121,7 +140,7 @@ export const WebDiagramV1Schema = z
             y: z.number().min(0).max(100).optional(),
             width: z.number().optional(),
             height: z.number().optional(),
-            shape: z.enum(['rect', 'circle']).optional(),
+            shape: z.enum(['rect', 'circle', 'spotlight']).optional(),
           })
           .strict()
       )
