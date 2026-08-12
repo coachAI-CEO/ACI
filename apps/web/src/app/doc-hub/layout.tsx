@@ -10,8 +10,11 @@ import {
   Compass,
   ChevronRight,
   Shield,
+  LayoutGrid,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
+import { useEffect, useMemo, useState } from "react";
+import { fetchUserFeatures } from "@/lib/features";
 
 type NavLeaf = {
   label: string;
@@ -32,7 +35,7 @@ function isGroup(item: NavItem): item is NavGroup {
   return "group" in item;
 }
 
-const NAV: NavItem[] = [
+const NAV_BASE: NavItem[] = [
   {
     label: "Overview",
     href: "/doc-hub",
@@ -61,12 +64,15 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/coaches": ["DOC Console", "Coaches"],
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model"],
+  "/boards": ["DOC Console", "Tactical Board"],
 };
 
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
   const isActive = item.exact
     ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(item.href + "/");
+    : pathname === item.href ||
+      pathname.startsWith(item.href + "/") ||
+      (item.href === "/boards" && pathname.startsWith("/board/"));
   const Icon = item.icon;
 
   return (
@@ -95,6 +101,29 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
 
 function DocHubSidebar({ pathname }: { pathname: string }) {
   const { clubOptions, selectedClubId, setSelectedClubId, selectedClub } = useDocHub();
+  const [showBoards, setShowBoards] = useState(false);
+
+  useEffect(() => {
+    fetchUserFeatures()
+      .then((f) => setShowBoards(Boolean(f?.tacticalBoardV1)))
+      .catch(() => setShowBoards(false));
+  }, []);
+
+  const nav = useMemo((): NavItem[] => {
+    if (!showBoards) return NAV_BASE;
+    return NAV_BASE.map((item): NavItem => {
+      if (isGroup(item) && item.group === "Club Ops") {
+        return {
+          group: item.group,
+          items: [
+            ...item.items,
+            { label: "Tactical Board", href: "/boards", icon: LayoutGrid, badge: "New" },
+          ],
+        };
+      }
+      return item;
+    });
+  }, [showBoards]);
 
   return (
     <aside className="sticky top-0 z-20 flex h-screen w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
@@ -109,7 +138,7 @@ function DocHubSidebar({ pathname }: { pathname: string }) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {NAV.map((item, i) => {
+        {nav.map((item, i) => {
           if (isGroup(item)) {
             return (
               <div key={i} className="pt-3 first:pt-0">

@@ -1,0 +1,112 @@
+import type { DiagramV1 } from "@/types/diagram";
+import { getUserHeaders } from "@/lib/user";
+
+export type BoardShareMode = "PRIVATE" | "CLUB";
+
+export type TacticalBoardSummary = {
+  id: string;
+  ownerUserId: string;
+  clubId: string | null;
+  title: string;
+  ageGroup: string | null;
+  gameModelId: string;
+  shareMode: BoardShareMode;
+  sourceSessionId: string | null;
+  sourceDrillKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+  canEdit: boolean;
+};
+
+export type TacticalBoard = TacticalBoardSummary & {
+  diagram: DiagramV1;
+};
+
+function authHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    ...(getUserHeaders() as Record<string, string>),
+  };
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("accessToken");
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+async function parseJson(res: Response) {
+  return res.json().catch(() => ({ ok: false, error: "Invalid JSON" }));
+}
+
+export async function listBoards(opts?: {
+  cursor?: string | null;
+  limit?: number;
+}): Promise<{ ok: boolean; boards?: TacticalBoardSummary[]; nextCursor?: string | null; error?: string }> {
+  const params = new URLSearchParams();
+  if (opts?.cursor) params.set("cursor", opts.cursor);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  const res = await fetch(`/api/boards${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
+  return parseJson(res);
+}
+
+export async function getBoard(
+  id: string
+): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string }> {
+  const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, { headers: authHeaders() });
+  return parseJson(res);
+}
+
+export async function createBlankBoard(input?: {
+  title?: string;
+  ageGroup?: string;
+  gameModelId?: string;
+  shareMode?: BoardShareMode;
+}): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string }> {
+  const res = await fetch("/api/boards", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ mode: "BLANK", ...input }),
+  });
+  return parseJson(res);
+}
+
+export async function createForkBoard(input: {
+  sessionId: string;
+  drillIndex?: number;
+  drillRefCode?: string;
+  title?: string;
+  shareMode?: BoardShareMode;
+}): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string }> {
+  const res = await fetch("/api/boards", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ mode: "FORK_DRILL", ...input }),
+  });
+  return parseJson(res);
+}
+
+export async function patchBoard(
+  id: string,
+  patch: {
+    title?: string;
+    diagram?: DiagramV1;
+    shareMode?: BoardShareMode;
+    ageGroup?: string | null;
+  }
+): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string; details?: unknown }> {
+  const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  return parseJson(res);
+}
+
+export async function deleteBoard(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  return parseJson(res);
+}

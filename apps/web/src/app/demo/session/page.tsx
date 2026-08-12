@@ -20,6 +20,7 @@ import { getUserHeaders } from "@/lib/user";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
+import { createForkBoard } from "@/lib/boards";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 
@@ -912,6 +913,7 @@ function SessionDemoPageContent() {
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
+  const [forkingDrillKey, setForkingDrillKey] = useState<string | null>(null);
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
     sessionTitle: string;
@@ -3431,7 +3433,7 @@ function SessionDemoPageContent() {
 
                 return (
                   <section key={drillKey} className="rounded-3xl border border-slate-700/70 bg-slate-900/70 p-6 space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-semibold">{drill.title}</h3>
@@ -3453,6 +3455,37 @@ function SessionDemoPageContent() {
                           )}
                         </div>
                       </div>
+                      {userFeatures?.tacticalBoardV1 && session?.id && drill.drillType !== "COOLDOWN" ? (
+                        <button
+                          type="button"
+                          disabled={forkingDrillKey === drillKey}
+                          onClick={async () => {
+                            const sessionId = session.id;
+                            if (!sessionId) return;
+                            setForkingDrillKey(drillKey);
+                            try {
+                              const result = await createForkBoard({
+                                sessionId,
+                                drillIndex: index,
+                                drillRefCode: drill.refCode,
+                                title: `${drill.title || "Drill"} — board`,
+                              });
+                              if (!result.ok || !result.board?.id) {
+                                alert(result.message || result.error || "Could not open on board");
+                                return;
+                              }
+                              router.push(`/board/${result.board.id}`);
+                            } catch (e: any) {
+                              alert(e?.message || "Could not open on board");
+                            } finally {
+                              setForkingDrillKey(null);
+                            }
+                          }}
+                          className="shrink-0 min-h-11 rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-3.5 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50"
+                        >
+                          {forkingDrillKey === drillKey ? "Opening…" : "Open on board"}
+                        </button>
+                      ) : null}
                     </div>
 
                     {drill.description && (

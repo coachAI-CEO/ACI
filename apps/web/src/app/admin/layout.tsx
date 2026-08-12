@@ -13,7 +13,11 @@ import {
   Lock,
   Cpu,
   Compass,
+  LayoutGrid,
 } from "lucide-react";
+import AdminOpsAssistant from "@/components/admin/AdminOpsAssistant";
+import { useEffect, useMemo, useState } from "react";
+import { fetchUserFeatures } from "@/lib/features";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -37,7 +41,7 @@ function isGroup(item: NavItem): item is NavGroup {
   return "group" in item;
 }
 
-const NAV: NavItem[] = [
+const NAV_BASE: NavItem[] = [
   {
     label: "Overview",
     href: "/admin",
@@ -107,7 +111,9 @@ const LAYER_COLORS: Record<string, string> = {
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
   const isActive = item.exact
     ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(item.href + "/");
+    : pathname === item.href ||
+      pathname.startsWith(item.href + "/") ||
+      (item.href === "/boards" && pathname.startsWith("/board/"));
 
   const Icon = item.icon;
 
@@ -152,6 +158,28 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function AdminSidebar({ pathname }: { pathname: string }) {
+  const [showBoards, setShowBoards] = useState(false);
+
+  useEffect(() => {
+    fetchUserFeatures()
+      .then((f) => setShowBoards(Boolean(f?.tacticalBoardV1)))
+      .catch(() => setShowBoards(false));
+  }, []);
+
+  const nav = useMemo(() => {
+    if (!showBoards) return NAV_BASE;
+    return [
+      ...NAV_BASE.slice(0, 1),
+      {
+        label: "Tactical Board",
+        href: "/boards",
+        icon: LayoutGrid,
+        badge: "NEW",
+      } satisfies NavLeaf,
+      ...NAV_BASE.slice(1),
+    ];
+  }, [showBoards]);
+
   return (
     <aside className="sticky top-0 z-20 flex h-screen w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
       {/* Logo / brand */}
@@ -167,7 +195,7 @@ function AdminSidebar({ pathname }: { pathname: string }) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {NAV.map((item, i) => {
+        {nav.map((item, i) => {
           if (isGroup(item)) {
             return (
               <div key={i} className="pt-3 first:pt-0">
@@ -242,6 +270,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/admin/analytics": ["Admin", "Analytics"],
   "/admin/content":   ["Admin", "Content & QA"],
   "/admin/system":    ["Admin", "System"],
+  "/boards":          ["Admin", "Tactical Board"],
 };
 
 function TopBar({ pathname }: { pathname: string }) {
@@ -299,6 +328,8 @@ export default function AdminLayout({
         <TopBar pathname={pathname} />
         <main className="min-h-[calc(100vh-3.5rem)] p-6">{children}</main>
       </div>
+
+      <AdminOpsAssistant />
     </div>
   );
 }

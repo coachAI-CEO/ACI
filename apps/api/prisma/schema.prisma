@@ -68,6 +68,11 @@ enum ClubRole {
   COACH
 }
 
+enum BoardShareMode {
+  PRIVATE
+  CLUB
+}
+
 enum SubscriptionPlan {
   FREE
   COACH_BASIC
@@ -471,6 +476,7 @@ model User {
   passwordResetTokens    PasswordResetToken[]
   clubMemberships        ClubMembership[]
   grantedAccessPermissions AccessPermission[] @relation("AccessPermissionGrantedBy")
+  tacticalBoards         TacticalBoard[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -735,12 +741,35 @@ model Club {
   memberships        ClubMembership[]
   sections            Section[]
   accessPermissions   AccessPermission[]
+  tacticalBoards      TacticalBoard[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.
   @@unique([name], map: "clubs_name_unique_idx")
   @@index([active], map: "clubs_active_idx")
   @@map("clubs")
+}
+
+// Coach-owned tactical board (BLANK / FORK_DRILL). Diagram JSON is web DiagramV1.
+model TacticalBoard {
+  id              String         @id @default(uuid())
+  ownerUserId     String         @map("owner_user_id")
+  owner           User           @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  clubId          String?        @map("club_id")
+  club            Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  title           String
+  diagram         Json
+  ageGroup        String?        @map("age_group")
+  gameModelId     GameModelId    @map("game_model_id")
+  shareMode       BoardShareMode @default(PRIVATE) @map("share_mode")
+  sourceSessionId String?        @map("source_session_id")
+  sourceDrillKey  String?        @map("source_drill_key")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([ownerUserId, updatedAt])
+  @@index([clubId, updatedAt])
+  @@map("tactical_boards")
 }
 
 // System-level 4-moment DNA for each GameModelId. Clubs may override with

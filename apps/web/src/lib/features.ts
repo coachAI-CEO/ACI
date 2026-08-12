@@ -13,6 +13,8 @@ export interface UserFeatures {
   canGenerateWeeklySummaries: boolean;
   canInviteCoaches: boolean;
   canManageOrganization: boolean;
+  /** API feature flag TACTICAL_BOARD_V1 — not subscription-tied. */
+  tacticalBoardV1?: boolean;
 }
 
 // Feature mapping - must match backend SUBSCRIPTION_LIMITS
@@ -26,6 +28,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: false,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   COACH_BASIC: {
     canExportPDF: true,
@@ -36,6 +39,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   COACH_PRO: {
     canExportPDF: true,
@@ -46,6 +50,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   CLUB_STANDARD: {
     canExportPDF: true,
@@ -56,6 +61,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: true,
     canManageOrganization: true,
+    tacticalBoardV1: false,
   },
   CLUB_PREMIUM: {
     canExportPDF: true,
@@ -66,6 +72,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: true,
     canManageOrganization: true,
+    tacticalBoardV1: false,
   },
   TRIAL: {
     canExportPDF: true,
@@ -76,6 +83,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
 };
 

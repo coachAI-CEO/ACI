@@ -11,6 +11,8 @@ export interface DiagramPitchZones {
 export interface DiagramPitch {
   variant: "FULL" | "HALF" | "THIRD";
   orientation: "HORIZONTAL" | "VERTICAL";
+  /** Age-group field size; markings/zoom scale from this. */
+  format?: "7V7" | "9V9" | "11V11";
   showZones?: boolean;
   zones?: DiagramPitchZones;
 }
@@ -66,6 +68,8 @@ export interface DiagramArea {
   y?: number;
   width?: number;
   height?: number;
+  /** rect = zone box; circle = oval/spotlight (width×height bounding box) */
+  shape?: "rect" | "circle";
 }
 
 export interface DiagramLabel {

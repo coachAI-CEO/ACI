@@ -123,6 +123,7 @@ export async function updateClubPhilosophy(
 export async function resolveClubSessionScope(userId?: string): Promise<{
   gameModelId: string | null;
   clubId: string | null;
+  clubName: string | null;
   philosophy: ClubPhilosophyStages | null;
 } | null> {
   if (!userId) return null;
@@ -148,6 +149,7 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
       club: {
         select: {
           id: true,
+          name: true,
           gameModelId: true,
           philosophyAttackingOrganization: true,
           philosophyDefensiveTransition: true,
@@ -176,6 +178,7 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
     return {
       gameModelId: preferred.club.gameModelId,
       clubId: preferred.club.id,
+      clubName: preferred.club.name,
       philosophy,
     };
   }
@@ -191,6 +194,7 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
     },
     select: {
       id: true,
+      name: true,
       gameModelId: true,
       philosophyAttackingOrganization: true,
       philosophyDefensiveTransition: true,
@@ -213,6 +217,7 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
   return {
     gameModelId: club.gameModelId,
     clubId: club.id,
+    clubName: club.name,
     philosophy,
   };
 }

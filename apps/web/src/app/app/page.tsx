@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CoachChat from "@/components/CoachChat";
 import { DrillDiagram } from "@/components/DrillDiagram";
+import MyBoardsPanel from "@/components/boards/MyBoardsPanel";
 import { SAMPLE_DIAGRAM_V1 } from "@/sample-diagram-v1";
 import type { DiagramV1 } from "@/types/diagram";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
+import { fetchUserFeatures } from "@/lib/features";
 
 const coachQuotes = [
   {
@@ -171,6 +173,7 @@ export default function Home() {
   const [drillIndex, setDrillIndex] = useState(0);
   const [greeting, setGreeting] = useState("Good evening");
   const [showDocHub, setShowDocHub] = useState(false);
+  const [tacticalBoardV1, setTacticalBoardV1] = useState(false);
 
   useEffect(() => {
     const syncDocHub = () => setShowDocHub(canAccessDocHub(readStoredUser()));
@@ -181,6 +184,17 @@ export default function Home() {
       window.removeEventListener("userLogin", syncDocHub);
       window.removeEventListener("storage", syncDocHub);
     };
+  }, []);
+
+  useEffect(() => {
+    const loadFeatures = () => {
+      fetchUserFeatures()
+        .then((f) => setTacticalBoardV1(Boolean(f?.tacticalBoardV1)))
+        .catch(() => setTacticalBoardV1(false));
+    };
+    loadFeatures();
+    window.addEventListener("userLogin", loadFeatures);
+    return () => window.removeEventListener("userLogin", loadFeatures);
   }, []);
 
   useEffect(() => {
@@ -212,7 +226,29 @@ export default function Home() {
   }, []);
 
   const drillOfDay = drillOfDayEntries[drillIndex];
-  const visibleQuickLinks = quickLinks.filter((link) => link.href !== "/doc-hub" || showDocHub);
+  const visibleQuickLinks = [
+    ...(tacticalBoardV1
+      ? [
+          {
+            href: "/boards",
+            label: "Tactical Board",
+            desc: "Create and edit boards",
+            icon: (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="3.5" y="4" width="17" height="16" rx="2" />
+                <circle cx="9" cy="11" r="1.5" />
+                <circle cx="15" cy="13" r="1.5" />
+                <path d="M9 11l6 2" />
+              </svg>
+            ),
+            color: "from-emerald-500/25 to-teal-500/10 border-emerald-500/25 hover:border-emerald-400/50",
+            hoverGlow: "hover:shadow-emerald-500/15",
+            textColor: "text-emerald-400",
+          },
+        ]
+      : []),
+    ...quickLinks.filter((link) => link.href !== "/doc-hub" || showDocHub),
+  ];
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
     if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
@@ -330,6 +366,8 @@ export default function Home() {
 
         {/* Right column — scrollable within its space */}
         <div className="flex flex-col gap-4 min-h-0 overflow-y-auto pr-1">
+          <MyBoardsPanel enabled={tacticalBoardV1} />
+
           {/* Drill of the Day */}
           <article className="shrink-0 rounded-2xl border border-teal-500/[0.1] bg-gradient-to-b from-[#0a1318]/80 to-[#0a0f1a]/60 overflow-hidden shadow-[0_0_30px_-12px_rgba(20,184,166,0.06)]">
             <div className="flex items-center gap-3 border-b border-teal-500/[0.06] bg-gradient-to-r from-teal-950/25 to-transparent px-5 py-3">

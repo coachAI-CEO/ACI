@@ -62,3 +62,4 @@ logs/
 *.LSOverride
 .env
 .env.*
+.gstack/

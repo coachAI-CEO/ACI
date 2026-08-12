@@ -16,7 +16,12 @@ import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
 import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
 import { getEnforcedClubGameModelId } from './services/club-game-model-scope';
+import { resolveClubSessionScope } from './services/club-philosophy';
 import { listClubMembershipsForUser } from './services/club-memberships';
+import {
+  isTacticalBoardV1Enabled,
+  resolveBoardClubStamp,
+} from './services/board-club-stamp';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
 type SubscriptionFeatures = {
@@ -28,6 +33,7 @@ type SubscriptionFeatures = {
   canGenerateWeeklySummaries: boolean;
   canInviteCoaches: boolean;
   canManageOrganization: boolean;
+  tacticalBoardV1: boolean;
 };
 
 function getFeaturesForAuthUser(input: {
@@ -44,6 +50,7 @@ function getFeaturesForAuthUser(input: {
       canGenerateWeeklySummaries: true,
       canInviteCoaches: true,
       canManageOrganization: true,
+      tacticalBoardV1: isTacticalBoardV1Enabled(),
     };
   }
 
@@ -60,6 +67,7 @@ function getFeaturesForAuthUser(input: {
     canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
     canInviteCoaches: limits.canInviteCoaches,
     canManageOrganization: limits.canManageOrganization,
+    tacticalBoardV1: isTacticalBoardV1Enabled(),
   };
 }
 
@@ -238,7 +246,10 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
     if (!user) {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const clubScope = await resolveClubSessionScope(req.userId);
+    const boardStamp = await resolveBoardClubStamp(req.userId);
+    const enforcedGameModelId =
+      clubScope?.gameModelId || (await getEnforcedClubGameModelId(req.userId));
     const clubMemberships = await listClubMembershipsForUser(req.userId);
     
     // Get usage limits
@@ -257,6 +268,14 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         ...user,
         clubMemberships,
         enforcedGameModelId,
+        clubId: clubScope?.clubId || null,
+        clubName: clubScope?.clubName || null,
+        clubPhilosophy: clubScope?.philosophy || null,
+        boardStamp: {
+          clubId: boardStamp.clubId,
+          clubName: boardStamp.clubName,
+          gameModelId: boardStamp.gameModelId,
+        },
         limits: {
           sessions: sessionLimit,
           drills: drillLimit,

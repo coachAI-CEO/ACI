@@ -41,6 +41,10 @@ import {
   listGameModelTemplates,
   updateGameModelTemplate,
 } from "./services/game-model-templates";
+import {
+  confirmAdminOpsAction,
+  runAdminOpsAssistant,
+} from "./services/admin-ops-assistant";
 import { ClubRole, GameModelId } from "@prisma/client";
 import { z } from "zod";
 
@@ -4630,5 +4634,53 @@ r.get("/admin/analytics/club-accounts", requireAdminPermission('canViewAnalytics
     return res.status(500).json({ ok: false, error: error.message });
   }
 });
+
+// ------------------------------------
+// Admin Ops Assistant
+// ------------------------------------
+
+r.post(
+  "/admin/ops-assistant",
+  requireAdminPermission("canAccessAdminDashboard"),
+  async (req: AdminRequest, res) => {
+    try {
+      const message = String(req.body?.message || "").trim();
+      if (!message) {
+        return res.status(400).json({ ok: false, error: "message is required" });
+      }
+      const history = Array.isArray(req.body?.history) ? req.body.history : [];
+      const result = await runAdminOpsAssistant({
+        message,
+        history,
+        adminUserId: req.userId!,
+        req,
+      });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  }
+);
+
+r.post(
+  "/admin/ops-assistant/confirm",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const confirmId = String(req.body?.confirmId || "").trim();
+      if (!confirmId) {
+        return res.status(400).json({ ok: false, error: "confirmId is required" });
+      }
+      const result = await confirmAdminOpsAction({
+        confirmId,
+        adminUserId: req.userId!,
+        req,
+      });
+      return res.status(result.ok ? 200 : 400).json(result);
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  }
+);
 
 export default r;

@@ -14,7 +14,11 @@
     "sandbox:session-quality": "ts-node --project tsconfig.json src/scripts/session-quality-sandbox.ts",
     "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",
     "sandbox:models:report": "ts-node --project tsconfig.json src/scripts/model-sandbox/report.ts",
-    "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts"
+    "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts",
+    "scenario:board": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-editor.ts",
+    "scenario:board-drawing": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-drawing.ts",
+    "scenario:board-lines": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-lines.ts",
+    "smoke:board": "ts-node --transpile-only --project tsconfig.json src/scripts/smoke-tactical-boards.ts"
   },
   "keywords": [],
   "author": "",
