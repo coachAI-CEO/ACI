@@ -110,3 +110,28 @@ export async function deleteBoard(id: string): Promise<{ ok: boolean; error?: st
   });
   return parseJson(res);
 }
+
+export async function boardAiChat(
+  id: string,
+  input: {
+    message: string;
+    diagram: DiagramV1;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+  }
+): Promise<{
+  ok: boolean;
+  reply?: string;
+  applied?: boolean;
+  diagram?: DiagramV1;
+  coachLevel?: string;
+  playerLevel?: string;
+  error?: string;
+  message?: string;
+}> {
+  const res = await fetch(`/api/boards/${encodeURIComponent(id)}/ai-chat`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  return parseJson(res);
+}

@@ -162,7 +162,6 @@ const quickLinks = [
     color: "from-indigo-500/25 to-violet-500/10 border-indigo-500/25 hover:border-indigo-400/50",
     hoverGlow: "hover:shadow-indigo-500/15",
     textColor: "text-indigo-400",
-    beta: true,
   },
 ];
 

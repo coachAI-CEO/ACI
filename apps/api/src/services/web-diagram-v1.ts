@@ -200,6 +200,26 @@ function isFiniteNumber(n: unknown): n is number {
   return typeof n === 'number' && Number.isFinite(n);
 }
 
+function mapPointRef(raw: any): { playerId?: string; x?: number; y?: number } {
+  if (typeof raw === 'string' && raw.trim()) {
+    return { playerId: raw.trim() };
+  }
+  if (!raw || typeof raw !== 'object') return {};
+  const playerId =
+    typeof raw.playerId === 'string'
+      ? raw.playerId
+      : typeof raw.id === 'string'
+        ? raw.id
+        : typeof raw.player === 'string'
+          ? raw.player
+          : undefined;
+  return {
+    ...(playerId ? { playerId } : {}),
+    ...(isFiniteNumber(raw.x) ? { x: clamp01to100(raw.x) } : {}),
+    ...(isFiniteNumber(raw.y) ? { y: clamp01to100(raw.y) } : {}),
+  };
+}
+
 /**
  * Map API DiagramV1 (or already-web-ish JSON) into the web store shape.
  * Keeps THIRD; coerces QUARTER/CUSTOM → HALF.
@@ -248,29 +268,21 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         a.type === 'run' ||
         a.type === 'press' ||
         a.type === 'cover' ||
-        a.type === 'transition'
-          ? a.type
-          : 'run';
+        a.type === 'transition' ||
+        a.type === 'movement'
+          ? a.type === 'movement'
+            ? 'run'
+            : a.type
+          : 'pass';
       const style =
         a.style === 'dotted' || a.style === 'dashed' || a.style === 'solid' ? a.style : 'solid';
       const weight = a.weight === 'bold' ? 'bold' : 'normal';
-      const from =
-        a.from && typeof a.from === 'object'
-          ? {
-              playerId: typeof a.from.playerId === 'string' ? a.from.playerId : undefined,
-              x: isFiniteNumber(a.from.x) ? clamp01to100(a.from.x) : undefined,
-              y: isFiniteNumber(a.from.y) ? clamp01to100(a.from.y) : undefined,
-            }
-          : {};
-      const to =
-        a.to && typeof a.to === 'object'
-          ? {
-              playerId: typeof a.to.playerId === 'string' ? a.to.playerId : undefined,
-              x: isFiniteNumber(a.to.x) ? clamp01to100(a.to.x) : undefined,
-              y: isFiniteNumber(a.to.y) ? clamp01to100(a.to.y) : undefined,
-            }
-          : {};
-      const arrowhead = typeof a.arrowhead === 'boolean' ? a.arrowhead : undefined;
+      const from = mapPointRef(a.from ?? a.fromPlayer ?? { playerId: a.fromPlayerId, x: a.x1, y: a.y1 });
+      const to = mapPointRef(a.to ?? a.toPlayer ?? { playerId: a.toPlayerId, x: a.x2, y: a.y2 });
+      const hasFrom = Boolean(from.playerId) || (typeof from.x === 'number' && typeof from.y === 'number');
+      const hasTo = Boolean(to.playerId) || (typeof to.x === 'number' && typeof to.y === 'number');
+      if (!hasFrom || !hasTo) return null;
+      const arrowhead = typeof a.arrowhead === 'boolean' ? a.arrowhead : true;
       const control =
         a.control &&
         typeof a.control === 'object' &&
@@ -291,11 +303,12 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         type,
         style,
         weight,
-        ...(arrowhead !== undefined ? { arrowhead } : {}),
+        arrowhead,
         ...(control ? { control } : {}),
         ...(path.length >= 2 ? { path } : {}),
       };
-    });
+    })
+    .filter(Boolean) as WebDiagramV1['arrows'];
 
   const areasRaw = Array.isArray(src.areas)
     ? src.areas

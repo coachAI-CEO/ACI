@@ -11,6 +11,9 @@ import {
   listOwnedBoards,
   patchBoard,
 } from './services/tactical-boards';
+import { runBoardAiChat } from './services/board-ai-chat';
+import { parseWebDiagramV1 } from './services/board-diagram-schema';
+import { toWebDiagramV1 } from './services/web-diagram-v1';
 
 const r = express.Router();
 
@@ -105,6 +108,68 @@ r.patch('/boards/:id', async (req: AuthRequest, res) => {
     }
     const board = await patchBoard(req.params.id, req.userId, req.body);
     return res.json({ ok: true, board });
+  } catch (error) {
+    return sendBoardError(res, error);
+  }
+});
+
+r.post('/boards/:id/ai-chat', async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const board = await getBoardForUser(req.params.id, req.userId);
+    if (!board.canEdit) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
+    }
+
+    const message = String(req.body?.message || '').trim();
+    if (!message) {
+      return res.status(400).json({ ok: false, error: 'MISSING_MESSAGE', message: 'message required' });
+    }
+
+    const fromBody = req.body?.diagram ? toWebDiagramV1(req.body.diagram) : null;
+    const currentDiagram =
+      fromBody || toWebDiagramV1(board.diagram) || (board.diagram as any);
+    const parsedCurrent = parseWebDiagramV1(currentDiagram);
+    if (!parsedCurrent.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: 'INVALID_DIAGRAM',
+        message: parsedCurrent.error,
+        details: parsedCurrent.details,
+      });
+    }
+
+    const historyRaw = Array.isArray(req.body?.history) ? req.body.history : [];
+    const history = historyRaw
+      .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .slice(-8)
+      .map((m: any) => ({ role: m.role as 'user' | 'assistant', content: String(m.content).slice(0, 2000) }));
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { coachLevel: true },
+    });
+
+    const result = await runBoardAiChat({
+      diagram: parsedCurrent.diagram,
+      message,
+      history,
+      ageGroup: board.ageGroup,
+      gameModelId: board.gameModelId,
+      clubId: board.clubId,
+      coachLevel: user?.coachLevel || null,
+    });
+
+    return res.json({
+      ok: true,
+      reply: result.reply,
+      applied: result.applied,
+      diagram: result.diagram,
+      coachLevel: result.coachLevel,
+      playerLevel: result.playerLevel,
+    });
   } catch (error) {
     return sendBoardError(res, error);
   }

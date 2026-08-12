@@ -383,6 +383,10 @@ export default function SettingsPage() {
                 <option value="USSF_C">USSF C</option>
                 <option value="USSF_B_PLUS">USSF B+</option>
               </select>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Drives Tactical Board AI language. Player demand follows this level (Beginner only for
+                USSF D).
+              </p>
             </div>
             <div>
               <label htmlFor="organizationName" className="block text-sm font-medium text-slate-300 mb-1">

@@ -79,11 +79,22 @@ type Selection =
   | { kind: "player"; id: string }
   | { kind: "ball"; index: number }
   | { kind: "arrow"; index: number }
+  | { kind: "label"; index: number }
+  | { kind: "area"; index: number }
   | null;
 
 type DragTarget =
   | { kind: "player"; id: string; pointerId: number }
   | { kind: "ball"; index: number; pointerId: number }
+  | { kind: "label"; index: number; pointerId: number }
+  | {
+      kind: "area";
+      index: number;
+      pointerId: number;
+      startPos: { x: number; y: number };
+      origin: { x: number; y: number; width: number; height: number };
+      undoRecorded?: boolean;
+    }
   | { kind: "arrow-end"; index: number; end: "from" | "to"; pointerId: number }
   | {
       kind: "arrow-move";
@@ -213,6 +224,68 @@ function ensureArrays(d: DiagramV1): DiagramV1 {
   };
 }
 
+/** Caption chip sits just above the label anchor so text doesn't cover the zone. */
+const LABEL_CHIP_DY = -18;
+const LABEL_CHIP_MAX_W = 280;
+const LABEL_CHIP_MAX_CHARS = 160;
+
+function wrapLabelLines(text: string, maxCharsPerLine = 42, maxLines = 3): string[] {
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, LABEL_CHIP_MAX_CHARS);
+  if (!clean) return [""];
+  const words = clean.split(" ");
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of words) {
+    const next = cur ? `${cur} ${w}` : w;
+    if (next.length > maxCharsPerLine && cur) {
+      lines.push(cur);
+      cur = w;
+      if (lines.length >= maxLines - 1) break;
+    } else {
+      cur = next;
+    }
+  }
+  if (cur && lines.length < maxLines) lines.push(cur);
+  // If leftover words didn't fit, append ellipsis on last line
+  const used = lines.join(" ").length;
+  if (used < clean.length && lines.length) {
+    const last = lines[lines.length - 1];
+    lines[lines.length - 1] = `${last.slice(0, Math.max(0, maxCharsPerLine - 1))}…`;
+  }
+  return lines;
+}
+
+function labelChipMetrics(text: string, fontSize: number) {
+  const lines = wrapLabelLines(text);
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const w = Math.min(LABEL_CHIP_MAX_W, Math.max(72, longest * fontSize * 0.56 + 18));
+  const lineH = fontSize + 3;
+  const h = Math.max(fontSize + 12, lines.length * lineH + 10);
+  return { w, h, lines, lineH };
+}
+
+function pointInAreaPitch(pos: { x: number; y: number }, area: DiagramArea): boolean {
+  if (typeof area.x !== "number" || typeof area.y !== "number") return false;
+  const w = area.width ?? 0;
+  const h = area.height ?? 0;
+  return pos.x >= area.x && pos.x <= area.x + w && pos.y >= area.y && pos.y <= area.y + h;
+}
+
+/** Place caption just outside the top of a highlight (toward the top touchline). */
+function captionOutsideArea(area: DiagramArea): { x: number; y: number } {
+  const w = area.width ?? 10;
+  const h = area.height ?? 10;
+  const ax = area.x ?? 50;
+  const ay = area.y ?? 50;
+  return {
+    x: clamp(ax + w + 4),
+    y: clamp(ay + h / 2),
+  };
+}
+
 function nextPlayerNumber(players: DiagramPlayer[]) {
   const used = new Set(players.map((p) => p.number).filter((n): n is number => typeof n === "number"));
   for (let n = 1; n <= 99; n++) {
@@ -304,7 +377,12 @@ export default function TacticalBoardEditor({
   const undoStack = React.useRef<DiagramV1[]>([]);
   const skipPropSync = React.useRef(false);
   const dragRef = React.useRef<DragTarget | null>(null);
-  const pendingPos = React.useRef<{ kind: "player" | "ball"; idOrIndex: string | number; x: number; y: number } | null>(null);
+  const pendingPos = React.useRef<{
+    kind: "player" | "ball" | "label";
+    idOrIndex: string | number;
+    x: number;
+    y: number;
+  } | null>(null);
   const rafRef = React.useRef<number | null>(null);
   const svgRef = React.useRef<SVGSVGElement | null>(null);
   const [draft, setDraft] = React.useState<DrawDraft | null>(null);
@@ -316,9 +394,10 @@ export default function TacticalBoardEditor({
       skipPropSync.current = false;
       return;
     }
-    if (dirty) return;
+    // Always accept external diagram updates (e.g. Tactical Edge AI apply).
+    // Local edits set skipPropSync before notifying the parent so we don't loop.
     setDiagram(ensureArrays(cloneDiagram(diagramProp)));
-  }, [diagramProp, dirty]);
+  }, [diagramProp]);
 
   const orientation = diagram.pitch?.orientation || "HORIZONTAL";
   const pitchVariant = (diagram.pitch?.variant || "FULL") as PitchZoom;
@@ -371,6 +450,9 @@ export default function TacticalBoardEditor({
         undo();
       }
       if ((e.key === "Backspace" || e.key === "Delete") && tool === "select" && selection) {
+        // Don't steal delete while editing label text in an input
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
         e.preventDefault();
         if (selection.kind === "player") {
           const id = selection.id;
@@ -388,6 +470,16 @@ export default function TacticalBoardEditor({
           commitDiagram({
             ...diagram,
             balls: (diagram.balls || []).filter((_, j) => j !== selection.index),
+          });
+        } else if (selection.kind === "label") {
+          commitDiagram({
+            ...diagram,
+            labels: (diagram.labels || []).filter((_, j) => j !== selection.index),
+          });
+        } else if (selection.kind === "area") {
+          commitDiagram({
+            ...diagram,
+            areas: (diagram.areas || []).filter((_, j) => j !== selection.index),
           });
         }
         setSelection(null);
@@ -433,6 +525,12 @@ export default function TacticalBoardEditor({
           p.id === pending.idOrIndex ? { ...p, x: pending.x, y: pending.y } : p
         ),
       };
+    } else if (pending.kind === "label") {
+      const labels = [...(prev.labels || [])];
+      const idx = pending.idOrIndex as number;
+      if (!labels[idx]) return;
+      labels[idx] = { ...labels[idx], x: pending.x, y: pending.y };
+      next = { ...prev, labels };
     } else {
       const balls = [...(prev.balls || [])];
       const idx = pending.idOrIndex as number;
@@ -440,6 +538,22 @@ export default function TacticalBoardEditor({
       balls[idx] = { x: pending.x, y: pending.y };
       next = { ...prev, balls };
     }
+    diagramRef.current = next;
+    skipPropSync.current = true;
+    setDiagram(next);
+    onDirtyChange(true);
+    onChange({ diagram: next, title, shareMode });
+  };
+
+  const applyAreaLive = (
+    index: number,
+    patch: Partial<Pick<NonNullable<DiagramV1["areas"]>[number], "x" | "y" | "width" | "height">>
+  ) => {
+    const prev = diagramRef.current;
+    const areas = [...(prev.areas || [])];
+    if (!areas[index]) return;
+    areas[index] = { ...areas[index], ...patch };
+    const next: DiagramV1 = { ...prev, areas };
     diagramRef.current = next;
     skipPropSync.current = true;
     setDiagram(next);
@@ -465,10 +579,25 @@ export default function TacticalBoardEditor({
     onChange({ diagram: next, title, shareMode });
   };
 
+  const hitTestLabelChip = (label: DiagramLabel, sx: number, sy: number, pad = 0) => {
+    const s = toScreen(label, orientation, layout, viewport, spec);
+    const fontSize = Math.max(11, hitR * 0.95);
+    const { w, h } = labelChipMetrics(label.text || "", fontSize);
+    const cx = s.sx;
+    const cy = s.sy + LABEL_CHIP_DY;
+    return (
+      sx >= cx - w / 2 - pad &&
+      sx <= cx + w / 2 + pad &&
+      sy >= cy - h / 2 - pad &&
+      sy <= cy + h / 2 + pad
+    );
+  };
+
   const eraseAt = (sx: number, sy: number) => {
     const hit = Math.max(12, hitR * 1.5);
     const screenOf = (p: { x: number; y: number }) =>
       toScreen(p, orientation, layout, viewport, spec);
+    const pitchPos = fromScreen(sx, sy, orientation, layout, viewport, spec);
 
     // Lines first — erase individual arrows by clicking anywhere along the stroke
     const arrowIdx = findArrowIndexAtScreenPoint(
@@ -487,32 +616,27 @@ export default function TacticalBoardEditor({
       return;
     }
 
-    // labels
-    for (let i = 0; i < (diagram.labels || []).length; i++) {
-      const l = diagram.labels[i];
-      const s = toScreen(l, orientation, layout, viewport, spec);
-      if (dist(s, { sx, sy }) <= hit * 1.2) {
+    // labels (chip hit box)
+    for (let i = (diagram.labels || []).length - 1; i >= 0; i--) {
+      if (hitTestLabelChip(diagram.labels[i], sx, sy, 4)) {
         commitDiagram({
           ...diagram,
           labels: diagram.labels.filter((_, j) => j !== i),
         });
+        if (selection?.kind === "label" && selection.index === i) setSelection(null);
         return;
       }
     }
-    // areas
-    for (let i = 0; i < (diagram.areas || []).length; i++) {
+    // areas (full zone)
+    for (let i = (diagram.areas || []).length - 1; i >= 0; i--) {
       const area = diagram.areas[i];
-      if (typeof area.x !== "number" || typeof area.y !== "number") continue;
-      const w = area.width ?? 10;
-      const h = area.height ?? 10;
-      const c = toScreen({ x: area.x + w / 2, y: area.y + h / 2 }, orientation, layout, viewport, spec);
-      if (dist(c, { sx, sy }) <= Math.max(hit, 18)) {
-        commitDiagram({
-          ...diagram,
-          areas: diagram.areas.filter((_, j) => j !== i),
-        });
-        return;
-      }
+      if (!pointInAreaPitch(pitchPos, area)) continue;
+      commitDiagram({
+        ...diagram,
+        areas: diagram.areas.filter((_, j) => j !== i),
+      });
+      if (selection?.kind === "area" && selection.index === i) setSelection(null);
+      return;
     }
     // balls
     for (let i = 0; i < (diagram.balls || []).length; i++) {
@@ -611,6 +735,66 @@ export default function TacticalBoardEditor({
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
 
+  const onLabelPointerDown = (e: React.PointerEvent, index: number) => {
+    if (!canEdit) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    if (tool === "eraser") {
+      commitDiagram({
+        ...diagram,
+        labels: (diagram.labels || []).filter((_, j) => j !== index),
+      });
+      if (selection?.kind === "label" && selection.index === index) setSelection(null);
+      return;
+    }
+
+    if (tool !== "select") return;
+
+    setSelection({ kind: "label", index });
+    pushUndo(diagram);
+    dragRef.current = { kind: "label", index, pointerId: e.pointerId };
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+
+  const onAreaPointerDown = (e: React.PointerEvent, index: number) => {
+    if (!canEdit) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const area = diagram.areas[index];
+    if (!area || typeof area.x !== "number" || typeof area.y !== "number") return;
+
+    if (tool === "eraser") {
+      commitDiagram({
+        ...diagram,
+        areas: (diagram.areas || []).filter((_, j) => j !== index),
+      });
+      if (selection?.kind === "area" && selection.index === index) setSelection(null);
+      return;
+    }
+
+    if (tool !== "select") return;
+
+    const { sx, sy } = clientToSvg(e.clientX, e.clientY);
+    const pos = fromScreen(sx, sy, orientation, layout, viewport, spec);
+    setSelection({ kind: "area", index });
+    dragRef.current = {
+      kind: "area",
+      index,
+      pointerId: e.pointerId,
+      startPos: pos,
+      origin: {
+        x: area.x,
+        y: area.y,
+        width: area.width ?? 10,
+        height: area.height ?? 10,
+      },
+      undoRecorded: false,
+    };
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+  };
+
   const onSvgPointerMove = (e: React.PointerEvent) => {
     const { sx, sy } = clientToSvg(e.clientX, e.clientY);
     const pos = fromScreen(sx, sy, orientation, layout, viewport, spec);
@@ -625,6 +809,27 @@ export default function TacticalBoardEditor({
       if (drag.kind === "ball") {
         pendingPos.current = { kind: "ball", idOrIndex: drag.index, x: pos.x, y: pos.y };
         if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
+        return;
+      }
+      if (drag.kind === "label") {
+        pendingPos.current = { kind: "label", idOrIndex: drag.index, x: pos.x, y: pos.y };
+        if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
+        return;
+      }
+      if (drag.kind === "area") {
+        const dx = pos.x - drag.startPos.x;
+        const dy = pos.y - drag.startPos.y;
+        if (Math.hypot(dx, dy) < 0.35) return;
+        if (!drag.undoRecorded) {
+          pushUndo(diagramRef.current);
+          drag.undoRecorded = true;
+        }
+        applyAreaLive(drag.index, {
+          x: clamp(drag.origin.x + dx),
+          y: clamp(drag.origin.y + dy),
+          width: drag.origin.width,
+          height: drag.origin.height,
+        });
         return;
       }
       if (drag.kind === "arrow-end") {
@@ -808,7 +1013,7 @@ export default function TacticalBoardEditor({
   const onSvgPointerUp = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (drag && drag.pointerId === e.pointerId) {
-      if (drag.kind === "player" || drag.kind === "ball") {
+      if (drag.kind === "player" || drag.kind === "ball" || drag.kind === "label") {
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           flushDrag();
@@ -897,8 +1102,19 @@ export default function TacticalBoardEditor({
       if (diagram.labels.length >= 20) return;
       const text = window.prompt("Label text");
       if (!text?.trim()) return;
-      const label: DiagramLabel = { text: text.trim().slice(0, 200), x: pos.x, y: pos.y };
-      commitDiagram({ ...diagram, labels: [...diagram.labels, label] });
+      // Prefer parking new labels just outside any highlight under the click
+      let x = pos.x;
+      let y = pos.y;
+      const under = (diagram.areas || []).find((a) => pointInAreaPitch(pos, a));
+      if (under) {
+        const out = captionOutsideArea(under);
+        x = out.x;
+        y = out.y;
+      }
+      const label: DiagramLabel = { text: text.trim().slice(0, 200), x, y };
+      const nextLabels = [...diagram.labels, label];
+      commitDiagram({ ...diagram, labels: nextLabels });
+      setSelection({ kind: "label", index: nextLabels.length - 1 });
       setTool("select");
       return;
     }
@@ -938,6 +1154,38 @@ export default function TacticalBoardEditor({
     }
 
     if (tool === "select") {
+      // Hit labels / areas when clicking empty pitch (players/arrows have their own handlers)
+      for (let i = (diagram.labels || []).length - 1; i >= 0; i--) {
+        if (hitTestLabelChip(diagram.labels[i], sx, sy, 2)) {
+          setSelection({ kind: "label", index: i });
+          pushUndo(diagram);
+          dragRef.current = { kind: "label", index: i, pointerId: e.pointerId };
+          svgRef.current?.setPointerCapture?.(e.pointerId);
+          return;
+        }
+      }
+      for (let i = (diagram.areas || []).length - 1; i >= 0; i--) {
+        const area = diagram.areas[i];
+        if (!pointInAreaPitch(pos, area) || typeof area.x !== "number" || typeof area.y !== "number") {
+          continue;
+        }
+        setSelection({ kind: "area", index: i });
+        dragRef.current = {
+          kind: "area",
+          index: i,
+          pointerId: e.pointerId,
+          startPos: pos,
+          origin: {
+            x: area.x,
+            y: area.y,
+            width: area.width ?? 10,
+            height: area.height ?? 10,
+          },
+          undoRecorded: false,
+        };
+        svgRef.current?.setPointerCapture?.(e.pointerId);
+        return;
+      }
       setSelection(null);
     }
   };
@@ -1018,6 +1266,10 @@ export default function TacticalBoardEditor({
       : null;
   const selectedArrow =
     selection?.kind === "arrow" ? diagram.arrows[selection.index] || null : null;
+  const selectedLabel =
+    selection?.kind === "label" ? diagram.labels[selection.index] || null : null;
+  const selectedArea =
+    selection?.kind === "area" ? diagram.areas[selection.index] || null : null;
 
   const renderArea = (area: DiagramArea, i: number, preview = false) => {
     if (typeof area.x !== "number" || typeof area.y !== "number") return null;
@@ -1029,7 +1281,16 @@ export default function TacticalBoardEditor({
     const y = Math.min(a.sy, b.sy);
     const rw = Math.abs(b.sx - a.sx);
     const rh = Math.abs(b.sy - a.sy);
-    const stroke = preview ? "#fbbf24" : "#fde68a";
+    const isSelected = !preview && selection?.kind === "area" && selection.index === i;
+    const stroke = preview ? "#fbbf24" : isSelected ? "#fbbf24" : "#fde68a";
+    const strokeW = isSelected ? 2.5 : 1.75;
+    const canHit = canEdit && !preview && (tool === "select" || tool === "eraser");
+    const hitProps = canHit
+      ? {
+          className: tool === "select" ? "cursor-move" : "cursor-pointer",
+          onPointerDown: (ev: React.PointerEvent) => onAreaPointerDown(ev, i),
+        }
+      : { className: "pointer-events-none" as const };
     if (area.shape === "spotlight") {
       const gradId = `spotlight-grad-${i < 0 ? "draft" : i}`;
       const cx = x + rw / 2;
@@ -1037,7 +1298,7 @@ export default function TacticalBoardEditor({
       const rx = rw / 2;
       const ry = rh / 2;
       return (
-        <g key={`area-${i}`} className="pointer-events-none">
+        <g key={`area-${i}`}>
           <defs>
             <radialGradient id={gradId} cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#fff7c2" stopOpacity={preview ? 0.55 : 0.7} />
@@ -1045,8 +1306,8 @@ export default function TacticalBoardEditor({
               <stop offset="100%" stopColor="#fde68a" stopOpacity={0} />
             </radialGradient>
           </defs>
-          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${gradId})`} />
-          {preview ? (
+          <ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${gradId})`} {...hitProps} />
+          {preview || isSelected ? (
             <ellipse
               cx={cx}
               cy={cy}
@@ -1054,9 +1315,10 @@ export default function TacticalBoardEditor({
               ry={ry}
               fill="none"
               stroke={stroke}
-              strokeWidth={1.25}
-              strokeDasharray="4 4"
-              opacity={0.7}
+              strokeWidth={strokeW}
+              strokeDasharray={preview ? "4 4" : undefined}
+              opacity={0.85}
+              className="pointer-events-none"
             />
           ) : null}
         </g>
@@ -1072,9 +1334,9 @@ export default function TacticalBoardEditor({
           ry={rh / 2}
           fill="rgba(253, 230, 138, 0.12)"
           stroke={stroke}
-          strokeWidth={1.75}
+          strokeWidth={strokeW}
           strokeDasharray={preview ? "4 4" : undefined}
-          className="pointer-events-none"
+          {...hitProps}
         />
       );
     }
@@ -1087,9 +1349,9 @@ export default function TacticalBoardEditor({
         height={rh}
         fill="rgba(253, 230, 138, 0.1)"
         stroke={stroke}
-        strokeWidth={1.75}
+        strokeWidth={strokeW}
         strokeDasharray={preview ? "4 4" : undefined}
-        className="pointer-events-none"
+        {...hitProps}
       />
     );
   };
@@ -1398,22 +1660,7 @@ export default function TacticalBoardEditor({
 
           {(diagram.areas || []).map((area, i) => renderArea(area, i))}
 
-          {(diagram.labels || []).map((l, i) => {
-            const s = toScreen(l, orientation, layout, viewport, spec);
-            return (
-              <text
-                key={`lbl-${i}`}
-                x={s.sx}
-                y={s.sy}
-                fill="#f8fafc"
-                fontSize={Math.max(11, hitR * 0.95)}
-                textAnchor="middle"
-                className="pointer-events-none"
-              >
-                {l.text}
-              </text>
-            );
-          })}
+          {/* labels rendered later (after players) so chips stay readable */}
 
           {(diagram.arrows || []).map((a, i) => {
             const from = resolvePoint(a.from, diagram.players, orientation, layout, viewport, spec);
@@ -1658,6 +1905,49 @@ export default function TacticalBoardEditor({
               </g>
             );
           })}
+
+          {(diagram.labels || []).map((l, i) => {
+            const s = toScreen(l, orientation, layout, viewport, spec);
+            const fontSize = Math.max(10, hitR * 0.85);
+            const { w, h, lines, lineH } = labelChipMetrics(l.text || "", fontSize);
+            const cx = s.sx;
+            const cy = s.sy + LABEL_CHIP_DY;
+            const isSelected = selection?.kind === "label" && selection.index === i;
+            const canHit = canEdit && (tool === "select" || tool === "eraser");
+            const textStartY = -((lines.length - 1) * lineH) / 2;
+            return (
+              <g
+                key={`lbl-${i}`}
+                transform={`translate(${cx}, ${cy})`}
+                className={canHit ? (tool === "select" ? "cursor-move" : "cursor-pointer") : "pointer-events-none"}
+                onPointerDown={canHit ? (ev) => onLabelPointerDown(ev, i) : undefined}
+              >
+                <rect
+                  x={-w / 2}
+                  y={-h / 2}
+                  width={w}
+                  height={h}
+                  rx={6}
+                  ry={6}
+                  fill="rgba(15, 23, 42, 0.88)"
+                  stroke={isSelected ? "#fbbf24" : "rgba(248, 250, 252, 0.25)"}
+                  strokeWidth={isSelected ? 2 : 1}
+                />
+                <text
+                  textAnchor="middle"
+                  fontSize={fontSize}
+                  fill="#f8fafc"
+                  className="pointer-events-none"
+                >
+                  {lines.map((line, li) => (
+                    <tspan key={li} x={0} y={textStartY + li * lineH} dominantBaseline="middle">
+                      {line}
+                    </tspan>
+                  ))}
+                </text>
+              </g>
+            );
+          })}
         </svg>
       </div>
 
@@ -1762,6 +2052,84 @@ export default function TacticalBoardEditor({
               commitDiagram({
                 ...diagram,
                 arrows: eraseArrowAtIndex(diagram.arrows, selection.index),
+              });
+              setSelection(null);
+            }}
+            className="min-h-10 rounded-lg border border-rose-500/30 px-3 text-rose-200 hover:bg-rose-500/10"
+          >
+            Remove
+          </button>
+        </div>
+      ) : null}
+
+      {canEdit && selectedLabel && selection?.kind === "label" ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-slate-300">
+          <span className="font-medium text-sky-100/90">Caption</span>
+          <input
+            value={selectedLabel.text}
+            onChange={(e) => {
+              const text = e.target.value.slice(0, 200);
+              commitDiagram(
+                {
+                  ...diagram,
+                  labels: diagram.labels.map((l, i) =>
+                    i === selection.index ? { ...l, text } : l
+                  ),
+                },
+                { recordUndo: false }
+              );
+            }}
+            className="min-h-10 min-w-[14rem] flex-1 rounded-lg border border-white/10 bg-black/40 px-2 py-1 text-sm text-white/90 outline-none focus:border-sky-500/40"
+            placeholder="Caption text"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const under = (diagram.areas || []).find((a) =>
+                pointInAreaPitch(selectedLabel, a)
+              );
+              if (!under) return;
+              const out = captionOutsideArea(under);
+              commitDiagram({
+                ...diagram,
+                labels: diagram.labels.map((l, i) =>
+                  i === selection.index ? { ...l, x: out.x, y: out.y } : l
+                ),
+              });
+            }}
+            className="min-h-10 rounded-lg border border-white/10 px-3 text-slate-200 hover:bg-white/5"
+            title="Move caption outside overlapping highlight"
+          >
+            Park outside highlight
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              commitDiagram({
+                ...diagram,
+                labels: diagram.labels.filter((_, j) => j !== selection.index),
+              });
+              setSelection(null);
+            }}
+            className="min-h-10 rounded-lg border border-rose-500/30 px-3 text-rose-200 hover:bg-rose-500/10"
+          >
+            Remove
+          </button>
+        </div>
+      ) : null}
+
+      {canEdit && selectedArea && selection?.kind === "area" ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-slate-300">
+          <span className="font-medium text-amber-100/90">
+            Highlight · {selectedArea.shape || "rect"}
+          </span>
+          <span className="text-slate-500">Drag to move</span>
+          <button
+            type="button"
+            onClick={() => {
+              commitDiagram({
+                ...diagram,
+                areas: diagram.areas.filter((_, j) => j !== selection.index),
               });
               setSelection(null);
             }}

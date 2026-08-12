@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect, type ComponentType } from "react";
 import AuthButton from "@/components/AuthButton";
 import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
+import { fetchUserFeatures } from "@/lib/features";
 
 type SidebarItem = {
   href: string;
@@ -13,6 +14,8 @@ type SidebarItem = {
   beta?: boolean;
   /** When true, only show if canAccessDocHub(user) */
   docHubOnly?: boolean;
+  /** When true, only show if tacticalBoardV1 feature is on */
+  boardsOnly?: boolean;
 };
 
 const navItems: SidebarItem[] = [
@@ -20,8 +23,9 @@ const navItems: SidebarItem[] = [
   { href: "/vault", label: "Vault", icon: VaultIcon },
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
   { href: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { href: "/boards", label: "Tactical Board", icon: BoardIcon, boardsOnly: true },
   { href: "/video-analysis", label: "Video Analysis", icon: VideoAnalysisIcon, beta: true },
-  { href: "/doc-hub", label: "DOC Console", icon: DocHubIcon, beta: true, docHubOnly: true },
+  { href: "/doc-hub", label: "DOC Console", icon: DocHubIcon, docHubOnly: true },
 ];
 
 const bottomItems: SidebarItem[] = [
@@ -45,6 +49,7 @@ export default function AppHeader() {
   const [hovering, setHovering] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showDocHub, setShowDocHub] = useState(false);
+  const [showBoards, setShowBoards] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -92,16 +97,31 @@ export default function AppHeader() {
     };
   }, []);
 
+  useEffect(() => {
+    const loadFeatures = () => {
+      fetchUserFeatures()
+        .then((f) => setShowBoards(Boolean(f?.tacticalBoardV1)))
+        .catch(() => setShowBoards(false));
+    };
+    loadFeatures();
+    window.addEventListener("userLogin", loadFeatures);
+    return () => window.removeEventListener("userLogin", loadFeatures);
+  }, []);
+
   if (hideHeader) return null;
 
   const isActive = (href: string) => {
     if (href === "/app") return pathname === "/app";
+    if (href === "/boards") return pathname === "/boards" || pathname.startsWith("/board/");
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   const expanded = !isDesktop || !collapsed || hovering;
   const showLabels = expanded;
-  const visibleNavItems = navItems.filter((item) => !item.docHubOnly || showDocHub);
+  const visibleNavItems = navItems.filter(
+    (item) =>
+      (!item.docHubOnly || showDocHub) && (!item.boardsOnly || showBoards)
+  );
 
   return (
     <>
@@ -357,6 +377,17 @@ function DocHubIcon({ className }: { className?: string }) {
       <path d="M7.5 9.5h9M7.5 13h6M7.5 6.5h4" />
       <circle cx="17.5" cy="13.5" r="2.5" />
       <path d="M17.5 12v1.6l1.1.8" />
+    </svg>
+  );
+}
+
+function BoardIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3.5" y="4" width="17" height="16" rx="2" />
+      <path d="M3.5 12h17M12 4v16" opacity="0.45" />
+      <circle cx="8.5" cy="9" r="1.4" />
+      <circle cx="15.5" cy="15" r="1.4" />
     </svg>
   );
 }

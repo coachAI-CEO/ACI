@@ -317,21 +317,21 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
       : isUssfC
       ? "- USSF_C quality target: clear, grounded, one tactical idea at a time -- a coach with real but developing tactical background."
       : "- USSF_B_PLUS quality target: dense, fluent, systemic -- a coach who talks in connected tactical patterns, not a vocabulary list.",
-    "PLAYER LEVEL DIFFICULTY LOCK (MANDATORY, INDEPENDENT OF COACH LEVEL):",
-    "- coachLevel controls VOCABULARY (how it's written). playerLevel controls DIFFICULTY (what's actually demanded of the players). These are two separate dials -- an advanced coachLevel (USSF_C/USSF_B_PLUS) does NOT mean advanced constraints. A USSF_B_PLUS coach can run a session for BEGINNER players; when that happens, keep the tactical vocabulary but the constraints/touch limits/decision load MUST still match BEGINNER, not the coach's license level.",
-    `- playerLevel=${input.playerLevel} for THIS session.`,
+    "PLAYER LEVEL DIFFICULTY LOCK (MANDATORY):",
+    "- coachLevel controls VOCABULARY (how it's written). playerLevel controls DIFFICULTY (what's actually demanded of the players). These are two separate dials.",
+    "- PAIRING RULE: BEGINNER players are only valid with coachLevel=USSF_D. USSF_C and USSF_B_PLUS sessions use INTERMEDIATE or ADVANCED players — never write BEGINNER constraints for C/B+.",
+    `- playerLevel=${input.playerLevel} for THIS session (coachLevel=${input.coachLevel}).`,
     isBeginner
-      ? "- BEGINNER: unlimited or generous touches (avoid 1-2 touch restrictions), forgiving space, few simultaneous decisions, one clear read per rep. Do not impose 1-touch, 2-touch, or 'strictly N touches' constraints -- beginners need time on the ball to succeed."
+      ? "- BEGINNER (USSF_D only): unlimited or generous touches (avoid 1-2 touch restrictions), forgiving space, few simultaneous decisions, one clear read per rep. Do not impose 1-touch, 2-touch, or 'strictly N touches' constraints -- beginners need time on the ball to succeed."
       : isIntermediate
       ? "- INTERMEDIATE: moderate constraints are fine (e.g. 2-3 touch limits), some combined decisions (scan + pass under light pressure), but avoid stacking more than one advanced constraint at once."
       : "- ADVANCED: tight constraints are expected and desirable (1-2 touch limits, tight time/space, multiple simultaneous reads, game-realistic pressure) -- do not water these down.",
     isBeginner
-      ? "- Coaching points and constraints must describe simple, concrete actions (e.g. 'pass to your open teammate') even when the surrounding language is USSF_C/USSF_B_PLUS-level tactical vocabulary."
+      ? "- Coaching points and constraints must describe simple, concrete actions (e.g. 'pass to your open teammate') in plain USSF_D language."
       : "- Coaching points and constraints may assume the players can execute complex, multi-step instructions.",
     ...(isBeginner
       ? [
-          "- BANNED CONSTRAINTS for BEGINNER (never write these, regardless of coachLevel -- this applies even in a USSF_B_PLUS session, where the surrounding language is advanced but the DEMANDS still must not be): '1-touch', 'one-touch', '2-touch', 'two-touch', 'maximum N touches', 'strictly N touches', any touch limit below 3; multi-zone tactical structures ('three longitudinal channels', 'organized defensive block', named formations like '3-2-3 attacking shape' as a constraint to execute); timed technical windows ('45-second intervals', 'designated windows'); anything requiring players to track more than one instruction at once.",
-          "- This rule OVERRIDES coachLevel every time they'd conflict. A USSF_B_PLUS + BEGINNER session should read like an advanced coach's vocabulary describing a beginner-simple activity -- e.g. 'Encourage open body shape to receive (USSF_B_PLUS framing), players may take as many touches as they need to keep control (BEGINNER demand)' -- NOT a genuinely advanced drill with fancy words.",
+          "- BANNED CONSTRAINTS for BEGINNER (never write these): '1-touch', 'one-touch', '2-touch', 'two-touch', 'maximum N touches', 'strictly N touches', any touch limit below 3; multi-zone tactical structures ('three longitudinal channels', 'organized defensive block', named formations like '3-2-3 attacking shape' as a constraint to execute); timed technical windows ('45-second intervals', 'designated windows'); anything requiring players to track more than one instruction at once.",
         ]
       : []),
     "AGE/GAME FORMAT LOCK (MANDATORY):",

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import BoardAiChat from "@/components/boards/BoardAiChat";
 import TacticalBoardEditor from "@/components/boards/TacticalBoardEditor";
 import {
   getBoard,
@@ -28,11 +29,29 @@ export default function BoardPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [flagOn, setFlagOn] = useState<boolean | null>(null);
+  const [coachLevel, setCoachLevel] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUserFeatures()
       .then((f) => setFlagOn(Boolean(f?.tacticalBoardV1)))
       .catch(() => setFlagOn(false));
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      setCoachLevel(null);
+      return;
+    }
+    fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        const level = data?.user?.coachLevel || null;
+        setCoachLevel(typeof level === "string" ? level : null);
+      })
+      .catch(() => setCoachLevel(null));
   }, []);
 
   const load = useCallback(async () => {
@@ -137,17 +156,17 @@ export default function BoardPage() {
     );
   }
 
-  if (!board || !diagram) return null;
+  if (!board || !diagram || !boardId) return null;
 
   return (
-    <main className="min-h-dvh bg-[#060a13] text-slate-100">
-      <div className="border-b border-white/[0.06] px-4 py-3 flex items-center justify-between gap-3">
+    <main className="flex h-dvh min-h-0 flex-col bg-[#060a13] text-slate-100">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
         <button
           type="button"
           onClick={() => {
             if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) return;
-          router.push("/boards");
-        }}
+            router.push("/boards");
+          }}
           className="text-xs text-slate-400 hover:text-emerald-300"
         >
           ← My boards
@@ -158,39 +177,82 @@ export default function BoardPage() {
           {dirty ? " · Unsaved" : ""}
         </p>
       </div>
-      <div className="mx-auto max-w-5xl p-4">
-        {error ? <p className="mb-2 text-xs text-rose-300">{error}</p> : null}
-        <TacticalBoardEditor
-          diagram={diagram}
-          title={title}
-          shareMode={shareMode}
-          canEdit={board.canEdit}
-          saving={saving}
-          dirty={dirty}
-          onDirtyChange={setDirty}
-          statusMessage={status}
-          onCopyLink={onCopyLink}
-          onDelete={
-            board.canEdit
-              ? async () => {
-                  if (!window.confirm("Delete this board? This cannot be undone.")) return;
-                  const { deleteBoard } = await import("@/lib/boards");
-                  const result = await deleteBoard(boardId!);
-                  if (!result.ok) {
-                    setError(result.error || "Delete failed");
-                    return;
+
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 lg:p-4">
+          {error ? <p className="mb-2 text-xs text-rose-300">{error}</p> : null}
+          <TacticalBoardEditor
+            diagram={diagram}
+            title={title}
+            shareMode={shareMode}
+            canEdit={board.canEdit}
+            saving={saving}
+            dirty={dirty}
+            onDirtyChange={setDirty}
+            statusMessage={status}
+            onCopyLink={onCopyLink}
+            onDelete={
+              board.canEdit
+                ? async () => {
+                    if (!window.confirm("Delete this board? This cannot be undone.")) return;
+                    const { deleteBoard } = await import("@/lib/boards");
+                    const result = await deleteBoard(boardId);
+                    if (!result.ok) {
+                      setError(result.error || "Delete failed");
+                      return;
+                    }
+                    router.push("/boards");
                   }
-                  router.push("/boards");
-                }
-              : undefined
-          }
-          onChange={(next) => {
-            setTitle(next.title);
-            setDiagram(next.diagram);
-            setShareMode(next.shareMode);
-          }}
-          onSave={() => void onSave()}
-        />
+                : undefined
+            }
+            onChange={(next) => {
+              setTitle(next.title);
+              setDiagram(next.diagram);
+              setShareMode(next.shareMode);
+            }}
+            onSave={() => void onSave()}
+          />
+        </div>
+
+        <div className="hidden w-[360px] shrink-0 lg:block xl:w-[400px]">
+          <BoardAiChat
+            boardId={boardId}
+            diagram={diagram}
+            canEdit={board.canEdit}
+            gameModelId={board.gameModelId}
+            ageGroup={board.ageGroup}
+            coachLevel={coachLevel}
+            onApplyDiagram={(next) => {
+              setDiagram(next);
+              setDirty(true);
+              setStatus("AI updated board — save when ready");
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Mobile: compact bottom sheet entry */}
+      <div className="border-t border-white/10 p-2 lg:hidden">
+        <details className="rounded-xl border border-white/10 bg-[#07111f]/95">
+          <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold text-emerald-200">
+            Tactical Edge AI
+          </summary>
+          <div className="h-[50vh] border-t border-white/10">
+            <BoardAiChat
+              boardId={boardId}
+              diagram={diagram}
+              canEdit={board.canEdit}
+              gameModelId={board.gameModelId}
+              ageGroup={board.ageGroup}
+              coachLevel={coachLevel}
+              onApplyDiagram={(next) => {
+                setDiagram(next);
+                setDirty(true);
+                setStatus("AI updated board — save when ready");
+              }}
+            />
+          </div>
+        </details>
       </div>
     </main>
   );
