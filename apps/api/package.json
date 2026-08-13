@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts",
+    "test:all": "jest --runInBand",
     "dev": "nodemon --watch src -e ts,js,json --exec \"ts-node --project tsconfig.json src/index.ts\"",
     "build": "prisma migrate deploy && prisma generate && tsc -p tsconfig.json",
     "start": "node dist/index.js",
@@ -15,6 +16,7 @@
     "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",
     "sandbox:models:report": "ts-node --project tsconfig.json src/scripts/model-sandbox/report.ts",
     "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts",
+    "seed:pilot-coaches": "ts-node --transpile-only --project tsconfig.json src/scripts/seed-pilot-coaches.ts",
     "scenario:board": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-editor.ts",
     "scenario:board-drawing": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-drawing.ts",
     "scenario:board-lines": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-lines.ts",

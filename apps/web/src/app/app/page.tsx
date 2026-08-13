@@ -72,19 +72,19 @@ const PRESSING_DIAGRAM: DiagramV1 = {
 const drillOfDayEntries: Array<{
   title: string;
   focus: string;
-  promptHint: string;
+  sessionQuery: string;
   diagram: DiagramV1;
 }> = [
   {
     title: "Third-Man Combination to Mini Goals",
     focus: "Timing support runs and wall passes in the final third.",
-    promptHint: "Use this structure in U14 attacking sessions with 10 players.",
+    sessionQuery: "ageGroup=U14&phase=ATTACKING&numbersMin=8&numbersMax=12",
     diagram: SAMPLE_DIAGRAM_V1,
   },
   {
     title: "Wide Pressing Trap",
     focus: "Force play to the right sideline, then lock passing lanes.",
-    promptHint: "Build a 20-minute defending phase around this pressing trigger.",
+    sessionQuery: "ageGroup=U14&phase=DEFENDING",
     diagram: PRESSING_DIAGRAM,
   },
 ];
@@ -389,7 +389,7 @@ export default function Home() {
                 <DrillDiagram diagram={drillOfDay.diagram} width={340} height={190} />
               </div>
               <Link
-                href={`/demo/drill?prompt=${encodeURIComponent(drillOfDay.promptHint)}`}
+                href={`/demo/session?${drillOfDay.sessionQuery}`}
                 className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-emerald-200"
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">

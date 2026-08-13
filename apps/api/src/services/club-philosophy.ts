@@ -137,9 +137,9 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
     },
   });
   if (!user) return null;
-  // Platform admins keep free model choice; only club-affiliated coaches are locked.
+  // Platform admins keep free model choice. Club-affiliated coaches, DOCs,
+  // and section directors lock to membership DNA (User.role is not the gate).
   if (user.adminRole) return null;
-  if (user.role !== 'COACH') return null;
 
   const memberships = await prisma.clubMembership.findMany({
     where: { userId },
@@ -220,4 +220,21 @@ export async function resolveClubSessionScope(userId?: string): Promise<{
     clubName: club.name,
     philosophy,
   };
+}
+
+/** Stamp Session.clubId only when the generator belongs to that club's model. */
+export async function resolveSessionClubId(
+  userId: string | undefined,
+  sessionGameModelId?: string | null
+): Promise<string | null> {
+  const scope = await resolveClubSessionScope(userId);
+  if (!scope?.clubId) return null;
+  if (
+    sessionGameModelId &&
+    scope.gameModelId &&
+    String(scope.gameModelId) !== String(sessionGameModelId)
+  ) {
+    return null;
+  }
+  return scope.clubId;
 }

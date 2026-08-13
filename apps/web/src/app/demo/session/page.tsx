@@ -432,7 +432,7 @@ function getConfigFromSearchParams(
   const playerLevel = parseStringOrDefault(searchParams.get("playerLevel"), defaults.playerLevel);
   
   // Get topic from params, or default to first topic for the phase/zone + coach level combination
-  const topicParam = searchParams.get("topic");
+  const topicParam = searchParams.get("topic") || searchParams.get("prompt");
   const availableTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
   const defaultTopic = availableTopics[0] || defaults.topic || "";
   const topic = topicParam && availableTopics.includes(topicParam) ? topicParam : defaultTopic;

@@ -14,7 +14,8 @@ import {
 import { authenticate, optionalAuth, AuthRequest } from "./middleware/auth";
 import { canAccessVault, getAllowedFormatsAndAgeGroups, getFormatFromFormation, getFormatFromAgeGroupForSession } from "./services/access-permissions";
 import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
-import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
+import { getEnforcedClubVaultScope } from "./services/club-game-model-scope";
+import { clubVaultWhere, sessionInClubVaultScope } from "./services/club-session-visibility";
 
 const r = express.Router();
 
@@ -74,6 +75,26 @@ async function applyVaultLimits(
   return { sessions: limitedSessions, drills: limitedDrills, limitExceeded };
 }
 
+function outsideClubVaultResponse(scope: { clubId: string | null; gameModelId: string | null }) {
+  return {
+    ok: false as const,
+    error: "This session is outside your club vault.",
+    enforcedGameModelId: scope.gameModelId,
+  };
+}
+
+function vaultLookupVisible(
+  type: string,
+  data: { clubId?: string | null; gameModelId?: string | null },
+  scope: { clubId: string | null; gameModelId: string | null }
+): boolean {
+  if (type === "session") return sessionInClubVaultScope(data, scope);
+  if (type === "drill" && scope.gameModelId) {
+    return String(data.gameModelId || "") === String(scope.gameModelId);
+  }
+  return true;
+}
+
 // Find sessions not saved to vault (orphaned sessions)
 r.get("/vault/orphaned-sessions", async (req, res) => {
   try {
@@ -106,23 +127,19 @@ r.get("/vault/orphaned-sessions", async (req, res) => {
 
 r.post("/vault/sessions/:sessionId/save", authenticate, async (req: AuthRequest, res) => {
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
 
     // Check vault access permission
     if (req.userId) {
       // Get session to check age group
       const session = await prisma.session.findUnique({
         where: { id: req.params.sessionId },
-        select: { ageGroup: true, gameModelId: true }
+        select: { ageGroup: true, gameModelId: true, clubId: true }
       });
       
       if (session) {
-        if (enforcedGameModelId && String(session.gameModelId) !== enforcedGameModelId) {
-          return res.status(403).json({
-            ok: false,
-            error: `Your club assignment restricts you to ${enforcedGameModelId} sessions only.`,
-            enforcedGameModelId,
-          });
+        if (!sessionInClubVaultScope(session, vaultScope)) {
+          return res.status(403).json(outsideClubVaultResponse(vaultScope));
         }
         const hasPermission = await canAccessVault(req.userId, session.ageGroup);
         if (!hasPermission) {
@@ -166,7 +183,7 @@ r.post("/vault/sessions/:sessionId/remove", async (req, res) => {
 r.get("/vault/sessions", authenticate, async (req: AuthRequest, res) => {
   console.log("[VAULT] GET /vault/sessions - Request received");
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
 
     // Check vault access permission
     if (req.userId) {
@@ -184,7 +201,8 @@ r.get("/vault/sessions", authenticate, async (req: AuthRequest, res) => {
     }
     
     const filters = {
-      gameModelId: enforcedGameModelId || (req.query.gameModelId as string | undefined),
+      clubId: vaultScope.clubId || undefined,
+      gameModelId: vaultScope.gameModelId || (req.query.gameModelId as string | undefined),
       ageGroup: req.query.ageGroup as string | undefined,
       phase: req.query.phase as string | undefined,
       zone: req.query.zone as string | undefined,
@@ -277,7 +295,7 @@ r.get("/vault/sessions", authenticate, async (req: AuthRequest, res) => {
 r.get("/vault/series", authenticate, async (req: AuthRequest, res) => {
   console.log("[VAULT] GET /vault/series - Request received");
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
 
     // Check vault access permission
     if (req.userId) {
@@ -291,11 +309,10 @@ r.get("/vault/series", authenticate, async (req: AuthRequest, res) => {
     }
     
     console.log("[VAULT] Calling getVaultSeries...");
-    let series = await getVaultSeries();
-
-    if (enforcedGameModelId) {
-      series = series.filter((s: any) => String(s.gameModelId || "") === enforcedGameModelId);
-    }
+    let series = await getVaultSeries({
+      clubId: vaultScope.clubId || undefined,
+      gameModelId: vaultScope.gameModelId || undefined,
+    });
     
     // Filter series by format and age group permissions if user has restrictions
     if (req.userId) {
@@ -368,7 +385,7 @@ r.get("/vault/series", authenticate, async (req: AuthRequest, res) => {
 r.get("/vault/series/:seriesId", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const { seriesId } = req.params;
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     console.log("[VAULT] Fetching series with ID:", seriesId);
     
     const sessions = await prisma.session.findMany({
@@ -376,7 +393,7 @@ r.get("/vault/series/:seriesId", optionalAuth, async (req: AuthRequest, res) => 
         seriesId,
         savedToVault: true,
         isSeries: true,
-        ...(enforcedGameModelId ? { gameModelId: enforcedGameModelId as any } : {}),
+        ...clubVaultWhere(vaultScope),
       },
       orderBy: { seriesNumber: "asc" },
     });
@@ -417,7 +434,7 @@ r.post("/vault/series/save", async (req, res) => {
 
 r.post("/vault/sessions/similar", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const schema = z.object({
       gameModelId: z.string(),
       ageGroup: z.string(),
@@ -436,8 +453,8 @@ r.post("/vault/sessions/similar", optionalAuth, async (req: AuthRequest, res) =>
     });
 
     const input = schema.parse(req.body);
-    if (enforcedGameModelId) {
-      input.gameModelId = enforcedGameModelId;
+    if (vaultScope.gameModelId) {
+      input.gameModelId = vaultScope.gameModelId;
     }
     const threshold = input.threshold || 0.85;
     const similar = await findSimilarSessions(
@@ -456,7 +473,8 @@ r.post("/vault/sessions/similar", optionalAuth, async (req: AuthRequest, res) =>
         spaceConstraint: input.spaceConstraint,
         durationMin: input.durationMin,
       },
-      threshold
+      threshold,
+      vaultScope
     );
 
     return res.json({ ok: true, matches: similar, count: similar.length });
@@ -468,7 +486,7 @@ r.post("/vault/sessions/similar", optionalAuth, async (req: AuthRequest, res) =>
 r.get("/vault/sessions/:sessionId", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const { sessionId } = req.params;
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const session = await prisma.session.findUnique({ 
       where: { id: sessionId },
       include: {
@@ -484,12 +502,8 @@ r.get("/vault/sessions/:sessionId", optionalAuth, async (req: AuthRequest, res) 
     if (!session) {
       return res.status(404).json({ ok: false, error: "Session not found" });
     }
-    if (enforcedGameModelId && String(session.gameModelId) !== enforcedGameModelId) {
-      return res.status(403).json({
-        ok: false,
-        error: "This session is outside your club game model scope.",
-        enforcedGameModelId,
-      });
+    if (!sessionInClubVaultScope(session, vaultScope)) {
+      return res.status(403).json(outsideClubVaultResponse(vaultScope));
     }
     return res.json({ ok: true, session });
   } catch (e: any) {
@@ -500,20 +514,16 @@ r.get("/vault/sessions/:sessionId", optionalAuth, async (req: AuthRequest, res) 
 r.get("/vault/sessions/:sessionId/status", optionalAuth, async (req: AuthRequest, res) => {
   try {
     const { sessionId } = req.params;
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      select: { id: true, savedToVault: true, gameModelId: true },
+      select: { id: true, savedToVault: true, gameModelId: true, clubId: true },
     });
     if (!session) {
       return res.status(404).json({ ok: false, error: "Session not found" });
     }
-    if (enforcedGameModelId && String(session.gameModelId) !== enforcedGameModelId) {
-      return res.status(403).json({
-        ok: false,
-        error: "This session is outside your club game model scope.",
-        enforcedGameModelId,
-      });
+    if (!sessionInClubVaultScope(session, vaultScope)) {
+      return res.status(403).json(outsideClubVaultResponse(vaultScope));
     }
     return res.json({ ok: true, savedToVault: session.savedToVault });
   } catch (e: any) {
@@ -524,21 +534,20 @@ r.get("/vault/sessions/:sessionId/status", optionalAuth, async (req: AuthRequest
 // Semantic search endpoint for chat assistant
 r.post("/vault/sessions/search", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const { query, params, limit = 5 } = req.body;
     
     // Build database filters from extracted params
     const where: any = {
       savedToVault: true,
+      ...clubVaultWhere({
+        clubId: vaultScope.clubId,
+        gameModelId: vaultScope.gameModelId || params?.gameModelId,
+      }),
     };
     
     if (params?.ageGroup) {
       where.ageGroup = params.ageGroup;
-    }
-    if (enforcedGameModelId) {
-      where.gameModelId = enforcedGameModelId;
-    } else if (params?.gameModelId) {
-      where.gameModelId = params.gameModelId;
     }
     if (params?.phase) {
       where.phase = params.phase;
@@ -606,7 +615,7 @@ r.post("/vault/sessions/search", optionalAuth, async (req: AuthRequest, res) => 
 // Lookup by reference code (D-XXXX, S-XXXX, SR-XXXX)
 r.get("/vault/lookup/:refCode", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const { refCode } = req.params;
     const parsed = parseRefCode(refCode);
     
@@ -624,7 +633,7 @@ r.get("/vault/lookup/:refCode", optionalAuth, async (req: AuthRequest, res) => {
       const sessions = await prisma.session.findMany({
         where: {
           savedToVault: true,
-          ...(enforcedGameModelId ? { gameModelId: enforcedGameModelId as any } : {}),
+          ...clubVaultWhere(vaultScope),
         },
         select: { id: true, json: true, gameModelId: true, phase: true, zone: true, ageGroup: true, formationUsed: true, playerLevel: true, coachLevel: true, numbersMin: true, numbersMax: true, spaceConstraint: true },
       });
@@ -688,15 +697,10 @@ r.get("/vault/lookup/:refCode", optionalAuth, async (req: AuthRequest, res) => {
         error: `No ${parsed.type} found with reference code ${refCode.toUpperCase()}`,
       });
     }
-    if (
-      enforcedGameModelId &&
-      result?.data?.gameModelId &&
-      String(result.data.gameModelId) !== enforcedGameModelId
-    ) {
+    if (!vaultLookupVisible(result.type, result.data, vaultScope)) {
       return res.status(403).json({
-        ok: false,
-        error: "This item is outside your club game model scope.",
-        enforcedGameModelId,
+        ...outsideClubVaultResponse(vaultScope),
+        error: "This item is outside your club vault.",
       });
     }
     
@@ -716,7 +720,7 @@ r.get("/vault/lookup/:refCode", optionalAuth, async (req: AuthRequest, res) => {
 // Lookup multiple reference codes at once
 r.post("/vault/lookup", optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
     const { refCodes } = req.body;
     
     if (!Array.isArray(refCodes) || refCodes.length === 0) {
@@ -742,7 +746,7 @@ r.post("/vault/lookup", optionalAuth, async (req: AuthRequest, res) => {
         const sessions = await prisma.session.findMany({
           where: {
             savedToVault: true,
-            ...(enforcedGameModelId ? { gameModelId: enforcedGameModelId as any } : {}),
+            ...clubVaultWhere(vaultScope),
           },
           select: { id: true, json: true, gameModelId: true, phase: true, zone: true, ageGroup: true, formationUsed: true, playerLevel: true, coachLevel: true, numbersMin: true, numbersMax: true, spaceConstraint: true },
         });
@@ -798,11 +802,7 @@ r.post("/vault/lookup", optionalAuth, async (req: AuthRequest, res) => {
         }
       }
 
-      if (
-        enforcedGameModelId &&
-        result?.data?.gameModelId &&
-        String(result.data.gameModelId) !== enforcedGameModelId
-      ) {
+      if (result?.data && !vaultLookupVisible(result.type, result.data, vaultScope)) {
         result = null as any;
       }
       

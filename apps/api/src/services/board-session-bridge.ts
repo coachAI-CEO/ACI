@@ -4,6 +4,8 @@
  */
 
 import { prisma } from '../prisma';
+import { clubVaultWhere } from './club-session-visibility';
+import { getEnforcedClubVaultScope } from './club-game-model-scope';
 import { getGameFormatForAgeGroup, getPlayersPerTeamForFormat } from '../prompts/session';
 import type { WebDiagramV1 } from './web-diagram-v1';
 import { inferFormationsFromMessage } from './formation-principles';
@@ -251,11 +253,18 @@ export function buildGeneratorPrompt(params: BoardSessionParams): string {
 
 async function searchVaultSessions(
   params: BoardSessionParams,
+  userId?: string | null,
   limit = 5
 ): Promise<BoardSessionRecommendation[]> {
-  const where: Record<string, unknown> = { savedToVault: true };
+  const vaultScope = await getEnforcedClubVaultScope(userId || undefined);
+  const where: Record<string, unknown> = {
+    savedToVault: true,
+    ...clubVaultWhere({
+      clubId: vaultScope.clubId,
+      gameModelId: vaultScope.gameModelId || params.gameModelId,
+    }),
+  };
   if (params.ageGroup) where.ageGroup = params.ageGroup;
-  if (params.gameModelId) where.gameModelId = params.gameModelId;
   // Prefer phase match but don't over-filter to empty
   const strict = await prisma.session.findMany({
     where: { ...where, phase: params.phase as any },
@@ -352,9 +361,10 @@ export async function runBoardSessionBridge(input: {
   gameModelId?: string | null;
   coachLevel?: string | null;
   playerLevel?: string | null;
+  userId?: string | null;
 }): Promise<BoardSessionBridgeResult> {
   const params = buildBoardSessionParams(input);
-  const recommendations = await searchVaultSessions(params, 5);
+  const recommendations = await searchVaultSessions(params, input.userId, 5);
   const generatorUrl = buildGeneratorUrl(params, { autoGenerate: false });
   const generatorPrompt = buildGeneratorPrompt(params);
 

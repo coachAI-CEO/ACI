@@ -161,6 +161,7 @@ r.post('/boards/:id/ai-chat', async (req: AuthRequest, res) => {
       gameModelId: board.gameModelId,
       clubId: board.clubId,
       coachLevel: user?.coachLevel || null,
+      userId: req.userId,
     });
 
     return res.json({

@@ -223,6 +223,11 @@ model Session {
   generatedBy    String?  // User ID who generated this session
   user           User?    @relation("GeneratedSessions", fields: [generatedBy], references: [id], onDelete: SetNull)
 
+  // Club that owned the generator at create time. Null = independent coach
+  // or legacy row. DOC vault / FORK authz prefer this over gameModelId.
+  clubId String?
+  club   Club?   @relation(fields: [clubId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -233,6 +238,7 @@ model Session {
   @@index([savedToVault])
   @@index([isSeries, seriesId])
   @@index([gameModelId, ageGroup, phase, zone])
+  @@index([clubId])
 }
 
 model SkillFocus {
@@ -742,6 +748,7 @@ model Club {
   sections            Section[]
   accessPermissions   AccessPermission[]
   tacticalBoards      TacticalBoard[]
+  sessions            Session[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.

@@ -6,8 +6,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-    const headers: HeadersInit = { "Content-Type": "application/json" };
-    if (authHeader) headers.Authorization = authHeader;
+    if (!authHeader) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const headers: HeadersInit = { "Content-Type": "application/json", Authorization: authHeader };
 
     const res = await fetch(`${API_BASE}/api/diagram-svg/generate`, {
       method: "POST",

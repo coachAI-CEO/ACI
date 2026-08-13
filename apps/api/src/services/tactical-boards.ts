@@ -11,6 +11,7 @@ import {
   parseClientGameModelId,
   resolveBoardClubStamp,
 } from './board-club-stamp';
+import { sessionVisibleToClub } from './club-session-visibility';
 import { BOARD_TITLE_MAX_LEN, parseWebDiagramV1 } from './board-diagram-schema';
 import {
   DEFAULT_MATCH_BOARD_DIAGRAM,
@@ -218,7 +219,12 @@ export async function resolveBoardAccess(
 
 async function canForkSession(
   userId: string,
-  session: { generatedBy: string | null; savedToVault: boolean; gameModelId: GameModelId },
+  session: {
+    generatedBy: string | null;
+    savedToVault: boolean;
+    gameModelId: GameModelId;
+    clubId: string | null;
+  },
   isSuperAdmin: boolean
 ): Promise<boolean> {
   if (isSuperAdmin) return true;
@@ -229,12 +235,20 @@ async function canForkSession(
   const memberships = await prisma.clubMembership.findMany({
     where: { userId },
     select: {
-      club: { select: { gameModelId: true, active: true } },
+      clubId: true,
+      club: { select: { id: true, gameModelId: true, active: true } },
     },
   });
 
   return memberships.some(
-    (m) => m.club?.active !== false && m.club.gameModelId === session.gameModelId
+    (m) =>
+      m.club?.active !== false &&
+      sessionVisibleToClub({
+        sessionClubId: session.clubId,
+        sessionGameModelId: session.gameModelId,
+        clubId: m.club.id,
+        clubGameModelId: m.club.gameModelId,
+      })
   );
 }
 
@@ -363,6 +377,7 @@ export async function createForkBoard(userId: string, body: any, isSuperAdmin: b
       generatedBy: true,
       savedToVault: true,
       gameModelId: true,
+      clubId: true,
       ageGroup: true,
       json: true,
       title: true,

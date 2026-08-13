@@ -13,6 +13,7 @@ import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
 import { generateDrillDiagramSvg } from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
+import { resolveSessionClubId } from "./club-philosophy";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -1182,7 +1183,8 @@ export async function generateAndReviewSession(
       
       // Track who generated this session
       generatedBy: userId || null,
-      
+      clubId: (await resolveSessionClubId(userId, String(input.gameModelId))) || undefined,
+
       json: jsonForDb,
     },
   });

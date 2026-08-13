@@ -2386,6 +2386,7 @@ export async function runBoardAiChat(input: {
   gameModelId?: string | null;
   clubId?: string | null;
   coachLevel?: string | null;
+  userId?: string | null;
 }): Promise<BoardAiChatResult> {
   const audience = resolveBoardAudience({
     coachLevel: input.coachLevel,
@@ -2437,6 +2438,7 @@ export async function runBoardAiChat(input: {
       gameModelId: playModel.gameModelId || input.gameModelId,
       coachLevel: audience.coachLevel,
       playerLevel: audience.playerLevel,
+      userId: input.userId,
     });
     return {
       ...resultBase,

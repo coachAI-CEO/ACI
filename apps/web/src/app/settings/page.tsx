@@ -52,6 +52,8 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMessage, setBillingMessage] = useState<string | null>(null);
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [authErrorDetail, setAuthErrorDetail] = useState<string | null>(null);
@@ -432,6 +434,75 @@ export default function SettingsPage() {
               {profileSaving ? "Saving..." : "Save profile"}
             </button>
           </form>
+        </section>
+
+        <section className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+          <h2 className="text-lg font-semibold text-slate-200">Plan and billing</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Your current plan. Change it on Pricing, or open the Stripe portal to update payment details.
+          </p>
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-slate-300">
+              Plan:{" "}
+              <span className="font-medium text-slate-100">
+                {user?.subscriptionPlan || "FREE"}
+              </span>
+              {user?.subscriptionStatus ? (
+                <span className="text-slate-500"> · {user.subscriptionStatus}</span>
+              ) : null}
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/pricing"
+                className="rounded-lg border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors"
+              >
+                View plans
+              </Link>
+              <button
+                type="button"
+                onClick={async () => {
+                  const token = localStorage.getItem("accessToken");
+                  if (!token) return;
+                  setBillingMessage(null);
+                  setBillingBusy(true);
+                  try {
+                    const res = await fetch("/api/billing/customer-portal", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        returnUrl:
+                          typeof window !== "undefined"
+                            ? `${window.location.origin}/settings`
+                            : undefined,
+                      }),
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && data.url) {
+                      window.location.href = data.url;
+                      return;
+                    }
+                    setBillingMessage(
+                      data.error || "Could not open billing portal. Use View plans if you have not subscribed yet."
+                    );
+                  } catch {
+                    setBillingMessage("Could not open billing portal.");
+                  } finally {
+                    setBillingBusy(false);
+                  }
+                }}
+                disabled={billingBusy}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
+              >
+                {billingBusy ? "Opening..." : "Manage billing"}
+              </button>
+            </div>
+            {billingMessage ? (
+              <p className="text-sm text-amber-300">{billingMessage}</p>
+            ) : null}
+          </div>
         </section>
 
         {/* Preferences */}

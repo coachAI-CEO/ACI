@@ -2,6 +2,7 @@ import { ClubRole } from '@prisma/client';
 import { prisma } from '../prisma';
 import { getVaultSessions } from './vault';
 import { listClubCoaches, resolveWeekBounds } from './club-coach-overview';
+import { sessionVisibleToClub } from './club-session-visibility';
 
 export class ClubCalendarAssignError extends Error {
   status: number;
@@ -106,7 +107,7 @@ async function findDayConflicts(coachUserId: string, scheduledDate: Date) {
   });
 }
 
-async function loadAssignableSession(sessionId: string, clubGameModelId: string) {
+async function loadAssignableSession(sessionId: string, clubId: string, clubGameModelId: string) {
   const session = await prisma.session.findUnique({
     where: { id: sessionId },
     select: {
@@ -116,6 +117,7 @@ async function loadAssignableSession(sessionId: string, clubGameModelId: string)
       durationMin: true,
       savedToVault: true,
       gameModelId: true,
+      clubId: true,
       ageGroup: true,
     },
   });
@@ -129,11 +131,18 @@ async function loadAssignableSession(sessionId: string, clubGameModelId: string)
       'Only vault sessions can be assigned from DOC Hub'
     );
   }
-  if (String(session.gameModelId) !== String(clubGameModelId)) {
+  if (
+    !sessionVisibleToClub({
+      sessionClubId: session.clubId,
+      sessionGameModelId: String(session.gameModelId),
+      clubId,
+      clubGameModelId,
+    })
+  ) {
     throw new ClubCalendarAssignError(
       400,
-      'SESSION_GAME_MODEL_MISMATCH',
-      `Session game model ${session.gameModelId} does not match club model ${clubGameModelId}`
+      'SESSION_CLUB_MISMATCH',
+      'Session does not belong to this club'
     );
   }
   return session;
@@ -190,6 +199,7 @@ export async function listClubVaultSessions(input: {
 }) {
   const gameModelId = await getClubGameModelId(input.clubId);
   const result = await getVaultSessions({
+    clubId: input.clubId,
     gameModelId,
     ageGroup: input.ageGroup || undefined,
     limit: input.limit || 100,
@@ -226,7 +236,7 @@ export async function assignSessionToCoach(
 ) {
   await assertRequesterManagesCoach(scope, input.coachUserId);
   const clubGameModelId = await getClubGameModelId(scope.clubId);
-  const session = await loadAssignableSession(input.sessionId, clubGameModelId);
+  const session = await loadAssignableSession(input.sessionId, scope.clubId, clubGameModelId);
 
   if (!input.allowConflict) {
     const conflicts = await findDayConflicts(input.coachUserId, input.scheduledDate);
@@ -293,10 +303,11 @@ export async function autoPopulateCoachWeek(
 
   if (input.sessionIds && input.sessionIds.length > 0) {
     for (const id of input.sessionIds) {
-      sessionPool.push(await loadAssignableSession(id, clubGameModelId));
+      sessionPool.push(await loadAssignableSession(id, scope.clubId, clubGameModelId));
     }
   } else {
     const vault = await getVaultSessions({
+      clubId: scope.clubId,
       gameModelId: clubGameModelId,
       ageGroup: input.ageGroup || undefined,
       limit: 20,

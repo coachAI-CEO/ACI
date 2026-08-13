@@ -1,5 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { authenticate, AuthRequest } from "../middleware/auth";
+import { getEnforcedClubVaultScope } from "../services/club-game-model-scope";
+import { drillDiagramVisible } from "../services/diagram-svg-access";
 import { drillToDrawerParams } from "../mappers/drill-to-drawer-params";
 import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-drawer-prompt";
 import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "../services/gemini-drawer";
@@ -49,7 +52,32 @@ function resolveGoalsAvailable(drill: any): number {
   return 0;
 }
 
-diagramSvgRouter.post("/generate", async (req, res) => {
+async function userMayAccessDrillDiagram(
+  req: AuthRequest,
+  drill: { generatedBy: string | null; savedToVault: boolean; gameModelId: string }
+): Promise<boolean> {
+  if (!req.user || !req.userId) return false;
+  const [scope, userRow] = await Promise.all([
+    getEnforcedClubVaultScope(req.userId),
+    prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { role: true, adminRole: true },
+    }),
+  ]);
+  return drillDiagramVisible({
+    generatedBy: drill.generatedBy,
+    savedToVault: drill.savedToVault,
+    gameModelId: String(drill.gameModelId),
+    userId: req.userId,
+    isAdmin: userRow?.role === "ADMIN" || Boolean(userRow?.adminRole),
+    vaultScope: scope,
+  });
+}
+
+diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) => {
+  if (!req.user || !req.userId) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
   const drillId = typeof req.body?.drillId === "string" ? req.body.drillId : "";
   const force = req.body?.force === true;
   const requestGoalsAvailable = Number(req.body?.goalsAvailable);
@@ -64,6 +92,10 @@ diagramSvgRouter.post("/generate", async (req, res) => {
     },
   });
   if (!drill) return res.status(404).json({ error: "drill not found" });
+
+  if (!(await userMayAccessDrillDiagram(req, drill))) {
+    return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
+  }
 
   // COOLDOWN has no formation/ball work to draw -- don't spend a Gemini
   // call drawing one. The client shows the session summary instead.
@@ -162,7 +194,10 @@ diagramSvgRouter.post("/generate", async (req, res) => {
   });
 });
 
-diagramSvgRouter.get("/:drillId", async (req, res) => {
+diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) => {
+  if (!req.user || !req.userId) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
   const { drillId } = req.params;
   const drill = await prisma.drill.findFirst({
     where: {
@@ -171,10 +206,20 @@ diagramSvgRouter.get("/:drillId", async (req, res) => {
         { refCode: drillId },
       ],
     },
-    select: { id: true, diagramSvg: true },
+    select: {
+      id: true,
+      diagramSvg: true,
+      generatedBy: true,
+      savedToVault: true,
+      gameModelId: true,
+    },
   });
 
   if (!drill) return res.status(404).json({ error: "drill not found" });
+
+  if (!(await userMayAccessDrillDiagram(req, drill))) {
+    return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
+  }
 
   const svg = drill.diagramSvg;
   return res.json({

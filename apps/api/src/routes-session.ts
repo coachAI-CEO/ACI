@@ -9,7 +9,10 @@ import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, optionalAuth, requireFeature, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
 import { canGenerateSessions } from "./services/access-permissions";
-import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
+import {
+  getEnforcedClubGameModelId,
+  getEnforcedClubVaultScope,
+} from "./services/club-game-model-scope";
 import {
   philosophyHasContent,
   resolveClubSessionScope,
@@ -445,7 +448,11 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
     if (!skipRecommendation) {
       try {
         if (baseInput.gameModelId && baseInput.ageGroup) {
-          recommendations = await findSimilarSessions(baseInput, 0.85);
+          recommendations = await findSimilarSessions(
+            baseInput,
+            0.85,
+            await getEnforcedClubVaultScope(req.userId)
+          );
           const seriesRecommendations = recommendations.filter(r => r.session.isSeries);
           if (seriesRecommendations.length > 0) {
             return res.json({

@@ -9,6 +9,7 @@ import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
 import { generateDrillDiagramSvg } from "./drill-diagram-svg";
+import { resolveSessionClubId } from "./club-philosophy";
 import {
   normalizeGoalkeeperPositions,
   enforceConditionedGameFormatDiagram,
@@ -585,6 +586,7 @@ export async function generateProgressiveSessionSeries(
         numbersMin: baseInput.numbersMin,
         numbersMax: baseInput.numbersMax,
         generatedBy: userId || null,
+        clubId: (await resolveSessionClubId(userId, String(baseInput.gameModelId))) || undefined,
         principleIds: Array.isArray(jsonForDb.principleIds) 
           ? jsonForDb.principleIds 
           : [],

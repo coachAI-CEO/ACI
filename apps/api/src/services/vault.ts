@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
 import type { SessionPromptInput } from "../prompts/session";
+import { clubVaultWhere } from "./club-session-visibility";
 
 async function generateEmbedding(text: string): Promise<number[]> {
   const hash = text.split("").reduce((acc, char) => ((acc << 5) - acc) + char.charCodeAt(0), 0);
@@ -55,13 +56,14 @@ function getGameFormatFromFormation(formation: string | undefined | null): strin
 
 export async function findSimilarSessions(
   input: SessionPromptInput,
-  threshold: number = 0.85
+  threshold: number = 0.85,
+  scope?: { clubId?: string | null; gameModelId?: string | null }
 ): Promise<Array<{ session: any; similarity: number; matchReason: string }>> {
   // Derive game format from input formation
   const inputGameFormat = getGameFormatFromFormation(input.formationAttacking);
   
   const vaultSessions = await prisma.session.findMany({
-    where: { savedToVault: true },
+    where: { savedToVault: true, ...clubVaultWhere(scope || {}) },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
@@ -201,12 +203,15 @@ export async function getVaultSessions(filters?: {
   limit?: number;
   offset?: number;
   excludeSeries?: boolean;
+  clubId?: string;
 }) {
-  const where: any = { savedToVault: true };
+  const where: any = {
+    savedToVault: true,
+    ...clubVaultWhere({ clubId: filters?.clubId, gameModelId: filters?.gameModelId }),
+  };
   if (filters?.excludeSeries !== false) {
     where.isSeries = false;
   }
-  if (filters?.gameModelId) where.gameModelId = filters.gameModelId;
   if (filters?.ageGroup) where.ageGroup = filters.ageGroup;
   if (filters?.phase) where.phase = filters.phase;
   if (filters?.zone) where.zone = filters.zone;
@@ -249,9 +254,16 @@ export async function saveSeriesToVault(seriesId: string, sessionIds: string[]):
   return { success: true };
 }
 
-export async function getVaultSeries() {
+export async function getVaultSeries(filters?: {
+  clubId?: string;
+  gameModelId?: string;
+}) {
   const seriesSessions = await prisma.session.findMany({
-    where: { savedToVault: true, isSeries: true },
+    where: {
+      savedToVault: true,
+      isSeries: true,
+      ...clubVaultWhere(filters || {}),
+    },
     orderBy: [{ seriesId: "asc" }, { seriesNumber: "asc" }],
     include: {
       user: {

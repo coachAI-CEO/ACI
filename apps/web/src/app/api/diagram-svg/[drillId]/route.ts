@@ -9,8 +9,10 @@ export async function GET(
   try {
     const { drillId } = await params;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-    const headers: HeadersInit = {};
-    if (authHeader) headers.Authorization = authHeader;
+    if (!authHeader) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const headers: HeadersInit = { Authorization: authHeader };
 
     const res = await fetch(`${API_BASE}/api/diagram-svg/${encodeURIComponent(drillId)}`, {
       headers,
