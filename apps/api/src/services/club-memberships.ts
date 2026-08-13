@@ -16,10 +16,18 @@ export type ClubMembershipSummary = {
   clubName: string;
   sectionId: string | null;
   role: ClubRole;
+  gameModelId: string;
 };
 
 export function isClubMembershipRole(value: unknown): value is ClubRole {
   return typeof value === 'string' && CLUB_MEMBERSHIP_ROLES.includes(value as ClubRole);
+}
+
+/** Session/vault lock prefers a COACH membership, else the oldest membership. */
+export function pickCoachPreferredMembership<T extends { role: ClubRole }>(
+  memberships: T[]
+): T | null {
+  return memberships.find((m) => m.role === ClubRole.COACH) || memberships[0] || null;
 }
 
 export async function listClubMembershipsForUser(
@@ -32,7 +40,7 @@ export async function listClubMembershipsForUser(
       clubId: true,
       sectionId: true,
       role: true,
-      club: { select: { name: true } },
+      club: { select: { name: true, gameModelId: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -43,6 +51,7 @@ export async function listClubMembershipsForUser(
     clubName: row.club.name,
     sectionId: row.sectionId,
     role: row.role,
+    gameModelId: row.club.gameModelId,
   }));
 }
 
@@ -60,7 +69,7 @@ export async function listClubMembershipsForUsers(
       clubId: true,
       sectionId: true,
       role: true,
-      club: { select: { name: true } },
+      club: { select: { name: true, gameModelId: true } },
     },
     orderBy: { createdAt: 'asc' },
   });
@@ -73,6 +82,7 @@ export async function listClubMembershipsForUsers(
       clubName: row.club.name,
       sectionId: row.sectionId,
       role: row.role,
+      gameModelId: row.club.gameModelId,
     });
     byUser.set(row.userId, list);
   }
@@ -112,7 +122,7 @@ export async function upsertClubMembership(input: {
       clubId: true,
       sectionId: true,
       role: true,
-      club: { select: { name: true } },
+      club: { select: { name: true, gameModelId: true } },
     },
   });
 
@@ -122,6 +132,7 @@ export async function upsertClubMembership(input: {
     clubName: row.club.name,
     sectionId: row.sectionId,
     role: row.role,
+    gameModelId: row.club.gameModelId,
   };
 }
 

@@ -6,6 +6,8 @@
  * redirecting away from /login as the previous user.
  */
 
+import { invalidateAuthMeCache } from "@/lib/auth-me";
+
 function cookieSecureSuffix(): string {
   if (typeof window === "undefined") return "";
   // Secure cookies on http://localhost are allowed in Chromium, but clearing
@@ -37,4 +39,5 @@ export function clearAuthStorage(): void {
   localStorage.removeItem("refreshToken");
   localStorage.removeItem("user");
   clearAccessTokenCookie();
+  invalidateAuthMeCache();
 }

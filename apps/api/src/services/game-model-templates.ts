@@ -135,24 +135,34 @@ function mapRow(row: {
   };
 }
 
-/** Ensure all five templates exist (idempotent). */
+let seedPromise: Promise<void> | null = null;
+
+/** Ensure all five templates exist (idempotent, once per process). */
 export async function ensureGameModelTemplatesSeeded(): Promise<void> {
-  for (const t of DEFAULT_TEMPLATES) {
-    await prisma.gameModelTemplate.upsert({
-      where: { gameModelId: t.gameModelId },
-      create: {
-        gameModelId: t.gameModelId,
-        label: t.label,
-        summary: t.summary,
-        exclusive: t.exclusive,
-        attackingOrganization: t.attackingOrganization,
-        defensiveTransition: t.defensiveTransition,
-        defensiveOrganization: t.defensiveOrganization,
-        attackingTransition: t.attackingTransition,
-      },
-      update: {},
+  if (!seedPromise) {
+    seedPromise = (async () => {
+      for (const t of DEFAULT_TEMPLATES) {
+        await prisma.gameModelTemplate.upsert({
+          where: { gameModelId: t.gameModelId },
+          create: {
+            gameModelId: t.gameModelId,
+            label: t.label,
+            summary: t.summary,
+            exclusive: t.exclusive,
+            attackingOrganization: t.attackingOrganization,
+            defensiveTransition: t.defensiveTransition,
+            defensiveOrganization: t.defensiveOrganization,
+            attackingTransition: t.attackingTransition,
+          },
+          update: {},
+        });
+      }
+    })().catch((err) => {
+      seedPromise = null;
+      throw err;
     });
   }
+  await seedPromise;
 }
 
 export async function listGameModelTemplates(): Promise<GameModelTemplateRecord[]> {
@@ -167,6 +177,10 @@ export async function getGameModelTemplate(
   gameModelId: string
 ): Promise<GameModelTemplateRecord | null> {
   if (!Object.values(GameModelId).includes(gameModelId as GameModelId)) return null;
+  const existing = await prisma.gameModelTemplate.findUnique({
+    where: { gameModelId: gameModelId as GameModelId },
+  });
+  if (existing) return mapRow(existing);
   await ensureGameModelTemplatesSeeded();
   const row = await prisma.gameModelTemplate.findUnique({
     where: { gameModelId: gameModelId as GameModelId },

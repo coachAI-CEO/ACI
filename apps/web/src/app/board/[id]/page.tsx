@@ -14,6 +14,7 @@ import {
 } from "@/lib/boards";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures } from "@/lib/features";
+import { fetchAuthMe } from "@/lib/auth-me";
 import { useBoardLoadProgress } from "@/lib/use-board-load-progress";
 
 function BoardLoadingScreen({
@@ -93,10 +94,7 @@ export default function BoardPage() {
       setCoachLevel(null);
       return;
     }
-    fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    fetchAuthMe()
       .then((data) => {
         const level = data?.user?.coachLevel || null;
         setCoachLevel(typeof level === "string" ? level : null);

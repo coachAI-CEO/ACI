@@ -5,6 +5,8 @@ import {
   loginUser, 
   refreshAccessToken,
   checkUsageLimit,
+  computeUsageLimitFromUser,
+  getFeaturesForAuthUser,
   verifyEmail,
   resendVerificationEmail,
   requestPasswordReset,
@@ -15,61 +17,9 @@ import {
 import { authenticate } from './middleware/auth';
 import { prisma } from './prisma';
 import { SUBSCRIPTION_LIMITS } from './config/subscription-limits';
-import { getEnforcedClubGameModelId } from './services/club-game-model-scope';
-import { resolveClubSessionScope } from './services/club-philosophy';
-import { listClubMembershipsForUser } from './services/club-memberships';
-import {
-  isTacticalBoardV1Enabled,
-  resolveBoardClubStamp,
-} from './services/board-club-stamp';
+import { loadAuthMeClubFields } from './services/club-game-model-scope';
 
 type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
-type SubscriptionFeatures = {
-  canExportPDF: boolean;
-  canGenerateSeries: boolean;
-  canUseAdvancedFilters: boolean;
-  canAccessCalendar: boolean;
-  canCreatePlayerPlans: boolean;
-  canGenerateWeeklySummaries: boolean;
-  canInviteCoaches: boolean;
-  canManageOrganization: boolean;
-  tacticalBoardV1: boolean;
-};
-
-function getFeaturesForAuthUser(input: {
-  subscriptionPlan?: SubscriptionPlanKey | string | null;
-  adminRole?: string | null;
-}): SubscriptionFeatures {
-  if (input.adminRole === 'SUPER_ADMIN') {
-    return {
-      canExportPDF: true,
-      canGenerateSeries: true,
-      canUseAdvancedFilters: true,
-      canAccessCalendar: true,
-      canCreatePlayerPlans: true,
-      canGenerateWeeklySummaries: true,
-      canInviteCoaches: true,
-      canManageOrganization: true,
-      tacticalBoardV1: isTacticalBoardV1Enabled(),
-    };
-  }
-
-  const plan = (input.subscriptionPlan && input.subscriptionPlan in SUBSCRIPTION_LIMITS
-    ? input.subscriptionPlan
-    : 'FREE') as SubscriptionPlanKey;
-  const limits = SUBSCRIPTION_LIMITS[plan];
-  return {
-    canExportPDF: limits.canExportPDF,
-    canGenerateSeries: limits.canGenerateSeries,
-    canUseAdvancedFilters: limits.canUseAdvancedFilters,
-    canAccessCalendar: limits.canAccessCalendar,
-    canCreatePlayerPlans: limits.canCreatePlayerPlans,
-    canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
-    canInviteCoaches: limits.canInviteCoaches,
-    canManageOrganization: limits.canManageOrganization,
-    tacticalBoardV1: isTacticalBoardV1Enabled(),
-  };
-}
 
 /** Shape of user returned by GET /auth/me (select + preferences) */
 interface AuthMeUser {
@@ -234,6 +184,7 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
         teamAgeGroups: true,
         sessionsGeneratedThisMonth: true,
         drillsGeneratedThisMonth: true,
+        lastResetDate: true,
         trialEndDate: true,
         emailVerified: true,
         emailVerifiedAt: true,
@@ -241,20 +192,26 @@ r.get('/auth/me', authenticate, async (req: any, res) => {
       },
     });
 
-    const user = raw ? { ...raw, preferences: null as unknown } as AuthMeUser : null;
-    
-    if (!user) {
+    if (!raw) {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
-    const clubScope = await resolveClubSessionScope(req.userId);
-    const boardStamp = await resolveBoardClubStamp(req.userId);
-    const enforcedGameModelId =
-      clubScope?.gameModelId || (await getEnforcedClubGameModelId(req.userId));
-    const clubMemberships = await listClubMembershipsForUser(req.userId);
-    
-    // Get usage limits
-    const sessionLimit = await checkUsageLimit(req.userId, 'session');
-    const drillLimit = await checkUsageLimit(req.userId, 'drill');
+    const { lastResetDate, ...publicUser } = raw;
+    const user = { ...publicUser, preferences: null as unknown } as AuthMeUser;
+    const { clubMemberships, clubScope, boardStamp } = await loadAuthMeClubFields({
+      id: raw.id,
+      adminRole: raw.adminRole,
+      organizationName: raw.organizationName,
+    });
+    const enforcedGameModelId = clubScope?.gameModelId || null;
+    const usageUser = {
+      adminRole: raw.adminRole,
+      subscriptionPlan: raw.subscriptionPlan,
+      sessionsGeneratedThisMonth: raw.sessionsGeneratedThisMonth,
+      drillsGeneratedThisMonth: raw.drillsGeneratedThisMonth,
+      lastResetDate,
+    };
+    const sessionLimit = computeUsageLimitFromUser(usageUser, 'session');
+    const drillLimit = computeUsageLimitFromUser(usageUser, 'drill');
     
     // Get subscription features (SUPER_ADMIN has no feature limits)
     const features = getFeaturesForAuthUser({

@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
+import { seedAuthMeFromUser } from "@/lib/auth-me";
 
 export default function RegisterPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
@@ -71,6 +72,7 @@ export default function RegisterPage() {
       // Store user info
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user));
+        seedAuthMeFromUser(data.user, data.tokens?.accessToken);
         // Dispatch custom event to notify AuthButton
         window.dispatchEvent(new Event("userLogin"));
       }

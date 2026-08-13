@@ -11,6 +11,7 @@ import {
 } from "react";
 import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
 import type { ClubOption } from "./types";
+import { fetchAuthMe } from "@/lib/auth-me";
 import { authHeaders, readStoredClubId, writeStoredClubId } from "./utils";
 
 type AccessState = "checking" | "allowed" | "denied";
@@ -55,20 +56,9 @@ export function DocHubProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (res) => {
-        if (!res.ok) return;
-        const data = await res.json();
+    fetchAuthMe()
+      .then((data) => {
         if (data?.ok && data.user) {
-          try {
-            const existing = readStoredUser() || {};
-            localStorage.setItem("user", JSON.stringify({ ...existing, ...data.user }));
-            window.dispatchEvent(new Event("userLogin"));
-          } catch {
-            /* ignore */
-          }
           applyUser(data.user);
         }
       })

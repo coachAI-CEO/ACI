@@ -4,6 +4,7 @@ import { Suspense, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
+import { seedAuthMeFromUser } from "@/lib/auth-me";
 
 export default function LoginPage() {
   return (
@@ -64,6 +65,7 @@ function LoginContent() {
 
       if (data.user) {
         localStorage.setItem("user", JSON.stringify(data.user));
+        seedAuthMeFromUser(data.user, data.tokens?.accessToken);
         window.dispatchEvent(new Event("userLogin"));
 
         if (data.user.emailVerified === false) {

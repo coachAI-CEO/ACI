@@ -8,6 +8,7 @@ import {
   listBoards,
   type TacticalBoardSummary,
 } from "@/lib/boards";
+import { fetchAuthMe } from "@/lib/auth-me";
 
 type Props = {
   enabled: boolean;
@@ -19,14 +20,13 @@ async function resolveCreateGameModelId(): Promise<string | undefined> {
   try {
     const token = localStorage.getItem("accessToken");
     if (!token) return undefined;
-    const res = await fetch("/api/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return undefined;
-    const data = await res.json();
+    const data = await fetchAuthMe();
+    if (!data?.ok) return undefined;
     return (
-      data?.user?.boardStamp?.gameModelId ||
-      data?.user?.enforcedGameModelId ||
+      (data.user?.boardStamp as { gameModelId?: string } | undefined)?.gameModelId ||
+      (typeof data.user?.enforcedGameModelId === "string"
+        ? data.user.enforcedGameModelId
+        : undefined) ||
       undefined
     );
   } catch {

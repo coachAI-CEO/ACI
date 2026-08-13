@@ -3,7 +3,12 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
 import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from './email';
-import { listClubMembershipsForUser } from './club-memberships';
+import { isTacticalBoardV1Enabled } from './board-club-stamp';
+import {
+  listClubMembershipsForUser,
+  pickCoachPreferredMembership,
+  type ClubMembershipSummary,
+} from './club-memberships';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key-change-in-production';
@@ -14,6 +19,116 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+}
+
+type SubscriptionPlanKey = keyof typeof SUBSCRIPTION_LIMITS;
+
+export type SubscriptionFeatures = {
+  canExportPDF: boolean;
+  canGenerateSeries: boolean;
+  canUseAdvancedFilters: boolean;
+  canAccessCalendar: boolean;
+  canCreatePlayerPlans: boolean;
+  canGenerateWeeklySummaries: boolean;
+  canInviteCoaches: boolean;
+  canManageOrganization: boolean;
+  tacticalBoardV1: boolean;
+};
+
+export function getFeaturesForAuthUser(input: {
+  subscriptionPlan?: SubscriptionPlanKey | string | null;
+  adminRole?: string | null;
+}): SubscriptionFeatures {
+  if (input.adminRole === 'SUPER_ADMIN') {
+    return {
+      canExportPDF: true,
+      canGenerateSeries: true,
+      canUseAdvancedFilters: true,
+      canAccessCalendar: true,
+      canCreatePlayerPlans: true,
+      canGenerateWeeklySummaries: true,
+      canInviteCoaches: true,
+      canManageOrganization: true,
+      tacticalBoardV1: isTacticalBoardV1Enabled(),
+    };
+  }
+
+  const plan = (input.subscriptionPlan && input.subscriptionPlan in SUBSCRIPTION_LIMITS
+    ? input.subscriptionPlan
+    : 'FREE') as SubscriptionPlanKey;
+  const limits = SUBSCRIPTION_LIMITS[plan];
+  return {
+    canExportPDF: limits.canExportPDF,
+    canGenerateSeries: limits.canGenerateSeries,
+    canUseAdvancedFilters: limits.canUseAdvancedFilters,
+    canAccessCalendar: limits.canAccessCalendar,
+    canCreatePlayerPlans: limits.canCreatePlayerPlans,
+    canGenerateWeeklySummaries: limits.canGenerateWeeklySummaries,
+    canInviteCoaches: limits.canInviteCoaches,
+    canManageOrganization: limits.canManageOrganization,
+    tacticalBoardV1: isTacticalBoardV1Enabled(),
+  };
+}
+
+type UsageLimitUser = {
+  adminRole?: string | null;
+  subscriptionPlan: keyof typeof SUBSCRIPTION_LIMITS;
+  sessionsGeneratedThisMonth: number;
+  drillsGeneratedThisMonth: number;
+  lastResetDate: Date;
+};
+
+/** Display-only usage snapshot — no monthly-reset write. */
+export function computeUsageLimitFromUser(
+  user: UsageLimitUser,
+  operation: 'session' | 'drill'
+): { allowed: boolean; limit: number; used: number; remaining: number } {
+  if (user.adminRole === 'SUPER_ADMIN') {
+    return { allowed: true, limit: -1, used: 0, remaining: -1 };
+  }
+
+  const limits = SUBSCRIPTION_LIMITS[user.subscriptionPlan];
+  const limit: number =
+    operation === 'session' ? limits.sessionsPerMonth : limits.drillsPerMonth;
+  const daysSinceReset = Math.floor(
+    (Date.now() - new Date(user.lastResetDate).getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const used =
+    daysSinceReset >= 30
+      ? 0
+      : operation === 'session'
+        ? user.sessionsGeneratedThisMonth
+        : user.drillsGeneratedThisMonth;
+
+  if (limit === -1) {
+    return { allowed: true, limit: -1, used, remaining: -1 };
+  }
+
+  const remaining = limit - used;
+  return { allowed: remaining > 0, limit, used, remaining };
+}
+
+function loginClubFields(
+  adminRole: string | null | undefined,
+  clubMemberships: ClubMembershipSummary[],
+  subscriptionPlan?: string | null
+): {
+  enforcedGameModelId: string | null;
+  clubId: string | null;
+  clubName: string | null;
+  features: SubscriptionFeatures;
+} {
+  const features = getFeaturesForAuthUser({ subscriptionPlan, adminRole });
+  if (adminRole) {
+    return { enforcedGameModelId: null, clubId: null, clubName: null, features };
+  }
+  const preferred = pickCoachPreferredMembership(clubMemberships);
+  return {
+    enforcedGameModelId: preferred?.gameModelId || null,
+    clubId: preferred?.clubId || null,
+    clubName: preferred?.clubName || null,
+    features,
+  };
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -136,6 +251,7 @@ export async function registerUser(data: {
   const accessToken = generateAccessToken(user.id, user.role);
   const refreshToken = await createRefreshToken(user.id, data.ipAddress, data.userAgent);
   const clubMemberships = await listClubMembershipsForUser(user.id);
+  const adminRole = (user as any).adminRole ?? null;
 
   return {
     user: {
@@ -144,9 +260,10 @@ export async function registerUser(data: {
       name: user.name,
       role: user.role,
       subscriptionPlan: user.subscriptionPlan,
-      adminRole: (user as any).adminRole ?? null,
+      adminRole,
       emailVerified: user.emailVerified,
       clubMemberships,
+      ...loginClubFields(adminRole, clubMemberships, user.subscriptionPlan),
     },
     tokens: {
       accessToken,
@@ -221,6 +338,7 @@ export async function loginUser(email: string, password: string, ipAddress?: str
   const accessToken = generateAccessToken(user.id, user.role);
   const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
   const clubMemberships = await listClubMembershipsForUser(updatedUser!.id);
+  const adminRole = (updatedUser as any).adminRole ?? null;
 
   return {
     user: {
@@ -229,9 +347,10 @@ export async function loginUser(email: string, password: string, ipAddress?: str
       name: updatedUser!.name,
       role: updatedUser!.role,
       subscriptionPlan: updatedUser!.subscriptionPlan,
-      adminRole: (updatedUser as any).adminRole ?? null,
+      adminRole,
       emailVerified: updatedUser!.emailVerified,
       clubMemberships,
+      ...loginClubFields(adminRole, clubMemberships, updatedUser!.subscriptionPlan),
     },
     tokens: {
       accessToken,
@@ -280,23 +399,15 @@ export async function checkUsageLimit(
     throw new Error('User not found');
   }
 
-  // Super admins have no usage limits
   if (user.adminRole === 'SUPER_ADMIN') {
-    return { allowed: true, limit: -1, used: 0, remaining: -1 };
+    return computeUsageLimitFromUser(user, operation);
   }
-  
-  const limits = SUBSCRIPTION_LIMITS[user.subscriptionPlan];
-  const limit: number = operation === 'session' 
-    ? limits.sessionsPerMonth 
-    : limits.drillsPerMonth;
-  
-  // Check if monthly reset needed
+
   const now = new Date();
   const lastReset = new Date(user.lastResetDate);
   const daysSinceReset = Math.floor((now.getTime() - lastReset.getTime()) / (1000 * 60 * 60 * 24));
-  
+
   if (daysSinceReset >= 30) {
-    // Reset monthly counters
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -307,27 +418,14 @@ export async function checkUsageLimit(
     });
     user.sessionsGeneratedThisMonth = 0;
     user.drillsGeneratedThisMonth = 0;
+    user.lastResetDate = now;
   }
-  
-  const used = operation === 'session' 
-    ? user.sessionsGeneratedThisMonth 
-    : user.drillsGeneratedThisMonth;
-  
-  // Unlimited plans (limit is -1)
-  if (limit === -1) {
-    return { allowed: true, limit: -1, used, remaining: -1 };
+
+  const snapshot = computeUsageLimitFromUser(user, operation);
+  if (!snapshot.allowed) {
+    console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit ${operation} limit: ${snapshot.used}/${snapshot.limit}`);
   }
-  
-  const remaining = limit - used;
-  const allowed = remaining > 0;
-  
-  // Log limit hit for analytics
-  if (!allowed) {
-    console.log(`[LIMIT_ENFORCEMENT] User ${userId} hit ${operation} limit: ${used}/${limit}`);
-    // Could also store this in database for analytics, but for now we'll use ApiMetrics or user data
-  }
-  
-  return { allowed, limit, used, remaining };
+  return snapshot;
 }
 
 export async function incrementUsage(userId: string, operation: 'session' | 'drill'): Promise<void> {
