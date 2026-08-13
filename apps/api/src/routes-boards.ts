@@ -12,6 +12,7 @@ import {
   patchBoard,
 } from './services/tactical-boards';
 import { runBoardAiChat } from './services/board-ai-chat';
+import { applySetupPhaseToDiagram } from './services/board-phase-placement';
 import { parseWebDiagramV1 } from './services/board-diagram-schema';
 import { toWebDiagramV1 } from './services/web-diagram-v1';
 
@@ -169,7 +170,73 @@ r.post('/boards/:id/ai-chat', async (req: AuthRequest, res) => {
       diagram: result.diagram,
       coachLevel: result.coachLevel,
       playerLevel: result.playerLevel,
+      sessionBridge: result.sessionBridge || null,
     });
+  } catch (error) {
+    return sendBoardError(res, error);
+  }
+});
+
+/** Place Setup phase/zone/channel using the shared 11v11 chassis (no DB write). */
+r.post('/boards/:id/phase-place', async (req: AuthRequest, res) => {
+  try {
+    if (!req.userId) {
+      return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    }
+    const board = await getBoardForUser(req.params.id, req.userId);
+    if (!board.canEdit) {
+      return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
+    }
+
+    const fromBody = req.body?.diagram ? toWebDiagramV1(req.body.diagram) : null;
+    const currentDiagram =
+      fromBody || toWebDiagramV1(board.diagram) || (board.diagram as any);
+    const parsedCurrent = parseWebDiagramV1(currentDiagram);
+    if (!parsedCurrent.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: 'INVALID_DIAGRAM',
+        message: parsedCurrent.error,
+        details: parsedCurrent.details,
+      });
+    }
+
+    const phase = String(req.body?.phase || 'ATTACKING').toUpperCase();
+    const zone = String(req.body?.zone || 'MIDDLE_THIRD').toUpperCase();
+    const channel = String(req.body?.channel || 'CENTER').toUpperCase();
+    if (!['ATTACKING', 'DEFENDING', 'TRANSITION'].includes(phase)) {
+      return res.status(400).json({ ok: false, error: 'INVALID_PHASE', message: 'Invalid phase' });
+    }
+    if (!['DEFENSIVE_THIRD', 'MIDDLE_THIRD', 'ATTACKING_THIRD'].includes(zone)) {
+      return res.status(400).json({ ok: false, error: 'INVALID_ZONE', message: 'Invalid zone' });
+    }
+    if (!['LEFT', 'CENTER', 'RIGHT'].includes(channel)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'INVALID_CHANNEL', message: 'Invalid channel' });
+    }
+
+    const placed = applySetupPhaseToDiagram(parsedCurrent.diagram, {
+      phase: phase as 'ATTACKING' | 'DEFENDING' | 'TRANSITION',
+      zone: zone as 'DEFENSIVE_THIRD' | 'MIDDLE_THIRD' | 'ATTACKING_THIRD',
+      channel: channel as 'LEFT' | 'CENTER' | 'RIGHT',
+      attFormation: req.body?.attFormation,
+      defFormation: req.body?.defFormation,
+      defBlock: req.body?.defBlock,
+      showOpposition: req.body?.showOpposition !== false && req.body?.showOpposition !== 'false',
+    });
+
+    const validated = parseWebDiagramV1(placed);
+    if (!validated.ok) {
+      return res.status(500).json({
+        ok: false,
+        error: 'PLACE_INVALID',
+        message: validated.error,
+        details: validated.details,
+      });
+    }
+
+    return res.json({ ok: true, diagram: validated.diagram });
   } catch (error) {
     return sendBoardError(res, error);
   }

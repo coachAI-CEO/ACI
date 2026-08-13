@@ -84,6 +84,31 @@ export interface DiagramLabel {
   y: number;
 }
 
+/** Mutable board layers stored per sequence frame (pitch stays on root). */
+export type DiagramFrameLayers = {
+  players: DiagramPlayer[];
+  arrows: DiagramArrow[];
+  areas: DiagramArea[];
+  labels: DiagramLabel[];
+  balls?: Array<{ x: number; y: number }>;
+  goals?: DiagramGoal[];
+  coach?: DiagramCoach;
+  cones?: Array<{ x: number; y: number; color?: string }>;
+};
+
+export interface DiagramSequenceFrame extends DiagramFrameLayers {
+  id: string;
+  title?: string;
+  note?: string;
+  /** Hold time before advancing during Play (default ~1600). */
+  durationMs?: number;
+}
+
+export interface DiagramSequence {
+  frames: DiagramSequenceFrame[];
+  activeFrameId: string;
+}
+
 export interface DiagramV1 {
   pitch: DiagramPitch;
   players: DiagramPlayer[];
@@ -94,4 +119,6 @@ export interface DiagramV1 {
   arrows: DiagramArrow[];
   areas: DiagramArea[];
   labels: DiagramLabel[];
+  /** Multi-step play sequence; root layers mirror the active frame. */
+  sequence?: DiagramSequence;
 }

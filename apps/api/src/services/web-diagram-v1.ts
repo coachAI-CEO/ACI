@@ -63,12 +63,43 @@ export type WebDiagramV1 = {
     shape?: 'rect' | 'circle' | 'spotlight';
   }>;
   labels: Array<{ text: string; x: number; y: number }>;
+  sequence?: {
+    activeFrameId: string;
+    frames: Array<{
+      id: string;
+      title?: string;
+      note?: string;
+      durationMs?: number;
+      players: WebDiagramV1['players'];
+      arrows: WebDiagramV1['arrows'];
+      areas: WebDiagramV1['areas'];
+      labels: WebDiagramV1['labels'];
+      balls?: WebDiagramV1['balls'];
+      goals?: WebDiagramV1['goals'];
+      coach?: WebDiagramV1['coach'];
+      cones?: WebDiagramV1['cones'];
+    }>;
+  };
 };
 
-/** Truly empty canvas (tests / reset). Prefer DEFAULT_MATCH_BOARD_DIAGRAM for new boards. */
+/** Truly empty canvas (tests / reset). Prefer DEFAULT_MATCH_BOARD_DIAGRAM for seeded shapes. */
 export const BLANK_BOARD_DIAGRAM: WebDiagramV1 = {
   pitch: { variant: 'HALF', orientation: 'HORIZONTAL', showZones: false },
   players: [],
+  arrows: [],
+  areas: [],
+  labels: [],
+};
+
+/** Clear full pitch for “New” boards — goals only, no players/arrows. */
+export const CLEAR_MATCH_BOARD_DIAGRAM: WebDiagramV1 = {
+  pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format: '11V11', showZones: false },
+  players: [],
+  balls: [],
+  goals: [
+    { id: 'goal-left', x: 50, y: 2, type: 'BIG', width: 16 },
+    { id: 'goal-right', x: 50, y: 98, type: 'BIG', width: 16 },
+  ],
   arrows: [],
   areas: [],
   labels: [],
@@ -79,10 +110,10 @@ type FormationSlot = { number: number; role: string; x: number; depth: number };
 /** Relative depth 0 = own goal line, 1 = halfway. Mirrors tactic-board.net 11v11 presets. */
 const FORMATION_4_4_2: FormationSlot[] = [
   { number: 1, role: 'GK', x: 50, depth: 0.06 },
-  { number: 2, role: 'RB', x: 82, depth: 0.22 },
-  { number: 4, role: 'CB', x: 62, depth: 0.2 },
-  { number: 5, role: 'CB', x: 38, depth: 0.2 },
-  { number: 3, role: 'LB', x: 18, depth: 0.22 },
+  { number: 2, role: 'RB', x: 90, depth: 0.3 },
+  { number: 4, role: 'CB', x: 66, depth: 0.14 },
+  { number: 5, role: 'CB', x: 34, depth: 0.14 },
+  { number: 3, role: 'LB', x: 10, depth: 0.3 },
   { number: 7, role: 'RM', x: 82, depth: 0.42 },
   { number: 8, role: 'CM', x: 62, depth: 0.4 },
   { number: 6, role: 'CM', x: 38, depth: 0.4 },
@@ -93,10 +124,10 @@ const FORMATION_4_4_2: FormationSlot[] = [
 
 const FORMATION_4_3_3: FormationSlot[] = [
   { number: 1, role: 'GK', x: 50, depth: 0.06 },
-  { number: 2, role: 'RB', x: 82, depth: 0.22 },
-  { number: 4, role: 'CB', x: 62, depth: 0.2 },
-  { number: 5, role: 'CB', x: 38, depth: 0.2 },
-  { number: 3, role: 'LB', x: 18, depth: 0.22 },
+  { number: 2, role: 'RB', x: 90, depth: 0.3 },
+  { number: 4, role: 'CB', x: 66, depth: 0.14 },
+  { number: 5, role: 'CB', x: 34, depth: 0.14 },
+  { number: 3, role: 'LB', x: 10, depth: 0.3 },
   { number: 6, role: 'CDM', x: 50, depth: 0.36 },
   { number: 8, role: 'CM', x: 32, depth: 0.4 },
   { number: 10, role: 'CM', x: 68, depth: 0.4 },
@@ -107,10 +138,10 @@ const FORMATION_4_3_3: FormationSlot[] = [
 
 const FORMATION_4_2_3_1: FormationSlot[] = [
   { number: 1, role: 'GK', x: 50, depth: 0.06 },
-  { number: 2, role: 'RB', x: 82, depth: 0.22 },
-  { number: 4, role: 'CB', x: 62, depth: 0.2 },
-  { number: 5, role: 'CB', x: 38, depth: 0.2 },
-  { number: 3, role: 'LB', x: 18, depth: 0.22 },
+  { number: 2, role: 'RB', x: 90, depth: 0.3 },
+  { number: 4, role: 'CB', x: 66, depth: 0.14 },
+  { number: 5, role: 'CB', x: 34, depth: 0.14 },
+  { number: 3, role: 'LB', x: 10, depth: 0.3 },
   { number: 6, role: 'CDM', x: 38, depth: 0.36 },
   { number: 8, role: 'CDM', x: 62, depth: 0.36 },
   { number: 7, role: 'RAM', x: 78, depth: 0.52 },
@@ -118,6 +149,27 @@ const FORMATION_4_2_3_1: FormationSlot[] = [
   { number: 11, role: 'LAM', x: 22, depth: 0.52 },
   { number: 9, role: 'ST', x: 50, depth: 0.68 },
 ];
+
+const FORMATION_3_5_2: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.06 },
+  { number: 4, role: 'CB', x: 68, depth: 0.22 },
+  { number: 5, role: 'CB', x: 50, depth: 0.2 },
+  { number: 3, role: 'CB', x: 32, depth: 0.22 },
+  { number: 2, role: 'RWB', x: 88, depth: 0.4 },
+  { number: 8, role: 'CM', x: 65, depth: 0.4 },
+  { number: 6, role: 'CDM', x: 50, depth: 0.36 },
+  { number: 7, role: 'CM', x: 35, depth: 0.4 },
+  { number: 11, role: 'LWB', x: 12, depth: 0.4 },
+  { number: 9, role: 'ST', x: 58, depth: 0.64 },
+  { number: 10, role: 'ST', x: 42, depth: 0.64 },
+];
+
+const FORMATIONS_11: Record<string, FormationSlot[]> = {
+  '4-4-2': FORMATION_4_4_2,
+  '4-3-3': FORMATION_4_3_3,
+  '4-2-3-1': FORMATION_4_2_3_1,
+  '3-5-2': FORMATION_3_5_2,
+};
 
 function clampPitch(n: number) {
   return Math.max(2, Math.min(98, n));
@@ -144,6 +196,16 @@ function formationPlayers(
     y: yFromDepth(side, slot.depth),
     labelStyle: 'number-only' as const,
   }));
+}
+
+/** Build 11v11 roster for a named formation (ATT=home, DEF=away). */
+export function build11v11FormationPlayers(
+  formation: string,
+  team: 'ATT' | 'DEF'
+): WebDiagramV1['players'] {
+  const slots = FORMATIONS_11[formation];
+  if (!slots) return [];
+  return formationPlayers(slots, team, team === 'ATT' ? 'home' : 'away');
 }
 
 /**
@@ -383,7 +445,7 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         }))
     : undefined;
 
-  return {
+  const root: WebDiagramV1 = {
     pitch: {
       variant: mapPitchVariant(pitchSrc.variant || src.pitch),
       orientation,
@@ -409,6 +471,105 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
     areas,
     labels,
   };
+
+  const sequence = normalizeSequence(src.sequence, root);
+  if (sequence) {
+    const active =
+      sequence.frames.find((f) => f.id === sequence.activeFrameId) || sequence.frames[0];
+    return {
+      ...root,
+      players: active.players,
+      arrows: active.arrows,
+      areas: active.areas,
+      labels: active.labels,
+      balls: active.balls,
+      goals: active.goals,
+      coach: active.coach,
+      cones: active.cones,
+      sequence,
+    };
+  }
+
+  return root;
+}
+
+const BOARD_SEQUENCE_MAX_FRAMES = 8;
+
+function layersFromDiagram(d: WebDiagramV1): Omit<
+  NonNullable<WebDiagramV1['sequence']>['frames'][number],
+  'id' | 'title' | 'note' | 'durationMs'
+> {
+  return {
+    players: d.players,
+    arrows: d.arrows,
+    areas: d.areas,
+    labels: d.labels,
+    balls: d.balls,
+    goals: d.goals,
+    coach: d.coach,
+    cones: d.cones,
+  };
+}
+
+function normalizeFrameLayers(raw: any): ReturnType<typeof layersFromDiagram> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  // Re-enter without sequence to reuse player/arrow normalization.
+  const nested = toWebDiagramV1({
+    pitch: { variant: 'FULL', orientation: 'HORIZONTAL' },
+    players: raw.players,
+    arrows: raw.arrows,
+    areas: raw.areas,
+    labels: raw.labels,
+    balls: raw.balls,
+    goals: raw.goals,
+    coach: raw.coach,
+    cones: raw.cones,
+  });
+  if (!nested) return null;
+  return layersFromDiagram(nested);
+}
+
+function normalizeSequence(
+  raw: unknown,
+  fallbackRoot: WebDiagramV1
+): WebDiagramV1['sequence'] | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const src = raw as any;
+  const framesRaw = Array.isArray(src.frames) ? src.frames : [];
+  if (!framesRaw.length) return undefined;
+
+  const frames: NonNullable<WebDiagramV1['sequence']>['frames'] = [];
+  for (const f of framesRaw.slice(0, BOARD_SEQUENCE_MAX_FRAMES)) {
+    if (!f || typeof f !== 'object') continue;
+    const layers = normalizeFrameLayers(f);
+    if (!layers) continue;
+    const id = String(f.id || '').trim() || `f-${frames.length + 1}`;
+    frames.push({
+      id,
+      title: typeof f.title === 'string' ? f.title.slice(0, 80) : undefined,
+      note: typeof f.note === 'string' ? f.note.slice(0, 300) : undefined,
+      durationMs:
+        typeof f.durationMs === 'number' && Number.isFinite(f.durationMs)
+          ? Math.max(400, Math.min(12000, Math.round(f.durationMs)))
+          : undefined,
+      ...layers,
+    });
+  }
+
+  if (!frames.length) {
+    // Persist a single frame so clients round-trip cleanly when sequence was malformed.
+    frames.push({
+      id: 'f-1',
+      title: 'Frame 1',
+      durationMs: 1600,
+      ...layersFromDiagram(fallbackRoot),
+    });
+  }
+
+  const activeFrameId =
+    frames.find((f) => f.id === String(src.activeFrameId || ''))?.id || frames[0].id;
+
+  return { activeFrameId, frames };
 }
 
 /** True when diagram is missing players or has no arrows (candidates for vault enrich). */

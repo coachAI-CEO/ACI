@@ -29,6 +29,8 @@ type Props = {
   onAddTeamChange: (team: DiagramTeamCode) => void;
   onUndo: () => void;
   disabled?: boolean;
+  /** Vertical left rail (Idea A) vs legacy horizontal bar. */
+  variant?: "bar" | "rail";
 };
 
 type MenuId = "select" | "lines" | "shapes" | null;
@@ -227,15 +229,23 @@ function DropdownMenu({
   items,
   activeTool,
   onPick,
+  side = "bottom",
 }: {
   open: boolean;
   items: MenuItem[];
   activeTool: BoardTool;
   onPick: (id: BoardTool) => void;
+  side?: "bottom" | "right";
 }) {
   if (!open) return null;
+  const pos =
+    side === "right"
+      ? "left-[calc(100%+6px)] top-0"
+      : "left-0 top-[calc(100%+6px)]";
   return (
-    <div className="absolute left-0 top-[calc(100%+6px)] z-40 min-w-[11.5rem] overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] py-1 shadow-xl shadow-black/50">
+    <div
+      className={`absolute ${pos} z-40 min-w-[11.5rem] overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] py-1 shadow-xl shadow-black/50`}
+    >
       {items.map((item) => {
         const active = activeTool === item.id;
         return (
@@ -268,6 +278,7 @@ export default function BoardToolbar({
   onAddTeamChange,
   onUndo,
   disabled,
+  variant = "rail",
 }: Props) {
   const [openMenu, setOpenMenu] = React.useState<MenuId>(null);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -323,7 +334,7 @@ export default function BoardToolbar({
     return () => window.removeEventListener("keydown", onKey);
   }, [disabled, onToolChange]);
 
-  if (disabled) return null;
+  if (disabled && variant === "bar") return null;
 
   const selectActive = tool === "select" || tool === "add-player" || tool === "ball";
   const lineActive = tool.startsWith("line-");
@@ -334,11 +345,124 @@ export default function BoardToolbar({
   const shapeItem = itemForTool(lastShape, SHAPE_ITEMS, SHAPE_ITEMS[0]);
 
   const pick = (id: BoardTool) => {
+    if (disabled) return;
     onToolChange(id);
     setOpenMenu(null);
   };
 
-  const toggle = (id: MenuId) => setOpenMenu((cur) => (cur === id ? null : id));
+  const toggle = (id: MenuId) => {
+    if (disabled) return;
+    setOpenMenu((cur) => (cur === id ? null : id));
+  };
+
+  const menuSide = variant === "rail" ? "right" : "bottom";
+
+  if (variant === "rail") {
+    return (
+      <div
+        ref={rootRef}
+        className={`flex w-12 shrink-0 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-[#07111f]/95 py-2 ${
+          disabled ? "pointer-events-none opacity-40" : ""
+        }`}
+        title={toolHint(tool)}
+      >
+        <div className="relative">
+          <ToolButton
+            active={selectActive}
+            chevron
+            title={`${selectItem.label} (${selectItem.shortcut})`}
+            onClick={() => {
+              if (openMenu === "select") {
+                setOpenMenu(null);
+                return;
+              }
+              onToolChange(selectItem.id);
+              setOpenMenu("select");
+            }}
+          >
+            {selectItem.icon}
+          </ToolButton>
+          <DropdownMenu
+            open={openMenu === "select"}
+            items={SELECT_ITEMS}
+            activeTool={tool}
+            onPick={pick}
+            side={menuSide}
+          />
+        </div>
+        {tool === "add-player" ? (
+          <select
+            value={addTeam}
+            onChange={(e) => onAddTeamChange(e.target.value as DiagramTeamCode)}
+            className="h-8 w-10 rounded-md border border-white/10 bg-black/40 px-0.5 text-[9px] text-slate-200"
+            title="Team for new player"
+          >
+            <option value="ATT">ATT</option>
+            <option value="DEF">DEF</option>
+            <option value="NEUTRAL">NEU</option>
+          </select>
+        ) : null}
+
+        <div className="relative">
+          <ToolButton
+            active={lineActive}
+            chevron
+            title={`${lineItem.label} (${lineItem.shortcut})`}
+            onClick={() => {
+              onToolChange(lineItem.id);
+              toggle("lines");
+            }}
+          >
+            {lineItem.icon}
+          </ToolButton>
+          <DropdownMenu
+            open={openMenu === "lines"}
+            items={LINE_ITEMS}
+            activeTool={tool}
+            onPick={pick}
+            side={menuSide}
+          />
+        </div>
+
+        <div className="relative">
+          <ToolButton
+            active={shapeActive}
+            chevron
+            title={`${shapeItem.label} (${shapeItem.shortcut})`}
+            onClick={() => {
+              onToolChange(shapeItem.id);
+              toggle("shapes");
+            }}
+          >
+            {shapeItem.icon}
+          </ToolButton>
+          <DropdownMenu
+            open={openMenu === "shapes"}
+            items={SHAPE_ITEMS}
+            activeTool={tool}
+            onPick={pick}
+            side={menuSide}
+          />
+        </div>
+
+        <ToolButton active={tool === "label"} title="Text (T)" onClick={() => pick("label")}>
+          <span className="text-sm font-semibold">T</span>
+        </ToolButton>
+        <ToolButton active={tool === "eraser"} title="Eraser (E)" onClick={() => pick("eraser")}>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M7 17l-2.5-2.5a2 2 0 010-2.8L14 2.2a2 2 0 012.8 0L21 6.4a2 2 0 010 2.8L11 19H7v-2z" />
+            <path d="M4 21h16" />
+          </svg>
+        </ToolButton>
+        <ToolButton active={false} title="Undo (⌘Z)" onClick={onUndo}>
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M9 7H5v4" />
+            <path d="M5 11a7 7 0 117 7" />
+          </svg>
+        </ToolButton>
+      </div>
+    );
+  }
 
   return (
     <div

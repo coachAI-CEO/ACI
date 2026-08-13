@@ -73,7 +73,7 @@ export default function MyBoardsPanel({ enabled, expanded }: Props) {
     try {
       const gameModelId = (await resolveCreateGameModelId()) || "COACHAI";
       const data = await createBlankBoard({
-        title: "Untitled board",
+        title: "Untitled",
         gameModelId,
       });
       if (!data.ok || !data.board?.id) {

@@ -125,10 +125,49 @@ export async function boardAiChat(
   diagram?: DiagramV1;
   coachLevel?: string;
   playerLevel?: string;
+  sessionBridge?: {
+    params: Record<string, unknown>;
+    recommendations: Array<{
+      id: string;
+      title: string;
+      ageGroup?: string | null;
+      gameModelId?: string | null;
+      phase?: string | null;
+      zone?: string | null;
+      formationUsed?: string | null;
+      durationMin?: number | null;
+      similarity: number;
+      summary?: string | null;
+      openUrl: string;
+    }>;
+    generatorUrl: string;
+    generatorPrompt: string;
+  } | null;
   error?: string;
   message?: string;
 }> {
   const res = await fetch(`/api/boards/${encodeURIComponent(id)}/ai-chat`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(input),
+  });
+  return parseJson(res);
+}
+
+/** Place Setup phase/zone/channel via shared API chassis (no save). */
+export async function placeBoardPhase(
+  id: string,
+  input: {
+    diagram: DiagramV1;
+    phase: string;
+    zone: string;
+    channel: string;
+    attFormation?: string;
+    defFormation?: string;
+    showOpposition?: boolean;
+  }
+): Promise<{ ok: boolean; diagram?: DiagramV1; error?: string; message?: string }> {
+  const res = await fetch(`/api/boards/${encodeURIComponent(id)}/phase-place`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify(input),

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 400" role="img" aria-labelledby="t3">
+  <title id="t3">Wrong vs right - goal kick press height</title>
+  <rect width="920" height="400" fill="#0b1220"/>
+  <text x="460" y="26" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="15" font-weight="700">3 - Wrong vs right - goal-kick play-out depth</text>
+  <text x="460" y="46" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Same ATT build from GK - DEF must be as high as the box, not a mid-block</text>
+
+  <g transform="translate(40,60)">
+    <text x="210" y="0" text-anchor="middle" fill="#f87171" font-family="system-ui,sans-serif" font-size="13" font-weight="700">WRONG - too conservative</text>
+    <rect y="12" width="420" height="160" rx="4" fill="#1a7a3c"/>
+    <rect y="12" width="420" height="160" fill="none" stroke="#fff" stroke-width="2"/>
+    <line x1="210" y1="12" x2="210" y2="172" stroke="#fff" stroke-width="1.5" opacity="0.7"/>
+    <rect x="300" y="40" width="90" height="90" fill="#fbbf24" opacity="0.25" stroke="#fbbf24" stroke-width="2"/>
+    <circle cx="360" cy="70" r="10" fill="#2563eb"/><circle cx="340" cy="95" r="10" fill="#2563eb"/><circle cx="375" cy="100" r="10" fill="#2563eb"/><circle cx="355" cy="120" r="10" fill="#2563eb"/>
+    <!-- only 2 pressers near, rest deep left -->
+    <circle cx="285" cy="75" r="9" fill="#dc2626"/><circle cx="285" cy="105" r="9" fill="#dc2626"/>
+    <circle cx="120" cy="60" r="9" fill="#dc2626"/><circle cx="120" cy="90" r="9" fill="#dc2626"/><circle cx="120" cy="120" r="9" fill="#dc2626"/>
+    <circle cx="55" cy="55" r="9" fill="#b91c1c"/><circle cx="55" cy="85" r="9" fill="#b91c1c"/><circle cx="55" cy="115" r="9" fill="#b91c1c"/><circle cx="55" cy="140" r="9" fill="#b91c1c"/>
+    <text x="210" y="195" text-anchor="middle" fill="#fca5a5" font-family="system-ui,sans-serif" font-size="11">Front 2 near box, rest parked deep - huge gaps</text>
+  </g>
+
+  <g transform="translate(480,60)">
+    <text x="210" y="0" text-anchor="middle" fill="#34d399" font-family="system-ui,sans-serif" font-size="13" font-weight="700">RIGHT - high as the box</text>
+    <rect y="12" width="420" height="160" rx="4" fill="#1a7a3c"/>
+    <rect y="12" width="420" height="160" fill="none" stroke="#fff" stroke-width="2"/>
+    <line x1="210" y1="12" x2="210" y2="172" stroke="#fff" stroke-width="1.5" opacity="0.7"/>
+    <rect x="300" y="40" width="90" height="90" fill="#fbbf24" opacity="0.25" stroke="#fbbf24" stroke-width="2"/>
+    <circle cx="360" cy="70" r="10" fill="#2563eb"/><circle cx="340" cy="95" r="10" fill="#2563eb"/><circle cx="375" cy="100" r="10" fill="#2563eb"/><circle cx="355" cy="120" r="10" fill="#2563eb"/>
+    <!-- whole block high -->
+    <circle cx="290" cy="55" r="9" fill="#dc2626"/><circle cx="290" cy="85" r="9" fill="#dc2626"/><circle cx="290" cy="115" r="9" fill="#dc2626"/><circle cx="305" cy="140" r="9" fill="#dc2626"/>
+    <circle cx="250" cy="55" r="9" fill="#dc2626"/><circle cx="250" cy="90" r="9" fill="#dc2626"/><circle cx="250" cy="125" r="9" fill="#dc2626"/>
+    <circle cx="210" cy="50" r="9" fill="#b91c1c"/><circle cx="210" cy="80" r="9" fill="#b91c1c"/><circle cx="210" cy="110" r="9" fill="#b91c1c"/><circle cx="210" cy="140" r="9" fill="#b91c1c"/>
+    <circle cx="30" cy="90" r="8" fill="#7f1d1d"/><text x="30" y="93" text-anchor="middle" fill="#fff" font-size="7" font-family="system-ui">GK</text>
+    <text x="210" y="195" text-anchor="middle" fill="#6ee7b7" font-family="system-ui,sans-serif" font-size="11">Press + cover + back all stepped to the box</text>
+  </g>
+
+  <rect x="80" y="290" width="760" height="80" rx="10" fill="#111827" stroke="#334155"/>
+  <text x="460" y="320" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Default play-out situation = goal kick</text>
+  <text x="460" y="345" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">DEF outfield floor roughly y &gt;= 58-65 (ATT half / high) - not y ~20-40 in their own box</text>
+</svg>

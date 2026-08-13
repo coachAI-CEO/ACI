@@ -24,6 +24,7 @@ import {
   patchBoard,
 } from '../services/tactical-boards';
 import type { WebDiagramV1 } from '../services/web-diagram-v1';
+import { DEFAULT_MATCH_BOARD_DIAGRAM } from '../services/web-diagram-v1';
 
 function step(n: number, label: string) {
   console.log(`\n[step ${n}] ${label}`);
@@ -79,10 +80,13 @@ async function main() {
   let boardId: string | null = null;
 
   try {
-    step(1, 'Create board');
+    step(1, 'Create board + seed default lineup');
     const blank = await createBlankBoard(owner.id, { title: 'Lines sample' });
     boardId = blank.id;
-    let diagram = blank.diagram as unknown as WebDiagramV1;
+    const seeded = await patchBoard(boardId, owner.id, {
+      diagram: DEFAULT_MATCH_BOARD_DIAGRAM,
+    });
+    let diagram = seeded.diagram as unknown as WebDiagramV1;
     const att8 = diagram.players.find((p) => p.team === 'ATT' && p.number === 8);
     const att10 = diagram.players.find((p) => p.team === 'ATT' && p.number === 10);
     const att9 = diagram.players.find((p) => p.team === 'ATT' && p.number === 9);

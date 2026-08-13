@@ -176,10 +176,10 @@ export function yardsToDiagramPercent(
 }
 
 export function tokenRadiusPx(layout: PitchLayout, fullLengthYards = 120): number {
-  // ~2.5% of full pitch length — matches tactic-board.net chip scale
-  const diameterYds = fullLengthYards * 0.025;
+  // ~3% of full pitch length (20% larger than prior 2.5% chip scale)
+  const diameterYds = fullLengthYards * 0.03;
   const r = diameterYds / 2 / layout.yardsPerPx;
-  return Math.max(8, Math.min(18, r));
+  return Math.max(10, Math.min(22, r));
 }
 
 export function ballRadiusPx(playerRadius: number): number {

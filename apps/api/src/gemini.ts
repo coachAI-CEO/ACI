@@ -37,9 +37,12 @@ const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45000; // 45 seconds
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES) || 0; // No retries for speed (fail fast)
 const BACKOFF_BASE_MS = Number(process.env.GEMINI_BACKOFF_BASE_MS) || 500; // Faster backoff
 
-function newModel(name: string) {
+function newModel(name: string, generationConfig?: { maxOutputTokens?: number }) {
   const genAI = new GoogleGenerativeAI(key!);
-  return genAI.getGenerativeModel({ model: name });
+  return genAI.getGenerativeModel({
+    model: name,
+    ...(generationConfig ? { generationConfig } : {}),
+  });
 }
 
 function isTransient(e: any) {
@@ -52,8 +55,17 @@ function isQuotaError(e: any) {
   return /(?:429|quota|rate limit)/i.test(msg);
 }
 
-async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RETRIES, timeoutMs = TIMEOUT_MS) {
-  const m = newModel(modelName);
+async function tryGenerate(
+  modelName: string,
+  prompt: string,
+  attempts = MAX_RETRIES,
+  timeoutMs = TIMEOUT_MS,
+  maxOutputTokens?: number
+) {
+  const m = newModel(
+    modelName,
+    maxOutputTokens ? { maxOutputTokens } : undefined
+  );
   let lastErr: any;
   
   // Ensure at least 1 attempt (attempts=0 means no retries, but still try once)
@@ -171,15 +183,22 @@ async function storeMetrics(data: {
 
 export async function generateTextWithMetrics(
   prompt: string,
-  options?: { timeout?: number; retries?: number; model?: string; fallbackModel?: string | null }
+  options?: {
+    timeout?: number;
+    retries?: number;
+    model?: string;
+    fallbackModel?: string | null;
+    maxOutputTokens?: number;
+  }
 ) {
   const timeout = options?.timeout || TIMEOUT_MS;
   const retries = options?.retries ?? MAX_RETRIES;
   const primaryModel = options?.model || PRIMARY;
   const fallbackModel = options?.fallbackModel === undefined ? FALLBACK : options.fallbackModel;
+  const maxOutputTokens = options?.maxOutputTokens;
 
   try {
-    const result = await tryGenerate(primaryModel, prompt, retries, timeout);
+    const result = await tryGenerate(primaryModel, prompt, retries, timeout, maxOutputTokens);
     return { ...result, model: primaryModel };
   } catch (e: any) {
     // Don't try fallback if quota error - it will fail too
@@ -187,14 +206,26 @@ export async function generateTextWithMetrics(
     if (!fallbackModel || fallbackModel === primaryModel) throw e;
 
     console.log(`[Gemini] Primary model failed, trying fallback: ${e.message}`);
-    const result = await tryGenerate(fallbackModel, prompt, Math.min(retries, 1), timeout);
+    const result = await tryGenerate(
+      fallbackModel,
+      prompt,
+      Math.min(retries, 1),
+      timeout,
+      maxOutputTokens
+    );
     return { ...result, model: fallbackModel };
   }
 }
 
 export async function generateText(
   prompt: string,
-  options?: { timeout?: number; retries?: number; model?: string; fallbackModel?: string | null }
+  options?: {
+    timeout?: number;
+    retries?: number;
+    model?: string;
+    fallbackModel?: string | null;
+    maxOutputTokens?: number;
+  }
 ) {
   const result = await generateTextWithMetrics(prompt, options);
   return result.text;

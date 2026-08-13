@@ -1,0 +1,239 @@
+{
+  "source": "Inverting the Pyramid tactical playbook",
+  "corePrinciples": [
+    "Making the pitch as large as possible when in possession to facilitate passing",
+    "Compressing the pitch as small as possible out of possession to strangle opposition playmakers",
+    "Maintaining compact vertical distances ('short team' principle) to deny possession to opponents",
+    "Structured exploitation of spaces via pre-programmed coalition actions"
+  ],
+  "phases": [
+    "Build-out",
+    "Progression",
+    "Attack"
+  ],
+  "formations": {
+    "4-3-3": {
+      "summary": "Forged in Dutch Total Football and refined under Pep Guardiola's juego de posici\u00f3n, characterized by absolute positional discipline, a single defensive screen acting as a deep playmaker, and a front line of inverted wingers and a false nine.",
+      "pivotStyle": "Single Pivot (#6)",
+      "widthSource": "Full-backs / Wingers",
+      "keyMotifs": [
+        "False Nine",
+        "Flank Triangles",
+        "Positional Grid rotations"
+      ],
+      "buildOut": {
+        "shape": "4-3-3 base shape with goalkeeper (1), back four (5, 4, 3, 2), single pivot DM (6), central midfielders (10, 8), and front three (11, 9, 7).",
+        "roles": [
+          "GK (Menzo) initiates possession from defensive third",
+          "CBs (Hulshoff, Koeman) provide deep build-out platform",
+          "DM (Busquets) acts as deep playmaker screen"
+        ],
+        "patterns": [
+          "Circulation through defensive third to single pivot",
+          "Vertical passing lanes opened by coordinated spacing"
+        ],
+        "oppositionNotes": [
+          "Maintains vertical compactness to resist high pressing"
+        ]
+      },
+      "progression": {
+        "shape": "Midfield circulation shape maintaining positional discipline and passing lanes.",
+        "roles": [
+          "CMs (M\u00fchren, Neeskens) circulate ball through midfield",
+          "Full-backs (Krol, Suurbier) advance along flanks"
+        ],
+        "patterns": [
+          "Flank Triangle formation activation on the wings",
+          "Midfield passing combinations between pivots and interior runners"
+        ],
+        "oppositionNotes": [
+          "Exploits space created by manipulating central defenders"
+        ]
+      },
+      "attack": {
+        "shape": "Inverted attacking structure with false nine and inverted wingers.",
+        "roles": [
+          "CF (Cruyff / Messi / False 9) drops into central pockets to manipulate defenders",
+          "Inverted wingers (Villa, Stoichkov, Swart, Keizer) cut inside",
+          "Overlapping or advancing full-backs provide wide width"
+        ],
+        "patterns": [
+          "False nine dropping deep to overload midfield lanes",
+          "Winger diagonal cuts inside to open space for overlapping full-backs",
+          "Flank triangle combinations"
+        ],
+        "oppositionNotes": [
+          "Drags central defenders out of position to create penetrative gaps"
+        ]
+      }
+    },
+    "4-4-2": {
+      "summary": "Pioneered by Viktor Maslov and immortalized by Arrigo Sacchi's AC Milan, relying on strict zonal marking, an integrated sliding back-four, and a compact 'short team' block of no more than 25 meters.",
+      "pivotStyle": "Flat Midfield Pair",
+      "widthSource": "Overlapping Full-back / LM",
+      "keyMotifs": [
+        "Zonal Marking",
+        "Short Team block",
+        "Target Man hold-up"
+      ],
+      "buildOut": {
+        "shape": "4-4-2 compact defensive and midfield block with goalkeeper (1), back four (5, 2, 6, 3), flat midfield four (11, 8, 4, 7), and front two strikers (10, 9).",
+        "roles": [
+          "GK (Galli) initiates from back",
+          "Back four (Maldini, Baresi, Costacurta, Tassotti) maintains strict zonal alignment"
+        ],
+        "patterns": [
+          "Integrated sliding back-four movement",
+          "Short team block build-out keeping within 25 meters"
+        ],
+        "oppositionNotes": [
+          "Maintains defensive stability and immediate cover across zones"
+        ]
+      },
+      "progression": {
+        "shape": "Asymmetrical wing progression shape.",
+        "roles": [
+          "Central midfielders (Rijkaard, Ancelotti) distribute play",
+          "LM (Evani) and RM (Donadoni) manage flank transitions"
+        ],
+        "patterns": [
+          "Asymmetrical wing progression where one wide midfielder tucks inside",
+          "Platform creation for opposite winger and overlapping full-back"
+        ],
+        "oppositionNotes": [
+          "Denies central progression passing lanes to opposition playmakers"
+        ]
+      },
+      "attack": {
+        "shape": "Attacking configuration featuring target hold-up play and asymmetrical width.",
+        "roles": [
+          "LST (van Basten - Runner) makes penetrative runs",
+          "RST (Gullit - Hold Up) provides target man hold-up play",
+          "RM (Donadoni - Tucked) tucks inside, LB/RB (Anderson/Maldini - Overlap/Tucked) coordinate overlapping width"
+        ],
+        "patterns": [
+          "Target man hold-up combined with dynamic runner off the shoulder",
+          "One wide midfielder tucks inside while opposite full-back overlaps wide"
+        ],
+        "oppositionNotes": [
+          "Overwhelms defensive lines through synchronized strike partnership and flank acceleration"
+        ]
+      }
+    },
+    "4-2-3-1": {
+      "summary": "Introduced by Juanma Lillo as a symmetrical way to deploy four forwards while maintaining defensive cover using a 'doble pivot' and a central number 10 orchestrator.",
+      "pivotStyle": "Double Pivot (Doble Pivot)",
+      "widthSource": "Overlapping FB / Wingers",
+      "keyMotifs": [
+        "Inverted Wingers",
+        "CAM in #10 pocket",
+        "High Pressing"
+      ],
+      "buildOut": {
+        "shape": "4-2-3-1 base with goalkeeper (1), center-backs (4, 3), double pivot holding midfielders (8, 6), and full-backs (5, 2).",
+        "roles": [
+          "GK (1) distributes to center-backs",
+          "Double pivot holding midfielders (LDM/RDM) shield center-backs and provide immediate passing lanes"
+        ],
+        "patterns": [
+          "Symmetrical build-out through center-backs and double pivot",
+          "Quick horizontal and vertical circulation in defensive third"
+        ],
+        "oppositionNotes": [
+          "Provides secure defensive cover during initial build-out"
+        ]
+      },
+      "progression": {
+        "shape": "Midfield transition shape connecting double pivot to the trequartista zone.",
+        "roles": [
+          "Double pivot circulating to central attacking midfielder (CAM)",
+          "Wingers (RAM, LAM) positioning in half-spaces"
+        ],
+        "patterns": [
+          "Progressing ball centrally into the #10 pocket",
+          "Symmetrical ball advancement through wide and central channels"
+        ],
+        "oppositionNotes": [
+          "Overloads central midfield zones to bypass opposition pressing blocks"
+        ]
+      },
+      "attack": {
+        "shape": "Advanced attacking shape featuring four forwards and overlapping fullbacks.",
+        "roles": [
+          "ST (Focal Point) pins central defenders",
+          "CAM (Playmaker) orchestrates in the trequartista zone",
+          "RAM / LAM (Inverted) cut inside",
+          "RB / LB (Overlap) push up wide"
+        ],
+        "patterns": [
+          "Inverted wingers cutting inside to clear space for overlapping fullbacks",
+          "Central orchestrator feeding penetrative balls to the focal point striker"
+        ],
+        "oppositionNotes": [
+          "Maintains high defensive pressure and numerical superiority in the final third"
+        ]
+      }
+    },
+    "3-5-2": {
+      "summary": "Devised by Carlos Bilardo, Ciro Bla\u017eevi\u0107, and Sepp Piontek to integrate a free-spirited playmaker without defensive compromise by deploying a central back-three and high wing-backs for a five-man midfield overload.",
+      "pivotStyle": "Triple Central Midfield",
+      "widthSource": "Wing-backs (flank runners)",
+      "keyMotifs": [
+        "Playing Libero (sweeper-playmaker)",
+        "Midfield Overload"
+      ],
+      "buildOut": {
+        "shape": "3-5-2 defensive structure with goalkeeper (1), central back-three consisting of sweeper/libero flanked by two markers (5, 4, 3), and defensive midfielder (8).",
+        "roles": [
+          "GK (Qvist) initiates play",
+          "CB / Libero (M. Olsen) acts as sweeper-playmaker",
+          "RCB (Busk) and LCB (Nielsen) provide marking cover"
+        ],
+        "patterns": [
+          "Libero stepping out from defense into midfield to create numerical superiority",
+          "Triangular passing network between back-three and deep midfielder"
+        ],
+        "oppositionNotes": [
+          "Three central defenders counter lone-striker systems effectively"
+        ]
+      },
+      "progression": {
+        "shape": "Five-man midfield progression structure.",
+        "roles": [
+          "DM (Bertelsen / Batista Screen) anchors central progression",
+          "LCM (Lerby) and RCM (Berggreen) circulate possession",
+          "RWB (Siveb\u00e6k) and LWB (J. Olsen) push high"
+        ],
+        "patterns": [
+          "Establishing a 5-man midfield overload",
+          "Transitioning ball rapidly from back-three to advanced wing-backs"
+        ],
+        "oppositionNotes": [
+          "Overwhelms opponent midfield lines through sheer numbers"
+        ]
+      },
+      "attack": {
+        "shape": "Attacking shape with advanced wing-backs, free-role playmaker, and dual strikers.",
+        "roles": [
+          "AM (Maradona - Free Role / 10) operates between lines",
+          "ST / RST / LST (Valdano, Elkjaer, Laudrup) provide dual central attacking focal points",
+          "RWB / LWB (Advanced) act as flank runners providing width"
+        ],
+        "patterns": [
+          "Wing-backs pushing high to attack the flanks in the absence of traditional wingers",
+          "Playmaker exploiting space in advanced pockets behind twin strikers",
+          "Overloading wide and central attacking channels simultaneously"
+        ],
+        "oppositionNotes": [
+          "Repurposes traditional fullbacks into high attacking threats while maintaining secure central defensive coverage"
+        ]
+      }
+    }
+  },
+  "boardImplications": [
+    "Build-out phase: Position goalkeeper and center-backs deep to establish numerical superiority, anchoring with either a single pivot (#6), a double pivot (doble pivot), or a back-three with a libero.",
+    "Progression phase: Form compact vertical lines (maintaining 'short team' distances under 25 meters) while utilizing triangles and half-space positioning (inverted wingers, tucking wide midfielders, or 5-man midfield overloads) to circulate the ball safely.",
+    "Attacking phase: Create width via overlapping full-backs or advanced wing-backs while manipulating central defenders using false nines, dropping #10s, or inverted wingers cutting inside into pocket spaces.",
+    "Defensive transition: Ensure instant zonal recovery and sliding back-four/back-three alignment to seal vertical passing lanes and deny space to opposition playmakers."
+  ]
+}

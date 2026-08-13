@@ -138,9 +138,9 @@ function parseShareMode(value: unknown, fallback: BoardShareMode = BoardShareMod
 }
 
 function normalizeTitle(value: unknown): string {
-  if (value === undefined || value === null || value === '') return 'Untitled board';
+  if (value === undefined || value === null || value === '') return 'Untitled';
   const title = String(value).trim().slice(0, BOARD_TITLE_MAX_LEN);
-  return title || 'Untitled board';
+  return title || 'Untitled';
 }
 
 function boardPublic(board: {

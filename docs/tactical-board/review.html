@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tactical Board — Phase Positioning Diagrams</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: #0b1220;
+      color: #e2e8f0;
+      line-height: 1.45;
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.5rem;
+      border-bottom: 1px solid #1e293b;
+      position: sticky;
+      top: 0;
+      background: rgba(11,18,32,0.95);
+      backdrop-filter: blur(8px);
+      z-index: 2;
+    }
+    h1 { margin: 0 0 0.35rem; font-size: 1.25rem; }
+    p { margin: 0; color: #94a3b8; font-size: 0.9rem; }
+    nav { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.5rem 1rem; }
+    nav a {
+      color: #93c5fd;
+      text-decoration: none;
+      font-size: 0.8rem;
+      border: 1px solid #1e3a5f;
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      background: #0f172a;
+    }
+    nav a:hover { border-color: #3b82f6; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
+    figure {
+      margin: 0 0 2rem;
+      padding: 1rem;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      background: #020617;
+    }
+    figcaption {
+      margin-bottom: 0.75rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    img { width: 100%; height: auto; display: block; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Phase Positioning — Visual Review</h1>
+    <p>Companion drawings for <code>docs/tactical-board-phase-positioning.md</code></p>
+  </header>
+  <nav>
+    <a href="#d1">1 Coordinates</a>
+    <a href="#d7">2 Two layers</a>
+    <a href="#d2">3 Opposition</a>
+    <a href="#d3">4 Wrong vs right</a>
+    <a href="#d4">5 Frame 1</a>
+    <a href="#d5">6 Frame 2</a>
+    <a href="#d8">7 Frame 3</a>
+    <a href="#d6">8 Sequence</a>
+  </nav>
+  <main>
+    <figure id="d1">
+      <figcaption>1 · Board coordinates (HORIZONTAL pitch)</figcaption>
+      <img src="./diagrams/01-coordinates.png" alt="Board coordinates" />
+    </figure>
+    <figure id="d7">
+      <figcaption>2 · Two layers — formation shape × phase block</figcaption>
+      <img src="./diagrams/07-two-layers.png" alt="Two layers" />
+    </figure>
+    <figure id="d2">
+      <figcaption>3 · Opposition lines hang off the focus</figcaption>
+      <img src="./diagrams/02-opposition-lines.png" alt="Opposition lines" />
+    </figure>
+    <figure id="d3">
+      <figcaption>4 · Wrong vs right DEF depth</figcaption>
+      <img src="./diagrams/03-wrong-vs-right.png" alt="Wrong vs right" />
+    </figure>
+    <figure id="d4">
+      <figcaption>5 · Frame 1 — goal-kick high press</figcaption>
+      <img src="./diagrams/04-frame1-buildup.png" alt="Frame 1 build-up" />
+    </figure>
+    <figure id="d5">
+      <figcaption>6 · Frame 2 — pocket after high press</figcaption>
+      <img src="./diagrams/05-frame2-pocket.png" alt="Frame 2 pocket" />
+    </figure>
+    <figure id="d8">
+      <figcaption>7 · Frame 3 — final third progression</figcaption>
+      <img src="./diagrams/08-frame3-progression.png" alt="Frame 3 progression" />
+    </figure>
+    <figure id="d6">
+      <figcaption>8 · Sequence overview</figcaption>
+      <img src="./diagrams/06-sequence-advance.png" alt="Sequence advance" />
+    </figure>
+  </main>
+</body>
+</html>

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import BoardAiChat from "@/components/boards/BoardAiChat";
 import TacticalBoardEditor from "@/components/boards/TacticalBoardEditor";
 import {
+  createBlankBoard,
   getBoard,
   patchBoard,
   type BoardShareMode,
@@ -13,6 +14,49 @@ import {
 } from "@/lib/boards";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures } from "@/lib/features";
+import { useBoardLoadProgress } from "@/lib/use-board-load-progress";
+
+function BoardLoadingScreen({
+  percent,
+  label,
+}: {
+  percent: number;
+  label: string;
+}) {
+  return (
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-[#060a13] px-6 text-slate-100">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/15">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 text-emerald-300"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="M3 12h18" />
+            </svg>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-sm font-semibold text-white/90">Loading board…</p>
+              <span className="text-[11px] tabular-nums text-emerald-300/90">{percent}%</span>
+            </div>
+            <p className="text-[11px] text-slate-500">{label}</p>
+          </div>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-emerald-400 transition-[width] duration-200 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+      </div>
+    </main>
+  );
+}
 
 export default function BoardPage() {
   const params = useParams<{ id: string }>();
@@ -26,10 +70,16 @@ export default function BoardPage() {
   const [dirty, setDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creatingBoard, setCreatingBoard] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [flagOn, setFlagOn] = useState<boolean | null>(null);
   const [coachLevel, setCoachLevel] = useState<string | null>(null);
+
+  const pageLoading = loading || flagOn === null;
+  const pageProgress = useBoardLoadProgress(pageLoading);
+  const aiProgress = useBoardLoadProgress(aiBusy);
 
   useEffect(() => {
     fetchUserFeatures()
@@ -126,6 +176,31 @@ export default function BoardPage() {
     }
   };
 
+  const onNewBoard = async () => {
+    if (dirty && !window.confirm("You have unsaved changes. Create a new board anyway?")) {
+      return;
+    }
+    setCreatingBoard(true);
+    setError(null);
+    try {
+      const data = await createBlankBoard({
+        title: "Untitled",
+        gameModelId: board?.gameModelId || "COACHAI",
+        shareMode: "PRIVATE",
+      });
+      if (!data.ok || !data.board?.id) {
+        setError(data.message || data.error || "Could not create board");
+        return;
+      }
+      setDirty(false);
+      router.push(`/board/${data.board.id}`);
+    } catch (e: any) {
+      setError(e?.message || "Could not create board");
+    } finally {
+      setCreatingBoard(false);
+    }
+  };
+
   if (flagOn === false) {
     return (
       <main className="min-h-dvh bg-[#060a13] text-slate-100 p-6">
@@ -137,11 +212,12 @@ export default function BoardPage() {
     );
   }
 
-  if (loading || flagOn === null) {
+  if (pageLoading) {
     return (
-      <main className="min-h-dvh bg-[#060a13] text-slate-100 p-6">
-        <p className="text-sm text-slate-400">Loading board…</p>
-      </main>
+      <BoardLoadingScreen
+        percent={pageProgress.percent || 4}
+        label={pageProgress.label || "Opening board…"}
+      />
     );
   }
 
@@ -157,6 +233,21 @@ export default function BoardPage() {
   }
 
   if (!board || !diagram || !boardId) return null;
+
+  const chatProps = {
+    boardId,
+    diagram,
+    canEdit: board.canEdit,
+    gameModelId: board.gameModelId,
+    ageGroup: board.ageGroup,
+    coachLevel,
+    onBusyChange: setAiBusy,
+    onApplyDiagram: (next: DiagramV1) => {
+      setDiagram(next);
+      setDirty(true);
+      setStatus("AI updated board — save when ready");
+    },
+  };
 
   return (
     <main className="flex h-dvh min-h-0 flex-col bg-[#060a13] text-slate-100">
@@ -175,22 +266,35 @@ export default function BoardPage() {
           {board.gameModelId}
           {board.shareMode === "CLUB" ? " · Club share" : " · Private"}
           {dirty ? " · Unsaved" : ""}
+          {aiBusy ? " · AI working…" : ""}
         </p>
       </div>
 
+      {aiProgress.visible ? (
+        <div className="h-0.5 w-full overflow-hidden bg-white/5">
+          <div
+            className="h-full bg-emerald-400 transition-[width] duration-200 ease-out"
+            style={{ width: `${aiProgress.percent}%` }}
+          />
+        </div>
+      ) : null}
+
       <div className="flex min-h-0 flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto p-3 lg:p-4">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-auto p-3 lg:p-4">
           {error ? <p className="mb-2 text-xs text-rose-300">{error}</p> : null}
           <TacticalBoardEditor
+            boardId={boardId}
             diagram={diagram}
             title={title}
             shareMode={shareMode}
-            canEdit={board.canEdit}
+            canEdit={board.canEdit && !aiBusy}
             saving={saving}
             dirty={dirty}
             onDirtyChange={setDirty}
             statusMessage={status}
             onCopyLink={onCopyLink}
+            onNewBoard={board.canEdit ? () => void onNewBoard() : undefined}
+            creatingBoard={creatingBoard}
             onDelete={
               board.canEdit
                 ? async () => {
@@ -212,45 +316,39 @@ export default function BoardPage() {
             }}
             onSave={() => void onSave()}
           />
+          {aiProgress.visible ? (
+            <div className="pointer-events-none absolute inset-3 z-20 flex items-start justify-center pt-6 lg:inset-4">
+              <div className="min-w-[220px] rounded-xl border border-emerald-500/30 bg-[#07111f]/92 px-4 py-3 shadow-xl backdrop-blur-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-xs font-semibold text-emerald-100">Updating board…</p>
+                  <span className="text-[11px] tabular-nums text-emerald-300/90">
+                    {aiProgress.percent}%
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-slate-400">{aiProgress.label}</p>
+                <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-emerald-400/90 transition-[width] duration-200 ease-out"
+                    style={{ width: `${aiProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="hidden w-[360px] shrink-0 lg:block xl:w-[400px]">
-          <BoardAiChat
-            boardId={boardId}
-            diagram={diagram}
-            canEdit={board.canEdit}
-            gameModelId={board.gameModelId}
-            ageGroup={board.ageGroup}
-            coachLevel={coachLevel}
-            onApplyDiagram={(next) => {
-              setDiagram(next);
-              setDirty(true);
-              setStatus("AI updated board — save when ready");
-            }}
-          />
+        <div className="hidden w-[460px] shrink-0 lg:block xl:w-[520px]">
+          <BoardAiChat {...chatProps} />
         </div>
       </div>
 
-      {/* Mobile: compact bottom sheet entry */}
       <div className="border-t border-white/10 p-2 lg:hidden">
         <details className="rounded-xl border border-white/10 bg-[#07111f]/95">
           <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold text-emerald-200">
             Tactical Edge AI
           </summary>
           <div className="h-[50vh] border-t border-white/10">
-            <BoardAiChat
-              boardId={boardId}
-              diagram={diagram}
-              canEdit={board.canEdit}
-              gameModelId={board.gameModelId}
-              ageGroup={board.ageGroup}
-              coachLevel={coachLevel}
-              onApplyDiagram={(next) => {
-                setDiagram(next);
-                setDirty(true);
-                setStatus("AI updated board — save when ready");
-              }}
-            />
+            <BoardAiChat {...chatProps} />
           </div>
         </details>
       </div>

@@ -21,6 +21,7 @@ import {
   patchBoard,
 } from '../services/tactical-boards';
 import type { WebDiagramV1 } from '../services/web-diagram-v1';
+import { DEFAULT_MATCH_BOARD_DIAGRAM } from '../services/web-diagram-v1';
 
 function step(n: number, label: string) {
   console.log(`\n[step ${n}] ${label}`);
@@ -80,13 +81,17 @@ async function main() {
   let boardId: string | null = null;
 
   try {
-    step(1, 'Create board (default 11v11 lineup + ball)');
+    step(1, 'Create board with default 11v11 lineup + ball');
     const blank = await createBlankBoard(owner.id, {
       title: 'Drawing sample — combo',
       ageGroup: 'U14',
     });
     boardId = blank.id;
-    let diagram = blank.diagram as unknown as WebDiagramV1;
+    assert((blank.diagram as any).players.length === 22, 'blank should start with default formations');
+    let savedSeed = await patchBoard(boardId, owner.id, {
+      diagram: DEFAULT_MATCH_BOARD_DIAGRAM,
+    });
+    let diagram = savedSeed.diagram as unknown as WebDiagramV1;
     assert(diagram.players.length === 22, 'expected 22 starters');
     assert((diagram.balls || []).length >= 1, 'expected centre ball');
     assert(diagram.pitch.format === '11V11' || diagram.pitch.format === undefined, 'format');
@@ -94,7 +99,7 @@ async function main() {
       writeSample('01-default-match.json', diagram, {
         title: blank.title,
         boardId,
-        note: 'Fresh board after createBlankBoard',
+        note: 'Board after seeding DEFAULT_MATCH_BOARD_DIAGRAM',
       })
     );
 

@@ -1,14 +1,37 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import type { DiagramV1 } from "@/types/diagram";
 import { boardAiChat } from "@/lib/boards";
+import { useBoardLoadProgress } from "@/lib/use-board-load-progress";
+
+type SessionRec = {
+  id: string;
+  title: string;
+  ageGroup?: string | null;
+  gameModelId?: string | null;
+  phase?: string | null;
+  zone?: string | null;
+  formationUsed?: string | null;
+  durationMin?: number | null;
+  similarity: number;
+  summary?: string | null;
+  openUrl: string;
+};
+
+type SessionBridge = {
+  recommendations: SessionRec[];
+  generatorUrl: string;
+  generatorPrompt: string;
+};
 
 type ChatMsg = {
   id: string;
   role: "user" | "assistant";
   content: string;
   applied?: boolean;
+  sessionBridge?: SessionBridge | null;
 };
 
 type Props = {
@@ -20,13 +43,14 @@ type Props = {
   coachLevel?: string | null;
   playerLevel?: string | null;
   onApplyDiagram: (diagram: DiagramV1) => void;
+  onBusyChange?: (busy: boolean) => void;
 };
 
 const WELCOME: ChatMsg = {
   id: "welcome",
   role: "assistant",
   content:
-    "Describe a scenario and I’ll set it on the board using your club’s game model.\n\nLanguage follows your coach level from Settings; player demand is matched to that level (Beginner only for USSF D).\n\nIf it’s vague, I’ll ask for formations, where (left / central / right), and phase before drawing.\n\nExamples:\n• “7v7 ATT 2-3-1 vs DEF 3-2-1, left channel, Defensive Transition — press after loss in their defensive third”\n• “11v11 4-3-3 vs 4-4-2, central, Attacking Organization — switch from LB to RW”\n• Or say “just draw it” to use defaults",
+    "Describe a scenario and I’ll set it on the board using your club’s game model.\n\nWhen the picture looks right, ask how to train it — I’ll recommend vault sessions and give you a pre-filled Session Builder prompt.\n\nExamples:\n• “best way to play out using a 433 vs a 442”\n• “how can my team improve in this area?”\n• “recommend a session for what’s on the board”\n• “11v11 4-2-3-1 vs 3-5-2, play out left channel”",
 };
 
 function formatCoachLevel(level?: string | null) {
@@ -43,6 +67,11 @@ function formatPlayerLevel(level?: string | null) {
   if (v === "INTERMEDIATE") return "Intermediate";
   if (v === "ADVANCED") return "Advanced";
   return null;
+}
+
+function formatLabel(value?: string | null) {
+  if (!value) return null;
+  return value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Mirror API resolveBoardAudience for header display before first AI reply. */
@@ -63,6 +92,80 @@ function derivePlayerLevel(coachLevel?: string | null, ageGroup?: string | null)
   return null;
 }
 
+function SessionBridgeCards({ bridge }: { bridge: SessionBridge }) {
+  const [copied, setCopied] = React.useState(false);
+  const autoUrl = bridge.generatorUrl.includes("autoGenerate=false")
+    ? bridge.generatorUrl.replace("autoGenerate=false", "autoGenerate=true")
+    : `${bridge.generatorUrl}&autoGenerate=true`;
+
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(bridge.generatorPrompt);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+      {bridge.recommendations.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">
+            Vault sessions
+          </p>
+          {bridge.recommendations.map((rec) => (
+            <Link
+              key={rec.id}
+              href={rec.openUrl}
+              className="block rounded-lg border border-white/10 bg-black/30 px-2.5 py-2 transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
+            >
+              <p className="text-[12px] font-medium text-slate-100">{rec.title}</p>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                {[
+                  rec.ageGroup,
+                  formatLabel(rec.phase),
+                  formatLabel(rec.zone),
+                  rec.formationUsed,
+                  rec.durationMin ? `${rec.durationMin} min` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {rec.summary ? (
+                <p className="mt-1 line-clamp-2 text-[10px] text-slate-500">{rec.summary}</p>
+              ) : null}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Link
+          href={bridge.generatorUrl}
+          className="inline-flex items-center rounded-lg border border-sky-500/40 bg-sky-500/15 px-2.5 py-1.5 text-[11px] font-medium text-sky-100 hover:bg-sky-500/25"
+        >
+          Open in Session Builder
+        </Link>
+        <Link
+          href={autoUrl}
+          className="inline-flex items-center rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/25"
+        >
+          Generate now
+        </Link>
+        <button
+          type="button"
+          onClick={() => void copyPrompt()}
+          className="inline-flex items-center rounded-lg border border-white/15 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-slate-200 hover:bg-white/[0.08]"
+        >
+          {copied ? "Copied" : "Copy prompt"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function BoardAiChat({
   boardId,
   diagram,
@@ -72,6 +175,7 @@ export default function BoardAiChat({
   coachLevel,
   playerLevel,
   onApplyDiagram,
+  onBusyChange,
 }: Props) {
   const [messages, setMessages] = React.useState<ChatMsg[]>([WELCOME]);
   const [input, setInput] = React.useState("");
@@ -84,6 +188,7 @@ export default function BoardAiChat({
   const listRef = React.useRef<HTMLDivElement | null>(null);
   const diagramRef = React.useRef(diagram);
   diagramRef.current = diagram;
+  const progress = useBoardLoadProgress(sending);
 
   React.useEffect(() => {
     setAudience({
@@ -97,6 +202,10 @@ export default function BoardAiChat({
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, sending]);
+
+  React.useEffect(() => {
+    onBusyChange?.(sending);
+  }, [sending, onBusyChange]);
 
   const send = async () => {
     const text = input.trim();
@@ -136,6 +245,13 @@ export default function BoardAiChat({
       if (res.applied && res.diagram) {
         onApplyDiagram(res.diagram);
       }
+      const bridge = res.sessionBridge
+        ? {
+            recommendations: res.sessionBridge.recommendations || [],
+            generatorUrl: res.sessionBridge.generatorUrl,
+            generatorPrompt: res.sessionBridge.generatorPrompt,
+          }
+        : null;
       setMessages((prev) => [
         ...prev,
         {
@@ -143,6 +259,7 @@ export default function BoardAiChat({
           role: "assistant",
           content: res.reply || (res.applied ? "Updated the board." : "Got it."),
           applied: Boolean(res.applied),
+          sessionBridge: bridge,
         },
       ]);
     } catch (e: any) {
@@ -191,10 +308,10 @@ export default function BoardAiChat({
         {messages.map((m) => (
           <div
             key={m.id}
-            className={`rounded-xl px-3 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap ${
+            className={`rounded-xl px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${
               m.role === "user"
-                ? "ml-6 bg-sky-500/15 text-sky-50 border border-sky-500/20"
-                : "mr-4 bg-white/[0.04] text-slate-200 border border-white/10"
+                ? "bg-sky-500/15 text-sky-50 border border-sky-500/20"
+                : "bg-white/[0.04] text-slate-100 border border-white/10"
             }`}
           >
             {m.content}
@@ -203,11 +320,21 @@ export default function BoardAiChat({
                 Applied to board
               </span>
             ) : null}
+            {m.sessionBridge ? <SessionBridgeCards bridge={m.sessionBridge} /> : null}
           </div>
         ))}
-        {sending ? (
-          <div className="mr-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-[12px] text-slate-400">
-            Setting up the board…
+        {progress.visible ? (
+          <div className="mr-4 space-y-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[12px] text-emerald-100/90">{progress.label}</p>
+              <span className="text-[11px] tabular-nums text-emerald-300/90">{progress.percent}%</span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-emerald-400/90 transition-[width] duration-200 ease-out"
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
           </div>
         ) : null}
       </div>
@@ -228,7 +355,7 @@ export default function BoardAiChat({
                 }
               }}
               rows={3}
-              placeholder="e.g. Show a 4-3-3 switch of play from left back…"
+              placeholder="e.g. How can my team improve in this area?"
               className="min-h-[4.5rem] flex-1 resize-none rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-[12px] text-slate-100 outline-none placeholder:text-slate-600 focus:border-emerald-500/40"
               disabled={sending}
             />
@@ -237,7 +364,7 @@ export default function BoardAiChat({
               onClick={() => void send()}
               disabled={sending || !input.trim()}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/20 text-emerald-100 disabled:opacity-40"
-              title="Send"
+              aria-label="Send"
             >
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14M13 6l6 6-6 6" />

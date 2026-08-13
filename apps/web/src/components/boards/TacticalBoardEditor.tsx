@@ -10,15 +10,42 @@ import type {
   DiagramV1,
 } from "@/types/diagram";
 import type { BoardShareMode } from "@/lib/boards";
+import { placeBoardPhase } from "@/lib/boards";
 import {
   DEFAULT_FORMATIONS,
   FORMATIONS_BY_FORMAT,
   applyFormationToTeam,
   buildDefaultMatchDiagram,
-  formationSize,
-  playerCountOptions,
   type FormationId,
 } from "@/lib/board-formations";
+import {
+  BOARD_SETUP_CHANNELS,
+  BOARD_SETUP_PHASES,
+  BOARD_SETUP_ZONES,
+  hasFullSetup,
+  subjectForPhase,
+  type BoardSetupChannel,
+  type BoardSetupChannelOrNone,
+  type BoardSetupPhase,
+  type BoardSetupPhaseOrNone,
+  type BoardSetupZone,
+  type BoardSetupZoneOrNone,
+} from "@/lib/board-phase-setup";
+import {
+  BOARD_SEQUENCE_DEFAULT_DURATION_MS,
+  BOARD_SEQUENCE_TWEEN_MS,
+  applyFrameLayers,
+  deleteActiveFrame,
+  duplicateActiveFrame,
+  ensureSequence,
+  extractFrameLayers,
+  getActiveFrameIndex,
+  interpolateLayers,
+  selectFrame,
+  syncActiveFrame,
+} from "@/lib/board-sequence";
+import type { DiagramFrameLayers } from "@/types/diagram";
+import BoardSequenceBar from "@/components/boards/BoardSequenceBar";
 import {
   PITCH_FORMAT_OPTIONS,
   PITCH_SPECS,
@@ -61,6 +88,7 @@ const UNDO_MAX = 50;
 const MAX_BALLS = 8;
 
 type Props = {
+  boardId: string;
   diagram: DiagramV1;
   title: string;
   shareMode: BoardShareMode;
@@ -72,6 +100,8 @@ type Props = {
   onSave: () => void;
   onCopyLink?: () => void;
   onDelete?: () => void;
+  onNewBoard?: () => void;
+  creatingBoard?: boolean;
   statusMessage?: string | null;
 };
 
@@ -189,9 +219,9 @@ function fromScreen(
 }
 
 function teamFill(team: DiagramTeamCode) {
-  if (team === "ATT") return "#38bdf8";
-  if (team === "DEF") return "#fb7185";
-  return "#e5e7eb";
+  if (team === "ATT") return "#38bdf8"; // blue — us / home
+  if (team === "DEF") return "#fb7185"; // red — them / away
+  return "#64748b"; // neutral slate (never near-white on green)
 }
 
 function arrowStroke(type: DiagramArrow["type"]) {
@@ -206,7 +236,7 @@ function cloneDiagram(d: DiagramV1): DiagramV1 {
 }
 
 function ensureArrays(d: DiagramV1): DiagramV1 {
-  return {
+  return ensureSequence({
     ...d,
     pitch: {
       variant: d.pitch?.variant || "FULL",
@@ -221,15 +251,15 @@ function ensureArrays(d: DiagramV1): DiagramV1 {
     labels: Array.isArray(d.labels) ? d.labels : [],
     balls: Array.isArray(d.balls) ? d.balls : [],
     goals: Array.isArray(d.goals) ? d.goals : [],
-  };
+  });
 }
 
 /** Caption chip sits just above the label anchor so text doesn't cover the zone. */
 const LABEL_CHIP_DY = -18;
-const LABEL_CHIP_MAX_W = 280;
-const LABEL_CHIP_MAX_CHARS = 160;
+const LABEL_CHIP_MAX_W = 360;
+const LABEL_CHIP_MAX_CHARS = 200;
 
-function wrapLabelLines(text: string, maxCharsPerLine = 42, maxLines = 3): string[] {
+function wrapLabelLines(text: string, maxCharsPerLine = 48, maxLines = 5): string[] {
   const clean = String(text || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -238,23 +268,26 @@ function wrapLabelLines(text: string, maxCharsPerLine = 42, maxLines = 3): strin
   const words = clean.split(" ");
   const lines: string[] = [];
   let cur = "";
-  for (const w of words) {
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
     const next = cur ? `${cur} ${w}` : w;
     if (next.length > maxCharsPerLine && cur) {
       lines.push(cur);
       cur = w;
-      if (lines.length >= maxLines - 1) break;
+      if (lines.length >= maxLines - 1) {
+        const rest = words.slice(i).join(" ");
+        lines.push(
+          rest.length <= maxCharsPerLine
+            ? rest
+            : `${rest.slice(0, maxCharsPerLine - 1)}…`
+        );
+        return lines;
+      }
     } else {
       cur = next;
     }
   }
   if (cur && lines.length < maxLines) lines.push(cur);
-  // If leftover words didn't fit, append ellipsis on last line
-  const used = lines.join(" ").length;
-  if (used < clean.length && lines.length) {
-    const last = lines[lines.length - 1];
-    lines[lines.length - 1] = `${last.slice(0, Math.max(0, maxCharsPerLine - 1))}…`;
-  }
   return lines;
 }
 
@@ -346,6 +379,7 @@ function normalizeArea(from: { x: number; y: number }, to: { x: number; y: numbe
 }
 
 export default function TacticalBoardEditor({
+  boardId,
   diagram: diagramProp,
   title,
   shareMode,
@@ -357,6 +391,8 @@ export default function TacticalBoardEditor({
   onSave,
   onCopyLink,
   onDelete,
+  onNewBoard,
+  creatingBoard,
   statusMessage,
 }: Props) {
   const [diagram, setDiagram] = React.useState(() => ensureArrays(cloneDiagram(diagramProp)));
@@ -372,8 +408,14 @@ export default function TacticalBoardEditor({
   const [awayFormation, setAwayFormation] = React.useState<FormationId>(
     () => DEFAULT_FORMATIONS[format].away
   );
-  /** Per-side player cap; "all" = full formation. */
-  const [playersPerSide, setPlayersPerSide] = React.useState<number | "all">("all");
+  const [setupPhase, setSetupPhase] = React.useState<BoardSetupPhaseOrNone>("");
+  const [setupZone, setSetupZone] = React.useState<BoardSetupZoneOrNone>("");
+  const [setupChannel, setSetupChannel] = React.useState<BoardSetupChannelOrNone>("");
+  const [showAtt, setShowAtt] = React.useState(true);
+  const [showDef, setShowDef] = React.useState(true);
+  const [placingPhase, setPlacingPhase] = React.useState(false);
+  const setupAppliedRef = React.useRef(false);
+  const emptySeededForBoardRef = React.useRef<string | null>(null);
   const undoStack = React.useRef<DiagramV1[]>([]);
   const skipPropSync = React.useRef(false);
   const dragRef = React.useRef<DragTarget | null>(null);
@@ -388,6 +430,49 @@ export default function TacticalBoardEditor({
   const [draft, setDraft] = React.useState<DrawDraft | null>(null);
   const draftRef = React.useRef<DrawDraft | null>(null);
   draftRef.current = draft;
+  const [setupOpen, setSetupOpen] = React.useState(false);
+  const setupRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!setupOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!setupRef.current?.contains(e.target as Node)) setSetupOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [setupOpen]);
+  const [playing, setPlaying] = React.useState(false);
+  const [playPreview, setPlayPreview] = React.useState<DiagramFrameLayers | null>(null);
+  const playGenRef = React.useRef(0);
+  const playTimerRef = React.useRef<number | null>(null);
+  const playingRef = React.useRef(false);
+  playingRef.current = playing;
+
+  const haltPlayback = React.useCallback(() => {
+    playGenRef.current += 1;
+    if (playTimerRef.current != null) {
+      window.clearTimeout(playTimerRef.current);
+      playTimerRef.current = null;
+    }
+    setPlaying(false);
+    setPlayPreview(null);
+  }, []);
+
+  const stopPlayback = React.useCallback(() => {
+    const wasPlaying = playingRef.current;
+    haltPlayback();
+    if (wasPlaying) {
+      skipPropSync.current = true;
+      onChange({ diagram: diagramRef.current, title, shareMode });
+    }
+  }, [haltPlayback, onChange, shareMode, title]);
+
+  React.useEffect(() => {
+    return () => {
+      playGenRef.current += 1;
+      if (playTimerRef.current != null) window.clearTimeout(playTimerRef.current);
+    };
+  }, []);
 
   React.useEffect(() => {
     if (skipPropSync.current) {
@@ -396,8 +481,30 @@ export default function TacticalBoardEditor({
     }
     // Always accept external diagram updates (e.g. Tactical Edge AI apply).
     // Local edits set skipPropSync before notifying the parent so we don't loop.
+    haltPlayback();
     setDiagram(ensureArrays(cloneDiagram(diagramProp)));
-  }, [diagramProp]);
+  }, [diagramProp, haltPlayback]);
+
+  // Older clear boards → place natural formations once per board open.
+  React.useEffect(() => {
+    if (!canEdit) return;
+    if (emptySeededForBoardRef.current === boardId) return;
+    if ((diagram.players || []).length > 0) {
+      emptySeededForBoardRef.current = boardId;
+      return;
+    }
+    emptySeededForBoardRef.current = boardId;
+    const seeded = buildDefaultMatchDiagram(format);
+    const defaults = DEFAULT_FORMATIONS[format];
+    setHomeFormation(defaults.home);
+    setAwayFormation(defaults.away);
+    skipPropSync.current = true;
+    setDiagram(seeded);
+    onDirtyChange(true);
+    onChange({ diagram: seeded, title, shareMode });
+    // Intentionally omit onChange/title/shareMode — seed once per boardId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, canEdit, diagram.players?.length, format]);
 
   const orientation = diagram.pitch?.orientation || "HORIZONTAL";
   const pitchVariant = (diagram.pitch?.variant || "FULL") as PitchZoom;
@@ -407,6 +514,18 @@ export default function TacticalBoardEditor({
   const ballR = ballRadiusPx(hitR);
   const formationOptions = FORMATIONS_BY_FORMAT[format];
   const spec = PITCH_SPECS[format];
+  const viewDiagram = React.useMemo(() => {
+    const base = playPreview ? applyFrameLayers(diagram, playPreview) : diagram;
+    if (showAtt && showDef) return base;
+    return {
+      ...base,
+      players: (base.players || []).filter((p) => {
+        if (p.team === "ATT") return showAtt;
+        if (p.team === "DEF") return showDef;
+        return true;
+      }),
+    };
+  }, [diagram, playPreview, showAtt, showDef]);
 
   const pushUndo = React.useCallback((prev: DiagramV1) => {
     undoStack.current.push(cloneDiagram(prev));
@@ -416,26 +535,118 @@ export default function TacticalBoardEditor({
   const commitDiagram = React.useCallback(
     (next: DiagramV1, opts?: { recordUndo?: boolean; from?: DiagramV1 }) => {
       if (!canEdit) return;
+      stopPlayback();
       if (opts?.recordUndo !== false) {
         pushUndo(opts?.from ?? diagram);
       }
-      const normalized = ensureArrays(next);
+      const normalized = syncActiveFrame(ensureArrays(next));
       skipPropSync.current = true;
       setDiagram(normalized);
       onDirtyChange(true);
       onChange({ diagram: normalized, title, shareMode });
     },
-    [canEdit, diagram, onChange, onDirtyChange, pushUndo, shareMode, title]
+    [canEdit, diagram, onChange, onDirtyChange, pushUndo, shareMode, stopPlayback, title]
   );
+
+  const commitSequenceOp = React.useCallback(
+    (next: DiagramV1) => {
+      stopPlayback();
+      const normalized = ensureArrays(next);
+      if (canEdit) {
+        pushUndo(diagram);
+        onDirtyChange(true);
+      }
+      skipPropSync.current = true;
+      setDiagram(normalized);
+      onChange({ diagram: normalized, title, shareMode });
+    },
+    [canEdit, diagram, onChange, onDirtyChange, pushUndo, shareMode, stopPlayback, title]
+  );
+
+  const runPlayback = React.useCallback(async () => {
+    const gen = ++playGenRef.current;
+    const base = syncActiveFrame(ensureArrays(diagramRef.current));
+    const frames = base.sequence?.frames || [];
+    if (frames.length < 2) {
+      setPlaying(false);
+      return;
+    }
+    setPlaying(true);
+    let idx = getActiveFrameIndex(base);
+
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => {
+        playTimerRef.current = window.setTimeout(() => {
+          playTimerRef.current = null;
+          resolve();
+        }, ms);
+      });
+
+    while (playGenRef.current === gen) {
+      const from = frames[idx];
+      const nextIdx = (idx + 1) % frames.length;
+      const to = frames[nextIdx];
+      const hold = Math.max(
+        BOARD_SEQUENCE_TWEEN_MS + 200,
+        from.durationMs ?? BOARD_SEQUENCE_DEFAULT_DURATION_MS
+      );
+      const holdBefore = Math.max(120, hold - BOARD_SEQUENCE_TWEEN_MS);
+
+      setPlayPreview(extractFrameLayers(from));
+      // Keep active frame in sync for scrubber highlight (without dirtying)
+      const selected = selectFrame(base, from.id);
+      skipPropSync.current = true;
+      setDiagram(selected);
+      diagramRef.current = selected;
+
+      await sleep(holdBefore);
+      if (playGenRef.current !== gen) break;
+
+      const tweenStart = performance.now();
+      await new Promise<void>((resolve) => {
+        const step = (now: number) => {
+          if (playGenRef.current !== gen) {
+            resolve();
+            return;
+          }
+          const t = Math.min(1, (now - tweenStart) / BOARD_SEQUENCE_TWEEN_MS);
+          setPlayPreview(interpolateLayers(from, to, t));
+          if (t < 1) {
+            requestAnimationFrame(step);
+          } else {
+            resolve();
+          }
+        };
+        requestAnimationFrame(step);
+      });
+
+      if (playGenRef.current !== gen) break;
+      idx = nextIdx;
+      const advanced = selectFrame(diagramRef.current, to.id);
+      skipPropSync.current = true;
+      setDiagram(advanced);
+      diagramRef.current = advanced;
+      setPlayPreview(extractFrameLayers(to));
+    }
+  }, []);
+
+  const onPlayToggle = React.useCallback(() => {
+    if (playing) {
+      stopPlayback();
+      return;
+    }
+    void runPlayback();
+  }, [playing, runPlayback, stopPlayback]);
 
   const undo = React.useCallback(() => {
     const prev = undoStack.current.pop();
     if (!prev) return;
+    stopPlayback();
     skipPropSync.current = true;
     setDiagram(ensureArrays(prev));
     onDirtyChange(true);
     onChange({ diagram: ensureArrays(prev), title, shareMode });
-  }, [onChange, onDirtyChange, shareMode, title]);
+  }, [onChange, onDirtyChange, shareMode, stopPlayback, title]);
 
   React.useEffect(() => {
     if (!canEdit) return;
@@ -1190,74 +1401,125 @@ export default function TacticalBoardEditor({
     }
   };
 
-  const setPitchVariant = (variant: PitchZoom) => {
-    const nextPitch = {
-      ...diagram.pitch,
-      variant,
-      orientation: "HORIZONTAL" as const,
-      format,
-    };
-    if (playersPerSide === "all") {
-      commitDiagram({ ...diagram, pitch: nextPitch });
-      return;
-    }
-    const visibleY = visibleYFor(format, variant);
-    const opts = { limit: playersPerSide, visibleY };
-    let next: DiagramV1 = { ...diagram, pitch: nextPitch };
-    next = applyFormationToTeam(next, "DEF", awayFormation, "away", opts);
-    next = applyFormationToTeam(next, "ATT", homeFormation, "home", opts);
-    commitDiagram(next);
-  };
-
   const setPitchFormat = (nextFormat: PitchFormatId) => {
     const defaults = DEFAULT_FORMATIONS[nextFormat];
     setHomeFormation(defaults.home);
     setAwayFormation(defaults.away);
-    setPlayersPerSide("all");
+    setShowAtt(true);
+    setShowDef(true);
     commitDiagram(buildDefaultMatchDiagram(nextFormat));
-  };
-
-  const visibleYFor = (fmt: PitchFormatId, zoom: PitchZoom) => {
-    const s = PITCH_SPECS[fmt];
-    const vp = viewportFor(fmt, zoom);
-    return {
-      min: (vp.originLengthYds / s.lengthYards) * 100,
-      max: ((vp.originLengthYds + vp.lengthYds) / s.lengthYards) * 100,
-    };
-  };
-
-  const formationOpts = (visibleY?: { min: number; max: number }) => {
-    const y = visibleY || visibleYFor(format, pitchVariant);
-    return playersPerSide === "all" ? { visibleY: y } : { limit: playersPerSide, visibleY: y };
   };
 
   const applyHomeFormation = (id: FormationId) => {
     setHomeFormation(id);
-    commitDiagram(applyFormationToTeam(diagram, "ATT", id, "home", formationOpts()));
+    const next = ensureArrays(applyFormationToTeam(diagram, "ATT", id, "home"));
+    if (hasFullSetup(setupPhase, setupZone, setupChannel)) {
+      // Keep phase/zone/channel chassis — update roster then re-place
+      skipPropSync.current = true;
+      setDiagram(next);
+      diagramRef.current = next;
+      applyPhaseShape(setupPhase, setupZone, setupChannel, showAtt, showDef, {
+        att: id,
+        def: awayFormation,
+      });
+    } else {
+      commitDiagram(next);
+    }
   };
 
   const applyAwayFormation = (id: FormationId) => {
     setAwayFormation(id);
-    commitDiagram(applyFormationToTeam(diagram, "DEF", id, "away", formationOpts()));
-  };
-
-  const setPlayersPerSideAndApply = (next: number | "all") => {
-    setPlayersPerSide(next);
-    const opts =
-      next === "all"
-        ? { visibleY: visibleYFor(format, pitchVariant) }
-        : { limit: next, visibleY: visibleYFor(format, pitchVariant) };
-    let d = applyFormationToTeam(diagram, "DEF", awayFormation, "away", opts);
-    d = applyFormationToTeam(d, "ATT", homeFormation, "home", opts);
-    commitDiagram(d);
+    const next = ensureArrays(applyFormationToTeam(diagram, "DEF", id, "away"));
+    if (hasFullSetup(setupPhase, setupZone, setupChannel)) {
+      skipPropSync.current = true;
+      setDiagram(next);
+      diagramRef.current = next;
+      applyPhaseShape(setupPhase, setupZone, setupChannel, showAtt, showDef, {
+        att: homeFormation,
+        def: id,
+      });
+    } else {
+      commitDiagram(next);
+    }
   };
 
   const resetMatchSetup = () => {
     const defaults = DEFAULT_FORMATIONS[format];
     setHomeFormation(defaults.home);
     setAwayFormation(defaults.away);
-    setPlayersPerSide("all");
+    setSetupPhase("");
+    setSetupZone("");
+    setSetupChannel("");
+    setShowAtt(true);
+    setShowDef(true);
+    setupAppliedRef.current = false;
     commitDiagram(buildDefaultMatchDiagram(format));
+  };
+
+  const clearPhaseOverlay = () => {
+    const defaults = DEFAULT_FORMATIONS[format];
+    setupAppliedRef.current = false;
+    commitDiagram(
+      buildDefaultMatchDiagram(
+        format,
+        homeFormation || defaults.home,
+        awayFormation || defaults.away
+      )
+    );
+  };
+
+  const applyPhaseShape = (
+    phase: BoardSetupPhaseOrNone = setupPhase,
+    zone: BoardSetupZoneOrNone = setupZone,
+    channel: BoardSetupChannelOrNone = setupChannel,
+    attVisible = showAtt,
+    defVisible = showDef,
+    formations?: { att?: FormationId; def?: FormationId }
+  ) => {
+    if (!boardId || placingPhase) return;
+    if (!hasFullSetup(phase, zone, channel)) {
+      if (setupAppliedRef.current || (!phase && !zone && !channel)) {
+        clearPhaseOverlay();
+      }
+      return;
+    }
+    const subject = subjectForPhase(phase);
+    const opposition =
+      subject === "DEF" ? attVisible : subject === "ATT" ? defVisible : attVisible && defVisible;
+    const snapshot = diagramRef.current;
+    setPlacingPhase(true);
+    void placeBoardPhase(boardId, {
+      diagram: snapshot,
+      phase,
+      zone,
+      channel,
+      attFormation: formations?.att ?? homeFormation,
+      defFormation: formations?.def ?? awayFormation,
+      showOpposition: opposition,
+    })
+      .then((res) => {
+        if (!res.ok || !res.diagram) {
+          console.warn("[setup] phase-place failed", res.error || res.message);
+          return;
+        }
+        setupAppliedRef.current = true;
+        commitDiagram({
+          ...res.diagram,
+          pitch: {
+            ...snapshot.pitch,
+            ...res.diagram.pitch,
+            format: snapshot.pitch.format,
+            variant: snapshot.pitch.variant,
+            orientation: snapshot.pitch.orientation,
+            showZones: snapshot.pitch.showZones,
+          },
+          goals: snapshot.goals?.length ? snapshot.goals : res.diagram.goals,
+        });
+      })
+      .catch((err) => {
+        console.warn("[setup] phase-place error", err);
+      })
+      .finally(() => setPlacingPhase(false));
   };
 
   const selectedPlayer =
@@ -1281,16 +1543,16 @@ export default function TacticalBoardEditor({
     const y = Math.min(a.sy, b.sy);
     const rw = Math.abs(b.sx - a.sx);
     const rh = Math.abs(b.sy - a.sy);
-    const isSelected = !preview && selection?.kind === "area" && selection.index === i;
-    const stroke = preview ? "#fbbf24" : isSelected ? "#fbbf24" : "#fde68a";
-    const strokeW = isSelected ? 2.5 : 1.75;
-    const canHit = canEdit && !preview && (tool === "select" || tool === "eraser");
+    const canHit = canEdit && !playing && !preview && (tool === "select" || tool === "eraser");
     const hitProps = canHit
       ? {
           className: tool === "select" ? "cursor-move" : "cursor-pointer",
           onPointerDown: (ev: React.PointerEvent) => onAreaPointerDown(ev, i),
         }
       : { className: "pointer-events-none" as const };
+    const isSelected = !playing && !preview && selection?.kind === "area" && selection.index === i;
+    const stroke = preview ? "#fbbf24" : isSelected ? "#fbbf24" : "#fde68a";
+    const strokeW = isSelected ? 2.5 : 1.75;
     if (area.shape === "spotlight") {
       const gradId = `spotlight-grad-${i < 0 ? "draft" : i}`;
       const cx = x + rw / 2;
@@ -1357,7 +1619,9 @@ export default function TacticalBoardEditor({
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2" ref={setupRef}>
+      {/* Slim top bar */}
       <div className="flex flex-wrap items-center gap-2">
         <input
           value={title}
@@ -1366,15 +1630,31 @@ export default function TacticalBoardEditor({
             onDirtyChange(true);
             onChange({ diagram, title: e.target.value.slice(0, 120), shareMode });
           }}
-          className="min-h-11 flex-1 min-w-[12rem] rounded-xl border border-white/10 bg-black/30 px-3 text-sm text-white/90 outline-none focus:border-emerald-500/40 disabled:opacity-60"
+          className="h-9 min-w-[10rem] flex-1 rounded-lg border border-white/10 bg-black/30 px-3 text-sm text-white/90 outline-none focus:border-emerald-500/40 disabled:opacity-60"
           placeholder="Board title"
         />
+        <span className="hidden h-9 items-center rounded-lg border border-white/10 bg-black/25 px-2.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
+          {format} · {pitchVariant === "FULL" ? "Full" : pitchVariant === "HALF" ? "Half" : "Third"}
+        </span>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => setSetupOpen((v) => !v)}
+            className={`h-9 rounded-lg border px-3 text-[12px] font-medium transition ${
+              setupOpen
+                ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            Setup{setupOpen ? " ▲" : " ▾"}
+          </button>
+        ) : null}
         {canEdit ? (
           <button
             type="button"
             onClick={onSave}
             disabled={saving || !dirty}
-            className="min-h-11 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-4 text-sm font-semibold text-emerald-100 disabled:opacity-40"
+            className="h-9 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 text-[12px] font-semibold text-emerald-100 disabled:opacity-40"
           >
             {saving ? "Saving…" : dirty ? "Save" : "Saved"}
           </button>
@@ -1383,11 +1663,21 @@ export default function TacticalBoardEditor({
             View only
           </span>
         )}
+        {onNewBoard ? (
+          <button
+            type="button"
+            onClick={onNewBoard}
+            disabled={Boolean(creatingBoard)}
+            className="h-9 rounded-lg border border-white/15 bg-black/30 px-3 text-[12px] font-medium text-slate-200 hover:bg-white/5 hover:text-white disabled:opacity-40"
+          >
+            {creatingBoard ? "Creating…" : "New"}
+          </button>
+        ) : null}
         {onCopyLink ? (
           <button
             type="button"
             onClick={onCopyLink}
-            className="min-h-11 rounded-xl border border-white/15 px-3 text-xs text-slate-300 hover:bg-white/5"
+            className="h-9 rounded-lg border border-white/15 px-2.5 text-[11px] text-slate-300 hover:bg-white/5"
           >
             Copy link
           </button>
@@ -1396,13 +1686,13 @@ export default function TacticalBoardEditor({
           <button
             type="button"
             onClick={onDelete}
-            className="min-h-11 rounded-xl border border-rose-500/30 px-3 text-xs text-rose-200 hover:bg-rose-500/10"
+            className="h-9 rounded-lg border border-rose-500/30 px-2.5 text-[11px] text-rose-200 hover:bg-rose-500/10"
           >
             Delete
           </button>
         ) : null}
-        <label className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-3 text-xs text-slate-300">
-          <span>Share</span>
+        <label className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 px-2.5 text-[11px] text-slate-300">
+          <span className="text-slate-500">Share</span>
           <select
             value={shareMode}
             disabled={!canEdit}
@@ -1422,222 +1712,295 @@ export default function TacticalBoardEditor({
         </label>
       </div>
 
-      {canEdit ? (
-        <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-[#07111f]/90 p-2 backdrop-blur">
-          <div className="flex flex-wrap items-end gap-4">
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+      {canEdit && setupOpen ? (
+        <div className="rounded-xl border border-white/10 bg-[#0b1220] px-2.5 py-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="inline-flex h-8 items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 text-[11px] text-slate-200">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
                 Board
               </span>
-              <div className="flex items-center gap-1.5">
+              <select
+                value={format}
+                onChange={(e) => setPitchFormat(e.target.value as PitchFormatId)}
+                title={`${spec.ages} · ${spec.lengthYards}×${spec.widthYards} yds`}
+                className="bg-transparent outline-none"
+              >
                 {PITCH_FORMAT_OPTIONS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => setPitchFormat(f.id)}
-                    title={`${f.ages} · ${PITCH_SPECS[f.id].lengthYards}×${PITCH_SPECS[f.id].widthYards} yds`}
-                    className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
-                      format === f.id
-                        ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
-                        : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
+                  <option key={f.id} value={f.id}>
                     {f.label}
-                  </button>
+                  </option>
                 ))}
-              </div>
-            </div>
+              </select>
+            </label>
 
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                Zoom
-              </span>
-              <div className="flex items-center gap-1.5">
-                {(["FULL", "HALF", "THIRD"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setPitchVariant(v)}
-                    className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
-                      pitchVariant === v
-                        ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
-                        : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    {v === "FULL" ? "Full" : v === "HALF" ? "Half" : "Third"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                Players
+            <label className="inline-flex h-8 items-center gap-1 rounded-md border border-rose-500/30 bg-black/40 px-2 text-[11px] text-rose-100">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-rose-300/80">
+                DEF
               </span>
               <select
-                value={playersPerSide === "all" ? "all" : String(playersPerSide)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPlayersPerSideAndApply(v === "all" ? "all" : Number(v));
-                }}
-                className="h-10 rounded-lg border border-white/10 bg-black/40 px-2 text-[12px] text-slate-200"
-                title="Players per side (All = full formation). Reduce when zooming."
+                value={
+                  formationOptions.some((o) => o.id === awayFormation)
+                    ? awayFormation
+                    : formationOptions[0].id
+                }
+                onChange={(e) => applyAwayFormation(e.target.value as FormationId)}
+                className="bg-transparent outline-none"
+                title={
+                  formationOptions.find((o) => o.id === awayFormation)?.hint ||
+                  "Away / DEF formation"
+                }
               >
-                {playerCountOptions(format).map((opt) => {
-                  const allCount = Math.max(
-                    formationSize(homeFormation),
-                    formationSize(awayFormation)
-                  );
-                  if (opt === "all") {
-                    return (
-                      <option key="all" value="all">
-                        All ({allCount})
-                      </option>
-                    );
-                  }
-                  return (
-                    <option key={opt} value={String(opt)}>
-                      {opt} / side
-                    </option>
-                  );
-                })}
+                {formationOptions.map((f) => (
+                  <option key={f.id} value={f.id} title={f.hint}>
+                    {f.label}
+                  </option>
+                ))}
               </select>
-            </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showDef}
+                disabled={placingPhase}
+                onClick={() => {
+                  const next = !showDef;
+                  setShowDef(next);
+                  if (hasFullSetup(setupPhase, setupZone, setupChannel)) {
+                    applyPhaseShape(setupPhase, setupZone, setupChannel, showAtt, next);
+                  }
+                }}
+                title={showDef ? "Hide DEF" : "Show DEF"}
+                className={`ml-0.5 rounded px-1.5 text-[9px] font-semibold uppercase tracking-wide transition disabled:opacity-50 ${
+                  showDef ? "bg-rose-500/30 text-rose-100" : "bg-white/5 text-slate-500"
+                }`}
+              >
+                {showDef ? "On" : "Off"}
+              </button>
+            </label>
 
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                Formations
+            <label className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-500/30 bg-black/40 px-2 text-[11px] text-sky-100">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-sky-300/80">
+                ATT
               </span>
-              <div className="flex items-center gap-1.5">
-                <label className="flex h-10 items-center gap-1.5 rounded-lg border border-rose-500/30 bg-black/40 px-2 text-[12px] text-rose-100">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-300/80">
-                    DEF
-                  </span>
-                  <select
-                    value={
-                      formationOptions.some((o) => o.id === awayFormation)
-                        ? awayFormation
-                        : formationOptions[0].id
-                    }
-                    onChange={(e) => applyAwayFormation(e.target.value as FormationId)}
-                    className="bg-transparent outline-none"
-                  >
-                    {formationOptions.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex h-10 items-center gap-1.5 rounded-lg border border-sky-500/30 bg-black/40 px-2 text-[12px] text-sky-100">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-sky-300/80">
-                    ATT
-                  </span>
-                  <select
-                    value={
-                      formationOptions.some((o) => o.id === homeFormation)
-                        ? homeFormation
-                        : formationOptions[0].id
-                    }
-                    onChange={(e) => applyHomeFormation(e.target.value as FormationId)}
-                    className="bg-transparent outline-none"
-                  >
-                    {formationOptions.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
+              <select
+                value={
+                  formationOptions.some((o) => o.id === homeFormation)
+                    ? homeFormation
+                    : formationOptions[0].id
+                }
+                onChange={(e) => applyHomeFormation(e.target.value as FormationId)}
+                className="bg-transparent outline-none"
+                title={
+                  formationOptions.find((o) => o.id === homeFormation)?.hint ||
+                  "Home / ATT formation"
+                }
+              >
+                {formationOptions.map((f) => (
+                  <option key={f.id} value={f.id} title={f.hint}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showAtt}
+                disabled={placingPhase}
+                onClick={() => {
+                  const next = !showAtt;
+                  setShowAtt(next);
+                  if (hasFullSetup(setupPhase, setupZone, setupChannel)) {
+                    applyPhaseShape(setupPhase, setupZone, setupChannel, next, showDef);
+                  }
+                }}
+                title={showAtt ? "Hide ATT" : "Show ATT"}
+                className={`ml-0.5 rounded px-1.5 text-[9px] font-semibold uppercase tracking-wide transition disabled:opacity-50 ${
+                  showAtt ? "bg-sky-500/30 text-sky-100" : "bg-white/5 text-slate-500"
+                }`}
+              >
+                {showAtt ? "On" : "Off"}
+              </button>
+            </label>
 
-            <div>
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                View
+            <span className="hidden h-5 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+
+            <label
+              className={`inline-flex h-8 items-center gap-1 rounded-md border bg-black/40 px-2 text-[11px] ${
+                subjectForPhase(setupPhase) === "DEF"
+                  ? "border-rose-500/40 text-rose-100"
+                  : subjectForPhase(setupPhase) === "ATT"
+                    ? "border-sky-500/40 text-sky-100"
+                    : "border-white/10 text-slate-200"
+              }`}
+            >
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                Phase
               </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={resetMatchSetup}
-                  className="flex h-10 items-center rounded-lg border border-white/10 bg-black/30 px-3 text-[12px] text-slate-300 hover:bg-white/5 hover:text-white"
-                >
-                  Reset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const hasBall = (diagram.balls || []).length > 0;
-                    commitDiagram({
-                      ...diagram,
-                      balls: hasBall ? [] : [{ x: 50, y: 50 }],
-                    });
-                    if (hasBall && selection?.kind === "ball") setSelection(null);
-                  }}
-                  title={(diagram.balls || []).length > 0 ? "Remove ball" : "Add ball at centre"}
-                  className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
-                    (diagram.balls || []).length > 0
-                      ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
-                      : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+              <select
+                value={setupPhase}
+                disabled={placingPhase}
+                onChange={(e) => {
+                  const v = e.target.value as BoardSetupPhaseOrNone;
+                  setSetupPhase(v);
+                  applyPhaseShape(v, setupZone, setupChannel);
+                }}
+                className="bg-transparent outline-none disabled:opacity-50"
+                title="Pick a phase to place the subject team (optional)"
+              >
+                <option value="">None</option>
+                {BOARD_SETUP_PHASES.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              {subjectForPhase(setupPhase) ? (
+                <span
+                  className={`rounded px-1 text-[9px] font-semibold uppercase tracking-wide ${
+                    subjectForPhase(setupPhase) === "DEF"
+                      ? "bg-rose-500/25 text-rose-200"
+                      : "bg-sky-500/25 text-sky-200"
                   }`}
                 >
-                  Ball
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    commitDiagram({
-                      ...diagram,
-                      pitch: {
-                        ...diagram.pitch,
-                        showZones: !diagram.pitch.showZones,
-                      },
-                    });
-                  }}
-                  title="Toggle five-lane field segregation"
-                  className={`flex h-10 items-center rounded-lg border px-3 text-[12px] font-medium transition ${
-                    diagram.pitch.showZones
-                      ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
-                      : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  Lanes
-                </button>
-              </div>
-            </div>
+                  {subjectForPhase(setupPhase) === "DEF" ? "Red" : "Blue"}
+                </span>
+              ) : null}
+            </label>
 
-            <div className="ml-auto self-end pb-2 text-[10px] text-slate-500">
-              {spec.lengthYards}×{spec.widthYards} yds · {spec.ages}
-            </div>
+            <label className="inline-flex h-8 items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 text-[11px] text-slate-200">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                Zone
+              </span>
+              <select
+                value={setupZone}
+                disabled={placingPhase}
+                onChange={(e) => {
+                  const v = e.target.value as BoardSetupZoneOrNone;
+                  setSetupZone(v);
+                  applyPhaseShape(setupPhase, v, setupChannel);
+                }}
+                className="bg-transparent outline-none disabled:opacity-50"
+                title="Third of the pitch (required with Phase + Channel)"
+              >
+                <option value="">None</option>
+                {BOARD_SETUP_ZONES.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="inline-flex h-8 items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 text-[11px] text-slate-200">
+              <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                Channel
+              </span>
+              <select
+                value={setupChannel}
+                disabled={placingPhase}
+                onChange={(e) => {
+                  const v = e.target.value as BoardSetupChannelOrNone;
+                  setSetupChannel(v);
+                  applyPhaseShape(setupPhase, setupZone, v);
+                }}
+                className="bg-transparent outline-none disabled:opacity-50"
+                title="Channel (required with Phase + Zone)"
+              >
+                <option value="">None</option>
+                {BOARD_SETUP_CHANNELS.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span className="hidden h-5 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+
+            <button
+              type="button"
+              onClick={resetMatchSetup}
+              className="flex h-8 shrink-0 items-center rounded-md border border-white/10 bg-black/30 px-2 text-[11px] text-slate-300 hover:bg-white/5 hover:text-white"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const hasBall = (diagram.balls || []).length > 0;
+                commitDiagram({
+                  ...diagram,
+                  balls: hasBall ? [] : [{ x: 50, y: 50 }],
+                });
+                if (hasBall && selection?.kind === "ball") setSelection(null);
+              }}
+              title={(diagram.balls || []).length > 0 ? "Remove ball" : "Add ball at centre"}
+              className={`flex h-8 shrink-0 items-center rounded-md border px-2 text-[11px] font-medium transition ${
+                (diagram.balls || []).length > 0
+                  ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                  : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              Ball
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                commitDiagram({
+                  ...diagram,
+                  pitch: {
+                    ...diagram.pitch,
+                    showZones: !diagram.pitch.showZones,
+                  },
+                });
+              }}
+              title="Toggle five-lane field segregation"
+              className={`flex h-8 shrink-0 items-center rounded-md border px-2 text-[11px] font-medium transition ${
+                diagram.pitch.showZones
+                  ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                  : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              Lanes
+            </button>
+
+            <span className="ml-auto text-[10px] text-slate-500">
+              {spec.lengthYards}×{spec.widthYards} · {spec.ages}
+            </span>
           </div>
         </div>
       ) : null}
+      </div>
 
       {statusMessage ? <p className="text-xs text-slate-400">{statusMessage}</p> : null}
 
-      <BoardToolbar
-        tool={tool}
-        onToolChange={(t) => {
-          setTool(t);
-          setDraft(null);
-          draftRef.current = null;
-        }}
-        addTeam={addTeam}
-        onAddTeamChange={setAddTeam}
-        onUndo={undo}
-        disabled={!canEdit}
-      />
+      <div className="flex items-start gap-2">
+        {canEdit ? (
+          <BoardToolbar
+            variant="rail"
+            tool={tool}
+            onToolChange={(t) => {
+              setTool(t);
+              setDraft(null);
+              draftRef.current = null;
+            }}
+            addTeam={addTeam}
+            onAddTeamChange={setAddTeam}
+            onUndo={undo}
+            disabled={playing}
+          />
+        ) : null}
 
-      <div className="overflow-auto rounded-2xl border border-white/10 bg-[#06261c] p-2">
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="mx-auto h-auto w-full max-w-5xl touch-none select-none"
-          onPointerMove={onSvgPointerMove}
-          onPointerUp={onSvgPointerUp}
-          onPointerLeave={onSvgPointerUp}
-          onPointerDown={onPitchPointerDown}
-        >
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="overflow-auto rounded-2xl border border-white/10 bg-[#06261c] p-2">
+            <svg
+              ref={svgRef}
+              viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+              className="mx-auto h-auto w-full max-w-5xl touch-none select-none"
+              onPointerMove={playing ? undefined : onSvgPointerMove}
+              onPointerUp={playing ? undefined : onSvgPointerUp}
+              onPointerLeave={playing ? undefined : onSvgPointerUp}
+              onPointerDown={playing ? undefined : onPitchPointerDown}
+            >
           <ScaledPitchMarkings
             format={format}
             orientation={orientation}
@@ -1658,17 +2021,17 @@ export default function TacticalBoardEditor({
             </marker>
           </defs>
 
-          {(diagram.areas || []).map((area, i) => renderArea(area, i))}
+          {(viewDiagram.areas || []).map((area, i) => renderArea(area, i))}
 
           {/* labels rendered later (after players) so chips stay readable */}
 
-          {(diagram.arrows || []).map((a, i) => {
-            const from = resolvePoint(a.from, diagram.players, orientation, layout, viewport, spec);
-            const to = resolvePoint(a.to, diagram.players, orientation, layout, viewport, spec);
+          {(viewDiagram.arrows || []).map((a, i) => {
+            const from = resolvePoint(a.from, viewDiagram.players, orientation, layout, viewport, spec);
+            const to = resolvePoint(a.to, viewDiagram.players, orientation, layout, viewport, spec);
             if (!from || !to) return null;
             const fromPad = a.from.playerId ? hitR + 2 : 0;
             const toPad = a.to.playerId ? hitR + 6 : arrowHasHead(a) ? 4 : 0;
-            const pitchPoly = arrowPitchPolyline(a, diagram.players);
+            const pitchPoly = arrowPitchPolyline(a, viewDiagram.players);
             if (!pitchPoly || pitchPoly.length < 2) return null;
             const screenPoly = pitchPoly.map((p) =>
               toScreen(p, orientation, layout, viewport, spec)
@@ -1680,7 +2043,7 @@ export default function TacticalBoardEditor({
             );
             if (!trimmedPts) return null;
             const pathD = polylineToPathD(trimmedPts);
-            const isSelected = selection?.kind === "arrow" && selection.index === i;
+            const isSelected = !playing && selection?.kind === "arrow" && selection.index === i;
             const marker = arrowHasHead(a)
               ? a.type === "run"
                 ? "url(#arrowHeadRun)"
@@ -1688,7 +2051,7 @@ export default function TacticalBoardEditor({
                   ? "url(#arrowHeadPress)"
                   : "url(#arrowHead)"
               : undefined;
-            const canHit = canEdit && (tool === "select" || tool === "eraser");
+            const canHit = canEdit && !playing && (tool === "select" || tool === "eraser");
             const ends = {
               x1: trimmedPts[0].x,
               y1: trimmedPts[0].y,
@@ -1839,15 +2202,15 @@ export default function TacticalBoardEditor({
               )
             : null}
 
-          {(diagram.balls || []).map((b, i) => {
+          {(viewDiagram.balls || []).map((b, i) => {
             const s = toScreen(b, orientation, layout, viewport, spec);
-            const selected = selection?.kind === "ball" && selection.index === i;
+            const selected = !playing && selection?.kind === "ball" && selection.index === i;
             return (
               <g
                 key={`ball-${i}`}
                 transform={`translate(${s.sx},${s.sy})`}
-                onPointerDown={(e) => onBallPointerDown(e, i)}
-                style={{ cursor: canEdit ? "grab" : "default" }}
+                onPointerDown={playing ? undefined : (e) => onBallPointerDown(e, i)}
+                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
               >
                 <circle
                   r={ballR}
@@ -1868,7 +2231,7 @@ export default function TacticalBoardEditor({
             );
           })}
 
-          {diagram.players.map((p) => {
+          {viewDiagram.players.map((p) => {
             const s = toScreen(p, orientation, layout, viewport, spec);
             if (
               s.sx < layout.left - hitR ||
@@ -1878,13 +2241,13 @@ export default function TacticalBoardEditor({
             ) {
               return null;
             }
-            const isSelected = selection?.kind === "player" && selection.id === p.id;
+            const isSelected = !playing && selection?.kind === "player" && selection.id === p.id;
             return (
               <g
                 key={p.id}
                 transform={`translate(${s.sx},${s.sy})`}
-                onPointerDown={(e) => onPlayerPointerDown(e, p.id)}
-                style={{ cursor: canEdit ? "grab" : "default" }}
+                onPointerDown={playing ? undefined : (e) => onPlayerPointerDown(e, p.id)}
+                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
               >
                 <circle
                   r={hitR}
@@ -1900,20 +2263,22 @@ export default function TacticalBoardEditor({
                   fill="#0f172a"
                   className="pointer-events-none"
                 >
-                  {p.number ?? ""}
+                  {p.number === 1 || String(p.role || "").toUpperCase() === "GK"
+                    ? "GK"
+                    : (p.number ?? "")}
                 </text>
               </g>
             );
           })}
 
-          {(diagram.labels || []).map((l, i) => {
+          {(viewDiagram.labels || []).map((l, i) => {
             const s = toScreen(l, orientation, layout, viewport, spec);
             const fontSize = Math.max(10, hitR * 0.85);
             const { w, h, lines, lineH } = labelChipMetrics(l.text || "", fontSize);
             const cx = s.sx;
             const cy = s.sy + LABEL_CHIP_DY;
-            const isSelected = selection?.kind === "label" && selection.index === i;
-            const canHit = canEdit && (tool === "select" || tool === "eraser");
+            const isSelected = !playing && selection?.kind === "label" && selection.index === i;
+            const canHit = canEdit && !playing && (tool === "select" || tool === "eraser");
             const textStartY = -((lines.length - 1) * lineH) / 2;
             return (
               <g
@@ -1950,6 +2315,36 @@ export default function TacticalBoardEditor({
           })}
         </svg>
       </div>
+
+      <BoardSequenceBar
+        diagram={diagram}
+        canEdit={canEdit}
+        playing={playing}
+        onPlayToggle={onPlayToggle}
+        onSelectFrame={(frameId) => {
+          commitSequenceOp(selectFrame(diagram, frameId));
+          setSelection(null);
+        }}
+        onDuplicate={() => {
+          commitSequenceOp(duplicateActiveFrame(diagram));
+          setSelection(null);
+        }}
+        onDelete={() => {
+          commitSequenceOp(deleteActiveFrame(diagram));
+          setSelection(null);
+        }}
+      />
+
+      <p className="px-1 text-[10px] text-slate-500">
+        <span className="mr-3 inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-sky-400" />
+          Blue = ATT (us) · own goal RIGHT
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-400" />
+          Red = DEF (them) · own goal LEFT
+        </span>
+      </p>
 
       {canEdit && selectedPlayer ? (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-300">
@@ -2139,6 +2534,8 @@ export default function TacticalBoardEditor({
           </button>
         </div>
       ) : null}
+        </div>
+      </div>
     </div>
   );
 }

@@ -56,10 +56,10 @@ async function main() {
 
   try {
     step(1, 'Create blank board (New board)');
-    const blank = await createBlankBoard(owner.id, { title: 'Untitled board' });
+    const blank = await createBlankBoard(owner.id, { title: 'Untitled' });
     boardId = blank.id;
     assert(blank.clubId === club.id, 'expected club stamp');
-    assert((blank.diagram as any).players.length === 22, 'blank should start 11v11');
+    assert((blank.diagram as any).players.length === 22, 'blank should start with default formations');
     assert((blank.diagram as any).pitch?.variant === 'FULL', 'blank should start FULL pitch');
     assert((blank.diagram as any).pitch?.orientation === 'HORIZONTAL', 'blank should start HORIZONTAL');
     console.log(`  boardId=${boardId}`);

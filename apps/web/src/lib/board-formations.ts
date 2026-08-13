@@ -71,10 +71,10 @@ const FORMATIONS: Record<FormationId, Slot[]> = {
   ],
   "4-4-2": [
     { number: 1, role: "GK", x: 50, depth: 0.06 },
-    { number: 2, role: "RB", x: 82, depth: 0.22 },
-    { number: 4, role: "CB", x: 62, depth: 0.2 },
-    { number: 5, role: "CB", x: 38, depth: 0.2 },
-    { number: 3, role: "LB", x: 18, depth: 0.22 },
+    { number: 2, role: "RB", x: 90, depth: 0.3 },
+    { number: 4, role: "CB", x: 66, depth: 0.14 },
+    { number: 5, role: "CB", x: 34, depth: 0.14 },
+    { number: 3, role: "LB", x: 10, depth: 0.3 },
     { number: 7, role: "RM", x: 82, depth: 0.42 },
     { number: 8, role: "CM", x: 62, depth: 0.4 },
     { number: 6, role: "CM", x: 38, depth: 0.4 },
@@ -84,10 +84,10 @@ const FORMATIONS: Record<FormationId, Slot[]> = {
   ],
   "4-3-3": [
     { number: 1, role: "GK", x: 50, depth: 0.06 },
-    { number: 2, role: "RB", x: 82, depth: 0.22 },
-    { number: 4, role: "CB", x: 62, depth: 0.2 },
-    { number: 5, role: "CB", x: 38, depth: 0.2 },
-    { number: 3, role: "LB", x: 18, depth: 0.22 },
+    { number: 2, role: "RB", x: 90, depth: 0.3 },
+    { number: 4, role: "CB", x: 66, depth: 0.14 },
+    { number: 5, role: "CB", x: 34, depth: 0.14 },
+    { number: 3, role: "LB", x: 10, depth: 0.3 },
     { number: 6, role: "CDM", x: 50, depth: 0.36 },
     { number: 8, role: "CM", x: 32, depth: 0.4 },
     { number: 10, role: "CM", x: 68, depth: 0.4 },
@@ -97,10 +97,10 @@ const FORMATIONS: Record<FormationId, Slot[]> = {
   ],
   "4-2-3-1": [
     { number: 1, role: "GK", x: 50, depth: 0.06 },
-    { number: 2, role: "RB", x: 82, depth: 0.22 },
-    { number: 4, role: "CB", x: 62, depth: 0.2 },
-    { number: 5, role: "CB", x: 38, depth: 0.2 },
-    { number: 3, role: "LB", x: 18, depth: 0.22 },
+    { number: 2, role: "RB", x: 90, depth: 0.3 },
+    { number: 4, role: "CB", x: 66, depth: 0.14 },
+    { number: 5, role: "CB", x: 34, depth: 0.14 },
+    { number: 3, role: "LB", x: 10, depth: 0.3 },
     { number: 6, role: "CDM", x: 38, depth: 0.36 },
     { number: 8, role: "CDM", x: 62, depth: 0.36 },
     { number: 7, role: "RAM", x: 78, depth: 0.52 },
@@ -123,10 +123,10 @@ const FORMATIONS: Record<FormationId, Slot[]> = {
   ],
   "4-1-4-1": [
     { number: 1, role: "GK", x: 50, depth: 0.06 },
-    { number: 2, role: "RB", x: 82, depth: 0.22 },
-    { number: 4, role: "CB", x: 62, depth: 0.2 },
-    { number: 5, role: "CB", x: 38, depth: 0.2 },
-    { number: 3, role: "LB", x: 18, depth: 0.22 },
+    { number: 2, role: "RB", x: 90, depth: 0.3 },
+    { number: 4, role: "CB", x: 66, depth: 0.14 },
+    { number: 5, role: "CB", x: 34, depth: 0.14 },
+    { number: 3, role: "LB", x: 10, depth: 0.3 },
     { number: 6, role: "CDM", x: 50, depth: 0.34 },
     { number: 7, role: "RM", x: 82, depth: 0.48 },
     { number: 10, role: "CM", x: 62, depth: 0.46 },
@@ -151,7 +151,7 @@ const FORMATIONS: Record<FormationId, Slot[]> = {
 
 export const FORMATIONS_BY_FORMAT: Record<
   PitchFormatId,
-  { id: FormationId; label: string }[]
+  { id: FormationId; label: string; hint?: string }[]
 > = {
   // Matches session generator (SessionForm FORMATION_BY_AGE)
   "7V7": [
@@ -164,10 +164,10 @@ export const FORMATIONS_BY_FORMAT: Record<
     { id: "3-3-2", label: "3-3-2" },
   ],
   "11V11": [
-    { id: "4-3-3", label: "4-3-3" },
-    { id: "4-2-3-1", label: "4-2-3-1" },
-    { id: "4-4-2", label: "4-4-2" },
-    { id: "3-5-2", label: "3-5-2" },
+    { id: "4-3-3", label: "4-3-3", hint: "Positional play · false nine · flank triangles · #6 drop" },
+    { id: "4-2-3-1", label: "4-2-3-1", hint: "Doble pivot · #10 pocket · inverted wingers" },
+    { id: "4-4-2", label: "4-4-2", hint: "Short-team ≤25m · double screen · tuck + overlap" },
+    { id: "3-5-2", label: "3-5-2", hint: "Libero · WB overloads · 5-man midfield" },
   ],
 };
 
