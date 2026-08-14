@@ -16,6 +16,11 @@ export type TacticalBoardSummary = {
   createdAt: string;
   updatedAt: string;
   canEdit: boolean;
+  phase?: string | null;
+  zone?: string | null;
+  channel?: string | null;
+  attFormation?: string | null;
+  defFormation?: string | null;
 };
 
 export type TacticalBoard = TacticalBoardSummary & {

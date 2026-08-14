@@ -7,7 +7,7 @@ import {
   type ClubPhilosophyStages,
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
-import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
+import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis, needsPlayOutMotifClarification, hasPlayOutMotifLock, assistantOfferedPlayOutMotif, playOutMotifOptions } from './board-phase-placement';
 import {
   buildFormationPlaybookGuidance,
   type FormationId11,
@@ -260,7 +260,7 @@ export function repairBoardDiagramWithSequence(
     );
 
   let working: WebDiagramV1 = diagram;
-  if (!working.sequence?.frames?.length && isPlayOutRequest(message)) {
+  if (!working.sequence?.frames?.length && isPlayOutRequest(message, diagram)) {
     working = applyPlayOutSequenceToDiagram(repairOne(diagram), message);
   }
 
@@ -299,7 +299,7 @@ export function repairBoardDiagramWithSequence(
   frames = repairBoardSequenceCoherence(frames, message) as typeof frames;
 
   // Play-out / build-from-back: enforce goal-kick → pocket → final-third model (final authority)
-  if (isPlayOutRequest(message)) {
+  if (isPlayOutRequest(message, working)) {
     const placed = applyPlayOutSequenceToDiagram(
       {
         ...working,
@@ -894,7 +894,7 @@ export function ensureSequenceStartsFromOriginal(
   const aiFrames = result.sequence?.frames || [];
   const wantsSeq =
     wantsSequenceFromMessage(message) ||
-    isPlayOutRequest(message) ||
+    isPlayOutRequest(message, original) ||
     aiFrames.length >= 2;
 
   if (!wantsSeq) return result;
@@ -919,6 +919,7 @@ export function ensureSequenceStartsFromOriginal(
       },
     ];
   } else if (
+    !isPlayOutRequest(message, original) &&
     playerSetupSignature(aiFrames[0].players) === playerSetupSignature(startFrame.players) &&
     (aiFrames[0].arrows?.length || 0) === 0
   ) {
@@ -1356,6 +1357,9 @@ export function repairBoardDiagramOppositionNearPlay(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
+  // Play-out chassis owns DEF shape (e.g. 4-2-3-1). A 4+4 flat press line is wrong.
+  if (isPlayOutRequest(message, diagram)) return diagram;
+
   const focus = focusPointFromDiagram(diagram);
   if (!focus) return diagram;
 
@@ -2082,6 +2086,59 @@ function buildClarifyingReply(input: {
   return lines.join('\n');
 }
 
+function buildPlayOutMotifClarifyingReply(input: {
+  diagram: WebDiagramV1;
+  gameModelId?: string | null;
+  clubName?: string | null;
+  ageGroup?: string | null;
+  philosophyBlurb?: string | null;
+}): string {
+  const board = readBoardSetup(input.diagram);
+  const att = board.attFormation;
+  const def = board.defFormation;
+  const options = playOutMotifOptions(att);
+  const club = input.clubName || 'the club';
+  const model = String(input.gameModelId || 'game model').replace(/_/g, ' ');
+  const shape =
+    att || def
+      ? `ATT ${att || '?'} vs DEF ${def || '?'}`
+      : 'the shapes already on the board';
+  const where = [
+    board.phase,
+    board.focusThird === 'DEFENSIVE'
+      ? 'our defensive third'
+      : board.focusThird === 'ATTACKING'
+        ? 'our attacking third'
+        : board.focusThird === 'MIDDLE'
+          ? 'middle third'
+          : null,
+    board.channel ? `${board.channel.toLowerCase()} channel` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const lines: string[] = [
+    `That’s a known ${club} build-out — I’ll lock it to the ${model} pattern before I draw, so the picture matches how you want to play.`,
+    '',
+    `Reading the board: ${shape}${where ? ` · ${where}` : ''}.`,
+  ];
+  if (input.philosophyBlurb) {
+    lines.push('', `In possession this model wants: ${input.philosophyBlurb}`);
+  }
+  lines.push('', 'Pick the motif:');
+  for (const opt of options) {
+    lines.push(`${opt.id}. ${opt.title} — ${opt.detail}`);
+  }
+  lines.push('');
+  lines.push(
+    'Reply **1** (playbook default), **2**, or “just draw it”. I won’t freehand shirts until this is locked.'
+  );
+  if (input.ageGroup) {
+    lines.push(`(Age group on this board: ${input.ageGroup}.)`);
+  }
+  return lines.join('\n');
+}
+
 function buildPrompt(input: {
   diagram: WebDiagramV1;
   message: string;
@@ -2259,7 +2316,8 @@ function buildPrompt(input: {
     'SEQUENCE CONTINUITY (mandatory):',
     '- Frame 1 locks the coach’s board photo (formations, channel, player ids/positions) — never invent a different start.',
     '- The PLAY MUST ADVANCE across frames 2+ (do not freeze the highlight on Frame 1’s third).',
-    '  Typical build-out: Frame 1 saved board → Frame 2 midfield pocket / half-space → Frame 3 wide progression / final third.',
+    '- Typical first teaching beat for build-out / “progress to midfield”: Frame 2 = split CBs + #6 drop vs the named press (still in OUR defensive third). Frame 3 = midfield pocket. Frame 4 = final third.',
+    '- Do NOT jump Frame 2 straight to the centre circle when the coach asked how to progress FROM the current first-line picture.',
     '- Move the ball + highlight with the phase on teaching frames. Structure players shift gradually (≤ ~18 units from Frame 1) unless they are in the action.',
     '- Frames 2–N need MORE detail than Frame 1: involve 6–10 players in the picture (CBs, #6/#8, fullbacks/wing-backs, wingers, pressers).',
     '- Frame 2 is the first teaching beat — NEVER a thinner copy of Frame 1.',
@@ -2418,10 +2476,16 @@ export async function runBoardAiChat(input: {
   const history = Array.isArray(input.history) ? input.history.slice(-8) : [];
   const gaps = assessScenarioGaps(message, history, input.diagram);
   const improveAsk = isSessionImproveRequest(message);
+  const playOut =
+    isPlayOutRequest(message, input.diagram) ||
+    (hasPlayOutMotifLock(message, history) && assistantOfferedPlayOutMotif(history));
+  const playOutClarify = needsPlayOutMotifClarification(message, history, input.diagram);
   // Training/vault asks don't need a fresh draw — use what's already on the board.
   const clarifyRequired = improveAsk
     ? false
-    : needsBoardClarification(message, history, input.diagram);
+    : playOutClarify
+      ? false
+      : needsBoardClarification(message, history, input.diagram);
   const playModel = await resolveBoardPlayModelContext({
     gameModelId: input.gameModelId,
     clubId: input.clubId,
@@ -2451,6 +2515,25 @@ export async function runBoardAiChat(input: {
         generatorUrl: bridge.generatorUrl,
         generatorPrompt: bridge.generatorPrompt,
       },
+    };
+  }
+
+  // Lock a known game-model motif before freehanding a build-out picture
+  if (playOutClarify) {
+    const blurb = playModel.philosophy?.attackingOrganization
+      ? String(playModel.philosophy.attackingOrganization).replace(/\s+/g, ' ').trim().slice(0, 220)
+      : null;
+    return {
+      ...resultBase,
+      reply: buildPlayOutMotifClarifyingReply({
+        diagram: input.diagram,
+        gameModelId: playModel.gameModelId || input.gameModelId,
+        clubName: playModel.clubName,
+        ageGroup: input.ageGroup,
+        philosophyBlurb: blurb,
+      }),
+      applied: false,
+      diagram: input.diagram,
     };
   }
 
@@ -2501,7 +2584,32 @@ export async function runBoardAiChat(input: {
   }
 
   const parsed = parseJsonObject(text);
+
+  const applyChassisFromSavedBoard = (replyText: string): BoardAiChatResult => {
+    const board = readBoardSetup(input.diagram);
+    const chassisAsk = isPlayOutRequest(message, input.diagram)
+      ? message
+      : `play out from the back ATT ${board.attFormation || '4-3-3'} vs DEF ${board.defFormation || '4-4-2'} ${board.channel || 'CENTER'} channel`;
+    const placed = applyPlayOutSequenceToDiagram(input.diagram, chassisAsk);
+    const sequenced = ensureSequenceStartsFromOriginal(placed, input.diagram, chassisAsk);
+    const frameCount = sequenced.sequence?.frames?.length || 0;
+    return {
+      ...resultBase,
+      reply:
+        frameCount >= 3
+          ? `${replyText}\n\nSequence: ${frameCount} frames — 1) Start (your board)  2) first-line shape (split CBs, #6 drop)  3+) midfield / final third. Chassis from the 11v11 playbook — not freehand coordinates.`
+          : replyText,
+      applied: true,
+      diagram: sequenced,
+    };
+  };
+
   if (!parsed || typeof parsed !== 'object') {
+    if (playOut) {
+      return applyChassisFromSavedBoard(
+        'Laid out the build-out sequence from your current board.'
+      );
+    }
     return {
       ...resultBase,
       reply: "I couldn't format a board update. Try a clearer scenario (e.g. “7v7 ATT 2-3-1 vs DEF 3-2-1, central channel, Defensive Transition — press after loss in their defensive third”).",
@@ -2517,7 +2625,7 @@ export async function runBoardAiChat(input: {
   const apply = parsed.apply !== false;
 
   // Safety: never apply if gaps reappear (e.g. new vague turn after history reset)
-  if (apply && needsBoardClarification(message, history, input.diagram)) {
+  if (apply && !playOut && needsBoardClarification(message, history, input.diagram)) {
     return {
       ...resultBase,
       reply: buildClarifyingReply({
@@ -2529,6 +2637,11 @@ export async function runBoardAiChat(input: {
       applied: false,
       diagram: input.diagram,
     };
+  }
+
+  // Keep the model's coaching reply; draw shirts from the locked chassis + saved board.
+  if (apply && playOut) {
+    return applyChassisFromSavedBoard(reply);
   }
 
   if (!apply || !parsed.diagram) {
@@ -2571,7 +2684,7 @@ export async function runBoardAiChat(input: {
       : reply;
 
   const frameCount = repaired.sequence?.frames?.length || 0;
-  const playOutApplied = isPlayOutRequest(message) && frameCount >= 3;
+  const playOutApplied = isPlayOutRequest(message, input.diagram) && frameCount >= 3;
   const replyWithSequenceNote = playOutApplied
     ? `${replyWithArrowNote}\n\nSequence: ${frameCount} frames — 1) Start (your board)  2+) teaching steps. Chassis from the 11v11 playbook. Use Play / the filmstrip to scrub; Frame 1 keeps your original positions.`
     : wantsSequenceFromMessage(message) && frameCount < 2

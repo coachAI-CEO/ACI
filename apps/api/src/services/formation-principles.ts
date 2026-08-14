@@ -95,9 +95,11 @@ export function inferFormationsFromMessage(message: string): {
     if (!def) def = toFormationId11(vs[2]);
   }
 
-  if (!att && ids[0]) att = ids[0];
-  if (!def && ids[1]) def = ids[1];
-  // Single formation mentioned → ATT shape; DEF defaults to classic press shape for play-out
+  // A formation named only after vs/against is DEF. Do not also assign it to ATT
+  // ("progress vs a 4231" must keep the board's ATT shape).
+  if (!att && ids[0] && ids[0] !== def) att = ids[0];
+  if (!def && ids[1] && ids[1] !== att) def = ids[1];
+  // Single untagged formation → ATT shape; DEF defaults to classic press shape
   if (!def && att) def = '4-4-2';
 
   return { att, def };

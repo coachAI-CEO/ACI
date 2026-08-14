@@ -16,40 +16,33 @@ export default function BoardsPage() {
 
   if (enabled === null) {
     return (
-      <main className="min-h-dvh bg-[#060a13] text-slate-100 p-6">
-        <p className="text-sm text-slate-400">Loading…</p>
+      <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="rounded-3xl border border-slate-700/70 bg-slate-900/70 p-12 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-400" />
+          </div>
+        </div>
       </main>
     );
   }
 
   if (!enabled) {
     return (
-      <main className="min-h-dvh bg-[#060a13] text-slate-100 p-6">
-        <p className="text-sm text-slate-400">Tactical Board is not enabled.</p>
-        <Link href="/app" className="mt-4 inline-block text-sm text-emerald-300">
-          Back to app
-        </Link>
+      <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <h1 className="text-xl font-bold tracking-tight">Tactical Board</h1>
+          <p className="text-sm text-slate-400">Tactical Board is not enabled for this account.</p>
+          <Link href="/app" className="text-sm text-emerald-400 hover:text-emerald-300">
+            Back to app
+          </Link>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-dvh bg-[#060a13] text-slate-100">
-      <div className="border-b border-white/[0.06] px-4 py-3 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-sm font-semibold text-white/90">Tactical Board</h1>
-          <p className="text-[11px] text-slate-500">Create, edit, and share club boards</p>
-        </div>
-        <div className="flex items-center gap-3 text-xs">
-          <Link href="/app" className="text-slate-400 hover:text-emerald-300">
-            App
-          </Link>
-          <Link href="/doc-hub" className="text-slate-400 hover:text-emerald-300">
-            DOC Console
-          </Link>
-        </div>
-      </div>
-      <div className="mx-auto max-w-2xl p-4">
+    <main className="min-h-screen bg-slate-950 text-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
         <MyBoardsPanel enabled expanded />
       </div>
     </main>

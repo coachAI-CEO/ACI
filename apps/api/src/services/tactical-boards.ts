@@ -21,6 +21,7 @@ import {
   toWebDiagramV1,
   type WebDiagramV1,
 } from './web-diagram-v1';
+import { summarizeBoardCardMeta } from './board-card-meta';
 
 export class TacticalBoardError extends Error {
   status: number;
@@ -635,6 +636,7 @@ export async function listOwnedBoards(
       sourceDrillKey: true,
       createdAt: true,
       updatedAt: true,
+      diagram: true,
     },
   });
 
@@ -643,11 +645,44 @@ export async function listOwnedBoards(
   const last = page[page.length - 1];
   const nextCursor = hasMore && last ? encodeBoardCursor(last.updatedAt, last.id) : null;
 
+  const sessionIds = [
+    ...new Set(page.map((b) => b.sourceSessionId).filter((id): id is string => Boolean(id))),
+  ];
+  const sessions = sessionIds.length
+    ? await prisma.session.findMany({
+        where: { id: { in: sessionIds } },
+        select: { id: true, phase: true, zone: true, formationUsed: true, json: true },
+      })
+    : [];
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+
   return {
-    boards: page.map((b) => ({
-      ...b,
-      canEdit: true,
-    })),
+    boards: page.map((b) => {
+      const { diagram, ...rest } = b;
+      const meta = summarizeBoardCardMeta(diagram);
+      const session = b.sourceSessionId ? sessionById.get(b.sourceSessionId) : undefined;
+      const sessionJson =
+        session?.json && typeof session.json === 'object'
+          ? (session.json as Record<string, unknown>)
+          : null;
+      const jsonAtt =
+        typeof sessionJson?.formationAttacking === 'string'
+          ? sessionJson.formationAttacking
+          : null;
+      const jsonDef =
+        typeof sessionJson?.formationDefending === 'string'
+          ? sessionJson.formationDefending
+          : null;
+      return {
+        ...rest,
+        canEdit: true,
+        phase: meta.phase || session?.phase || null,
+        zone: meta.zone || session?.zone || null,
+        channel: meta.channel,
+        attFormation: meta.attFormation || jsonAtt || session?.formationUsed || null,
+        defFormation: meta.defFormation || jsonDef || null,
+      };
+    }),
     nextCursor,
   };
 }

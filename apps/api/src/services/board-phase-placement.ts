@@ -13,6 +13,7 @@ import {
   type FormationId11,
   boardCuesFor,
   inferFormationsFromMessage,
+  normalizeFormationSpellings,
   phaseKeyForPlayOut,
   playOutCaptions,
 } from './formation-principles';
@@ -31,10 +32,175 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-export function isPlayOutRequest(message: string): boolean {
-  return /\b(play(?:ing)? out(?: the back)?|build(?:ing)? out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
-    message
+function boardLooksLikeBuildOut(diagram?: WebDiagramV1): boolean {
+  if (!diagram) return false;
+  const ball = diagram.balls?.[0];
+  if (ball && typeof ball.y === 'number' && ball.y >= 67) return true;
+  const attGk = (diagram.players || []).find(
+    (p) => p.team === 'ATT' && (p.number === 1 || String(p.role || '').toUpperCase() === 'GK')
   );
+  if (
+    ball &&
+    attGk &&
+    typeof ball.y === 'number' &&
+    ball.y >= 60 &&
+    dist(ball, attGk) < 20
+  ) {
+    return true;
+  }
+  const labels = (diagram.labels || []).map((l) => String(l.text || '')).join(' ');
+  return /Def third|RIGHT third|build-out|build-up|between\/?\s*beside CBs/i.test(labels);
+}
+
+export function isPlayOutRequest(message: string, diagram?: WebDiagramV1): boolean {
+  const m = String(message || '');
+  if (
+    /\b(play(?:ing)? out(?: the back)?|build(?:ing)? out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+      m
+    )
+  ) {
+    return true;
+  }
+  // “build to midfield” / “progress to midfield” / “using the central channel”
+  if (
+    /\b(build(?:ing)?|progress(?:ing|ion)?|play(?:ing)?)\b[\s\S]{0,48}\b(midfield|middle third|central channel)\b/i.test(
+      m
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(midfield|central channel|middle third)\b[\s\S]{0,48}\b(build(?:ing)?|progress(?:ing|ion)?)\b/i.test(
+      m
+    )
+  ) {
+    return true;
+  }
+  // “based on how the board is set up” + first-line language
+  if (
+    /\b(board|set[\s-]?up|what's in|whats in|what is in)\b/i.test(m) &&
+    /\b(midfield|central channel|middle third|build|progress|first line)\b/i.test(m)
+  ) {
+    return true;
+  }
+  const named = normalizeFormationSpellings(m);
+  if (
+    /\b(vs|versus|against)\b/i.test(named) &&
+    /\b(4-2-3-1|4-4-2|4-3-3|3-5-2)\b/i.test(named) &&
+    /\b(midfield|channel|progress|build|play out|from the back|first line)\b/i.test(named)
+  ) {
+    return true;
+  }
+  if (
+    boardLooksLikeBuildOut(diagram) &&
+    /\b(midfield|central channel|progress|build|pocket|first line)\b/i.test(m)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const PLAYOUT_FORCE_DRAW =
+  /\b(just draw|draw it|use defaults?|don'?t ask|do not ask|no questions|go ahead|apply (?:it|now)|skip clarif)\b/i;
+
+const PLAYOUT_MOTIF_NAMED =
+  /(?:#6 drop|\b6 drops|\bdropping? (?:the )?(?:#?6|pivot)|false nine|flank triangle|wide sluice|third[-\s]?man|split (?:the )?c(?:entre|enter)[-\s]?backs)/i;
+
+const PLAYOUT_CONFIRM =
+  /^(1|2|yes|y|yeah|yep|ok|okay|do it|draw that|that one|the first|the second|go ahead)\.?$/i;
+
+const PLAYOUT_OFFER_MARK =
+  /#6 drop|split CBs|playbook default|Reply \*\*1\*\*|known (?:central )?build-out|first-line shape/i;
+
+export function assistantOfferedPlayOutMotif(
+  history: { role: string; content: string }[] = []
+): boolean {
+  return history.some((h) => h.role === 'assistant' && PLAYOUT_OFFER_MARK.test(h.content || ''));
+}
+
+/** Coach already named or confirmed a known chassis motif. */
+export function hasPlayOutMotifLock(
+  message: string,
+  history: { role: string; content: string }[] = []
+): boolean {
+  const m = String(message || '').trim();
+  if (PLAYOUT_FORCE_DRAW.test(m)) return true;
+  if (PLAYOUT_MOTIF_NAMED.test(m)) return true;
+  if (PLAYOUT_CONFIRM.test(m) && assistantOfferedPlayOutMotif(history)) return true;
+  return false;
+}
+
+/**
+ * Vague “best way to build to midfield from this board” should confirm a known
+ * game-model pattern before we draw.
+ */
+export function needsPlayOutMotifClarification(
+  message: string,
+  history: { role: string; content: string }[] = [],
+  diagram?: WebDiagramV1
+): boolean {
+  if (hasPlayOutMotifLock(message, history)) return false;
+  return isPlayOutRequest(message, diagram);
+}
+
+export function playOutMotifOptions(
+  att: FormationId11 | null
+): { id: '1' | '2'; title: string; detail: string }[] {
+  if (att === '4-2-3-1') {
+    return [
+      {
+        id: '1',
+        title: 'Doble pivot (default)',
+        detail: 'Split CBs, #6+#8 as the platform, #10 in the pocket vs their first line.',
+      },
+      {
+        id: '2',
+        title: 'FB overlap',
+        detail: 'Pivots hold; full-back high-wide if their winger tucks.',
+      },
+    ];
+  }
+  if (att === '4-4-2') {
+    return [
+      {
+        id: '1',
+        title: 'CM screen (default)',
+        detail: 'Back four as an arc, two CMs screen, full-backs as safe outlets.',
+      },
+      {
+        id: '2',
+        title: 'Asymmetric tuck',
+        detail: 'One wide mid stays high; the opposite mid tucks inside.',
+      },
+    ];
+  }
+  if (att === '3-5-2') {
+    return [
+      {
+        id: '1',
+        title: 'Libero + wing-backs (default)',
+        detail: '#4 drops to the GK, open CBs, wing-backs high with the #10.',
+      },
+      {
+        id: '2',
+        title: 'Midfield box',
+        detail: '#6/#8/#7/#9 rectangle; wing-backs stretch the press.',
+      },
+    ];
+  }
+  return [
+    {
+      id: '1',
+      title: '#6 drop (default)',
+      detail:
+        'Split CBs, #6 between them vs their first line, then the bounce into #8/#10 through the central channel.',
+    },
+    {
+      id: '2',
+      title: 'Flank triangle',
+      detail: 'FB + #8 + winger on one side; switch if they squeeze the middle.',
+    },
+  ];
 }
 
 export function inferDefBlockHeight(message: string): DefBlockHeight {
@@ -105,6 +271,40 @@ function isCb(p: Player): boolean {
   if (/^(CB|RCB|LCB)$/.test(r)) return true;
   if (/^(RB|LB|FB|RWB|LWB|WB|GK)$/.test(r)) return false;
   return p.number === 4 || p.number === 5;
+}
+
+/** Read the side already on the board when the coach only names the opposition. */
+export function inferFormationFromPlayers(
+  players: Player[],
+  team: 'ATT' | 'DEF'
+): FormationId11 | null {
+  const side = players.filter((p) => p.team === team);
+  if (side.length < 8) return null;
+  const roles = side.map((p) => roleOf(p));
+  const count = (re: RegExp) => roles.filter((r) => re.test(r)).length;
+
+  if (count(/^(CB|RCB|LCB)$/) >= 3 && count(/^(RWB|LWB|WB)$/) >= 1) return '3-5-2';
+  if (count(/^(ST|CF)$/) >= 2 && count(/^(RM|LM)$/) >= 1) return '4-4-2';
+  if (count(/^(CDM|DM)$/) >= 2 || count(/^(RAM|LAM|CAM)$/) >= 1) return '4-2-3-1';
+  if (count(/^(RW|LW)$/) >= 1) return '4-3-3';
+
+  const back = byBand(side, team, 'BACK').length;
+  const front = byBand(side, team, 'FRONT').length;
+  if (back >= 4 && front >= 3) return '4-3-3';
+  if (back >= 4 && front >= 2) return '4-4-2';
+  if (back >= 3 && front >= 2) return '3-5-2';
+  return null;
+}
+
+function resolvePlayOutFormations(
+  roster: Player[],
+  message: string
+): { att: FormationId11; def: FormationId11 } {
+  const inferred = inferFormationsFromMessage(message);
+  return {
+    att: inferred.att || inferFormationFromPlayers(roster, 'ATT') || '4-3-3',
+    def: inferred.def || inferFormationFromPlayers(roster, 'DEF') || '4-4-2',
+  };
 }
 
 function splitBacks(backs: Player[]): { cbs: Player[]; fbs: Player[]; wbs: Player[] } {
@@ -1005,8 +1205,9 @@ function placeAttChassis(
     }
 
     if (formation === '4-3-3') {
-      // Front / mid only — back four already placed
-      setT(targets, six, 50, focus.y - 8);
+      // Playbook: split CBs + #6 drops BETWEEN them (temp back-three vs first-line press)
+      const cbY = clamp(Math.max(focus.y + 2, 87));
+      setT(targets, six, 50, cbY);
       setT(targets, eight, WIDTH.halfL, focus.y - 24);
       setT(targets, ten, WIDTH.halfR, focus.y - 24);
       setT(targets, seven, WIDTH.touchR - 4, 50);
@@ -1674,12 +1875,12 @@ export function placePlayOutFrame(
   balls: WebDiagramV1['balls'];
   title: string;
 } {
-  const inferred = inferFormationsFromMessage(message);
+  const formations = resolvePlayOutFormations(roster, message);
   return placePhaseSnapshot({
     roster,
     subPhase: phase,
-    attFormation: inferred.att || '4-3-3',
-    defFormation: inferred.def || '4-4-2',
+    attFormation: formations.att,
+    defFormation: formations.def,
     channelX: inferChannelX(message),
     defBlock: inferDefBlockHeight(message),
     includeMotifArrows: true,
@@ -1850,12 +2051,12 @@ export function applyPlayOutSequenceToDiagram(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
-  if (!isPlayOutRequest(message)) return diagram;
+  if (!isPlayOutRequest(message, diagram)) return diagram;
 
   const baseRoster =
-    diagram.sequence?.frames?.[0]?.players?.length
-      ? diagram.sequence.frames[0].players
-      : diagram.players;
+    diagram.players?.length
+      ? diagram.players
+      : diagram.sequence?.frames?.[0]?.players;
 
   if (!baseRoster?.length) return diagram;
 
