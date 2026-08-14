@@ -20,6 +20,12 @@ export function mergeStoredSvgsOntoDrills(
   return drills.map((drill) => {
     if (!drill || typeof drill !== "object") return drill;
     const record = drill as Record<string, unknown>;
+    const fromRow =
+      (typeof record.refCode === "string" ? byKey.get(record.refCode) : undefined) ||
+      (typeof record.id === "string" ? byKey.get(record.id) : undefined);
+    // Drill.diagramSvg is the source of truth. A regenerate writes the drill
+    // row; session.json often still holds the previous drawing.
+    if (fromRow) return { ...record, diagramSvg: fromRow };
     if (isStoredSvg(record.diagramSvg)) {
       return { ...record, diagramSvg: fitDiagramSvgViewBox(record.diagramSvg) };
     }
@@ -30,10 +36,7 @@ export function mergeStoredSvgsOntoDrills(
     if (isStoredSvg(nested?.diagramSvg)) {
       return { ...record, diagramSvg: fitDiagramSvgViewBox(nested.diagramSvg) };
     }
-    const svg =
-      (typeof record.refCode === "string" ? byKey.get(record.refCode) : undefined) ||
-      (typeof record.id === "string" ? byKey.get(record.id) : undefined);
-    return svg ? { ...record, diagramSvg: svg } : record;
+    return record;
   });
 }
 
