@@ -55,7 +55,12 @@ function shiftLegendIntoView(svg: string, fieldBottom: number, viewMinX: number)
   return `${svg.slice(0, firstIdx)}<g id="diagram-legend-fit" transform="translate(${dx},0)">${svg.slice(firstIdx, end)}</g>${svg.slice(end)}`;
 }
 
+function alreadyClipped(svg: string): boolean {
+  return /id="diagram-fit-clip-\d+"/.test(svg) && /clip-path="url\(#diagram-fit-clip-\d+\)"/.test(svg);
+}
+
 function clipToViewBox(svg: string, viewBox: string): string {
+  if (alreadyClipped(svg)) return svg;
   const [x, y, width, height] = viewBox.split(" ").map(Number);
   if (![x, y, width, height].every(Number.isFinite)) return svg;
   clipSeq += 1;
@@ -80,6 +85,7 @@ function clipToViewBox(svg: string, viewBox: string): string {
 
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
+  if (alreadyClipped(svg)) return svg;
   const pitch = pitchRectFromSvg(svg);
   const viewBox = pitch
     ? `${round(Math.max(0, pitch.x - GOAL_STUB))} ${round(Math.max(0, pitch.y - TOP_PAD))} ${round(pitch.w + GOAL_STUB * 2)} ${round(pitch.h + TOP_PAD + BOTTOM_PAD)}`

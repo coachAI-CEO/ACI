@@ -79,9 +79,14 @@ function applySvgOpenTag(svg: string, viewBox: string): string {
   });
 }
 
+function alreadyClipped(svg: string): boolean {
+  return /id="diagram-fit-clip-\d+"/.test(svg) && /clip-path="url\(#diagram-fit-clip-\d+\)"/.test(svg);
+}
+
 /** The 800-wide canvas still paints past the cropped viewBox unless clipped.
  * That leftover pitch/goal outline is the strip to the right of the green. */
 function clipToViewBox(svg: string, viewBox: string): string {
+  if (alreadyClipped(svg)) return svg;
   const [x, y, width, height] = viewBox.split(" ").map(Number);
   if (![x, y, width, height].every(Number.isFinite)) return svg;
   clipSeq += 1;
@@ -105,6 +110,7 @@ function clipToViewBox(svg: string, viewBox: string): string {
 
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
+  if (alreadyClipped(svg)) return svg;
   const viewBox = diagramFittedViewBox(svg);
   if (!viewBox) return svg;
   const pitch = pitchRectFromSvg(svg);
