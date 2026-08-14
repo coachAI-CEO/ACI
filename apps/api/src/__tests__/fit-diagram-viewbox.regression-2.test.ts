@@ -1,6 +1,6 @@
 import { diagramFittedViewBox, fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 
-// Regression: ISSUE-001 — D-PVG7 pitch sat in the right of the diagram card
+// Regression: ISSUE-002 — D-PVG7 leftover canvas painted past the pitch
 // Found by /qa on 2026-08-14
 // Report: .gstack/qa-reports/qa-report-localhost-2026-08-14.md
 
@@ -9,8 +9,8 @@ const PITCH =
 
 test("pitch-aware crop hugs the green field instead of a fixed 800-wide canvas", () => {
   const svg = `<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg">${PITCH}</svg>`;
-  expect(diagramFittedViewBox(svg)).toBe("103.92 34.38 592.16 493.24");
-  expect(fitDiagramSvgViewBox(svg)).toContain('viewBox="103.92 34.38 592.16 493.24"');
+  expect(diagramFittedViewBox(svg)).toBe("113.92 34.38 572.16 493.24");
+  expect(fitDiagramSvgViewBox(svg)).toContain('viewBox="113.92 34.38 572.16 493.24"');
 });
 
 test("legend chips left of the crop are shifted into view", () => {
@@ -24,10 +24,18 @@ test("legend chips left of the crop are shifted into view", () => {
   ].join("");
   const fitted = fitDiagramSvgViewBox(svg);
   expect(fitted).toContain('id="diagram-legend-fit"');
-  expect(fitted).toMatch(/translate\(48\.92,0\)/);
+  expect(fitted).toMatch(/translate\(58\.92,0\)/);
 });
 
 test("SVGs without a pitch rect are left alone", () => {
   const svg = '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
   expect(fitDiagramSvgViewBox(svg)).toBe(svg);
+});
+
+test("cropped canvas is clipped so leftover pitch lines cannot paint past the card", () => {
+  const svg = `<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg"><defs></defs>${PITCH}<rect x="700" y="74" width="80" height="313" fill="#1c5134"/></svg>`;
+  const fitted = fitDiagramSvgViewBox(svg);
+  expect(fitted).toContain('overflow="hidden"');
+  expect(fitted).toMatch(/id="diagram-fit-clip-\d+"/);
+  expect(fitted).toMatch(/clip-path="url\(#diagram-fit-clip-\d+\)"/);
 });

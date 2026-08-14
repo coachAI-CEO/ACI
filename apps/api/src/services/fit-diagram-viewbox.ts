@@ -4,9 +4,10 @@
  * right-shift. Crop to the actual pitch rect instead. */
 
 const PITCH_FILL = "#1c5134";
-const GOAL_STUB = 14;
+const GOAL_STUB = 4;
 const TOP_PAD = 40;
 const BOTTOM_PAD = 140;
+let clipSeq = 0;
 
 function attr(tag: string, name: string): number | null {
   const match = tag.match(new RegExp(`\\b${name}="([\\d.]+)"`, "i"));
@@ -64,20 +65,53 @@ function shiftLegendIntoView(svg: string, fieldBottom: number, viewMinX: number)
   return `${svg.slice(0, firstIdx)}<g id="diagram-legend-fit" transform="translate(${dx},0)">${svg.slice(firstIdx, end)}</g>${svg.slice(end)}`;
 }
 
+function applySvgOpenTag(svg: string, viewBox: string): string {
+  return svg.replace(/<svg\b[^>]*>/i, (openTag) => {
+    let tag = /viewBox\s*=/.test(openTag)
+      ? openTag.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBox}"`)
+      : openTag.replace(/<svg\b/i, `<svg viewBox="${viewBox}"`);
+    if (!/\boverflow\s*=/i.test(tag)) {
+      tag = tag.replace(/<svg\b/i, `<svg overflow="hidden"`);
+    } else {
+      tag = tag.replace(/\boverflow\s*=\s*["'][^"']*["']/i, `overflow="hidden"`);
+    }
+    return tag;
+  });
+}
+
+/** The 800-wide canvas still paints past the cropped viewBox unless clipped.
+ * That leftover pitch/goal outline is the strip to the right of the green. */
+function clipToViewBox(svg: string, viewBox: string): string {
+  const [x, y, width, height] = viewBox.split(" ").map(Number);
+  if (![x, y, width, height].every(Number.isFinite)) return svg;
+  clipSeq += 1;
+  const id = `diagram-fit-clip-${clipSeq}`;
+  const clip = `<clipPath id="${id}"><rect x="${x}" y="${y}" width="${width}" height="${height}"/></clipPath>`;
+  let next = svg.replace(/<rect\b[^>]*\bx="0"[^>]*\by="0"[^>]*width="800"[^>]*height="595"/i, (tag) =>
+    tag
+      .replace(/\bx="0"/, `x="${x}"`)
+      .replace(/\by="0"/, `y="${y}"`)
+      .replace(/width="800"/, `width="${width}"`)
+      .replace(/height="595"/, `height="${height}"`)
+  );
+  if (/<defs[\s>]/i.test(next)) {
+    next = next.replace(/<defs\b[^>]*>/i, (defs) => `${defs}${clip}`);
+  } else {
+    next = next.replace(/<svg\b[^>]*>/i, (openTag) => `${openTag}<defs>${clip}</defs>`);
+  }
+  next = next.replace(/<\/defs>/i, `</defs><g clip-path="url(#${id})">`);
+  return next.replace(/<\/svg>\s*$/i, "</g></svg>");
+}
+
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
   const viewBox = diagramFittedViewBox(svg);
   if (!viewBox) return svg;
   const pitch = pitchRectFromSvg(svg);
-  let next = svg.replace(/<svg\b[^>]*>/i, (openTag) => {
-    if (/viewBox\s*=/.test(openTag)) {
-      return openTag.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBox}"`);
-    }
-    return openTag.replace(/<svg\b/i, `<svg viewBox="${viewBox}"`);
-  });
+  let next = applySvgOpenTag(svg, viewBox);
   if (pitch) {
     const minX = Number(viewBox.split(" ")[0]);
     next = shiftLegendIntoView(next, pitch.y + pitch.h, minX);
   }
-  return next;
+  return clipToViewBox(next, viewBox);
 }

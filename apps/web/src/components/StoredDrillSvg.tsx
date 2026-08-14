@@ -129,7 +129,8 @@ export default function StoredDrillSvg({
 
       {svg ? (
         <div
-          className={`overflow-hidden rounded-2xl border border-slate-800/70 bg-[#08111f] shadow-2xl shadow-black/30 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full ${padding}`}
+          className={`overflow-hidden rounded-2xl border border-slate-800/70 bg-[#08111f] shadow-2xl shadow-black/30 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-full [&>svg]:overflow-hidden ${padding}`}
+          style={{ overflow: "hidden", contain: "paint" }}
           dangerouslySetInnerHTML={{ __html: fitDiagramSvgViewBox(svg) }}
         />
       ) : (
