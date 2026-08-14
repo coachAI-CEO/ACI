@@ -78,8 +78,9 @@ beforeEach(() => {
 });
 
 describe('isTacticalBoardV1Enabled', () => {
-  test('true only when env is 1', () => {
-    expect(isTacticalBoardV1Enabled()).toBe(false);
+  test('true unless env is 0', () => {
+    delete process.env.TACTICAL_BOARD_V1;
+    expect(isTacticalBoardV1Enabled()).toBe(true);
     process.env.TACTICAL_BOARD_V1 = '1';
     expect(isTacticalBoardV1Enabled()).toBe(true);
     process.env.TACTICAL_BOARD_V1 = '0';

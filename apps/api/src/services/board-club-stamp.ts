@@ -86,5 +86,5 @@ export function parseClientGameModelId(value: unknown): GameModelId | null {
 }
 
 export function isTacticalBoardV1Enabled(): boolean {
-  return process.env.TACTICAL_BOARD_V1 === '1';
+  return process.env.TACTICAL_BOARD_V1 !== "0";
 }
