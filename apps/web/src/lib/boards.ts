@@ -16,6 +16,14 @@ export type TacticalBoardSummary = {
   createdAt: string;
   updatedAt: string;
   canEdit: boolean;
+  phase?: string | null;
+  zone?: string | null;
+  channel?: string | null;
+  attFormation?: string | null;
+  defFormation?: string | null;
+  slideCount?: number;
+  favorited?: boolean;
+  creator?: { name: string | null; email: string | null } | null;
 };
 
 export type TacticalBoard = TacticalBoardSummary & {
@@ -106,6 +114,7 @@ export async function patchBoard(
     diagram?: DiagramV1;
     shareMode?: BoardShareMode;
     ageGroup?: string | null;
+    favorited?: boolean;
   }
 ): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string; details?: unknown }> {
   const res = await fetch(`/api/boards/${encodeURIComponent(id)}`, {

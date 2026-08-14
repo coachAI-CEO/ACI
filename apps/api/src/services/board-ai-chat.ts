@@ -260,7 +260,8 @@ export function repairBoardDiagramWithSequence(
     );
 
   let working: WebDiagramV1 = diagram;
-  if (!working.sequence?.frames?.length && isPlayOutRequest(message)) {
+  const freezePlayers = wantsFrozenPlayers(message);
+  if (!working.sequence?.frames?.length && isPlayOutRequest(message) && !freezePlayers) {
     working = applyPlayOutSequenceToDiagram(repairOne(diagram), message);
   }
 
@@ -281,7 +282,14 @@ export function repairBoardDiagramWithSequence(
       coach: f.coach,
       cones: f.cones,
     };
-    const repaired = repairOne(asRoot);
+    const repaired = freezePlayers
+      ? repairBoardDiagramLabels(
+          repairBoardDiagramArrows({
+            ...asRoot,
+            players: asRoot.players,
+          })
+        )
+      : repairOne(asRoot);
     const id = String(f.id || '').trim() || `f-${i + 1}`;
     return {
       id,
@@ -296,10 +304,15 @@ export function repairBoardDiagramWithSequence(
     return repairOne(working);
   }
 
-  frames = repairBoardSequenceCoherence(frames, message) as typeof frames;
+  frames = freezePlayers
+    ? frames.map((f) => ({
+        ...f,
+        players: lockPlayersToRoster(f.players, frames[0]?.players || f.players),
+      }))
+    : (repairBoardSequenceCoherence(frames, message) as typeof frames);
 
   // Play-out / build-from-back: enforce goal-kick → pocket → final-third model (final authority)
-  if (isPlayOutRequest(message)) {
+  if (isPlayOutRequest(message) && !freezePlayers) {
     const placed = applyPlayOutSequenceToDiagram(
       {
         ...working,
@@ -844,9 +857,69 @@ function separateOverlappingPlayers(
 }
 
 function wantsSequenceFromMessage(message: string): boolean {
-  return /\b(sequence|sequences|multi[- ]?step|frame by frame|frames?|step by step|steps|progression|then |next (?:phase|moment|step)|animate|playback|play it out|show (?:the )?play develop|phases? of (?:the )?play|variances?|variants?)\b/i.test(
+  return /\b(sequence|sequences|multi[- ]?step|frame by frame|frames?|step by step|steps|progression|then |next (?:phase|moment|step)|animate|playback|play it out|show (?:the )?play develop|phases? of (?:the )?play|variances?|variants?|combination plays?|combo plays?|\d+\s+plays?)\b/i.test(
     message
   );
+}
+
+/** Coach forbade moving shirts — arrows/captions only. */
+export function wantsFrozenPlayers(message: string): boolean {
+  return /\b(without moving|don'?t move|do not move|keep (?:the )?(?:players?|shirts?|positions?|coordinates?) (?:fixed|still|as[- ]is)|leave (?:the )?(?:players?|shirts?)|freeze (?:the )?(?:players?|shirts?|positions?)|coordinates? fixed|as they (?:are|stand)|no (?:player )?movement)\b/i.test(
+    message
+  );
+}
+
+function lockPlayersToRoster(
+  players: WebDiagramV1['players'] | undefined,
+  roster: WebDiagramV1['players']
+): WebDiagramV1['players'] {
+  if (!roster.length) return players || [];
+  return roster.map((orig) => {
+    const live = (players || []).find((p) => p.id === orig.id);
+    return {
+      ...orig,
+      facingAngle: live?.facingAngle ?? orig.facingAngle,
+      labelStyle: live?.labelStyle ?? orig.labelStyle,
+    };
+  });
+}
+
+export function lockSequencePlayersToOriginal(
+  result: WebDiagramV1,
+  original: WebDiagramV1
+): WebDiagramV1 {
+  const roster = original.players || [];
+  if (!roster.length) return result;
+  const frames = result.sequence?.frames?.map((f) => ({
+    ...f,
+    players: lockPlayersToRoster(f.players, roster),
+  }));
+  return {
+    ...result,
+    players: lockPlayersToRoster(result.players, roster),
+    sequence: frames
+      ? {
+          frames,
+          activeFrameId:
+            frames.find((f) => f.id === result.sequence?.activeFrameId)?.id || frames[0].id,
+        }
+      : result.sequence,
+  };
+}
+
+/** Drop dummy reshape slides when the coach froze the picture. */
+function dropReshapeFramesWhenFrozen(frames: SeqFrame[]): SeqFrame[] {
+  if (frames.length < 3) return frames;
+  const start = frames[0];
+  const rest = frames.slice(1).filter((f) => {
+    const title = String(f.title || '').toLowerCase();
+    const reshape = /\b(initial shape|reshape|re-?shape|new shape)\b/.test(title);
+    const arrows = f.arrows?.length || 0;
+    if (reshape && arrows < 3) return false;
+    return true;
+  });
+  if (!rest.length) return frames;
+  return [start, ...rest];
 }
 
 function snapshotBoardLayers(
@@ -874,6 +947,44 @@ function playerSetupSignature(players: WebDiagramV1['players'] | undefined): str
     .join('|');
 }
 
+function startLikeTitle(title?: string): boolean {
+  const t = String(title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\d+\.\s*/, '');
+  return (
+    t === 'start' ||
+    t === 'start (board)' ||
+    t === 'saved board' ||
+    t === 'current board' ||
+    t === 'original' ||
+    (/^start\b/.test(t) && /\bboard\b/.test(t))
+  );
+}
+
+/** Drop the model's duplicate "Start (board)" so we only prepend one real start. */
+function stripLeadingStartFrames(aiFrames: SeqFrame[], startFrame: SeqFrame): SeqFrame[] {
+  let teaching = [...aiFrames];
+  while (teaching.length) {
+    const f = teaching[0];
+    const titleStart = startLikeTitle(f.title);
+    const samePlayers =
+      playerSetupSignature(f.players) === playerSetupSignature(startFrame.players);
+    const extraArrows = (f.arrows?.length || 0) - (startFrame.arrows?.length || 0);
+
+    if (titleStart && extraArrows > 0) {
+      teaching = [{ ...f, title: 'Play' }, ...teaching.slice(1)];
+      break;
+    }
+    if (titleStart || (samePlayers && extraArrows <= 0)) {
+      teaching = teaching.slice(1);
+      continue;
+    }
+    break;
+  }
+  return teaching;
+}
+
 function renumberFrameTitle(title: string | undefined, n: number): string {
   const cleaned = String(title || '')
     .trim()
@@ -892,6 +1003,7 @@ export function ensureSequenceStartsFromOriginal(
   message: string
 ): WebDiagramV1 {
   const aiFrames = result.sequence?.frames || [];
+  const freezePlayers = wantsFrozenPlayers(message);
   const wantsSeq =
     wantsSequenceFromMessage(message) ||
     isPlayOutRequest(message) ||
@@ -918,40 +1030,55 @@ export function ensureSequenceStartsFromOriginal(
         ...snapshotBoardLayers(result),
       },
     ];
-  } else if (
-    playerSetupSignature(aiFrames[0].players) === playerSetupSignature(startFrame.players) &&
-    (aiFrames[0].arrows?.length || 0) === 0
-  ) {
-    // Model already mirrored the board as F1 with no teaching marks — replace with exact snapshot, keep later frames
-    teaching = aiFrames.slice(1);
-  } else if (
-    playerSetupSignature(aiFrames[0].players) === playerSetupSignature(startFrame.players)
-  ) {
-    // Same setup but F1 already has teaching arrows — keep those as first teaching beat after start
-    teaching = aiFrames;
   } else {
-    teaching = aiFrames;
+    teaching = stripLeadingStartFrames(aiFrames, startFrame);
+    if (!teaching.length) {
+      teaching = [
+        {
+          id: 'f-2',
+          title: '2. Play',
+          durationMs: 1600,
+          ...snapshotBoardLayers(result),
+        },
+      ];
+    }
   }
 
   const rest = teaching.map((f, i) => ({
     ...f,
     id: f.id && f.id !== 'f-start' ? f.id : `f-${i + 2}`,
-    title: renumberFrameTitle(f.title, i + 2),
+    title: startLikeTitle(f.title)
+      ? renumberFrameTitle('Play', i + 2)
+      : renumberFrameTitle(f.title, i + 2),
   }));
 
-  const frames = [startFrame, ...rest].slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES);
-  // Show the first teaching beat so the coach sees what was added; F1 keeps the original.
+  const frames = freezePlayers
+    ? dropReshapeFramesWhenFrozen([startFrame, ...rest]).slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES)
+    : [startFrame, ...rest].slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES);
   const active = frames[Math.min(1, frames.length - 1)] || frames[0];
+  const locked = freezePlayers
+    ? lockSequencePlayersToOriginal(
+        {
+          ...result,
+          ...snapshotBoardLayers(active),
+          pitch: result.pitch || original.pitch,
+          sequence: { frames, activeFrameId: active.id },
+        },
+        original
+      )
+    : null;
 
-  return {
-    ...result,
-    ...snapshotBoardLayers(active),
-    pitch: result.pitch || original.pitch,
-    sequence: {
-      frames,
-      activeFrameId: active.id,
-    },
-  };
+  return (
+    locked || {
+      ...result,
+      ...snapshotBoardLayers(active),
+      pitch: result.pitch || original.pitch,
+      sequence: {
+        frames,
+        activeFrameId: active.id,
+      },
+    }
+  );
 }
 
 function resolvePlayer(
@@ -1743,6 +1870,413 @@ function isForceDrawRequest(message: string): boolean {
   );
 }
 
+function isTinyBoardOp(message: string): boolean {
+  return /\b(clear (?:the )?board|reset (?:the )?board|remove (?:all )?arrows|delete (?:the )?label|undo)\b/i.test(
+    message
+  );
+}
+
+function historyWithoutCurrentTurn(
+  history: BoardAiChatMessage[],
+  message: string
+): BoardAiChatMessage[] {
+  if (!history.length) return [];
+  const last = history[history.length - 1];
+  if (last.role === 'user' && last.content.trim() === message.trim()) {
+    return history.slice(0, -1);
+  }
+  return history;
+}
+
+const ASK_READINGS_CTA =
+  'Reply **1**, **2**, or **3** to draw. Or say **just draw it** for option 1.';
+
+const WORD_TO_COUNT: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+};
+
+export type BoardAskChannel = 'left' | 'right' | 'central';
+
+export type BoardAskReading = {
+  n: 1 | 2 | 3;
+  title: string;
+  summary: string;
+  freezePlayers: boolean;
+  reshape: boolean;
+  sequence: boolean;
+  playCount: number | null;
+  channel: BoardAskChannel | null;
+  startFromFrame: number | null;
+  intent: string;
+};
+
+function parseCountToken(raw: string): number | null {
+  const key = raw.toLowerCase();
+  if (WORD_TO_COUNT[key]) return WORD_TO_COUNT[key];
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 8 ? n : null;
+}
+
+export function parsePickedReadingIndex(message: string): 1 | 2 | 3 | null {
+  const t = String(message || '').trim();
+  if (!t) return null;
+  if (
+    /^(?:just draw(?: it)?|draw it(?: now)?|use defaults?|go ahead|apply(?: it)?(?: now)?|yes|y|ok|okay|sure|do it|proceed)$/i.test(
+      t
+    )
+  ) {
+    return 1;
+  }
+  const isolated = t.match(/^(?:option\s*)?([123])(?:\s*[.)])?\s*$/i);
+  if (isolated) return Number(isolated[1]) as 1 | 2 | 3;
+  const named = t.match(/^(one|two|three)\s*$/i);
+  if (named) {
+    const n = WORD_TO_COUNT[named[1].toLowerCase()];
+    return n === 1 || n === 2 || n === 3 ? n : null;
+  }
+  const goWith = t.match(
+    /^(?:go with|pick|choose|use|option)\s*(?:option\s*)?([123]|one|two|three)\s*$/i
+  );
+  if (goWith) {
+    const n = parseCountToken(goWith[1]);
+    return n === 1 || n === 2 || n === 3 ? n : null;
+  }
+  return null;
+}
+
+export function assistantOfferedAskReadings(history: BoardAiChatMessage[]): boolean {
+  const last = [...history].reverse().find((m) => m.role === 'assistant');
+  return /Reply \*\*1\*\*, \*\*2\*\*, or \*\*3\*\* to draw/i.test(last?.content || '');
+}
+
+function lastAssistantWasClarify(history: BoardAiChatMessage[]): boolean {
+  const last = [...history].reverse().find((m) => m.role === 'assistant');
+  return /need a few details before I draw|I’ll set the board/i.test(last?.content || '');
+}
+
+function lastNonPickUserAsk(history: BoardAiChatMessage[]): string | null {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const m = history[i];
+    if (m.role !== 'user') continue;
+    if (parsePickedReadingIndex(m.content) != null) continue;
+    return m.content.trim() || null;
+  }
+  return null;
+}
+
+export function collectCoachAsk(message: string, history: BoardAiChatMessage[]): string {
+  const picked = parsePickedReadingIndex(message) != null;
+  if (picked || (isForceDrawRequest(message) && assistantOfferedAskReadings(history))) {
+    return lastNonPickUserAsk(history) || message;
+  }
+  if (lastAssistantWasClarify(history)) {
+    const prev = lastNonPickUserAsk(history);
+    if (prev && prev !== message.trim()) return `${prev}\n${message}`.trim();
+  }
+  return message;
+}
+
+export function inferPlayCountFromMessage(message: string): number | null {
+  const plays = String(message || '').match(
+    /\b(one|two|three|four|five|\d+)\s+(?:combination |combo |combination[- ]play |combo[- ]play )?plays?\b/i
+  );
+  if (plays) return parseCountToken(plays[1]);
+  const frames = String(message || '').match(/\b(\d+)\s+frames?\b/i);
+  if (frames) return parseCountToken(frames[1]);
+  return null;
+}
+
+export function inferStartFromFrame(message: string): number | null {
+  const m =
+    String(message || '').match(
+      /\b(?:start(?:ing)?|begin(?:ning)?)\s+from\s+frame\s*(\d+)\b/i
+    ) || String(message || '').match(/\bfrom\s+frame\s*(\d+)\b/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n >= 1 && n <= 20 ? n : null;
+}
+
+function mapBoardChannel(ch: BoardSetupReading['channel']): BoardAskChannel | null {
+  if (ch === 'LEFT') return 'left';
+  if (ch === 'RIGHT') return 'right';
+  if (ch === 'CENTER') return 'central';
+  return null;
+}
+
+export function inferAskChannel(
+  message: string,
+  board?: Pick<BoardSetupReading, 'channel'> | null
+): BoardAskChannel | null {
+  const t = String(message || '').toLowerCase();
+  if (/\b(right)\s+(channel|side|wing|flank|half[-\s]?space)\b|\bon the right\b/.test(t)) {
+    return 'right';
+  }
+  if (/\b(left)\s+(channel|side|wing|flank|half[-\s]?space)\b|\bon the left\b/.test(t)) {
+    return 'left';
+  }
+  if (/\bcentral|center|centre|through the middle\b/.test(t)) return 'central';
+  return mapBoardChannel(board?.channel ?? null);
+}
+
+function channelPhrase(ch: BoardAskChannel | null): string {
+  if (ch === 'right') return 'the right side (bottom of the screen)';
+  if (ch === 'left') return 'the left side (top of the screen)';
+  if (ch === 'central') return 'the central channel';
+  return 'the channel already on the board';
+}
+
+function reading(
+  partial: Omit<BoardAskReading, 'n'> & { n: 1 | 2 | 3 }
+): BoardAskReading {
+  return partial;
+}
+
+export function buildAskReadings(
+  message: string,
+  diagram: WebDiagramV1
+): BoardAskReading[] {
+  const board = readBoardSetup(diagram);
+  const freezeAsked = wantsFrozenPlayers(message);
+  const sequenceAsked = wantsSequenceFromMessage(message);
+  const playOut = isPlayOutRequest(message);
+  const playCount = inferPlayCountFromMessage(message);
+  const startFrom = inferStartFromFrame(message);
+  const channel = inferAskChannel(message, board);
+  const side = channelPhrase(channel);
+
+  if (startFrom) {
+    return [
+      reading({
+        n: 1,
+        title: `Continue from Frame ${startFrom}`,
+        summary: `Keep the filmstrip. Frame ${startFrom} is the start of the teaching detail. No extra “Start (board)” slide.`,
+        freezePlayers: freezeAsked,
+        reshape: false,
+        sequence: true,
+        playCount: playCount || 4,
+        channel,
+        startFromFrame: startFrom,
+        intent: `Start from existing Frame ${startFrom}. Keep earlier frames. Add detailed teaching beats after it. Do not prepend another Start (board) frame.${freezeAsked ? ' Do not move shirts.' : ''}`,
+      }),
+      reading({
+        n: 2,
+        title: `Rebuild from Frame ${startFrom}`,
+        summary: `Frame ${startFrom} becomes the new Start. Replace later slides with a fresh detailed sequence from that picture.`,
+        freezePlayers: freezeAsked,
+        reshape: false,
+        sequence: true,
+        playCount: playCount || 4,
+        channel,
+        startFromFrame: startFrom,
+        intent: `Treat Frame ${startFrom} as the new Start. Rebuild a detailed teaching sequence from that snapshot. Do not add a duplicate Start frame.${freezeAsked ? ' Do not move shirts.' : ''}`,
+      }),
+      reading({
+        n: 3,
+        title: `Unpack Frame ${startFrom} into 3 beats`,
+        summary: `Same picture, three sub-moments: receive, combine, finish. ${freezeAsked ? 'Shirts stay.' : 'Players can shift with the ball.'}`,
+        freezePlayers: freezeAsked,
+        reshape: false,
+        sequence: true,
+        playCount: 4,
+        channel,
+        startFromFrame: startFrom,
+        intent: `Expand Frame ${startFrom} into receive / combine / finish beats. Frame 1 is that picture. No extra Start (board) frame.${freezeAsked ? ' Copy shirt x/y onto every frame.' : ''}`,
+      }),
+    ];
+  }
+
+  if (freezeAsked || playCount) {
+    const nPlays = playCount || 3;
+    return [
+      reading({
+        n: 1,
+        title: freezeAsked
+          ? `${nPlays} patterns, shirts frozen`
+          : `${nPlays} patterns from this picture`,
+        summary: `${nPlays} combination ideas on ${side}. Frame 1 = this board.${freezeAsked ? ' Shirts stay. Arrows and captions only.' : ' Players may move with each pattern.'}`,
+        freezePlayers: freezeAsked,
+        reshape: false,
+        sequence: true,
+        playCount: nPlays,
+        channel,
+        startFromFrame: null,
+        intent: `Draw ${nPlays} combination plays on ${side}. Frame 1 is the current board unchanged.${freezeAsked ? ' Copy every shirt x/y onto every frame. Change only arrows, labels, and ball. No Initial Shape / reshape frame.' : ''} One combination per teaching frame.`,
+      }),
+      reading({
+        n: 2,
+        title: 'One detailed sequence',
+        summary: `The strongest idea on ${side}, shown beat-by-beat (receive → combine → finish). ${freezeAsked ? 'Shirts stay.' : 'Players advance with the play.'}`,
+        freezePlayers: freezeAsked,
+        reshape: false,
+        sequence: true,
+        playCount: 4,
+        channel,
+        startFromFrame: null,
+        intent: `Pick the strongest combination on ${side} and show it as one detailed sequence (Frame 1 = current board, then 3 teaching beats).${freezeAsked ? ' Do not move shirts.' : ''}`,
+      }),
+      reading({
+        n: 3,
+        title: freezeAsked ? 'Same patterns, supporting runs allowed' : 'Reshape, then the patterns',
+        summary: freezeAsked
+          ? `${nPlays} combinations on ${side}, but supporting players may move. Starters stay near their spots.`
+          : `Clean the shape first, then show ${nPlays} combinations on ${side}.`,
+        freezePlayers: false,
+        reshape: !freezeAsked,
+        sequence: true,
+        playCount: nPlays,
+        channel,
+        startFromFrame: null,
+        intent: freezeAsked
+          ? `Draw ${nPlays} combinations on ${side}. Core starters stay close to the current picture; supporting runs may move. Frame 1 = current board. No extra Start frame.`
+          : `Reshape to a legal setup for this phase, then draw ${nPlays} combination plays on ${side} as a sequence.`,
+      }),
+    ];
+  }
+
+  if (playOut) {
+    return [
+      reading({
+        n: 1,
+        title: 'Play out from this picture',
+        summary: `Keep the shirts. Add a play-out sequence on ${side} from the board as it stands.`,
+        freezePlayers: false,
+        reshape: false,
+        sequence: true,
+        playCount: 4,
+        channel,
+        startFromFrame: null,
+        intent: `Play out from the current board on ${side}. Keep the same roster ids and roughly the same shape. Frame 1 = current board. Teaching frames show goal-kick → pocket → progress. Do not invent a different start.`,
+      }),
+      reading({
+        n: 2,
+        title: 'Playbook chassis, then play out',
+        summary: 'Reset to the 11v11 play-out chassis (#6 between split CBs, DEF high to the box), then the sequence.',
+        freezePlayers: false,
+        reshape: true,
+        sequence: true,
+        playCount: 4,
+        channel,
+        startFromFrame: null,
+        intent: `Reshape to the play-out chassis from the formation playbook, then draw the play-out sequence on ${side}. #6 between split CBs. DEF high to the ATT box.`,
+      }),
+      reading({
+        n: 3,
+        title: 'Wide / flank play-out',
+        summary: `Same start picture, but the first progression goes wide on ${side === 'the channel already on the board' ? 'a flank' : side} instead of through the 6.`,
+        freezePlayers: false,
+        reshape: false,
+        sequence: true,
+        playCount: 4,
+        channel,
+        startFromFrame: null,
+        intent: `Play out from the current board using a flank triangle / wide progression on ${side}, not a central #6 drop as the first action. Frame 1 = current board.`,
+      }),
+    ];
+  }
+
+  return [
+    reading({
+      n: 1,
+      title: 'Add it on this picture',
+      summary: `Keep the shirts. Draw what you asked on ${side}${sequenceAsked ? ', as a short sequence' : ''} — arrows and captions. Frame 1 = this board.`,
+      freezePlayers: !sequenceAsked,
+      reshape: false,
+      sequence: sequenceAsked,
+      playCount: sequenceAsked ? 4 : null,
+      channel,
+      startFromFrame: null,
+      intent: `Draw the coach’s ask on the current board on ${side}. Keep roster ids.${sequenceAsked ? ' Frame 1 = current board; later frames add the play.' : ' Prefer arrows and captions over moving the whole shape.'} Do not invent a different start.`,
+    }),
+    reading({
+      n: 2,
+      title: 'Teach it as a sequence',
+      summary: 'Frame 1 = this board. Later slides show the play develop. Players can move with the ball.',
+      freezePlayers: false,
+      reshape: false,
+      sequence: true,
+      playCount: 4,
+      channel,
+      startFromFrame: null,
+      intent: `Teach the ask as a sequence. Frame 1 = current board unchanged. Frames 2–4 show the play develop on ${side}. Players may move with the ball. No extra Start frame.`,
+    }),
+    reading({
+      n: 3,
+      title: 'Reshape, then show the idea',
+      summary: 'Reset to a clean legal shape for this phase, then draw the ask.',
+      freezePlayers: false,
+      reshape: true,
+      sequence: sequenceAsked || playOut,
+      playCount: sequenceAsked ? 4 : null,
+      channel,
+      startFromFrame: null,
+      intent: `Reshape to a clean legal setup for this phase, then draw the coach’s ask on ${side}.`,
+    }),
+  ];
+}
+
+export function formatAskReadingsReply(input: {
+  ask: string;
+  readings: BoardAskReading[];
+  board?: BoardSetupReading | null;
+}): string {
+  const asked = input.ask.replace(/\s+/g, ' ').trim().slice(0, 220);
+  const boardLine = input.board?.summary ? `\n${input.board.summary}` : '';
+  const items = input.readings
+    .map((r) => `**${r.n}. ${r.title}**\n${r.summary}`)
+    .join('\n\n');
+  const parts = [
+    `Here’s how I can draw that — pick one.${boardLine}`,
+    asked ? `You asked: “${asked}”` : null,
+    items,
+    ASK_READINGS_CTA,
+  ].filter((line): line is string => Boolean(line));
+  return parts.join('\n\n');
+}
+
+export function needsAskReadings(input: {
+  message: string;
+  history: BoardAiChatMessage[];
+  diagram: WebDiagramV1;
+}): boolean {
+  const { message, history } = input;
+  if (isTinyBoardOp(message)) return false;
+  const offered = assistantOfferedAskReadings(history);
+  const picked = parsePickedReadingIndex(message);
+  if (offered && picked) return false;
+  if (offered && isForceDrawRequest(message)) return false;
+  if (!offered && isForceDrawRequest(message)) return false;
+  if (!offered && picked) return false;
+  return true;
+}
+
+export function messageWithReadingLocks(ask: string, chosen: BoardAskReading): string {
+  const bits = [ask.trim(), `LOCKED READING ${chosen.n}: ${chosen.intent}`];
+  if (chosen.freezePlayers) {
+    bits.push('without moving any players, keep shirts as they are, freeze positions');
+  }
+  if (!chosen.reshape) {
+    bits.push('do not reshape; start from the current board');
+  } else {
+    bits.push('you may reshape the setup for this reading');
+  }
+  if (chosen.sequence) {
+    bits.push(
+      `show a sequence of ${chosen.playCount || 3} teaching frames after the start`
+    );
+  }
+  if (chosen.channel) bits.push(`on the ${chosen.channel} side`);
+  if (chosen.startFromFrame) {
+    bits.push(
+      `start from Frame ${chosen.startFromFrame}, do not add a duplicate Start (board) frame`
+    );
+  }
+  return bits.join('. ');
+}
+
 /** Coach is asking about / continuing from the picture already on the board. */
 export function isBoardReferencingRequest(message: string): boolean {
   return /\b(look(?:ing)? at (?:the )?board|on (?:the )?board|from (?:here|there|this)|current (?:setup|board|picture|shape|positions?)|as (?:shown|drawn|set up|set)|from this (?:position|setup|shape|picture)|move from there|starting from (?:here|this|the board)|based on (?:the |this )?board|using (?:the |this )?board|what(?:'s| is) on the board|read the board)\b/i.test(
@@ -2028,11 +2562,7 @@ export function needsBoardClarification(
 ): boolean {
   if (isForceDrawRequest(message)) return false;
   // Direct board ops / tiny edits don't need a full scenario brief
-  if (
-    /\b(clear (?:the )?board|reset (?:the )?board|remove (?:all )?arrows|delete (?:the )?label|undo)\b/i.test(
-      message
-    )
-  ) {
+  if (isTinyBoardOp(message)) {
     return false;
   }
   // Usable live board already encodes formations + phase/focus — read it instead of clarifying
@@ -2092,6 +2622,7 @@ function buildPrompt(input: {
   languageGuidance: string;
   clarifyRequired: boolean;
   gaps: ScenarioGaps;
+  lockedReading?: BoardAskReading | null;
 }): string {
   const historyBlock =
     input.history.length === 0
@@ -2139,6 +2670,9 @@ function buildPrompt(input: {
           ? '- Channel not stated → use board channel or CENTRAL for this draw.'
           : null,
         '- When those are present (message, history, or board), apply=true and draw.',
+        input.lockedReading
+          ? `- The coach already picked reading ${input.lockedReading.n}. Set apply=true and draw THAT reading only — do not offer new options.`
+          : '- Do not invent extra Start / Initial Shape slides. Frame 1 is the current board.',
       ]
         .filter(Boolean)
         .join('\n');
@@ -2175,6 +2709,26 @@ function buildPrompt(input: {
     formationPlaybookGuidance,
     '',
     clarifyBlock,
+    '',
+    input.lockedReading
+      ? [
+          `LOCKED READING (coach picked option ${input.lockedReading.n} — draw THIS, do not reinterpret):`,
+          `- Title: ${input.lockedReading.title}`,
+          `- Intent: ${input.lockedReading.intent}`,
+          `- Freeze shirts: ${input.lockedReading.freezePlayers ? 'YES — copy current x/y onto every frame' : 'no — players may move with the play'}`,
+          `- Reshape: ${input.lockedReading.reshape ? 'allowed' : 'NO — keep the current picture as Frame 1'}`,
+          `- Sequence: ${input.lockedReading.sequence ? `YES (${input.lockedReading.playCount || 3} teaching frames after start)` : 'only if needed'}`,
+          input.lockedReading.channel
+            ? `- Channel: ${input.lockedReading.channel}`
+            : null,
+          input.lockedReading.startFromFrame
+            ? `- Start from Frame ${input.lockedReading.startFromFrame}. Do not prepend another Start (board) frame.`
+            : null,
+          '- Set apply=true and return the full diagram for this reading only.',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '',
     '',
     boardReadingBlock,
     '',
@@ -2256,6 +2810,17 @@ function buildPrompt(input: {
     '- Single-snapshot requests: omit sequence OR keep one frame that mirrors the root.',
     '- If editing an existing sequence, preserve frame ids when updating those steps; add/remove frames only as needed.',
     '',
+    ...((input.lockedReading?.freezePlayers ?? wantsFrozenPlayers(input.message))
+      ? [
+          'PLAYER FREEZE (mandatory this turn — coach forbade moving shirts):',
+          '- Copy CURRENT DIAGRAM players[] onto EVERY frame with the SAME id, x, y, team, role, number.',
+          '- Do NOT add an “Initial Shape” / reshape / setup frame.',
+          '- Teaching frames may change ONLY arrows, labels, optional ball, optional highlight — never shirt coordinates.',
+          '- If they asked for N combination plays: Frame 1 = saved board; Frames 2..N+1 = one combination each (pass + support-run arrows on the named side).',
+          '- Right side on this board = low diagram x (bottom of screen).',
+          '',
+        ]
+      : []),
     'SEQUENCE CONTINUITY (mandatory):',
     '- Frame 1 locks the coach’s board photo (formations, channel, player ids/positions) — never invent a different start.',
     '- The PLAY MUST ADVANCE across frames 2+ (do not freeze the highlight on Frame 1’s third).',
@@ -2300,7 +2865,7 @@ function buildPrompt(input: {
     '',
     `Age group context: ${input.ageGroup || 'unknown'}`,
     `Game model id: ${input.gameModelId || 'unknown'}`,
-    ...(wantsSequenceFromMessage(input.message)
+    ...((input.lockedReading?.sequence ?? wantsSequenceFromMessage(input.message))
       ? [
           'THIS REQUEST LIKELY WANTS A MULTI-FRAME SEQUENCE with independent notations on each frame.',
           'For every frame: read BOTH teams, then place them so the slide’s duel/press/cover makes spatial sense.',
@@ -2415,7 +2980,10 @@ export async function runBoardAiChat(input: {
     };
   }
 
-  const history = Array.isArray(input.history) ? input.history.slice(-8) : [];
+  const history = historyWithoutCurrentTurn(
+    Array.isArray(input.history) ? input.history.slice(-12) : [],
+    message
+  );
   const gaps = assessScenarioGaps(message, history, input.diagram);
   const improveAsk = isSessionImproveRequest(message);
   // Training/vault asks don't need a fresh draw — use what's already on the board.
@@ -2469,9 +3037,48 @@ export async function runBoardAiChat(input: {
     };
   }
 
+  const offeredReadings = assistantOfferedAskReadings(history);
+  const pickedIndex = parsePickedReadingIndex(message);
+  if (!offeredReadings && pickedIndex) {
+    return {
+      ...resultBase,
+      reply: 'Tell me the scenario first — then I’ll offer 1 / 2 / 3 ways to draw it.',
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
+  const originalAsk = collectCoachAsk(message, history);
+  const readings = buildAskReadings(originalAsk, input.diagram);
+  if (
+    !improveAsk &&
+    needsAskReadings({ message, history, diagram: input.diagram })
+  ) {
+    return {
+      ...resultBase,
+      reply: formatAskReadingsReply({
+        ask: originalAsk,
+        readings,
+        board: readBoardSetup(input.diagram),
+      }),
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
+  const lockedReading =
+    offeredReadings && pickedIndex
+      ? readings[pickedIndex - 1] || readings[0]
+      : offeredReadings && isForceDrawRequest(message)
+        ? readings[0]
+        : null;
+  const drawMessage = lockedReading
+    ? messageWithReadingLocks(originalAsk, lockedReading)
+    : originalAsk;
+
   const prompt = buildPrompt({
     diagram: input.diagram,
-    message,
+    message: drawMessage,
     history,
     ageGroup: input.ageGroup,
     gameModelId: playModel.gameModelId || input.gameModelId,
@@ -2479,6 +3086,7 @@ export async function runBoardAiChat(input: {
     languageGuidance,
     clarifyRequired: false,
     gaps,
+    lockedReading,
   });
 
   setMetricsContext({
@@ -2517,11 +3125,15 @@ export async function runBoardAiChat(input: {
   const apply = parsed.apply !== false;
 
   // Safety: never apply if gaps reappear (e.g. new vague turn after history reset)
-  if (apply && needsBoardClarification(message, history, input.diagram)) {
+  if (
+    apply &&
+    !lockedReading &&
+    needsBoardClarification(drawMessage, history, input.diagram)
+  ) {
     return {
       ...resultBase,
       reply: buildClarifyingReply({
-        gaps: assessScenarioGaps(message, history, input.diagram),
+        gaps: assessScenarioGaps(drawMessage, history, input.diagram),
         gameModelId: playModel.gameModelId || input.gameModelId,
         ageGroup: input.ageGroup,
         clubName: playModel.clubName,
@@ -2555,26 +3167,35 @@ export async function runBoardAiChat(input: {
     };
   }
 
-  const repaired = ensureSequenceStartsFromOriginal(
-    repairBoardDiagramWithSequence(validated.diagram, message),
+  const freezePlayers =
+    lockedReading?.freezePlayers ?? wantsFrozenPlayers(drawMessage);
+  const wantsSeq =
+    lockedReading?.sequence ?? wantsSequenceFromMessage(drawMessage);
+  let repaired = ensureSequenceStartsFromOriginal(
+    repairBoardDiagramWithSequence(validated.diagram, drawMessage),
     input.diagram,
-    message
+    drawMessage
   );
+  if (freezePlayers) {
+    repaired = lockSequencePlayersToOriginal(repaired, input.diagram);
+  }
   const frameArrowCount = repaired.sequence?.frames?.length
     ? repaired.sequence.frames.reduce((n, f) => n + (f.arrows?.length || 0), 0)
     : repaired.arrows?.length || 0;
   const arrowCount = Math.max(repaired.arrows?.length || 0, frameArrowCount);
-  const wantsLines = /\b(pass|run|switch|arrow|press|cross|ball to|from .+ to)\b/i.test(message);
+  const wantsLines = /\b(pass|run|switch|arrow|press|cross|ball to|from .+ to)\b/i.test(
+    drawMessage
+  );
   const replyWithArrowNote =
     wantsLines && arrowCount === 0
       ? `${reply}\n\n(I couldn't attach a draw-able arrow — try naming shirt numbers, e.g. “pass from ATT 3 to ATT 7”.)`
       : reply;
 
   const frameCount = repaired.sequence?.frames?.length || 0;
-  const playOutApplied = isPlayOutRequest(message) && frameCount >= 3;
+  const playOutApplied = isPlayOutRequest(drawMessage) && frameCount >= 3;
   const replyWithSequenceNote = playOutApplied
     ? `${replyWithArrowNote}\n\nSequence: ${frameCount} frames — 1) Start (your board)  2+) teaching steps. Chassis from the 11v11 playbook. Use Play / the filmstrip to scrub; Frame 1 keeps your original positions.`
-    : wantsSequenceFromMessage(message) && frameCount < 2
+    : wantsSeq && frameCount < 2
       ? `${replyWithArrowNote}\n\n(I drew a single snapshot — ask again for “3 frames / step-by-step” if you want a sequence.)`
       : frameCount >= 2
         ? `${replyWithArrowNote}\n\nSequence: ${frameCount} frames — Frame 1 is your saved board; later frames add the play. Use Play on the board to scrub.`

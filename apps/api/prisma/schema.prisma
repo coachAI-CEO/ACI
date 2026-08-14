@@ -771,6 +771,7 @@ model TacticalBoard {
   shareMode       BoardShareMode @default(PRIVATE) @map("share_mode")
   sourceSessionId String?        @map("source_session_id")
   sourceDrillKey  String?        @map("source_drill_key")
+  favorited       Boolean        @default(false)
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 

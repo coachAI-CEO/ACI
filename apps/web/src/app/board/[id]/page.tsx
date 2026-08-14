@@ -366,9 +366,9 @@ export default function BoardPage() {
           <button
             type="button"
             onClick={() => leaveTo("/boards")}
-            className="text-xs text-slate-400 hover:text-emerald-300"
+            className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
           >
-            {sessionHref ? "My boards" : "← My boards"}
+            {sessionHref ? "My Boards" : "← My Boards"}
           </button>
         </div>
         <p className="text-[11px] text-slate-500">
