@@ -113,7 +113,7 @@ export default function DrillDiagramCard({
   }
 
   return (
-    <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-6 py-5 sm:px-8 sm:py-6">
+    <section className="rounded-3xl border border-slate-700/70 bg-slate-900/70 shadow-2xl shadow-black/40 px-3 py-3 sm:px-4 sm:py-4">
       <div className="mx-auto max-w-[950px] space-y-3">
         <StoredDrillSvg
           drillId={drillId}
