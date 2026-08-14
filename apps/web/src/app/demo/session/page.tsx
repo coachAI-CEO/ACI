@@ -20,7 +20,7 @@ import { getUserHeaders } from "@/lib/user";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
-import { createForkBoard } from "@/lib/boards";
+import { createForkBoard, createForkSessionBoard } from "@/lib/boards";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 
@@ -914,6 +914,7 @@ function SessionDemoPageContent() {
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
   const [forkingDrillKey, setForkingDrillKey] = useState<string | null>(null);
+  const [forkingSession, setForkingSession] = useState(false);
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
     sessionTitle: string;
@@ -3128,6 +3129,36 @@ function SessionDemoPageContent() {
                 >
                   View in Vault
                 </Link>
+                {userFeatures?.tacticalBoardV1 && resolvedSessionId && session ? (
+                  <button
+                    type="button"
+                    disabled={forkingSession}
+                    onClick={async () => {
+                      setForkingSession(true);
+                      try {
+                        const result = await createForkSessionBoard({
+                          sessionId: resolvedSessionId,
+                          title: `${session.title || "Session"} — slides`,
+                        });
+                        if (!result.ok || !result.board?.id) {
+                          alert(result.message || result.error || "Could not open session on board");
+                          return;
+                        }
+                        const from = `/demo/session?sessionId=${encodeURIComponent(resolvedSessionId)}`;
+                        router.push(
+                          `/board/${result.board.id}?from=${encodeURIComponent(from)}`
+                        );
+                      } catch (e: any) {
+                        alert(e?.message || "Could not open session on board");
+                      } finally {
+                        setForkingSession(false);
+                      }
+                    }}
+                    className="inline-flex h-9 items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-3.5 text-[13px] font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50"
+                  >
+                    {forkingSession ? "Opening…" : "Open session on board"}
+                  </button>
+                ) : null}
                 {resolvedSessionId && session && (
                   <button
                     type="button"
@@ -3474,7 +3505,10 @@ function SessionDemoPageContent() {
                                 alert(result.message || result.error || "Could not open on board");
                                 return;
                               }
-                              router.push(`/board/${result.board.id}`);
+                              const from = `/demo/session?sessionId=${encodeURIComponent(sessionId)}`;
+                              router.push(
+                                `/board/${result.board.id}?from=${encodeURIComponent(from)}`
+                              );
                             } catch (e: any) {
                               alert(e?.message || "Could not open on board");
                             } finally {

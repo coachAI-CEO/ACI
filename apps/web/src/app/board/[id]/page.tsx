@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import BoardAiChat from "@/components/boards/BoardAiChat";
 import TacticalBoardEditor from "@/components/boards/TacticalBoardEditor";
+import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import {
   createBlankBoard,
   getBoard,
@@ -59,9 +60,25 @@ function BoardLoadingScreen({
   );
 }
 
+function sessionReturnHref(from: string | null, sourceSessionId: string | null): string | null {
+  if (
+    from &&
+    from.startsWith("/demo/session") &&
+    !from.startsWith("//") &&
+    !from.includes("://")
+  ) {
+    return from;
+  }
+  if (sourceSessionId) {
+    return `/demo/session?sessionId=${encodeURIComponent(sourceSessionId)}`;
+  }
+  return null;
+}
+
 export default function BoardPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const boardId = params?.id;
 
   const [board, setBoard] = useState<TacticalBoard | null>(null);
@@ -77,6 +94,14 @@ export default function BoardPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [flagOn, setFlagOn] = useState<boolean | null>(null);
   const [coachLevel, setCoachLevel] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<
+    | { type: "leave"; href: string }
+    | { type: "back" }
+    | { type: "new" }
+    | { type: "delete" }
+    | null
+  >(null);
+  const skipNextPopRef = useRef(false);
 
   const pageLoading = loading || flagOn === null;
   const pageProgress = useBoardLoadProgress(pageLoading);
@@ -133,9 +158,13 @@ export default function BoardPage() {
   useEffect(() => {
     if (!dirty) return;
     const onPop = () => {
-      if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) {
-        router.push(`/board/${boardId}`);
+      if (skipNextPopRef.current) {
+        skipNextPopRef.current = false;
+        return;
       }
+      if (!dirty || !boardId) return;
+      router.push(`/board/${boardId}`);
+      setPendingConfirm({ type: "back" });
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -174,10 +203,7 @@ export default function BoardPage() {
     }
   };
 
-  const onNewBoard = async () => {
-    if (dirty && !window.confirm("You have unsaved changes. Create a new board anyway?")) {
-      return;
-    }
+  const createNewBoard = async () => {
     setCreatingBoard(true);
     setError(null);
     try {
@@ -197,6 +223,26 @@ export default function BoardPage() {
     } finally {
       setCreatingBoard(false);
     }
+  };
+
+  const onNewBoard = async () => {
+    if (dirty) {
+      setPendingConfirm({ type: "new" });
+      return;
+    }
+    await createNewBoard();
+  };
+
+  const deleteCurrentBoard = async () => {
+    if (!boardId) return;
+    const { deleteBoard } = await import("@/lib/boards");
+    const result = await deleteBoard(boardId);
+    if (!result.ok) {
+      setError(result.error || "Delete failed");
+      return;
+    }
+    setDirty(false);
+    router.push("/boards");
   };
 
   if (flagOn === false) {
@@ -232,6 +278,63 @@ export default function BoardPage() {
 
   if (!board || !diagram || !boardId) return null;
 
+  const sessionHref = sessionReturnHref(
+    searchParams.get("from"),
+    board.sourceSessionId
+  );
+
+  const leaveTo = (href: string) => {
+    if (dirty) {
+      setPendingConfirm({ type: "leave", href });
+      return;
+    }
+    router.push(href);
+  };
+
+  const confirmCopy =
+    pendingConfirm?.type === "delete"
+      ? {
+          title: "Delete this board?",
+          message: "This cannot be undone.",
+          confirmLabel: "Delete",
+          tone: "danger" as const,
+        }
+      : pendingConfirm?.type === "new"
+        ? {
+            title: "Unsaved changes",
+            message: "You have unsaved changes. Create a new board anyway?",
+            confirmLabel: "Create new board",
+            tone: "warning" as const,
+          }
+        : {
+            title: "Unsaved changes",
+            message: "You have unsaved changes. Leave anyway?",
+            confirmLabel: "Leave",
+            tone: "warning" as const,
+          };
+
+  const onConfirmPending = () => {
+    const pending = pendingConfirm;
+    setPendingConfirm(null);
+    if (!pending) return;
+    if (pending.type === "leave") {
+      setDirty(false);
+      router.push(pending.href);
+      return;
+    }
+    if (pending.type === "back") {
+      setDirty(false);
+      skipNextPopRef.current = true;
+      router.back();
+      return;
+    }
+    if (pending.type === "new") {
+      void createNewBoard();
+      return;
+    }
+    void deleteCurrentBoard();
+  };
+
   const chatProps = {
     boardId,
     diagram,
@@ -250,16 +353,24 @@ export default function BoardPage() {
   return (
     <main className="flex h-dvh min-h-0 flex-col bg-[#060a13] text-slate-100">
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.06] px-4 py-3">
-        <button
-          type="button"
-          onClick={() => {
-            if (dirty && !window.confirm("You have unsaved changes. Leave anyway?")) return;
-            router.push("/boards");
-          }}
-          className="text-xs text-slate-400 hover:text-emerald-300"
-        >
-          ← My boards
-        </button>
+        <div className="flex min-w-0 items-center gap-3">
+          {sessionHref ? (
+            <button
+              type="button"
+              onClick={() => leaveTo(sessionHref)}
+              className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
+            >
+              ← Back to session
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => leaveTo("/boards")}
+            className="text-xs text-slate-400 hover:text-emerald-300"
+          >
+            {sessionHref ? "My boards" : "← My boards"}
+          </button>
+        </div>
         <p className="text-[11px] text-slate-500">
           {board.gameModelId}
           {board.shareMode === "CLUB" ? " · Club share" : " · Private"}
@@ -294,18 +405,7 @@ export default function BoardPage() {
             onNewBoard={board.canEdit ? () => void onNewBoard() : undefined}
             creatingBoard={creatingBoard}
             onDelete={
-              board.canEdit
-                ? async () => {
-                    if (!window.confirm("Delete this board? This cannot be undone.")) return;
-                    const { deleteBoard } = await import("@/lib/boards");
-                    const result = await deleteBoard(boardId);
-                    if (!result.ok) {
-                      setError(result.error || "Delete failed");
-                      return;
-                    }
-                    router.push("/boards");
-                  }
-                : undefined
+              board.canEdit ? () => setPendingConfirm({ type: "delete" }) : undefined
             }
             onChange={(next) => {
               setTitle(next.title);
@@ -350,6 +450,17 @@ export default function BoardPage() {
           </div>
         </details>
       </div>
+
+      <ThemedConfirmModal
+        open={pendingConfirm !== null}
+        title={confirmCopy.title}
+        message={confirmCopy.message}
+        confirmLabel={confirmCopy.confirmLabel}
+        cancelLabel={pendingConfirm?.type === "delete" ? "Cancel" : "Stay"}
+        tone={confirmCopy.tone}
+        onCancel={() => setPendingConfirm(null)}
+        onConfirm={onConfirmPending}
+      />
     </main>
   );
 }

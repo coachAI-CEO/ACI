@@ -12,11 +12,12 @@ import {
   resolveBoardClubStamp,
 } from './board-club-stamp';
 import { sessionVisibleToClub } from './club-session-visibility';
-import { BOARD_TITLE_MAX_LEN, parseWebDiagramV1 } from './board-diagram-schema';
+import { BOARD_DIAGRAM_MAX_FRAMES, BOARD_TITLE_MAX_LEN, parseWebDiagramV1 } from './board-diagram-schema';
 import {
   DEFAULT_MATCH_BOARD_DIAGRAM,
   extractRawDiagramFromDrill,
   isDiagramThinForFork,
+  remapSessionDiagramToBoard,
   toWebDiagramV1,
   type WebDiagramV1,
 } from './web-diagram-v1';
@@ -275,7 +276,7 @@ function pickDrillFromSession(
   return null;
 }
 
-async function resolveForkDiagram(drill: any): Promise<WebDiagramV1> {
+async function resolveForkDiagram(drill: any, ageGroup?: string | null): Promise<WebDiagramV1> {
   let raw = extractRawDiagramFromDrill(drill);
   const refCode = typeof drill?.refCode === 'string' ? drill.refCode : null;
 
@@ -306,11 +307,52 @@ async function resolveForkDiagram(drill: any): Promise<WebDiagramV1> {
     );
   }
 
+  web = remapSessionDiagramToBoard(web, ageGroup);
+
   const validated = parseWebDiagramV1(web);
   if (!validated.ok) {
     throw new TacticalBoardError(400, 'INVALID_DIAGRAM', validated.error, validated.details);
   }
   return validated.diagram;
+}
+
+function slideFromDiagram(
+  web: WebDiagramV1,
+  id: string,
+  title: string,
+  note?: string
+): NonNullable<WebDiagramV1['sequence']>['frames'][number] {
+  return {
+    id,
+    title: title.slice(0, 80),
+    ...(note ? { note: note.slice(0, 300) } : {}),
+    durationMs: 2400,
+    players: web.players,
+    arrows: web.arrows,
+    areas: web.areas,
+    labels: web.labels,
+    balls: web.balls,
+    goals: web.goals,
+    coach: web.coach,
+    cones: web.cones,
+  };
+}
+
+async function tryResolveForkDiagram(
+  drill: any,
+  ageGroup?: string | null
+): Promise<WebDiagramV1 | null> {
+  try {
+    return await resolveForkDiagram(drill, ageGroup);
+  } catch (error) {
+    if (
+      error instanceof TacticalBoardError &&
+      (error.code === 'NO_DIAGRAM' || error.code === 'NO_PLAYERS' || error.code === 'INVALID_DIAGRAM')
+    ) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function createBlankBoard(userId: string, body: any) {
@@ -399,7 +441,7 @@ export async function createForkBoard(userId: string, body: any, isSuperAdmin: b
     throw new TacticalBoardError(404, 'DRILL_NOT_FOUND', 'Drill not found in session');
   }
 
-  const diagram = await resolveForkDiagram(picked.drill);
+  const diagram = await resolveForkDiagram(picked.drill, session.ageGroup);
   const sourceDrillKey =
     (typeof picked.drill?.refCode === 'string' && picked.drill.refCode.trim()) ||
     `idx:${picked.index}`;
@@ -433,6 +475,121 @@ export async function createForkBoard(userId: string, body: any, isSuperAdmin: b
       shareMode,
       sourceSessionId: session.id,
       sourceDrillKey,
+    },
+  });
+
+  return boardPublic(board, true);
+}
+
+/**
+ * Fork every drawable drill in a session onto one board as sequence slides.
+ * Skips cooldown / empty diagrams. Caps at BOARD_DIAGRAM_MAX_FRAMES.
+ */
+export async function createForkSessionBoard(userId: string, body: any, isSuperAdmin: boolean) {
+  await assertCanCreateBoards(userId);
+
+  const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : '';
+  if (!sessionId) {
+    throw new TacticalBoardError(400, 'SESSION_REQUIRED', 'sessionId is required');
+  }
+
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      generatedBy: true,
+      savedToVault: true,
+      gameModelId: true,
+      clubId: true,
+      ageGroup: true,
+      json: true,
+      title: true,
+    },
+  });
+
+  if (!session) {
+    throw new TacticalBoardError(404, 'SESSION_NOT_FOUND', 'Session not found');
+  }
+
+  const allowed = await canForkSession(userId, session, isSuperAdmin);
+  if (!allowed) {
+    throw new TacticalBoardError(404, 'SESSION_NOT_FOUND', 'Session not found');
+  }
+
+  const drills = getSessionDrills(session.json);
+  const frames: NonNullable<WebDiagramV1['sequence']>['frames'] = [];
+  let pitch: WebDiagramV1['pitch'] | null = null;
+
+  for (const drill of drills) {
+    if (frames.length >= BOARD_DIAGRAM_MAX_FRAMES) break;
+    if (String(drill?.drillType || '').toUpperCase() === 'COOLDOWN') continue;
+    const web = await tryResolveForkDiagram(drill, session.ageGroup);
+    if (!web) continue;
+    if (!pitch) pitch = web.pitch;
+    const n = frames.length + 1;
+    const title =
+      (typeof drill?.title === 'string' && drill.title.trim()) ||
+      (typeof drill?.name === 'string' && drill.name.trim()) ||
+      `Drill ${n}`;
+    const note =
+      typeof drill?.drillType === 'string' ? String(drill.drillType).replace(/_/g, ' ') : undefined;
+    frames.push(slideFromDiagram(web, `f-${n}`, title, note));
+  }
+
+  if (!pitch || frames.length === 0) {
+    throw new TacticalBoardError(
+      400,
+      'NO_PLAYERS',
+      'None of the drills have a diagram that can open on the board'
+    );
+  }
+
+  const first = frames[0];
+  const diagram: WebDiagramV1 = {
+    pitch: { ...pitch, variant: 'FULL', orientation: 'HORIZONTAL' },
+    players: first.players,
+    arrows: first.arrows,
+    areas: first.areas,
+    labels: first.labels,
+    balls: first.balls,
+    goals: first.goals,
+    coach: first.coach,
+    cones: first.cones,
+    sequence: { activeFrameId: first.id, frames },
+  };
+
+  const validated = parseWebDiagramV1(diagram);
+  if (!validated.ok) {
+    throw new TacticalBoardError(400, 'INVALID_DIAGRAM', validated.error, validated.details);
+  }
+
+  const shareMode = parseShareMode(body?.shareMode);
+  const { clubId, gameModelId } = await resolveCreateGameModel({
+    userId,
+    clientGameModelId: body?.gameModelId,
+    forkSessionGameModelId: session.gameModelId,
+    shareMode,
+  });
+
+  const title =
+    typeof body?.title === 'string' && body.title.trim()
+      ? normalizeTitle(body.title)
+      : normalizeTitle(`${session.title || 'Session'} — slides`);
+
+  const board = await prisma.tacticalBoard.create({
+    data: {
+      ownerUserId: userId,
+      clubId,
+      title,
+      diagram: validated.diagram as unknown as Prisma.InputJsonValue,
+      ageGroup:
+        typeof body?.ageGroup === 'string'
+          ? body.ageGroup.slice(0, 32)
+          : session.ageGroup || null,
+      gameModelId,
+      shareMode,
+      sourceSessionId: session.id,
+      sourceDrillKey: 'SESSION',
     },
   });
 

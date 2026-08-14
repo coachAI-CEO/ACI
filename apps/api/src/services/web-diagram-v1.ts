@@ -572,6 +572,91 @@ function normalizeSequence(
   return { activeFrameId, frames };
 }
 
+function swapXY<T extends { x?: number; y?: number }>(p: T): T {
+  if (!isFiniteNumber(p.x) || !isFiniteNumber(p.y)) return p;
+  return { ...p, x: p.y, y: p.x };
+}
+
+function formatFromAgeGroup(ageGroup?: string | null): WebDiagramV1['pitch']['format'] | undefined {
+  const age = Number(String(ageGroup || '').replace(/^U/i, ''));
+  if (!Number.isFinite(age) || age <= 0) return undefined;
+  if (age <= 10) return '7V7';
+  if (age <= 12) return '9V9';
+  return '11V11';
+}
+
+function remapLayersToBoardAxes(d: {
+  players: WebDiagramV1['players'];
+  arrows: WebDiagramV1['arrows'];
+  areas: WebDiagramV1['areas'];
+  labels: WebDiagramV1['labels'];
+  balls?: WebDiagramV1['balls'];
+  goals?: WebDiagramV1['goals'];
+  coach?: WebDiagramV1['coach'];
+  cones?: WebDiagramV1['cones'];
+}) {
+  const swapPoint = (pt: { playerId?: string; x?: number; y?: number }) => {
+    if (isFiniteNumber(pt.x) && isFiniteNumber(pt.y)) return { ...pt, x: pt.y, y: pt.x };
+    return pt;
+  };
+  return {
+    players: d.players.map((p) => swapXY(p)),
+    arrows: d.arrows.map((a) => ({
+      ...a,
+      from: swapPoint(a.from),
+      to: swapPoint(a.to),
+      ...(a.control ? { control: swapXY(a.control) } : {}),
+      ...(a.path ? { path: a.path.map((p) => swapXY(p)) } : {}),
+    })),
+    areas: d.areas.map((a) => {
+      const swapped = swapXY(a);
+      if (isFiniteNumber(a.width) && isFiniteNumber(a.height)) {
+        return { ...swapped, width: a.height, height: a.width };
+      }
+      return swapped;
+    }),
+    labels: d.labels.map((l) => swapXY(l)),
+    balls: d.balls?.map((b) => swapXY(b)),
+    goals: d.goals?.map((g) => swapXY(g)),
+    coach: d.coach ? swapXY(d.coach) : undefined,
+    cones: d.cones?.map((c) => swapXY(c)),
+  };
+}
+
+/**
+ * Session JSON uses x = length (goals left/right). The board store uses
+ * y = length. FORK must swap or players land in the width axis and HALF/THIRD
+ * zoom crops them off the pitch.
+ */
+export function remapSessionDiagramToBoard(
+  diagram: WebDiagramV1,
+  ageGroup?: string | null
+): WebDiagramV1 {
+  const layers = remapLayersToBoardAxes(diagram);
+  const sequence = diagram.sequence
+    ? {
+        ...diagram.sequence,
+        frames: diagram.sequence.frames.map((frame) => ({
+          ...frame,
+          ...remapLayersToBoardAxes(frame),
+        })),
+      }
+    : undefined;
+
+  return {
+    ...diagram,
+    ...layers,
+    pitch: {
+      ...diagram.pitch,
+      // Session 0–100 is the drill canvas, not a crop of a full 11v11 pitch.
+      variant: 'FULL',
+      orientation: 'HORIZONTAL',
+      format: diagram.pitch.format || formatFromAgeGroup(ageGroup),
+    },
+    ...(sequence ? { sequence } : {}),
+  };
+}
+
 /** True when diagram is missing players or has no arrows (candidates for vault enrich). */
 export function isDiagramThinForFork(diagram: unknown): boolean {
   if (!diagram || typeof diagram !== 'object') return true;

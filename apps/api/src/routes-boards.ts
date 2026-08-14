@@ -6,6 +6,7 @@ import {
   TacticalBoardError,
   createBlankBoard,
   createForkBoard,
+  createForkSessionBoard,
   deleteBoard,
   getBoardForUser,
   listOwnedBoards,
@@ -75,6 +76,11 @@ r.post('/boards', async (req: AuthRequest, res) => {
       return res.status(201).json({ ok: true, board });
     }
 
+    if (mode === 'FORK_SESSION') {
+      const board = await createForkSessionBoard(req.userId, req.body, isSuperAdmin);
+      return res.status(201).json({ ok: true, board });
+    }
+
     if (mode === 'BLANK') {
       const board = await createBlankBoard(req.userId, req.body);
       return res.status(201).json({ ok: true, board });
@@ -83,7 +89,7 @@ r.post('/boards', async (req: AuthRequest, res) => {
     return res.status(400).json({
       ok: false,
       error: 'INVALID_MODE',
-      message: 'mode must be BLANK or FORK_DRILL',
+      message: 'mode must be BLANK, FORK_DRILL, or FORK_SESSION',
     });
   } catch (error) {
     return sendBoardError(res, error);

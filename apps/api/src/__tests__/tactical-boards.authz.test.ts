@@ -35,6 +35,7 @@ import {
   TacticalBoardError,
   createBlankBoard,
   createForkBoard,
+  createForkSessionBoard,
   decodeBoardCursor,
   encodeBoardCursor,
   getBoardForUser,
@@ -336,7 +337,7 @@ describe('createForkBoard authz', () => {
     ).rejects.toMatchObject({ status: 404 });
   });
 
-  test('owner FORK keeps THIRD and sourceDrillKey', async () => {
+  test('owner FORK remaps session axes and shows FULL pitch', async () => {
     mockedPrisma.session.findUnique.mockResolvedValue(sessionBase);
     mockedPrisma.tacticalBoard.create.mockImplementation(async ({ data }: any) =>
       boardRow({
@@ -353,8 +354,12 @@ describe('createForkBoard authz', () => {
     );
     expect(board.sourceSessionId).toBe('sess-1');
     expect(board.sourceDrillKey).toBe('D-ABCD');
-    expect((board.diagram as any).pitch.variant).toBe('THIRD');
-    expect((board.diagram as any).players.length).toBeGreaterThanOrEqual(2);
+    expect((board.diagram as any).pitch.variant).toBe('FULL');
+    expect((board.diagram as any).pitch.format).toBe('9V9');
+    const players = (board.diagram as any).players;
+    expect(players.length).toBeGreaterThanOrEqual(2);
+    expect(players.find((p: any) => p.id === 'a')).toMatchObject({ x: 40, y: 30 });
+    expect(players.find((p: any) => p.id === 'b')).toMatchObject({ x: 40, y: 50 });
   });
 
   test('same-club vault peer can FORK', async () => {
@@ -437,6 +442,68 @@ describe('createForkBoard authz', () => {
     expect(mockedLookup).toHaveBeenCalledWith('D-THIN');
     expect((board.diagram as any).arrows.length).toBe(1);
     expect((board.diagram as any).players).toHaveLength(2);
+  });
+
+  test('FORK_SESSION builds one slide per drawable drill', async () => {
+    mockedPrisma.session.findUnique.mockResolvedValue({
+      ...sessionBase,
+      json: {
+        drills: [
+          sessionBase.json.drills[0],
+          {
+            refCode: 'D-WARM',
+            title: 'Rondo warmup',
+            drillType: 'WARMUP',
+            diagramV1: {
+              pitch: { variant: 'HALF', orientation: 'HORIZONTAL' },
+              players: [
+                { id: 'w1', team: 'ATT', x: 20, y: 50, number: 6 },
+                { id: 'w2', team: 'DEF', x: 40, y: 50, number: 4 },
+              ],
+              arrows: [
+                {
+                  from: { playerId: 'w1' },
+                  to: { playerId: 'w2' },
+                  type: 'pass',
+                  style: 'solid',
+                  weight: 'normal',
+                },
+              ],
+              areas: [],
+              labels: [],
+            },
+          },
+          {
+            refCode: 'D-COOL',
+            title: 'Stretch',
+            drillType: 'COOLDOWN',
+            diagramV1: {
+              pitch: { variant: 'HALF', orientation: 'HORIZONTAL' },
+              players: [{ id: 'c1', team: 'NEUTRAL', x: 50, y: 50, number: 1 }],
+              arrows: [],
+              areas: [],
+              labels: [],
+            },
+          },
+        ],
+      },
+    });
+    mockedPrisma.tacticalBoard.create.mockImplementation(async ({ data }: any) =>
+      boardRow({ ...data, id: 'forked-session', diagram: data.diagram })
+    );
+
+    const board = await createForkSessionBoard(
+      'owner-1',
+      { sessionId: 'sess-1', gameModelId: 'POSSESSION' },
+      false
+    );
+    const seq = (board.diagram as any).sequence;
+    expect(board.sourceDrillKey).toBe('SESSION');
+    expect(seq.frames).toHaveLength(2);
+    expect(seq.frames[0].title).toBe("Rondo");
+    expect(seq.frames[1].title).toBe("Rondo warmup");
+    expect(seq.activeFrameId).toBe('f-1');
+    expect((board.diagram as any).pitch.variant).toBe('FULL');
   });
 });
 

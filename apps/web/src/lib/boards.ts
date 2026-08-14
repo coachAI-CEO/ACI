@@ -86,6 +86,19 @@ export async function createForkBoard(input: {
   return parseJson(res);
 }
 
+export async function createForkSessionBoard(input: {
+  sessionId: string;
+  title?: string;
+  shareMode?: BoardShareMode;
+}): Promise<{ ok: boolean; board?: TacticalBoard; error?: string; message?: string }> {
+  const res = await fetch("/api/boards", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ mode: "FORK_SESSION", ...input }),
+  });
+  return parseJson(res);
+}
+
 export async function patchBoard(
   id: string,
   patch: {

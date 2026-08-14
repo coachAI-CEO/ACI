@@ -10,11 +10,8 @@ import {
   Compass,
   ChevronRight,
   Shield,
-  LayoutGrid,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
-import { useEffect, useMemo, useState } from "react";
-import { fetchUserFeatures } from "@/lib/features";
 
 type NavLeaf = {
   label: string;
@@ -43,17 +40,16 @@ const NAV_BASE: NavItem[] = [
     exact: true,
   },
   {
+    label: "Game Model",
+    href: "/doc-hub/game-model",
+    icon: Compass,
+  },
+  {
     group: "Club Ops",
     items: [
       { label: "Attention", href: "/doc-hub/attention", icon: AlertTriangle },
       { label: "Coaches", href: "/doc-hub/coaches", icon: Users },
       { label: "Calendar", href: "/doc-hub/calendar", icon: CalendarDays },
-    ],
-  },
-  {
-    group: "Direction",
-    items: [
-      { label: "Game Model", href: "/doc-hub/game-model", icon: Compass, badge: "Engine" },
     ],
   },
 ];
@@ -64,15 +60,12 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/coaches": ["DOC Console", "Coaches"],
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model"],
-  "/boards": ["DOC Console", "Tactical Board"],
 };
 
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
   const isActive = item.exact
     ? pathname === item.href
-    : pathname === item.href ||
-      pathname.startsWith(item.href + "/") ||
-      (item.href === "/boards" && pathname.startsWith("/board/"));
+    : pathname === item.href || pathname.startsWith(item.href + "/");
   const Icon = item.icon;
 
   return (
@@ -89,7 +82,7 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
           isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"
         }`}
       />
-      <span className="truncate">{item.label}</span>
+      <span className="min-w-0 truncate">{item.label}</span>
       {item.badge ? (
         <span className="ml-auto shrink-0 rounded-md border border-emerald-500/30 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
           {item.badge}
@@ -101,29 +94,6 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
 
 function DocHubSidebar({ pathname }: { pathname: string }) {
   const { clubOptions, selectedClubId, setSelectedClubId, selectedClub } = useDocHub();
-  const [showBoards, setShowBoards] = useState(false);
-
-  useEffect(() => {
-    fetchUserFeatures()
-      .then((f) => setShowBoards(Boolean(f?.tacticalBoardV1)))
-      .catch(() => setShowBoards(false));
-  }, []);
-
-  const nav = useMemo((): NavItem[] => {
-    if (!showBoards) return NAV_BASE;
-    return NAV_BASE.map((item): NavItem => {
-      if (isGroup(item) && item.group === "Club Ops") {
-        return {
-          group: item.group,
-          items: [
-            ...item.items,
-            { label: "Tactical Board", href: "/boards", icon: LayoutGrid, badge: "New" },
-          ],
-        };
-      }
-      return item;
-    });
-  }, [showBoards]);
 
   return (
     <aside className="sticky top-0 z-20 flex h-screen w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
@@ -137,8 +107,8 @@ function DocHubSidebar({ pathname }: { pathname: string }) {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {nav.map((item, i) => {
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
+        {NAV_BASE.map((item, i) => {
           if (isGroup(item)) {
             return (
               <div key={i} className="pt-3 first:pt-0">
