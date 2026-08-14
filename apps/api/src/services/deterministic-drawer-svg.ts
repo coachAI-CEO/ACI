@@ -79,7 +79,9 @@ function getGeometry(params: DrawerParams): Geometry {
 
   // Explicit from generation input when available -- see DrillPromptInput.fieldFormat
   // -- rather than guessed from player count on the fly.
-  const zoomOut = shouldZoomOut(params.widthYards, params.lengthYards, params.fieldFormat);
+  const zoomOut =
+    shouldZoomOut(params.widthYards, params.lengthYards, params.fieldFormat) ||
+    Boolean(params.hideMatchPitchMarkings);
 
   const tokenRadius = computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length);
 

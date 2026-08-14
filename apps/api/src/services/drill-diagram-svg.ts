@@ -4,6 +4,7 @@ import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-draw
 import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "./gemini-drawer";
 import { renderDeterministicDiagramSVG } from "./deterministic-drawer-svg";
 import { applyGoalOverlay } from "./goal-overlay";
+import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import type { DrawerParams } from "../types/drawer";
 
@@ -38,7 +39,7 @@ export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<Dri
   if (result.ok) {
     const model = process.env.GEMINI_DRAWER_MODEL ?? DEFAULT_GEMINI_DRAWER_MODEL;
     return {
-      svg: applyGoalOverlay(result.svg, drawerParams.goals, scale),
+      svg: fitDiagramSvgViewBox(applyGoalOverlay(result.svg, drawerParams.goals, scale)),
       model,
       modelFallback: false,
       promptVersion: DRAWER_PROMPT_VERSION,
@@ -46,7 +47,7 @@ export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<Dri
   }
 
   return {
-    svg: applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerParams.goals, scale),
+    svg: fitDiagramSvgViewBox(applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerParams.goals, scale)),
     model: "deterministic-fallback",
     modelFallback: true,
     promptVersion: DRAWER_PROMPT_VERSION,
@@ -71,7 +72,7 @@ export async function persistDrillDiagramSvg(refCode: string, result: DrillDiagr
   await prisma.drill.update({
     where: { refCode },
     data: {
-      diagramSvg: result.svg,
+      diagramSvg: fitDiagramSvgViewBox(result.svg),
       diagramSvgGeneratedAt: new Date(),
       diagramSvgModel: result.model,
       diagramSvgPromptVersion: result.promptVersion,

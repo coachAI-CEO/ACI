@@ -76,6 +76,81 @@ test("two full-size goals keep their goalkeepers", () => {
   expect(drill.diagram.players.filter((p: any) => p.role === "GK")).toHaveLength(2);
 });
 
+test("one drawn full goal demotes the extra GK even when goalsAvailable is 2", () => {
+  const drill = {
+    goalsAvailable: 2,
+    diagram: {
+      players: [
+        { id: "GK_ATT", team: "ATT", role: "GK", number: 1, x: 94, y: 27 },
+        { id: "DEF_GK", team: "DEF", role: "GK", number: 99, x: 94, y: 27 },
+        { id: "CB1", team: "ATT", role: "CB", number: 2, x: 25, y: 27 },
+      ],
+      goals: [
+        { id: "G_DEF", type: "BIG", width: 8, x: 100, y: 27, teamAttacks: "DEF" },
+      ],
+    },
+  };
+  enforceDiagramGoalAvailability(drill, { goalsAvailable: 2 });
+  const keepers = drill.diagram.players.filter((p: any) => p.role === "GK");
+  expect(keepers).toHaveLength(1);
+  expect(keepers[0].id).toBe("DEF_GK");
+  expect(keepers[0].team).toBe("DEF");
+  expect(drill.diagram.players.find((p: any) => p.id === "GK_ATT")?.role).toBe("CB");
+});
+
+test("null goalsAvailable keeps a drawn full goal and one GK", () => {
+  const drill = {
+    goalsAvailable: null,
+    diagram: {
+      players: [
+        { id: "GK1", team: "ATT", role: "GK", number: 1, x: 92, y: 50 },
+        { id: "D6", team: "DEF", role: "GK", number: 14, x: 92, y: 50 },
+        { id: "CB1", team: "ATT", role: "CB", number: 3, x: 25, y: 50 },
+      ],
+      goals: [{ id: "G1", type: "BIG", width: 8, x: 100, y: 50, teamAttacks: "ATT" }],
+    },
+  };
+  enforceDiagramGoalAvailability(drill, { goalsAvailable: null });
+  expect(drill.diagram.goals.filter((g: any) => g.type === "BIG")).toHaveLength(1);
+  expect(drill.diagram.players.filter((p: any) => p.role === "GK")).toHaveLength(1);
+});
+
+test("drawer mapper paints one GK token for a one-goal attacking-third drill", () => {
+  const params = drillToDrawerParams({
+    title: "9v9 Attacking Third Build-Up and Overload Play",
+    json: {
+      goalsAvailable: 2,
+      organization: { area: { widthYards: 55, lengthYards: 80 } },
+      diagram: {
+        players: [
+          { id: "GK_ATT", team: "ATT", role: "GK", number: 1, x: 94, y: 27 },
+          { id: "DEF_GK", team: "DEF", role: "GK", number: 99, x: 94, y: 27 },
+          { id: "CB1", team: "ATT", role: "CB", number: 2, x: 25, y: 27 },
+          { id: "ST1", team: "ATT", role: "ST", number: 9, x: 65, y: 27 },
+        ],
+        goals: [
+          { id: "G_DEF", type: "BIG", width: 8, x: 100, y: 27, teamAttacks: "DEF" },
+        ],
+      },
+    },
+    drillType: "TACTICAL",
+    durationMin: 25,
+    rpeMin: 5,
+    rpeMax: 7,
+    numbersMin: 16,
+    numbersMax: 18,
+  });
+  expect(params.goals.filter((g) => g.type === "full")).toHaveLength(1);
+  expect(params.players.filter((p) => p.team === "gk")).toHaveLength(1);
+  const xs = params.players.map((p) => p.x);
+  const ys = params.players.map((p) => p.y);
+  expect(Math.min(...xs)).toBeLessThan(8);
+  expect(Math.max(...params.goals.map((g) => g.x))).toBeGreaterThan(90);
+  expect(Math.min(...ys)).toBeGreaterThan(25);
+  expect(Math.max(...ys)).toBeLessThan(75);
+  expect(params.hideMatchPitchMarkings).toBe(true);
+});
+
 test("drawer mapper does not paint GK tokens when every goal is mini", () => {
   const params = drillToDrawerParams({
     title: "Middle Third 9v9 Transition",

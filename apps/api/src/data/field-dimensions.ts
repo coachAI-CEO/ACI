@@ -173,3 +173,46 @@ export function remapToWindow(value: number, min: number, max: number): number {
   const span = Math.max(1e-6, max - min);
   return Math.max(0, Math.min(100, ((value - min) / span) * 100));
 }
+
+/**
+ * One full-size goal with all the action packed on that end (attacking /
+ * defensive third). The field rect is still a full pitch, so the unused
+ * third reads as a "shifted" diagram. Reframe on X only.
+ */
+export function shouldReframeOneSidedPitch(
+  players: Array<{ x: number }>,
+  fullGoalCount: number
+): boolean {
+  if (fullGoalCount !== 1 || players.length < 4) return false;
+  const minX = Math.min(...players.map((player) => player.x));
+  const maxX = Math.max(...players.map((player) => player.x));
+  return minX > 18 || maxX < 82;
+}
+
+export function shouldReframeAxis(values: number[]): boolean {
+  if (values.length === 0) return false;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min > 18 || max < 82;
+}
+
+/** Tighter than the zoom-out pad -- 10% leftover on the open end is why
+ * one-goal thirds still looked shoved after the first X-only remap. */
+const ONE_SIDED_PADDING_PERCENT = 4;
+
+export function computeOneSidedAxisWindow(values: number[]): { min: number; max: number } {
+  if (values.length === 0) return { min: 0, max: 100 };
+  let min = Math.min(...values) - ONE_SIDED_PADDING_PERCENT;
+  let max = Math.max(...values) + ONE_SIDED_PADDING_PERCENT;
+  min = Math.max(0, min);
+  max = Math.min(100, max);
+  [min, max] = ensureMinSpan(min, max, CONTENT_WINDOW_MIN_SPAN_PERCENT);
+  min = Math.max(0, min);
+  max = Math.min(100, max);
+  return { min, max };
+}
+
+export function computeHorizontalContentWindow(xs: number[]): { minX: number; maxX: number } {
+  const window = computeOneSidedAxisWindow(xs);
+  return { minX: window.min, maxX: window.max };
+}

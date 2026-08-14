@@ -8,6 +8,7 @@ import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-draw
 import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "../services/gemini-drawer";
 import { renderDeterministicDiagramSVG } from "../services/deterministic-drawer-svg";
 import { storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
+import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import { applyGoalOverlay } from "../services/goal-overlay";
@@ -33,7 +34,7 @@ function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
 }
 
-function resolveGoalsAvailable(drill: any): number {
+function resolveGoalsAvailable(drill: any): number | null {
   const json = asRecord(drill?.json);
   const candidates = [
     drill?.requestGoalsAvailable,
@@ -50,7 +51,9 @@ function resolveGoalsAvailable(drill: any): number {
   const goalMode = String(drill?.goalMode || json.goalMode || "").toUpperCase();
   if (goalMode === "LARGE") return 1;
   if (goalMode === "MINI2") return 2;
-  return 0;
+  // Missing equipment flag is not "zero full goals" -- count keepers from
+  // whatever full-size goals the stored diagram already drew.
+  return null;
 }
 
 async function userMayAccessDrillDiagram(
@@ -152,7 +155,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   const result = await generateDiagramSVG(prompt);
   if (result.ok) {
     const model = process.env.GEMINI_DRAWER_MODEL ?? DEFAULT_GEMINI_DRAWER_MODEL;
-    const svg = applyGoalOverlay(result.svg, drawerGoals, drawerParams ? scaleFactorForParams(drawerParams) : 1);
+    const svg = fitDiagramSvgViewBox(applyGoalOverlay(result.svg, drawerGoals, drawerParams ? scaleFactorForParams(drawerParams) : 1));
     await prisma.drill.update({
       where: { id: drill.id },
       data: {
@@ -173,7 +176,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   });
 
   if (drawerParams) {
-    const svg = applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerGoals, scaleFactorForParams(drawerParams));
+    const svg = fitDiagramSvgViewBox(applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerGoals, scaleFactorForParams(drawerParams)));
     await prisma.drill.update({
       where: { id: drill.id },
       data: {
@@ -223,8 +226,8 @@ diagramSvgRouter.post("/lookup", authenticate, async (req: AuthRequest, res) => 
   for (const drill of drills) {
     if (!drill.diagramSvg) continue;
     if (!(await userMayAccessDrillDiagram(req, drill))) continue;
-    svgs[drill.id] = drill.diagramSvg;
-    if (drill.refCode) svgs[drill.refCode] = drill.diagramSvg;
+    svgs[drill.id] = fitDiagramSvgViewBox(drill.diagramSvg);
+    if (drill.refCode) svgs[drill.refCode] = svgs[drill.id];
   }
   return res.json({ svgs });
 });
@@ -256,7 +259,7 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
     return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
   }
 
-  const svg = drill.diagramSvg;
+  const svg = drill.diagramSvg ? fitDiagramSvgViewBox(drill.diagramSvg) : drill.diagramSvg;
   return res.json({
     svg: svg ?? PLACEHOLDER_SVG,
     hasStoredSvg: !!svg,

@@ -39,7 +39,8 @@ function serializeDrillData(p: DrawerParams): string {
     shouldInferGoalkeepers
   );
   // Explicit from generation input when available -- see DrillPromptInput.fieldFormat.
-  const zoomOut = shouldZoomOut(p.widthYards, p.lengthYards, p.fieldFormat);
+  const zoomOut =
+    shouldZoomOut(p.widthYards, p.lengthYards, p.fieldFormat) || Boolean(p.hideMatchPitchMarkings);
   const tokenRadius = computeTokenRadius(p.widthYards, p.lengthYards, p.fieldFormat, p.players.length);
   const lines: string[] = [
     `Title: ${title}`,

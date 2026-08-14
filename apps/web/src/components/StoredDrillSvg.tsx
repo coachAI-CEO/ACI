@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { fitDiagramSvgViewBox } from "@/lib/diagram-svg";
 
 type StoredDrillSvgProps = {
   drillId?: string | null;
@@ -129,7 +130,7 @@ export default function StoredDrillSvg({
       {svg ? (
         <div
           className={`overflow-hidden rounded-2xl border border-slate-800/70 bg-[#08111f] shadow-2xl shadow-black/30 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full ${padding}`}
-          dangerouslySetInnerHTML={{ __html: svg }}
+          dangerouslySetInnerHTML={{ __html: fitDiagramSvgViewBox(svg) }}
         />
       ) : (
         <div className={`rounded-2xl border border-slate-800/70 bg-[#08111f] ${padding}`}>

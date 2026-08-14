@@ -84,15 +84,17 @@ function normalizeSingleGoalPlayers(diagram: any, bigGoal: any) {
   // selection logic as when a GK candidate does exist, so a real goal
   // never ships without a keeper.
   const candidates = gks.length > 0 ? gks : players;
+  const defendingTeam = String(bigGoal.teamAttacks || "").toUpperCase() === "ATT" ? "DEF" : "ATT";
   const keep =
     candidates.length > 0
-      ? [...candidates].sort((a, b) => distanceToGoal(a, bigGoal) - distanceToGoal(b, bigGoal))[0]
+      ? [...candidates].sort((a, b) => {
+          const byDistance = distanceToGoal(a, bigGoal) - distanceToGoal(b, bigGoal);
+          if (byDistance !== 0) return byDistance;
+          const aDef = String(a.team || "").toUpperCase() === defendingTeam ? 0 : 1;
+          const bDef = String(b.team || "").toUpperCase() === defendingTeam ? 0 : 1;
+          return aDef - bDef;
+        })[0]
       : null;
-
-  // Whichever team does NOT attack this goal is the team that defends it --
-  // that's who the kept GK actually belongs to, regardless of which team
-  // the model originally put them on.
-  const defendingTeam = String(bigGoal.teamAttacks || "").toUpperCase() === "ATT" ? "DEF" : "ATT";
 
   for (const player of players) {
     if (player === keep) {
@@ -142,9 +144,36 @@ function rewriteGoalText(value: any): any {
   return value;
 }
 
+/**
+ * Keepers follow drawn full-size goals, not the equipment flag.
+ * 0 full goals → no GKs. 1 full goal → one GK on that goal, extras become CB.
+ * 2+ full goals → leave keepers alone.
+ */
+export function limitKeepersToDrawnFullGoals(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+  const bigs = goals.filter(isBigGoal);
+  if (bigs.length === 0) {
+    demoteDiagramGoalkeepers(diagram);
+    return;
+  }
+  if (bigs.length === 1) {
+    const bigGoal = { ...bigs[0] };
+    bigGoal.teamAttacks = Number(bigGoal.x ?? 50) >= 50 ? "ATT" : "DEF";
+    normalizeSingleGoalPlayers(diagram, bigGoal);
+  }
+}
+
+function parseGoalsAvailable(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabilityInput) {
-  const goalsAvailable = Number(drill?.goalsAvailable ?? input.goalsAvailable ?? 0);
   if (!drill || !drill.diagram) return;
+  const goalsAvailable =
+    parseGoalsAvailable(drill?.goalsAvailable) ?? parseGoalsAvailable(input.goalsAvailable);
 
   // goalsAvailable counts FULL-SIZE goals with a GK specifically -- it does
   // NOT mean "no goals at all." goalsAvailable=0 still allows mini-goals
@@ -163,8 +192,13 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   }
 
   if (goalsAvailable !== 1) {
-    const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
-    if (!goals.some(isBigGoal)) demoteDiagramGoalkeepers(drill.diagram);
+    // Trust the goals the model actually drew. A 9v9 attacking-third
+    // drill is often generated with goalsAvailable=2 but only one BIG
+    // goal on the far line -- the extra GK then has nowhere to stand
+    // and lands in the same net. A missing equipment flag (null) is the
+    // same situation: do not treat it as 0 and strip a drawn full goal.
+    // Count keepers from drawn full goals, not from the equipment flag.
+    limitKeepersToDrawnFullGoals(drill.diagram);
     return;
   }
 

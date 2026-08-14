@@ -1,3 +1,24 @@
+/** The field lives at x=117.92 inside an 800-wide canvas. Crop the viewBox
+ * so the pitch fills the card; the right gutter is visually eaten by the
+ * goal overlay, which is why diagrams look shoved right. */
+const FITTED_VIEWBOX = "85 24 630 528";
+
+export function fitDiagramSvgViewBox(svg: string): string {
+  if (!/<svg[\s>]/i.test(svg)) return svg;
+  return svg.replace(/<svg\b[^>]*>/i, (openTag) => {
+    let next = /viewBox\s*=/.test(openTag)
+      ? openTag.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${FITTED_VIEWBOX}"`)
+      : openTag.replace(/<svg\b/i, `<svg viewBox="${FITTED_VIEWBOX}"`);
+    if (!/preserveAspectRatio\s*=/i.test(next)) {
+      next = next.replace(/<svg\b/i, `<svg preserveAspectRatio="xMidYMid meet"`);
+    }
+    if (!/\bwidth\s*=/i.test(next)) {
+      next = next.replace(/<svg\b/i, `<svg width="100%"`);
+    }
+    return next;
+  });
+}
+
 /** Pick a stored Gemini/deterministic SVG off a drill or session-json drill. */
 export function pickDrillDiagramSvg(source: unknown): string | null {
   if (!source || typeof source !== "object") return null;

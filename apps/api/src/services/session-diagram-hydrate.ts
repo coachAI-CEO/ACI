@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 
 function isStoredSvg(value: unknown): value is string {
   return typeof value === "string" && value.includes("<svg");
@@ -11,19 +12,24 @@ export function mergeStoredSvgsOntoDrills(
   const byKey = new Map<string, string>();
   for (const row of rows) {
     if (!isStoredSvg(row.diagramSvg)) continue;
-    byKey.set(row.id, row.diagramSvg);
-    if (row.refCode) byKey.set(row.refCode, row.diagramSvg);
+    const svg = fitDiagramSvgViewBox(row.diagramSvg);
+    byKey.set(row.id, svg);
+    if (row.refCode) byKey.set(row.refCode, svg);
   }
 
   return drills.map((drill) => {
     if (!drill || typeof drill !== "object") return drill;
     const record = drill as Record<string, unknown>;
-    if (isStoredSvg(record.diagramSvg)) return record;
+    if (isStoredSvg(record.diagramSvg)) {
+      return { ...record, diagramSvg: fitDiagramSvgViewBox(record.diagramSvg) };
+    }
     const nested =
       record.json && typeof record.json === "object"
         ? (record.json as Record<string, unknown>)
         : null;
-    if (isStoredSvg(nested?.diagramSvg)) return { ...record, diagramSvg: nested.diagramSvg };
+    if (isStoredSvg(nested?.diagramSvg)) {
+      return { ...record, diagramSvg: fitDiagramSvgViewBox(nested.diagramSvg) };
+    }
     const svg =
       (typeof record.refCode === "string" ? byKey.get(record.refCode) : undefined) ||
       (typeof record.id === "string" ? byKey.get(record.id) : undefined);
