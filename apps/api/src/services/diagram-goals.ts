@@ -8,9 +8,31 @@ function isGoalkeeper(player: any): boolean {
   return team === "GK" || player?.number === 1 || role === "GK" || role.includes("GOALKEEPER");
 }
 
-function isBigGoal(goal: any): boolean {
+export function isFullSizeGoal(goal: any): boolean {
   const type = String(goal?.type || "").toUpperCase();
   return type === "BIG" || type === "FULL" || type === "LARGE";
+}
+
+function isBigGoal(goal: any): boolean {
+  return isFullSizeGoal(goal);
+}
+
+/** Mini/gate layouts never have a dedicated keeper. Relabel leftover GKs as outfield. */
+export function demoteDiagramGoalkeepers(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  for (const player of players) {
+    if (!isGoalkeeper(player)) continue;
+    const role = String(player.role || "").toUpperCase();
+    player.role = role === "GK" || role.includes("GOALKEEPER") ? "CB" : player.role;
+    if (String(player.team || "").toUpperCase() === "GK") player.team = "DEF";
+    player.number = typeof player.number === "number" && player.number !== 1 ? player.number : undefined;
+  }
+  if (Array.isArray(diagram.teams)) {
+    diagram.teams = diagram.teams.filter(
+      (t: any) => String(t?.label || "").toUpperCase() !== "GK"
+    );
+  }
 }
 
 function normalizeBigGoal(goal: any, fallback: any) {
@@ -130,24 +152,21 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   // out a BIG/full-size goal and a dedicated GK. Strip only the big goal
   // deterministically (prompt-only isn't reliable enough on its own, same
   // reasoning as every other LOCK here); leave any mini-goals untouched.
+  // Always demote keepers when no full-size goal remains -- the model
+  // often still emits GK tokens in front of puggs even when it already
+  // drew mini-only goals (no BIG to strip).
   if (goalsAvailable === 0) {
     const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
-    const hadBigGoal = goals.some(isBigGoal);
-    if (hadBigGoal) {
-      drill.diagram.goals = goals.filter((g: any) => !isBigGoal(g));
-      const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
-      for (const player of players) {
-        if (!isGoalkeeper(player)) continue;
-        const role = String(player.role || "").toUpperCase();
-        player.role = role === "GK" || role.includes("GOALKEEPER") ? "CB" : player.role;
-        if (String(player.team || "").toUpperCase() === "GK") player.team = "DEF";
-        player.number = typeof player.number === "number" && player.number !== 1 ? player.number : undefined;
-      }
-    }
+    drill.diagram.goals = goals.filter((g: any) => !isBigGoal(g));
+    demoteDiagramGoalkeepers(drill.diagram);
     return;
   }
 
-  if (goalsAvailable !== 1) return;
+  if (goalsAvailable !== 1) {
+    const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
+    if (!goals.some(isBigGoal)) demoteDiagramGoalkeepers(drill.diagram);
+    return;
+  }
 
   const diagram = drill.diagram;
   const existingGoals = Array.isArray(diagram.goals) ? diagram.goals : [];

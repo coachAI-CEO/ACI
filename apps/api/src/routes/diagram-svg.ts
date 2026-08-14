@@ -120,18 +120,20 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       ...drill,
       requestGoalsAvailable: Number.isFinite(requestGoalsAvailable) ? requestGoalsAvailable : undefined,
     });
-    if (goalsAvailable === 1 && drill.json && typeof drill.json === "object") {
+    if (drill.json && typeof drill.json === "object") {
       const normalizedJson = JSON.parse(JSON.stringify(drill.json));
       enforceDiagramGoalAvailability(normalizedJson, { goalsAvailable });
       drillForDrawer = { ...drill, json: normalizedJson };
-      await prisma.drill.update({
-        where: { id: drill.id },
-        data: {
-          json: normalizedJson,
-          goalsAvailable,
-          goalMode: "LARGE",
-        },
-      });
+      if (goalsAvailable === 1) {
+        await prisma.drill.update({
+          where: { id: drill.id },
+          data: {
+            json: normalizedJson,
+            goalsAvailable,
+            goalMode: "LARGE",
+          },
+        });
+      }
     }
     drawerParams = drillToDrawerParams(drillForDrawer);
     drawerGoals = drawerParams.goals;

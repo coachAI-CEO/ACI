@@ -13,7 +13,7 @@ import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
-import { enforceDiagramGoalAvailability } from "./diagram-goals";
+import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
 
 /**
  * Sanitize LLM output to enforce clarity rules:
@@ -104,17 +104,22 @@ export function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[
     };
     const normalizeGoalkeeperPositions = () => {
       const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+      const fullGoals = goals.filter(isFullSizeGoal);
       const gks = safePlayers.filter(isGoalkeeper);
       if (gks.length === 0) return;
+      if (fullGoals.length === 0) {
+        demoteDiagramGoalkeepers(diagram);
+        return;
+      }
       const orientation = diagram.pitch?.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL";
 
       for (const gk of gks) {
         const team = String(gk.team || "");
-        const ownGoalCandidates = goals.filter((goal: any) => {
+        const ownGoalCandidates = fullGoals.filter((goal: any) => {
           const attacks = String(goal?.teamAttacks || "");
           return attacks && attacks !== team && (attacks === "ATT" || attacks === "DEF");
         });
-        const candidates = ownGoalCandidates.length > 0 ? ownGoalCandidates : goals;
+        const candidates = ownGoalCandidates.length > 0 ? ownGoalCandidates : fullGoals;
         const closestGoal =
           candidates.length > 0
             ? candidates.reduce((best: any, goal: any) => {

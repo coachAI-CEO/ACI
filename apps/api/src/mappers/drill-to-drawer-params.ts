@@ -30,19 +30,6 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
   const area = asRecord(organization.area);
   const rawPlayers = Array.isArray(diagram.players) ? diagram.players : [];
 
-  const players: DrawerPlayer[] = rawPlayers.map((raw: unknown) => {
-    const p = asRecord(raw);
-    return {
-      id: stringOr(p.id, randomUUID()),
-      number: numberOr(p.number, 1),
-      team: normalizeTeam(stringOr(p.team, ""), stringOr(p.role, ""), numberOr(p.number, 0)),
-      role: stringOr(p.role, ""),
-      x: clampPercent(p.x),
-      y: clampPercent(p.y),
-      label: typeof p.label === "string" ? p.label : undefined,
-    };
-  });
-
   let goals: DrawerGoal[] = (Array.isArray(diagram.goals) ? diagram.goals : []).map((raw: unknown) => {
     const g = asRecord(raw);
     return {
@@ -51,6 +38,20 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
       y: clampPercent(g.y ?? 0),
       width: clampPercent(g.width ?? 10),
       type: normalizeGoalType(stringOr(g.type, "")),
+    };
+  });
+  const allowKeepers = goals.some((goal) => goal.type === "full");
+
+  const players: DrawerPlayer[] = rawPlayers.map((raw: unknown) => {
+    const p = asRecord(raw);
+    return {
+      id: stringOr(p.id, randomUUID()),
+      number: numberOr(p.number, 1),
+      team: normalizeTeam(stringOr(p.team, ""), stringOr(p.role, ""), numberOr(p.number, 0), allowKeepers),
+      role: stringOr(p.role, ""),
+      x: clampPercent(p.x),
+      y: clampPercent(p.y),
+      label: typeof p.label === "string" ? p.label : undefined,
     };
   });
 
@@ -257,15 +258,27 @@ function resolvePoint(
   return { x: clampPercent(ref.x ?? 50), y: clampPercent(ref.y ?? 50) };
 }
 
-function normalizeTeam(team: string, role: string, number: number): DrawerPlayer["team"] {
+function normalizeTeam(
+  team: string,
+  role: string,
+  number: number,
+  allowKeepers: boolean
+): DrawerPlayer["team"] {
   const t = team.toLowerCase();
   const r = role.toLowerCase();
   // GK role must win regardless of team side -- otherwise a player with
   // team="DEF"/"ATT" and role="GK" gets short-circuited into "away"/"home"
   // before this check ever runs, and the keeper renders as a regular
   // outfield player (wrong color/opacity, no GK label downstream).
-  if (t === "gk" || t === "goalkeeper" || r === "gk" || r.includes("goalkeeper")) return "gk";
-  if (number === 1 && (r === "gk" || t === "gk")) return "gk";
+  // Mini/gate-only layouts never get that treatment: puggs are not
+  // GK-defended, so leftover role=GK must render as an outfield token.
+  if (
+    allowKeepers &&
+    (t === "gk" || t === "goalkeeper" || r === "gk" || r.includes("goalkeeper"))
+  ) {
+    return "gk";
+  }
+  if (allowKeepers && number === 1 && (r === "gk" || t === "gk")) return "gk";
   if (t === "away" || t === "def" || t === "b") return "away";
   if (t === "neutral" || t === "neut" || t === "n") return "neutral";
   return "home";

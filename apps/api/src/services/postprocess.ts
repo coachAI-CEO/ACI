@@ -1,6 +1,7 @@
 import assert from "node:assert";
 import type { EnergySystem } from "../types/drill";
 import { normalizeGoalFields } from "./goal-normalizer";
+import { demoteDiagramGoalkeepers } from "./diagram-goals";
 
 // --- Canonicalization helpers ---
 
@@ -127,6 +128,7 @@ function setGKPresence(json: any, present: boolean) {
     if (idx === -1) teams.push({ color: "green", count: 1, label: "GK" });
   } else {
     if (idx !== -1) teams.splice(idx, 1);
+    demoteDiagramGoalkeepers(json.diagram);
   }
 }
 

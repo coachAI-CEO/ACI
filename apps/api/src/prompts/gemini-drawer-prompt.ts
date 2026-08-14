@@ -13,7 +13,7 @@ import { computeLegendLayout } from "../services/legend-layout";
 const FIELD_Y = 74.38;
 const FIELD_H = 313.24;
 
-export const DRAWER_PROMPT_VERSION = "v44-no-header";
+export const DRAWER_PROMPT_VERSION = "v45-mini-no-gk";
 
 export function buildDrawerPrompt(params: DrawerParams): string {
   return DRAWER_PROMPT_TEMPLATE.replace("{{DIAGRAM_DATA}}", serializeDrillData(params));
@@ -318,7 +318,7 @@ Left/right position labels are relative to the team's attacking direction, not t
 If a team attacks left, the team's right side is toward the top of the SVG and the team's left side is toward the bottom of the SVG.
 If a team attacks right, the team's right side is toward the bottom of the SVG and the team's left side is toward the top of the SVG.
 In game formats like 7v7, 9v9, or 11v11 with two full goals, each team should have a goalkeeper. If a team has no explicit GK role and both goals are full goals, the deepest player nearest that team's own goal is labelled GK.
-If the drill data includes mini goals or gate goals, do NOT infer extra goalkeepers on the mini-goal side. Mini goals never have a GK. Only players explicitly listed as pos=GK should be labelled GK in one-full-goal + mini-goal layouts.
+Mini goals and gates never have a goalkeeper. If every goal is mini or gate, no player is a GK: do not use the green GK token, do not label anyone GK, and do not put GK in the legend. Relabel any leftover GK roles as CB. Only players explicitly listed as pos=GK should be labelled GK in one-full-goal + mini-goal layouts, and only on the full-goal side.
 
 DEFS: Do NOT write a <defs> block yourself -- omit it entirely from your output, right after the opening <svg> tag. The API injects it automatically after generation, with these ids already available for you to reference elsewhere in your output: filter id="ps" (drop shadow, use as filter="url(#ps)" on player tokens), and markers id="mPass"/"mRun"/"mPress"/"mCounter"/"mDeliver"/"mFinish" (arrowheads, colored per arrow type -- use as marker-end="url(#mPass)" etc. per the ARROWS section below). Reference these ids freely; do not redefine them.
 
