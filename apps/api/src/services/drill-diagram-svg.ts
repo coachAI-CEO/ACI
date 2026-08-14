@@ -1,3 +1,4 @@
+import { prisma } from "../prisma";
 import { drillToDrawerParams } from "../mappers/drill-to-drawer-params";
 import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-drawer-prompt";
 import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "./gemini-drawer";
@@ -50,4 +51,30 @@ export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<Dri
     modelFallback: true,
     promptVersion: DRAWER_PROMPT_VERSION,
   };
+}
+
+export function omitDiagramSvgFromDrill<T extends Record<string, any>>(drill: T): T {
+  const { diagramSvg: _diagramSvg, ...rest } = drill;
+  return rest as T;
+}
+
+/** Reopen/preview must not redraw just because the prompt version changed. */
+export function storedDiagramNeedsRedraw(
+  force: boolean,
+  currentSvg: string | null | undefined
+): boolean {
+  return force === true || !currentSvg;
+}
+
+/** Write the SVG column by itself so a huge drill.json update cannot drop it. */
+export async function persistDrillDiagramSvg(refCode: string, result: DrillDiagramSvgResult): Promise<void> {
+  await prisma.drill.update({
+    where: { refCode },
+    data: {
+      diagramSvg: result.svg,
+      diagramSvgGeneratedAt: new Date(),
+      diagramSvgModel: result.model,
+      diagramSvgPromptVersion: result.promptVersion,
+    },
+  });
 }

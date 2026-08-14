@@ -117,6 +117,7 @@ export default function DrillDiagramCard({
       <div className="mx-auto max-w-[950px] space-y-3">
         <StoredDrillSvg
           drillId={drillId}
+          drillType={drillType}
           goalsAvailable={goalsAvailable}
           size="large"
           className="mx-auto"

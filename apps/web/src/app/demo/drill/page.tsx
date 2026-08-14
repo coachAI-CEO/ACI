@@ -6,6 +6,7 @@ import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillActions from "@/components/DrillActions";
 import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 import type { DiagramV1 } from "@/types/diagram";
+import { pickDrillDiagramSvg } from "@/lib/diagram-svg";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ type DrillApiResponse = {
     ageGroup?: string;
     durationMin?: number;
     goalsAvailable?: number;
+    diagramSvg?: string | null;
     json: {
       title?: string;
       diagram?: DiagramV1; // New format
@@ -704,6 +706,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                     }
                   : undefined
               }
+              initialSvg={pickDrillDiagramSvg(data.drill)}
             />
 
             {/* QA Scores Display - below diagram */}

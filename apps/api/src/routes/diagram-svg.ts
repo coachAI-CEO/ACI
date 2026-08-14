@@ -7,6 +7,7 @@ import { drillToDrawerParams } from "../mappers/drill-to-drawer-params";
 import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-drawer-prompt";
 import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "../services/gemini-drawer";
 import { renderDeterministicDiagramSVG } from "../services/deterministic-drawer-svg";
+import { storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import { applyGoalOverlay } from "../services/goal-overlay";
@@ -104,8 +105,9 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   }
 
   const currentSvg = drill.diagramSvg;
-  const currentPromptVersion = drill.diagramSvgPromptVersion;
-  const needsRegen = force || !currentSvg || currentPromptVersion !== DRAWER_PROMPT_VERSION;
+  // Prompt-version bumps no longer force a blocking redraw. Reopen must
+  // return the stored SVG; coaches regenerate explicitly with force=true.
+  const needsRegen = storedDiagramNeedsRedraw(force, currentSvg);
 
   if (!needsRegen) {
     return res.json({ svg: currentSvg, cached: true });
@@ -194,6 +196,37 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
     generationFailed: true,
     reason: result.reason,
   });
+});
+
+diagramSvgRouter.post("/lookup", authenticate, async (req: AuthRequest, res) => {
+  if (!req.user || !req.userId) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
+  }
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((id: unknown) => typeof id === "string" && id.trim()).slice(0, 40)
+    : [];
+  if (ids.length === 0) return res.json({ svgs: {} });
+
+  const drills = await prisma.drill.findMany({
+    where: { OR: [{ id: { in: ids } }, { refCode: { in: ids } }] },
+    select: {
+      id: true,
+      refCode: true,
+      diagramSvg: true,
+      generatedBy: true,
+      savedToVault: true,
+      gameModelId: true,
+    },
+  });
+
+  const svgs: Record<string, string> = {};
+  for (const drill of drills) {
+    if (!drill.diagramSvg) continue;
+    if (!(await userMayAccessDrillDiagram(req, drill))) continue;
+    svgs[drill.id] = drill.diagramSvg;
+    if (drill.refCode) svgs[drill.refCode] = drill.diagramSvg;
+  }
+  return res.json({ svgs });
 });
 
 diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) => {

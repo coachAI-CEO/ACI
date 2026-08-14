@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
 import StoredDrillSvg from "@/components/StoredDrillSvg";
+import { fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
@@ -48,6 +49,7 @@ type FavoriteDrill = {
   favoriteCount: number;
   createdAt: string;
   json: any;
+  diagramSvg?: string | null;
 };
 
 type FavoriteSeries = {
@@ -119,6 +121,7 @@ export default function FavoritesPage() {
   const [activeTab, setActiveTab] = useState<"all" | "sessions" | "drills" | "series">("all");
   const [selectedDrill, setSelectedDrill] = useState<FavoriteDrill | null>(null);
   const [selectedSession, setSelectedSession] = useState<FavoriteSession | null>(null);
+  const [diagramsHydrated, setDiagramsHydrated] = useState(true);
   const [scheduleModal, setScheduleModal] = useState<{
     sessionId: string;
     sessionTitle: string;
@@ -264,6 +267,29 @@ export default function FavoritesPage() {
   useEffect(() => {
     loadFavorites();
   }, [loadFavorites]);
+
+  const openSessionPreview = useCallback(async (session: FavoriteSession) => {
+    setDiagramsHydrated(false);
+    setSelectedSession(session);
+    if (sessionDrillsHaveStoredSvgs(session)) {
+      setDiagramsHydrated(true);
+      return;
+    }
+    try {
+      const drills = Array.isArray(session.json?.drills) ? session.json.drills : [];
+      const ids = drills.map((drill: unknown) => pickDrillSvgId(drill)).filter((id): id is string => Boolean(id));
+      const svgs = await fetchStoredDiagramSvgs(ids);
+      const merged = mergeSessionDrillSvgs(session, svgs);
+      setSelectedSession(merged);
+      setSessions((prev) =>
+        prev.map((item) => (item.id === merged.id ? { ...item, json: merged.json } : item))
+      );
+    } catch {
+      // Keep the list copy; diagrams stay on the stored lookup path.
+    } finally {
+      setDiagramsHydrated(true);
+    }
+  }, []);
 
   const removeFavorite = async (type: "session" | "drill" | "series", id: string) => {
     try {
@@ -536,7 +562,7 @@ export default function FavoritesPage() {
                   <div className="flex items-center gap-2 pt-1">
                     <span className="text-emerald-400">■ {session.favoriteCount}</span>
                     <button
-                      onClick={() => setSelectedSession(session)}
+                      onClick={() => openSessionPreview(session)}
                       className="text-emerald-400 hover:text-emerald-300 ml-auto"
                     >
                       View →
@@ -707,7 +733,9 @@ export default function FavoritesPage() {
                       const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
                       const description = drill.description ?? drill.json?.description;
                       const organization = drill.organization ?? drill.json?.organization;
-                      const svgDrillId = drill.id ?? drill.refCode ?? drill.json?.refCode;
+                      const svgDrillId = pickDrillSvgId(drill);
+                      const storedSvg = pickDrillDiagramSvg(drill);
+                      const canDraw = Boolean(storedSvg) || diagramsHydrated;
 
                       return (
                       <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
@@ -731,12 +759,20 @@ export default function FavoritesPage() {
                           {/* Left: Diagram */}
                           {diagram && (
                             <div className="flex items-center justify-center">
+                              {canDraw ? (
                               <StoredDrillSvg
                                 drillId={svgDrillId}
                                 goalsAvailable={drill.goalsAvailable ?? drill.json?.goalsAvailable ?? selectedSession.goalsAvailable ?? selectedSession.json?.goalsAvailable}
                                 size="small"
                                 showRegenerate={false}
+                                drillType={drill.drillType}
+                                initialSvg={storedSvg}
                               />
+                              ) : (
+                                <div className="flex min-h-[180px] w-full items-center justify-center rounded-2xl border border-slate-800/70 bg-[#08111f] text-xs text-slate-500">
+                                  Loading diagram...
+                                </div>
+                              )}
                             </div>
                           )}
                           
@@ -880,9 +916,11 @@ export default function FavoritesPage() {
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
                     <div className="flex items-center justify-center">
                       <StoredDrillSvg
-                        drillId={selectedDrill.id ?? selectedDrill.refCode ?? selectedDrill.json?.refCode}
+                        drillId={pickDrillSvgId(selectedDrill)}
                         goalsAvailable={selectedDrill.goalsAvailable ?? selectedDrill.json?.goalsAvailable}
                         size="small"
+                        showRegenerate={false}
+                        initialSvg={pickDrillDiagramSvg(selectedDrill)}
                       />
                     </div>
                   </div>

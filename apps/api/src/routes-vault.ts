@@ -16,6 +16,7 @@ import { canAccessVault, getAllowedFormatsAndAgeGroups, getFormatFromFormation, 
 import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
 import { getEnforcedClubVaultScope } from "./services/club-game-model-scope";
 import { clubVaultWhere, sessionInClubVaultScope } from "./services/club-session-visibility";
+import { attachStoredDiagramSvgsToSession } from "./services/session-diagram-hydrate";
 
 const r = express.Router();
 
@@ -505,7 +506,8 @@ r.get("/vault/sessions/:sessionId", optionalAuth, async (req: AuthRequest, res) 
     if (!sessionInClubVaultScope(session, vaultScope)) {
       return res.status(403).json(outsideClubVaultResponse(vaultScope));
     }
-    return res.json({ ok: true, session });
+    const sessionWithSvgs = await attachStoredDiagramSvgsToSession(session);
+    return res.json({ ok: true, session: sessionWithSvgs });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
