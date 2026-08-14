@@ -13,7 +13,7 @@ import { computeLegendLayout } from "../services/legend-layout";
 const FIELD_Y = 74.38;
 const FIELD_H = 313.24;
 
-export const DRAWER_PROMPT_VERSION = "v45-mini-no-gk";
+export const DRAWER_PROMPT_VERSION = "v46-one-token";
 
 export function buildDrawerPrompt(params: DrawerParams): string {
   return DRAWER_PROMPT_TEMPLATE.replace("{{DIAGRAM_DATA}}", serializeDrillData(params));
@@ -28,15 +28,17 @@ function serializeDrillData(p: DrawerParams): string {
   const titleLines = splitTitleLines(title);
   const homeDirection = inferHomeAttackDirection(p);
   const shouldInferGoalkeepers = shouldInferImplicitGoalkeepers(p);
+  const hasExplicitKeeper = p.players.some((player) => player.team === "gk");
+  const inferMissingKeeper = shouldInferGoalkeepers && !hasExplicitKeeper;
   const homeLabels = buildDirectionAwareLabels(
     p.players.filter((player) => player.team === "home"),
     homeDirection,
-    shouldInferGoalkeepers && !p.players.some((player) => player.team === "gk")
+    inferMissingKeeper
   );
   const awayLabels = buildDirectionAwareLabels(
     p.players.filter((player) => player.team === "away"),
     oppositeDirection(homeDirection),
-    shouldInferGoalkeepers
+    inferMissingKeeper
   );
   // Explicit from generation input when available -- see DrillPromptInput.fieldFormat.
   const zoomOut =
@@ -209,7 +211,11 @@ function getDirectionAwarePositionLabel(
 ): string {
   if (player.team === "gk") return "GK";
   if (player.team === "neutral") return "NT";
-  return (player.team === "away" ? awayLabels : homeLabels).get(player.id) ?? normalizePositionLabel(player.role, player.team);
+  const fromRole = normalizePositionLabel(player.role, player.team);
+  if (player.role.trim() && fromRole !== "AT" && fromRole !== "DF") {
+    return fromRole;
+  }
+  return (player.team === "away" ? awayLabels : homeLabels).get(player.id) ?? fromRole;
 }
 
 function normalizePositionLabel(role: string, team: DrawerParams["players"][number]["team"]): string {
@@ -318,7 +324,7 @@ Never mirror the field unless the x/y data itself is mirrored.
 Left/right position labels are relative to the team's attacking direction, not the page.
 If a team attacks left, the team's right side is toward the top of the SVG and the team's left side is toward the bottom of the SVG.
 If a team attacks right, the team's right side is toward the bottom of the SVG and the team's left side is toward the top of the SVG.
-In game formats like 7v7, 9v9, or 11v11 with two full goals, each team should have a goalkeeper. If a team has no explicit GK role and both goals are full goals, the deepest player nearest that team's own goal is labelled GK.
+In game formats like 7v7, 9v9, or 11v11 with two full goals, each team should have a goalkeeper. If DRILL DATA already lists pos=GK player lines, those are the only keepers -- draw them green, and never relabel a blue or red outfield player as GK. If a team has no explicit GK role and both goals are full goals, the deepest player nearest that team's own goal is labelled GK.
 Mini goals and gates never have a goalkeeper. If every goal is mini or gate, no player is a GK: do not use the green GK token, do not label anyone GK, and do not put GK in the legend. Relabel any leftover GK roles as CB. Only players explicitly listed as pos=GK should be labelled GK in one-full-goal + mini-goal layouts, and only on the full-goal side.
 
 DEFS: Do NOT write a <defs> block yourself -- omit it entirely from your output, right after the opening <svg> tag. The API injects it automatically after generation, with these ids already available for you to reference elsewhere in your output: filter id="ps" (drop shadow, use as filter="url(#ps)" on player tokens), and markers id="mPass"/"mRun"/"mPress"/"mCounter"/"mDeliver"/"mFinish" (arrowheads, colored per arrow type -- use as marker-end="url(#mPass)" etc. per the ARROWS section below). Reference these ids freely; do not redefine them.
@@ -345,6 +351,9 @@ Use the provided pos= value from the player line. Position labels must be exactl
 Never output 1-character labels like M, F, or D.
 Never draw position labels as standalone text at the top, bottom, or outside the player circle.
 Never draw position labels outside their token group.
+ONE TOKEN PER PLAYER LINE. Count the player lines in DRILL DATA. Draw exactly that many player <g> groups -- no more, no fewer.
+Never clone a player at an arrow endpoint. A pass/run/press arrow is a line only; the receiver is already listed as their own player line if they exist.
+Never draw ghost, start-frame, end-frame, or animation-duplicate tokens. If two circles would share a label near the same spot, you have over-drawn -- delete the extra.
 The number of player <text> labels inside token groups must equal the number of player lines in DRILL DATA.
 
 GK: use opacity="0.38" on glow and circle. Remove filter. Label goalkeeper tokens as "GK".
@@ -410,6 +419,7 @@ Do not draw coaching points.
 Do not draw a right-side annotation rail.
 Do not draw a coaching picture sentence.
 Do not put a black sidebar next to the field.
+Do not draw a second labeled player to show where a run or pass ends. That is the arrow's job.
 
 DRAW ORDER:
 1. background 2. defs 3. field fill 4. field border (all four of these are injected by the API, not drawn by you -- see CANVAS AND CARD / FIELD / DEFS above) 5. field lines
