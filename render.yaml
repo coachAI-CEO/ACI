@@ -10,6 +10,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: TACTICAL_BOARD_V1
+        value: "1"
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
