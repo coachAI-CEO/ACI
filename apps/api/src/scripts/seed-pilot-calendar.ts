@@ -179,6 +179,11 @@ async function main() {
     if (!scope?.clubId) {
       throw new Error(`${coach.email} has no club scope`);
     }
+    if (!scope.gameModelId) {
+      throw new Error(`${coach.email} has no club game model`);
+    }
+
+    const gameModelId = scope.gameModelId;
 
     console.log(
       `Coach ${coach.email} age=${ageGroup} club=${scope.clubName} model=${scope.gameModelId}`
@@ -193,7 +198,7 @@ async function main() {
       }
 
       const input: SessionPromptInput = {
-        gameModelId: scope.gameModelId,
+        gameModelId,
         ageGroup,
         phase,
         zone,
@@ -210,7 +215,7 @@ async function main() {
       if (philosophyHasContent(scope.philosophy)) {
         input.clubPhilosophy = scope.philosophy;
       } else {
-        const template = await getGameModelTemplatePhilosophy(scope.gameModelId);
+        const template = await getGameModelTemplatePhilosophy(gameModelId);
         if (philosophyHasContent(template)) input.clubPhilosophy = template;
       }
 
