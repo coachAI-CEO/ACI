@@ -19,6 +19,9 @@ import calendarRoutes from "./routes-calendar";
 import organizationRoutes from "./routes-organization";
 import billingRoutes from "./routes-billing";
 import videoAnalysisRoutes from "./routes-video-analysis";
+import docHubRoutes from "./routes-doc-hub";
+import boardsRoutes from "./routes-boards";
+import { diagramSvgRouter } from "./routes/diagram-svg";
 
 const app = express();
 
@@ -65,12 +68,15 @@ app.use(authRoutes); // Authentication routes (register, login, etc.)
 app.use(drillRoutes);
 app.use(sessionRoutes);
 app.use(fixerRoutes);
+app.use("/api/diagram-svg", diagramSvgRouter); // Stored Gemini-drawn SVG diagrams
 app.use(coachRoutes);  // ✅ FIXER ROUTES ARE ACTUALLY MOUNTED HERE
 app.use(vaultRoutes);  // Vault system routes
 app.use(skillFocusRoutes); // Skill focus routes
 app.use(calendarRoutes); // Calendar routes (BEFORE admin routes to avoid conflicts)
 app.use(favoritesRoutes); // Favorites routes (BEFORE admin routes to avoid conflicts)
 app.use(billingRoutes); // Stripe checkout, portal, and webhook routes
+app.use(docHubRoutes); // DOC Hub before admin so club DOCs are never blocked by admin gate
+app.use(boardsRoutes); // Tactical Board v1 (flag-gated)
 app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)

@@ -24,19 +24,25 @@ export function clearMetricsContext() {
   metricsContext = {};
 }
 
-// Use gemini-3.1-flash-lite-preview as primary for faster response times.
-// Fallback to gemini-3-flash-preview for compatibility.
-const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
-const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3-flash-preview";
+// Keep defaults aligned with deployed model configuration.
+// gemini-3.5-flash and gemini-3.6-flash (non-lite) are banned from this
+// codebase -- $21.5 and $76.5 respectively in a single day's spend versus
+// $1.24/$1.29 combined for the lite variants doing the same job. Never let
+// a missing env var silently fall back to one of the banned models.
+const PRIMARY = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash-lite";
+const FALLBACK = process.env.GEMINI_MODEL_FALLBACK || "gemini-3.5-flash-lite";
 
 // Performance tuning - balance between speed and reliability
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 45000; // 45 seconds (Gemini can be very slow for complex prompts)
 const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES) || 0; // No retries for speed (fail fast)
 const BACKOFF_BASE_MS = Number(process.env.GEMINI_BACKOFF_BASE_MS) || 500; // Faster backoff
 
-function newModel(name: string) {
+function newModel(name: string, generationConfig?: { maxOutputTokens?: number }) {
   const genAI = new GoogleGenerativeAI(key!);
-  return genAI.getGenerativeModel({ model: name });
+  return genAI.getGenerativeModel({
+    model: name,
+    ...(generationConfig ? { generationConfig } : {}),
+  });
 }
 
 function isTransient(e: any) {
@@ -49,8 +55,17 @@ function isQuotaError(e: any) {
   return /(?:429|quota|rate limit)/i.test(msg);
 }
 
-async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RETRIES, timeoutMs = TIMEOUT_MS) {
-  const m = newModel(modelName);
+async function tryGenerate(
+  modelName: string,
+  prompt: string,
+  attempts = MAX_RETRIES,
+  timeoutMs = TIMEOUT_MS,
+  maxOutputTokens?: number
+) {
+  const m = newModel(
+    modelName,
+    maxOutputTokens ? { maxOutputTokens } : undefined
+  );
   let lastErr: any;
   
   // Ensure at least 1 attempt (attempts=0 means no retries, but still try once)
@@ -91,8 +106,8 @@ async function tryGenerate(modelName: string, prompt: string, attempts = MAX_RET
         durationMs: elapsed,
         success: true,
       }).catch(e => console.error("[Gemini] Failed to store metrics:", e.message));
-      
-      return responseText;
+
+      return { text: responseText, promptTokens, completionTokens, totalTokens, durationMs: elapsed };
     } catch (e: any) {
       const elapsed = Date.now() - startTime;
       console.log(`[Gemini] Error after ${elapsed}ms: ${e.message || e}`);
@@ -166,18 +181,112 @@ async function storeMetrics(data: {
   }
 }
 
-export async function generateText(prompt: string, options?: { timeout?: number; retries?: number }) {
+export async function generateTextWithMetrics(
+  prompt: string,
+  options?: {
+    timeout?: number;
+    retries?: number;
+    model?: string;
+    fallbackModel?: string | null;
+    maxOutputTokens?: number;
+  }
+) {
   const timeout = options?.timeout || TIMEOUT_MS;
   const retries = options?.retries ?? MAX_RETRIES;
-  
+  const primaryModel = options?.model || PRIMARY;
+  const fallbackModel = options?.fallbackModel === undefined ? FALLBACK : options.fallbackModel;
+  const maxOutputTokens = options?.maxOutputTokens;
+
   try {
-    return await tryGenerate(PRIMARY, prompt, retries, timeout);
+    const result = await tryGenerate(primaryModel, prompt, retries, timeout, maxOutputTokens);
+    return { ...result, model: primaryModel };
   } catch (e: any) {
     // Don't try fallback if quota error - it will fail too
     if (isQuotaError(e)) throw e;
-    
+    if (!fallbackModel || fallbackModel === primaryModel) throw e;
+
     console.log(`[Gemini] Primary model failed, trying fallback: ${e.message}`);
-    return await tryGenerate(FALLBACK, prompt, Math.min(retries, 1), timeout);
+    const result = await tryGenerate(
+      fallbackModel,
+      prompt,
+      Math.min(retries, 1),
+      timeout,
+      maxOutputTokens
+    );
+    return { ...result, model: fallbackModel };
+  }
+}
+
+export async function generateText(
+  prompt: string,
+  options?: {
+    timeout?: number;
+    retries?: number;
+    model?: string;
+    fallbackModel?: string | null;
+    maxOutputTokens?: number;
+  }
+) {
+  const result = await generateTextWithMetrics(prompt, options);
+  return result.text;
+}
+
+export type GeminiContentPart =
+  | string
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Multimodal generate (PDF/image + text). Uses the lite primary model.
+ * Prefer this for small club documents rather than expensive non-lite models.
+ */
+export async function generateMultimodalText(
+  parts: GeminiContentPart[],
+  options?: { timeout?: number; model?: string }
+): Promise<string> {
+  const modelName = options?.model || PRIMARY;
+  const timeoutMs = options?.timeout || TIMEOUT_MS;
+  const m = newModel(modelName);
+  const startTime = Date.now();
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("LLM_TIMEOUT")), timeoutMs)
+  );
+
+  try {
+    const generatePromise = m.generateContent(parts as any);
+    const r: any = await Promise.race([generatePromise, timeoutPromise]);
+    const responseText = r.response.text();
+    const usageMetadata = r.response?.usageMetadata;
+    storeMetrics({
+      model: modelName,
+      promptLength: parts.reduce((n, p) => {
+        if (typeof p === "string") return n + p.length;
+        if ("text" in p) return n + p.text.length;
+        if ("inlineData" in p) return n + (p.inlineData.data?.length || 0);
+        return n;
+      }, 0),
+      responseLength: responseText.length,
+      promptTokens: usageMetadata?.promptTokenCount || null,
+      completionTokens: usageMetadata?.candidatesTokenCount || null,
+      totalTokens: usageMetadata?.totalTokenCount || null,
+      durationMs: Date.now() - startTime,
+      success: true,
+    }).catch(() => undefined);
+    return responseText;
+  } catch (e: any) {
+    storeMetrics({
+      model: modelName,
+      promptLength: 0,
+      responseLength: null,
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+      durationMs: Date.now() - startTime,
+      success: false,
+      errorMessage: e?.message || String(e),
+    }).catch(() => undefined);
+    throw e;
   }
 }
 

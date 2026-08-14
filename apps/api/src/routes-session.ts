@@ -9,7 +9,15 @@ import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, optionalAuth, requireFeature, AuthRequest } from "./middleware/auth";
 import { checkUsageLimit, incrementUsage } from "./services/auth";
 import { canGenerateSessions } from "./services/access-permissions";
-import { getEnforcedClubGameModelId } from "./services/club-game-model-scope";
+import {
+  getEnforcedClubGameModelId,
+  getEnforcedClubVaultScope,
+} from "./services/club-game-model-scope";
+import {
+  philosophyHasContent,
+  resolveClubSessionScope,
+} from "./services/club-philosophy";
+import { getGameModelTemplatePhilosophy } from "./services/game-model-templates";
 import {
   clearGenerationCancelled,
   isGenerationCancelled,
@@ -60,7 +68,7 @@ function normalizeCoachLevel(value: unknown): string {
   const v = String(value || "")
     .trim()
     .toUpperCase();
-  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_D") return "USSF_D";
   if (v === "USSF_C") return "USSF_C";
   if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
   return v;
@@ -70,10 +78,10 @@ function applyCoachLevelGuardrails<T extends { coachLevel?: unknown; playerLevel
   const next = { ...(input || {}) } as T;
   const coachLevel = normalizeCoachLevel(next.coachLevel);
 
-  if (coachLevel === "GRASSROOTS" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
+  if (coachLevel === "USSF_D" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
     next.coachLevel = coachLevel;
   }
-  if (coachLevel === "GRASSROOTS") {
+  if (coachLevel === "USSF_D") {
     next.playerLevel = "BEGINNER";
   }
 
@@ -248,9 +256,17 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
 
   try {
     const body = applyCoachLevelGuardrails((req.body || {}) as SessionPromptInput);
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
-    if (enforcedGameModelId) {
-      body.gameModelId = enforcedGameModelId;
+    const clubScope = await resolveClubSessionScope(req.userId);
+    if (clubScope?.gameModelId) {
+      body.gameModelId = clubScope.gameModelId;
+    }
+    if (philosophyHasContent(clubScope?.philosophy)) {
+      body.clubPhilosophy = clubScope!.philosophy;
+    } else if (body.gameModelId) {
+      const templatePhilosophy = await getGameModelTemplatePhilosophy(String(body.gameModelId));
+      if (philosophyHasContent(templatePhilosophy)) {
+        body.clubPhilosophy = templatePhilosophy;
+      }
     }
 
     // Check access permissions
@@ -389,9 +405,17 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
   try {
     const body = req.body || {};
     const baseInput = applyCoachLevelGuardrails((body.baseInput || body) as SessionPromptInput);
-    const enforcedGameModelId = await getEnforcedClubGameModelId(req.userId);
-    if (enforcedGameModelId) {
-      baseInput.gameModelId = enforcedGameModelId;
+    const clubScope = await resolveClubSessionScope(req.userId);
+    if (clubScope?.gameModelId) {
+      baseInput.gameModelId = clubScope.gameModelId;
+    }
+    if (philosophyHasContent(clubScope?.philosophy)) {
+      baseInput.clubPhilosophy = clubScope!.philosophy;
+    } else if (baseInput.gameModelId) {
+      const templatePhilosophy = await getGameModelTemplatePhilosophy(String(baseInput.gameModelId));
+      if (philosophyHasContent(templatePhilosophy)) {
+        baseInput.clubPhilosophy = templatePhilosophy;
+      }
     }
     const numberOfSessions = Number(body.numberOfSessions) || 3;
 
@@ -424,7 +448,11 @@ r.post("/ai/generate-progressive-series", authenticate, requireFeature('canGener
     if (!skipRecommendation) {
       try {
         if (baseInput.gameModelId && baseInput.ageGroup) {
-          recommendations = await findSimilarSessions(baseInput, 0.85);
+          recommendations = await findSimilarSessions(
+            baseInput,
+            0.85,
+            await getEnforcedClubVaultScope(req.userId)
+          );
           const seriesRecommendations = recommendations.filter(r => r.session.isSeries);
           if (seriesRecommendations.length > 0) {
             return res.json({

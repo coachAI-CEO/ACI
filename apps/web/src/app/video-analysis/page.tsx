@@ -85,7 +85,7 @@ function FilteredVaultList({
             
             const ageGroup = vaultItem.ageGroup || '-';
             
-            // Normalize level - convert "GRASSROOTS" to "Grassroots", "USSF_C" to "USSF C", etc.
+            // Normalize level - convert "USSF_D" to "Ussf D", "USSF_C" to "USSF C", etc.
             const playerLevel = (vaultItem.playerLevel || vaultItem.coachLevel || '-')
               .replace(/_/g, ' ')
               .replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -164,7 +164,7 @@ const AGE_GROUP_OPTIONS = [
 
 const COLOR_OPTIONS = ["blue", "red", "white", "black", "yellow", "green"];
 const COACH_LEVEL_OPTIONS = [
-  { value: "GRASSROOTS", label: "Grassroots" },
+  { value: "USSF_D", label: "USSF D" },
   { value: "USSF_C", label: "USSF C" },
   { value: "USSF_B_PLUS", label: "USSF B+" },
 ];
@@ -353,15 +353,15 @@ function getFormationBucketAge(ageGroup: string): string {
 
 function getDefaultFormationForAgeGroup(ageGroup: string): string {
   const bucket = getFormationBucketAge(ageGroup);
-  if (["U8", "U9", "U10", "U11", "U12"].includes(bucket)) return "2-3-1";
-  if (["U13", "U14"].includes(bucket)) return "3-2-3";
+  if (["U8", "U9", "U10"].includes(bucket)) return "2-3-1";
+  if (["U11", "U12"].includes(bucket)) return "3-2-3";
   return "4-3-3";
 }
 
 function getValidFormationsForAgeGroup(ageGroup: string): string[] {
   const bucket = getFormationBucketAge(ageGroup);
-  if (["U8", "U9", "U10", "U11", "U12"].includes(bucket)) return ["2-3-1", "3-2-1"];
-  if (["U13", "U14"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
+  if (["U8", "U9", "U10"].includes(bucket)) return ["2-3-1", "3-2-1"];
+  if (["U11", "U12"].includes(bucket)) return ["3-2-3", "2-3-2-1", "3-3-2"];
   return ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"];
 }
 

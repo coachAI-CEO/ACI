@@ -86,7 +86,7 @@ const ZONE_LABELS: Record<string, string> = {
 };
 
 const COACH_LEVEL_LABELS: Record<string, string> = {
-  GRASSROOTS:   "Grassroots",
+  USSF_D:       "USSF D",
   USSF_C:       "USSF C",
   USSF_B_PLUS:  "USSF B+",
 };
@@ -94,7 +94,7 @@ const COACH_LEVEL_LABELS: Record<string, string> = {
 // Returns { label, color } for the "Language" badge derived from coachLevel
 function getLanguageBadge(coachLevel?: string): { label: string; color: string } {
   const key = String(coachLevel || "").toUpperCase();
-  if (key === "GRASSROOTS") return { label: "Language: Grassroots", color: "#059669" };
+  if (key === "USSF_D") return { label: "Language: USSF D", color: "#059669" };
   if (key === "USSF_C")     return { label: "Language: USSF C",     color: "#0ea5e9" };
   if (key === "USSF_B_PLUS") return { label: "Language: USSF B+",   color: "#7c3aed" };
   return { label: "Language: Standard", color: "#64748b" };

@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent } from "react";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
 import ThemedConfirmModal from "@/components/ThemedConfirmModal";
+import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
-function normalizeCoachLevel(value: unknown): "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" {
+function normalizeCoachLevel(value: unknown): "USSF_D" | "USSF_C" | "USSF_B_PLUS" {
   const raw = String(value || "").trim().toUpperCase();
   const v = raw
     .replace(/\+/g, " PLUS ")
@@ -14,18 +14,22 @@ function normalizeCoachLevel(value: unknown): "GRASSROOTS" | "USSF_C" | "USSF_B_
     .replace(/^_+|_+$/g, "");
   if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A" || v === "USSF_A_PLUS") return "USSF_B_PLUS";
   if (v === "USSF_C") return "USSF_C";
-  return "GRASSROOTS";
+  return "USSF_D"; // also covers legacy "GRASSROOTS" and D-license phrasing
 }
 
 export default function SessionFormWithLoading({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const { enforcedGameModelId, scopeReady } = useEnforcedGameModelScope();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState("");
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (!scopeReady) {
+      return;
+    }
 
     const form = e.currentTarget;
     const formData = new FormData(form);
@@ -40,13 +44,12 @@ export default function SessionFormWithLoading({ children }: { children: React.R
       }
     });
 
+    if (enforcedGameModelId) {
+      params.set("gameModelId", enforcedGameModelId);
+    }
+
     const normalizedCoachLevel = normalizeCoachLevel(formData.get("coachLevel"));
     params.set("coachLevel", normalizedCoachLevel);
-
-    // Hard UI guardrail: grassroots generation always runs as beginner players.
-    if (normalizedCoachLevel === "GRASSROOTS") {
-      params.set("playerLevel", "BEGINNER");
-    }
 
     if (selectedMode === "series") {
       params.append("series", "true");

@@ -5,6 +5,17 @@ import { buildSessionQAReviewerPrompt } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
 import { SessionPromptInput } from "../prompts/session";
 import { generateRefCode } from "../utils/ref-code";
+import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
+import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
+import { enforceDiagramGoalAvailability } from "./diagram-goals";
+import { generateDrillDiagramSvg } from "./drill-diagram-svg";
+import { resolveSessionClubId } from "./club-philosophy";
+import {
+  normalizeGoalkeeperPositions,
+  enforceConditionedGameFormatDiagram,
+  enforceDiagramPlayerLimit,
+  replaceFormatMentions,
+} from "./session";
 
 /**
  * Parse JSON safely from LLM text output
@@ -21,12 +32,12 @@ function parseJsonSafe(text: string) {
   }
 }
 
-function isGrassrootsCoachLevel(coachLevel?: string): boolean {
-  return String(coachLevel || "").toUpperCase() === "GRASSROOTS";
+function isUssfDCoachLevel(coachLevel?: string): boolean {
+  return String(coachLevel || "").toUpperCase() === "USSF_D";
 }
 
 function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel)) return;
+  if (!isUssfDCoachLevel(coachLevel)) return;
   if (!drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
 
   const diagram = drill.diagram;
@@ -47,7 +58,7 @@ function applyCoachLevelDiagramProfile(drill: any, coachLevel?: string) {
   }
 }
 
-const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
+const USSF_D_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bmeticulously\b/gi, "carefully"],
   [/\bcomprehensive\b/gi, "complete"],
   [/\btactical intelligence\b/gi, "decision-making"],
@@ -77,9 +88,9 @@ const GRASSROOTS_LANGUAGE_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bspatial awareness\b/gi, "awareness of space"],
 ];
 
-function simplifyGrassrootsText(text: string): string {
+function simplifyUssfDText(text: string): string {
   let out = String(text || "");
-  for (const [pattern, replacement] of GRASSROOTS_LANGUAGE_REPLACEMENTS) {
+  for (const [pattern, replacement] of USSF_D_LANGUAGE_REPLACEMENTS) {
     out = out.replace(pattern, replacement);
   }
   out = out
@@ -98,7 +109,7 @@ function simplifyGrassrootsText(text: string): string {
   return out.trim();
 }
 
-function toGrassrootsCoachVoice(text: string): string {
+function toUssfDCoachVoice(text: string): string {
   let out = String(text || "").trim();
   if (!out) return out;
 
@@ -117,18 +128,18 @@ function toGrassrootsCoachVoice(text: string): string {
   return out.replace(/\s{2,}/g, " ").trim();
 }
 
-function simplifyGrassrootsStringArray(values: any): any {
+function simplifyUssfDStringArray(values: any): any {
   if (!Array.isArray(values)) return values;
   return values.map((value) =>
-    typeof value === "string" ? toGrassrootsCoachVoice(simplifyGrassrootsText(value)) : value
+    typeof value === "string" ? toUssfDCoachVoice(simplifyUssfDText(value)) : value
   );
 }
 
 function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
-  if (!isGrassrootsCoachLevel(coachLevel) || !session || typeof session !== "object") return;
+  if (!isUssfDCoachLevel(coachLevel) || !session || typeof session !== "object") return;
 
   if (typeof session.summary === "string") {
-    session.summary = toGrassrootsCoachVoice(simplifyGrassrootsText(session.summary));
+    session.summary = toUssfDCoachVoice(simplifyUssfDText(session.summary));
   }
 
   if (!Array.isArray(session.drills)) return;
@@ -136,43 +147,49 @@ function applyCoachLevelLanguageProfile(session: any, coachLevel?: string) {
     if (!drill || typeof drill !== "object") return;
 
     if (typeof drill.description === "string") {
-      drill.description = toGrassrootsCoachVoice(simplifyGrassrootsText(drill.description));
+      drill.description = toUssfDCoachVoice(simplifyUssfDText(drill.description));
     }
-    drill.coachingPoints = simplifyGrassrootsStringArray(drill.coachingPoints);
-    drill.progressions = simplifyGrassrootsStringArray(drill.progressions);
-    drill.constraints = simplifyGrassrootsStringArray(drill.constraints);
+    drill.coachingPoints = simplifyUssfDStringArray(drill.coachingPoints);
+    drill.progressions = simplifyUssfDStringArray(drill.progressions);
+    drill.constraints = simplifyUssfDStringArray(drill.constraints);
 
     if (drill.loadNotes && typeof drill.loadNotes === "object") {
       if (typeof drill.loadNotes.rationale === "string") {
-        drill.loadNotes.rationale = simplifyGrassrootsText(drill.loadNotes.rationale);
+        drill.loadNotes.rationale = simplifyUssfDText(drill.loadNotes.rationale);
       }
       if (typeof drill.loadNotes.structure === "string") {
-        drill.loadNotes.structure = simplifyGrassrootsText(drill.loadNotes.structure);
+        drill.loadNotes.structure = simplifyUssfDText(drill.loadNotes.structure);
       }
     }
 
     if (drill.organization && typeof drill.organization === "object") {
       if (Array.isArray(drill.organization.setupSteps)) {
-        drill.organization.setupSteps = simplifyGrassrootsStringArray(drill.organization.setupSteps);
+        drill.organization.setupSteps = simplifyUssfDStringArray(drill.organization.setupSteps);
       }
       if (typeof drill.organization.rotation === "string") {
-        drill.organization.rotation = simplifyGrassrootsText(drill.organization.rotation);
+        drill.organization.rotation = simplifyUssfDText(drill.organization.rotation);
       }
       if (typeof drill.organization.restarts === "string") {
-        drill.organization.restarts = simplifyGrassrootsText(drill.organization.restarts);
+        drill.organization.restarts = simplifyUssfDText(drill.organization.restarts);
       }
       if (typeof drill.organization.scoring === "string") {
-        drill.organization.scoring = simplifyGrassrootsText(drill.organization.scoring);
+        drill.organization.scoring = simplifyUssfDText(drill.organization.scoring);
       }
     }
 
     if (Array.isArray(drill.coachingPoints)) {
       drill.coachingPoints = drill.coachingPoints.map((point: any) => {
-        const text = simplifyGrassrootsText(String(point || ""));
-        const coachVoice = toGrassrootsCoachVoice(text);
+        const text = simplifyUssfDText(String(point || ""));
+        const coachVoice = toUssfDCoachVoice(text);
         const words = coachVoice.split(/\s+/).filter(Boolean);
         return words.length > 18 ? `${words.slice(0, 18).join(" ")}.` : coachVoice;
       });
+    }
+
+    if (drill.debrief && typeof drill.debrief === "object") {
+      drill.debrief.keyTakeaways = simplifyUssfDStringArray(drill.debrief.keyTakeaways);
+      drill.debrief.questionsToAsk = simplifyUssfDStringArray(drill.debrief.questionsToAsk);
+      drill.debrief.watchFor = simplifyUssfDStringArray(drill.debrief.watchFor);
     }
   });
 }
@@ -186,51 +203,124 @@ async function generateSingleProgressiveSession(
   const prompt = buildProgressiveSessionPrompt(input);
   console.log(`[PROGRESSIVE_SESSION] Generating Session ${input.sessionNumber}/${input.totalSessions} with ${prompt.length} char prompt...`);
   
-  const genText = await generateText(prompt, { timeout: 90000, retries: 0 });
+  const generationModel = process.env.GEMINI_SESSION_MODEL || process.env.GEMINI_GENERATION_MODEL;
+  const genText = await generateText(prompt, {
+    timeout: Number(process.env.PROGRESSIVE_SESSION_GENERATION_TIMEOUT_MS || 90000),
+    retries: 0,
+    model: generationModel,
+  });
   
   let session: any = parseJsonSafe(genText);
   if (!session) throw new Error(`LLM returned non-JSON session for Session ${input.sessionNumber}`);
   
   console.log(`[PROGRESSIVE_SESSION] Generated Session ${input.sessionNumber} with ${session.drills?.length || 0} drills`);
   
-  // Normalize diagram format (same as regular session generation)
+  // Normalize diagram format and apply the SAME deterministic correction
+  // pipeline as regular single-session generation (services/session.ts).
+  // Previously this path only reshaped the raw diagram fields and applied
+  // the coachLevel simplification profile -- it never ran goal-availability
+  // enforcement, conditioned-game player-count correction, the player-limit
+  // trim, goalkeeper normalization, or the sparse-diagram re-enrichment
+  // safety net that single-session generation has relied on. A series
+  // session could ship with wrong goal counts or an uncorrected player
+  // count in a way a single session never would, purely because it went
+  // through this second, drifted copy of the pipeline.
+  // Captured from the CONDITIONED_GAME drill's own format correction below,
+  // then applied to the session-level summary/coachingNotes afterward --
+  // see the matching fix in services/session.ts for why.
+  let conditionedGameFormatLabel: string | undefined;
   if (session.drills && Array.isArray(session.drills)) {
-    session.drills.forEach((drill: any) => {
-      if (drill.drillType !== "COOLDOWN" && drill.diagram) {
-        if (Array.isArray(drill.diagram.elements) && (!Array.isArray(drill.diagram.players) || drill.diagram.players.length === 0)) {
-          const playerElements = drill.diagram.elements.filter((el: any) => 
-            (el.team || el.role || el.type === 'player' || el.type === 'Player') &&
-            typeof el.x === 'number' && 
-            typeof el.y === 'number'
-          );
-          if (playerElements.length > 0) {
-            drill.diagram.players = playerElements;
-            delete drill.diagram.elements;
-          } else {
+    await Promise.all(
+      session.drills.map(async (drill: any) => {
+        // COOLDOWN has no formation/ball work to draw -- the UI shows the
+        // session summary in its place instead.
+        if (drill.drillType === "COOLDOWN" && drill.diagram) {
+          delete drill.diagram;
+          return;
+        }
+        if (drill.drillType !== "COOLDOWN" && drill.diagram) {
+          if (Array.isArray(drill.diagram.elements) && (!Array.isArray(drill.diagram.players) || drill.diagram.players.length === 0)) {
+            const playerElements = drill.diagram.elements.filter((el: any) =>
+              (el.team || el.role || el.type === 'player' || el.type === 'Player') &&
+              typeof el.x === 'number' &&
+              typeof el.y === 'number'
+            );
+            if (playerElements.length > 0) {
+              drill.diagram.players = playerElements;
+              delete drill.diagram.elements;
+            } else {
+              drill.diagram.players = [];
+            }
+          }
+
+          if (!drill.diagram.pitch) {
+            drill.diagram.pitch = { variant: "HALF", orientation: "HORIZONTAL", showZones: false };
+          }
+          if (!Array.isArray(drill.diagram.players)) {
             drill.diagram.players = [];
           }
+          if (!Array.isArray(drill.diagram.goals)) {
+            drill.diagram.goals = [];
+          }
+        } else if (drill.drillType !== "COOLDOWN" && !drill.diagram) {
+          drill.diagram = {
+            pitch: { variant: "HALF", orientation: "HORIZONTAL", showZones: false },
+            players: [],
+            goals: []
+          };
         }
-        
-        if (!drill.diagram.pitch) {
-          drill.diagram.pitch = { variant: "HALF", orientation: "HORIZONTAL", showZones: false };
+
+        if (drill.drillType === "COOLDOWN") return;
+
+        try {
+          if (needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
+            const reenriched = await reenrichDiagramFromDrillJson(drill);
+            if (reenriched) {
+              drill.diagram = reenriched;
+              if (drill.json && typeof drill.json === "object") {
+                drill.json.diagram = reenriched;
+              }
+            }
+          }
+        } catch (err: any) {
+          console.error("[PROGRESSIVE_SESSION] Diagram re-enrichment failed:", err?.message || String(err));
         }
-        if (!Array.isArray(drill.diagram.players)) {
-          drill.diagram.players = [];
+
+        if (drill.diagram) {
+          const formatLabel = enforceConditionedGameFormatDiagram(drill, input);
+          if (formatLabel) conditionedGameFormatLabel = formatLabel;
+          enforceDiagramPlayerLimit(drill, input.numbersMax);
+          enforceDiagramGoalAvailability(drill, input);
+          normalizeGoalkeeperPositions(drill.diagram);
+          applyCoachLevelDiagramProfile(drill, input.coachLevel);
         }
-        if (!Array.isArray(drill.diagram.goals)) {
-          drill.diagram.goals = [];
+
+        try {
+          if (needsDescriptionExpansion(drill?.description)) {
+            const expanded = await expandDrillDescription(drill, input.coachLevel);
+            if (expanded) {
+              drill.description = expanded;
+              if (drill.json && typeof drill.json === "object") {
+                drill.json.description = expanded;
+              }
+            }
+          }
+        } catch (err: any) {
+          console.error("[PROGRESSIVE_SESSION] Description expansion failed:", err?.message || String(err));
         }
-        applyCoachLevelDiagramProfile(drill, input.coachLevel);
-      } else if (drill.drillType !== "COOLDOWN" && !drill.diagram) {
-        drill.diagram = {
-          pitch: { variant: "HALF", orientation: "HORIZONTAL", showZones: false },
-          players: [],
-          goals: []
-        };
-        applyCoachLevelDiagramProfile(drill, input.coachLevel);
-      }
-    });
+      })
+    );
   }
+
+  if (conditionedGameFormatLabel) {
+    if (typeof session.summary === "string") {
+      session.summary = replaceFormatMentions(session.summary, conditionedGameFormatLabel);
+    }
+    if (typeof session.coachingNotes === "string") {
+      session.coachingNotes = replaceFormatMentions(session.coachingNotes, conditionedGameFormatLabel);
+    }
+  }
+
   applyCoachLevelLanguageProfile(session, input.coachLevel);
 
   // Run QA review - update metrics context
@@ -243,7 +333,13 @@ async function generateSingleProgressiveSession(
   
   const qaPrompt = buildSessionQAReviewerPrompt(session);
   console.log(`[PROGRESSIVE_SESSION] Running QA for Session ${input.sessionNumber}...`);
-  const qaText = await generateText(qaPrompt, { timeout: 60000, retries: 0 });
+  const qaModel = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL;
+  const qaText = await generateText(qaPrompt, {
+    timeout: Number(process.env.PROGRESSIVE_SESSION_QA_TIMEOUT_MS || 30000),
+    retries: 0,
+    model: qaModel,
+    fallbackModel: null,
+  });
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error(`LLM returned non-JSON QA for Session ${input.sessionNumber}`);
 
@@ -326,7 +422,19 @@ export async function generateProgressiveSessionSeries(
   seriesId: string;
 }> {
   console.log(`[PROGRESSIVE_SERIES] Starting generation of ${numberOfSessions} progressive sessions...`);
-  
+
+  // USSF_C and USSF_B_PLUS coaches are never paired with BEGINNER players --
+  // same rule and same reasoning as single-session generation (see
+  // generateAndReviewSession in session.ts). Applied once here, up front,
+  // so it covers every session in the series rather than needing to be
+  // re-checked per session.
+  if (String(baseInput.coachLevel || "").toUpperCase() !== "USSF_D" && String(baseInput.playerLevel || "").toUpperCase() === "BEGINNER") {
+    console.warn(
+      `[PROGRESSIVE_SERIES] coachLevel=${baseInput.coachLevel} cannot pair with playerLevel=BEGINNER -- bumping to INTERMEDIATE`
+    );
+    baseInput = { ...baseInput, playerLevel: "INTERMEDIATE" };
+  }
+
   // Generate a unique series ID upfront so all sessions are linked
   const seriesId = `series-${Date.now()}`;
   console.log(`[PROGRESSIVE_SERIES] Series ID: ${seriesId}`);
@@ -380,7 +488,31 @@ export async function generateProgressiveSessionSeries(
     const drillsWithRefCodes = result.session.drills ? await Promise.all(
       result.session.drills.map(async (drill: any) => {
         const drillRefCode = drill.refCode || await generateRefCode("drill");
-        
+
+        // Draw the diagram SVG now, in parallel across every drill in this
+        // session, same as regular single-session generation -- previously
+        // series sessions shipped with no rendered diagram at all, so the
+        // client had nothing to show until it separately fetched one
+        // per drill (or, for this path, had no fetch trigger at all).
+        let diagramResult: Awaited<ReturnType<typeof generateDrillDiagramSvg>> | null = null;
+        if (String(drill.drillType || "").toUpperCase() !== "COOLDOWN") {
+          try {
+            diagramResult = await generateDrillDiagramSvg({
+              title: drill.title || "Drill",
+              json: drill,
+              drillType: drill.drillType || "TECHNICAL",
+              durationMin: drill.durationMin ?? baseInput.durationMin ?? 25,
+              rpeMin: drill.rpeMin ?? 5,
+              rpeMax: drill.rpeMax ?? 7,
+              numbersMin: baseInput.numbersMin,
+              numbersMax: baseInput.numbersMax,
+            });
+            drill.diagramSvg = diagramResult.svg;
+          } catch (err: any) {
+            console.error(`[PROGRESSIVE] Failed to draw diagram for drill ${drillRefCode}:`, err?.message);
+          }
+        }
+
         // Persist drill as standalone record (upsert by refCode)
         try {
           const drillData: any = {
@@ -392,7 +524,7 @@ export async function generateProgressiveSessionSeries(
             ageGroup: baseInput.ageGroup,
             durationMin: drill.durationMin ?? baseInput.durationMin ?? 25,
             drillType: drill.drillType || "TECHNICAL",
-            
+
             // Map from input or drill JSON
             numbersMin: drill.numbersMin ?? baseInput.numbersMin,
             numbersMax: drill.numbersMax ?? baseInput.numbersMax,
@@ -402,10 +534,18 @@ export async function generateProgressiveSessionSeries(
             coachLevel: baseInput.coachLevel as any,
             principleIds: drill.principleIds || result.session.principleIds || [],
             psychThemeIds: drill.psychThemeIds || result.session.psychThemeIds || [],
-            
+
             // Store full drill JSON
             json: drill,
             savedToVault: true,
+            ...(diagramResult
+              ? {
+                  diagramSvg: diagramResult.svg,
+                  diagramSvgGeneratedAt: new Date(),
+                  diagramSvgModel: diagramResult.model,
+                  diagramSvgPromptVersion: diagramResult.promptVersion,
+                }
+              : {}),
           };
 
           await prisma.drill.upsert({
@@ -417,7 +557,7 @@ export async function generateProgressiveSessionSeries(
           console.error(`[PROGRESSIVE] Failed to save drill ${drillRefCode}:`, err?.message);
           // Continue - don't fail session save if drill save fails
         }
-        
+
         return {
           ...drill,
           refCode: drillRefCode,
@@ -446,6 +586,7 @@ export async function generateProgressiveSessionSeries(
         numbersMin: baseInput.numbersMin,
         numbersMax: baseInput.numbersMax,
         generatedBy: userId || null,
+        clubId: (await resolveSessionClubId(userId, String(baseInput.gameModelId))) || undefined,
         principleIds: Array.isArray(jsonForDb.principleIds) 
           ? jsonForDb.principleIds 
           : [],

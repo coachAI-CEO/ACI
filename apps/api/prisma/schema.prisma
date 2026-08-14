@@ -44,7 +44,7 @@ enum PlayerLevel {
 }
 
 enum CoachLevel {
-  GRASSROOTS
+  USSF_D
   USSF_C
   USSF_B_PLUS
 }
@@ -55,6 +55,22 @@ enum UserRole {
   CLUB
   ADMIN
   TRIAL
+}
+
+// A user's standing within one specific club, via ClubMembership -- kept
+// separate from the global UserRole so a club can have zero, one, or many
+// SECTION_DIRECTORs without a schema change either way. DOC sits at club
+// scope (sectionId null); SECTION_DIRECTOR and COACH can optionally hang
+// off a Section.
+enum ClubRole {
+  DOC
+  SECTION_DIRECTOR
+  COACH
+}
+
+enum BoardShareMode {
+  PRIVATE
+  CLUB
 }
 
 enum SubscriptionPlan {
@@ -142,6 +158,10 @@ model Drill {
   json           Json
   visualThumbSvg String?
   visualHash     String? @unique
+  diagramSvg              String?
+  diagramSvgGeneratedAt   DateTime?
+  diagramSvgModel         String?
+  diagramSvgPromptVersion String?
 
   generatedBy    String?  // User ID who generated this drill
   user           User?    @relation("GeneratedDrills", fields: [generatedBy], references: [id], onDelete: SetNull)
@@ -203,6 +223,11 @@ model Session {
   generatedBy    String?  // User ID who generated this session
   user           User?    @relation("GeneratedSessions", fields: [generatedBy], references: [id], onDelete: SetNull)
 
+  // Club that owned the generator at create time. Null = independent coach
+  // or legacy row. DOC vault / FORK authz prefer this over gameModelId.
+  clubId String?
+  club   Club?   @relation(fields: [clubId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -213,6 +238,7 @@ model Session {
   @@index([savedToVault])
   @@index([isSeries, seriesId])
   @@index([gameModelId, ageGroup, phase, zone])
+  @@index([clubId])
 }
 
 model SkillFocus {
@@ -454,6 +480,9 @@ model User {
   calendarEvents         CalendarEvent[]
   accessPermissions      AccessPermission[]
   passwordResetTokens    PasswordResetToken[]
+  clubMemberships        ClubMembership[]
+  grantedAccessPermissions AccessPermission[] @relation("AccessPermissionGrantedBy")
+  tacticalBoards         TacticalBoard[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -593,30 +622,44 @@ model PlayerPlan {
 // Calendar events - scheduled training sessions
 model CalendarEvent {
   id            String   @id @default(uuid())
-  userId        String   // Who owns this calendar event
+  userId        String   // CURRENT owner/executor -- whoever's calendar this shows on right now.
+                          // Every existing query already filters on this field, so reassignment
+                          // (below) only ever changes userId itself; no other read path needs to change.
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   // What session is scheduled
   sessionId     String   // References Session.id
   sessionRefCode String? // For easy reference
-  
+
   // When it's scheduled
   scheduledDate DateTime // Date and time of the training session
   durationMin   Int?     // Override session duration if needed
-  
+
   // Additional context
   notes         String?  // Coach notes for this specific session
   location      String?  // Training location (field, facility, etc.)
   teamName      String?  // Which team/group this is for
-  
+
   // Status
   completed     Boolean  @default(false) // Mark as completed after session
   cancelled     Boolean  @default(false) // Mark as cancelled
-  
+
+  // Explicit reassignment/coverage trail (DOC Hub). originalCoachId is set
+  // once, at creation, and never changes afterward -- it answers "whose
+  // session was this originally," independent of who's covering it now.
+  // assignedByUserId is who created this event, if it wasn't the coach
+  // themself (a DOC/Section Director assigning a session onto a coach's
+  // calendar). reassignedBy/reassignedAt record the most recent handoff.
+  // All nullable: existing self-scheduled rows stay valid with no backfill.
+  originalCoachId  String?   @map("original_coach_id")
+  assignedByUserId String?   @map("assigned_by_user_id")
+  reassignedBy     String?   @map("reassigned_by")
+  reassignedAt     DateTime? @map("reassigned_at")
+
   // Metadata
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  
+
   @@index([userId])
   @@index([sessionId])
   @@index([scheduledDate])
@@ -649,12 +692,154 @@ model AccessPermission {
   
   // Metadata
   notes         String?  // Admin notes about this permission
-  createdBy     String?  // Admin user ID who created this
+  createdBy     String?  // Admin user ID who created this (legacy free-text audit note, kept as-is)
+
+  // Real FK version of createdBy, plus club scoping -- lets a DOC's grants
+  // be checked against "does this granter actually manage this club" (the
+  // old createdBy string was never read back anywhere, so nothing enforced
+  // who could grant to whom). Both nullable: existing admin-created rows
+  // have neither set and keep working exactly as before.
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation("AccessPermissionGrantedBy", fields: [createdByUserId], references: [id])
+  clubId          String? @map("club_id")
+  club            Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  
+
   @@index([resourceType])
   @@index([userId])
   @@index([coachLevel])
   @@index([createdAt])
+  @@index([clubId])
+}
+
+// Maps onto the pre-existing "clubs" table (previously managed entirely by
+// hand-rolled raw SQL in services/clubs-store.ts -- see that file's
+// CREATE TABLE for the columns this @map/@@map has to match exactly).
+// Bringing it under Prisma lets everything below (Section, ClubMembership,
+// AccessPermission.club, philosophy fields) use normal relations instead of
+// more raw SQL. The migration for this model ALTERs the existing table
+// in place; it must never attempt to CREATE TABLE "clubs" fresh.
+model Club {
+  id          String      @id @default(uuid())
+  name        String
+  code        String
+  gameModelId GameModelId @map("game_model_id")
+  description String?
+  active      Boolean     @default(true)
+  createdBy   String?     @map("created_by")
+
+  // Club DNA -- the DOC's playing philosophy, authored per club and
+  // threaded into session generation (replaces the old pattern of
+  // hardcoding one club's philosophy as an if-branch in prompts/session.ts).
+  // A club runs exactly one game model, so this lives on Club, not per-session.
+  philosophyAttackingOrganization String?   @map("philosophy_attacking_organization")
+  philosophyDefensiveTransition   String?   @map("philosophy_defensive_transition")
+  philosophyDefensiveOrganization String?   @map("philosophy_defensive_organization")
+  philosophyAttackingTransition   String?   @map("philosophy_attacking_transition")
+  philosophyUpdatedAt             DateTime? @map("philosophy_updated_at")
+  philosophyUpdatedBy             String?   @map("philosophy_updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships        ClubMembership[]
+  sections            Section[]
+  accessPermissions   AccessPermission[]
+  tacticalBoards      TacticalBoard[]
+  sessions            Session[]
+
+  // map: preserves the exact index names the raw-SQL table already has, so
+  // this migration doesn't drop and recreate them under new names.
+  @@unique([name], map: "clubs_name_unique_idx")
+  @@index([active], map: "clubs_active_idx")
+  @@map("clubs")
+}
+
+// Coach-owned tactical board (BLANK / FORK_DRILL). Diagram JSON is web DiagramV1.
+model TacticalBoard {
+  id              String         @id @default(uuid())
+  ownerUserId     String         @map("owner_user_id")
+  owner           User           @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  clubId          String?        @map("club_id")
+  club            Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  title           String
+  diagram         Json
+  ageGroup        String?        @map("age_group")
+  gameModelId     GameModelId    @map("game_model_id")
+  shareMode       BoardShareMode @default(PRIVATE) @map("share_mode")
+  sourceSessionId String?        @map("source_session_id")
+  sourceDrillKey  String?        @map("source_drill_key")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([ownerUserId, updatedAt])
+  @@index([clubId, updatedAt])
+  @@map("tactical_boards")
+}
+
+// System-level 4-moment DNA for each GameModelId. Clubs may override with
+// Club.philosophy*; when club DNA is empty, session generation uses this
+// template so every model has a real document — not only club-exclusive PDFs.
+model GameModelTemplate {
+  gameModelId                     GameModelId @id @map("game_model_id")
+  label                           String
+  summary                         String?
+  exclusive                       Boolean     @default(false)
+  attackingOrganization           String?     @map("attacking_organization") @db.Text
+  defensiveTransition             String?     @map("defensive_transition") @db.Text
+  defensiveOrganization           String?     @map("defensive_organization") @db.Text
+  attackingTransition             String?     @map("attacking_transition") @db.Text
+  updatedAt                       DateTime    @updatedAt @map("updated_at")
+  updatedBy                       String?     @map("updated_by")
+
+  @@map("game_model_templates")
+}
+
+// Optional per-club subdivision (an "age group," a "girls academy," whatever
+// the club actually calls it -- free-text name, not a fixed enum, since
+// every org's structure is different). A club with zero Sections and a club
+// with five both use this same shape: coaches/directors just attach with
+// sectionId null vs set.
+model Section {
+  id     String @id @default(uuid())
+  clubId String @map("club_id")
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name   String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships ClubMembership[]
+
+  @@unique([clubId, name])
+  @@index([clubId])
+}
+
+// A user's standing within one specific club. Deliberately a join table
+// rather than folding ClubRole into the global UserRole enum -- that would
+// force every club into the same DOC/coach shape. This lets a club opt into
+// middle management (SECTION_DIRECTOR rows scoped to a Section) or skip it
+// entirely (COACH rows with sectionId null, reporting straight to the DOC),
+// per club, without a schema change either way.
+model ClubMembership {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubId    String   @map("club_id")
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  sectionId String?  @map("section_id")
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  role      ClubRole
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // One membership per user per club -- a person can't be both a COACH and
+  // a SECTION_DIRECTOR in the same club at once under this model.
+  @@unique([userId, clubId])
+  @@index([clubId])
+  @@index([sectionId])
+  @@index([userId])
 }

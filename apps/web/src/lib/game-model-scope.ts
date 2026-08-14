@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
+import { fetchAuthMe, peekEnforcedGameModelId } from "@/lib/auth-me";
 
 export type GameModelId =
   | "POSSESSION"
@@ -22,51 +23,91 @@ export function getScopedGameModelOptions(enforcedGameModelId: string | null) {
   return GAME_MODEL_OPTIONS.filter((option) => option.value === enforcedGameModelId);
 }
 
-export function useEnforcedGameModelScope() {
-  const [enforcedGameModelId, setEnforcedGameModelId] = useState<string | null>(null);
+type ScopeState = {
+  enforcedGameModelId: string | null;
+  /** False until login payload or /auth/me finishes — avoid flashing every game model. */
+  scopeReady: boolean;
+};
 
-  useEffect(() => {
+export function useEnforcedGameModelScope() {
+  const [state, setState] = useState<ScopeState>({
+    enforcedGameModelId: null,
+    scopeReady: false,
+  });
+
+  useLayoutEffect(() => {
     let mounted = true;
 
+    const applyPeek = () => {
+      const peeked = peekEnforcedGameModelId();
+      if (!mounted || !peeked.ready) return;
+      setState({
+        enforcedGameModelId: peeked.value,
+        scopeReady: true,
+      });
+    };
+
     const run = async () => {
+      applyPeek();
       try {
         const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
         if (!token) {
-          if (mounted) setEnforcedGameModelId(null);
+          if (mounted) setState({ enforcedGameModelId: null, scopeReady: true });
           return;
         }
 
-        const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) {
-          if (mounted) setEnforcedGameModelId(null);
+        const data = await fetchAuthMe();
+        if (!mounted) return;
+        if (!data?.ok) {
+          applyPeek();
+          if (!peekEnforcedGameModelId().ready) {
+            setState({ enforcedGameModelId: null, scopeReady: true });
+          }
           return;
         }
-        const data = await res.json().catch(() => ({}));
         const scoped = String(data?.user?.enforcedGameModelId || "").trim();
-        if (mounted) setEnforcedGameModelId(scoped || null);
+        setState({
+          enforcedGameModelId: scoped || null,
+          scopeReady: true,
+        });
       } catch {
-        if (mounted) setEnforcedGameModelId(null);
+        if (mounted) {
+          applyPeek();
+          if (!peekEnforcedGameModelId().ready) {
+            setState({ enforcedGameModelId: null, scopeReady: true });
+          }
+        }
       }
     };
 
     run();
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "accessToken") run();
+      if (e.key === "accessToken" || e.key === "user") {
+        setState((prev) => ({ ...prev, scopeReady: false }));
+        run();
+      }
+    };
+    const onLogin = () => {
+      applyPeek();
+      run();
     };
     window.addEventListener("storage", onStorage);
+    window.addEventListener("userLogin", onLogin);
     return () => {
       mounted = false;
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener("userLogin", onLogin);
     };
   }, []);
 
   const scopedGameModelOptions = useMemo(
-    () => getScopedGameModelOptions(enforcedGameModelId),
-    [enforcedGameModelId]
+    () => getScopedGameModelOptions(state.enforcedGameModelId),
+    [state.enforcedGameModelId]
   );
 
-  return { enforcedGameModelId, scopedGameModelOptions };
+  return {
+    enforcedGameModelId: state.enforcedGameModelId,
+    scopeReady: state.scopeReady,
+    scopedGameModelOptions,
+  };
 }
-

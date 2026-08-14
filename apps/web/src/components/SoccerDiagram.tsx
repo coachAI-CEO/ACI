@@ -296,7 +296,7 @@ const SoccerDiagram: React.FC<Props> = ({ diagram }) => {
                 fill="#f9fafb"
                 fontWeight="600"
               >
-                {p.number}
+                {p.number === 1 || String(p.role || "").toUpperCase() === "GK" ? "GK" : p.number}
               </text>
             )}
             {p.labelStyle === "number-and-role" && p.role && (

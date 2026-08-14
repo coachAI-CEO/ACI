@@ -39,7 +39,7 @@ export type PlayerLevel =
   | "ADVANCED";
 
 export type CoachLevel =
-  | "GRASSROOTS"
+  | "USSF_D"
   | "USSF_C"
   | "USSF_B_PLUS";
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { GAME_MODEL_OPTIONS, useEnforcedGameModelScope } from "@/lib/game-model-scope";
 
 type Message = {
   id: string;
@@ -27,21 +28,35 @@ type CoachChatProps = {
 
 const CHAT_STORAGE_KEY_PREFIX = "coachAssistant.chat.v2";
 const CHAT_HISTORY_LIMIT = 30;
-const WELCOME_MESSAGE: Message = {
-  id: "welcome",
-  role: "assistant",
-  content:
-    "Hi Coach! What are you working on with your team?\n\n" +
-    "Tell me:\n" +
-    "• What age group you're coaching\n" +
-    "• What challenge or topic you want to address\n\n" +
-    "For example:\n" +
-    '"My U14s struggle to keep the ball under pressure"\n' +
-    '"I need a session on breaking low blocks for U16"\n' +
-    '"3-session series on pressing for my U12 team"\n\n' +
-    "💡 You can also reference existing items:\n" +
-    '"Improve S-7K2M" or "Explain drill D-9M3P"',
-};
+
+function formatGameModelLabel(gameModelId: string | null | undefined): string {
+  if (!gameModelId) return "";
+  return GAME_MODEL_OPTIONS.find((o) => o.value === gameModelId)?.label || gameModelId;
+}
+
+function buildWelcomeMessage(enforcedGameModelId: string | null): Message {
+  const modelLabel = formatGameModelLabel(enforcedGameModelId);
+  const lockedLine = enforcedGameModelId
+    ? `Your club game model is locked to ${modelLabel}. Ideas stay inside that DNA — no need to pick a style.\n\n`
+    : "";
+
+  return {
+    id: "welcome",
+    role: "assistant",
+    content:
+      "Hi Coach! What are you working on with your team?\n\n" +
+      lockedLine +
+      "Tell me:\n" +
+      "• What age group you're coaching\n" +
+      "• What challenge or topic you want to address\n\n" +
+      "For example:\n" +
+      '"My U14s struggle to keep the ball under pressure"\n' +
+      '"I need a session on breaking low blocks for U16"\n' +
+      '"3-session series for my U12 team"\n\n' +
+      "💡 You can also reference existing items:\n" +
+      '"Improve S-7K2M" or "Explain drill D-9M3P"',
+  };
+}
 
 const hasMinimumGenerationParams = (params: any): boolean => {
   if (!params || typeof params !== "object") return false;
@@ -51,12 +66,15 @@ const hasMinimumGenerationParams = (params: any): boolean => {
   return hasAgeGroup && hasGameModel && hasPhaseOrTopic;
 };
 
-const clampMessages = (messages: Message[]): Message[] => {
+const clampMessages = (
+  messages: Message[],
+  enforcedGameModelId: string | null = null
+): Message[] => {
   const nonWelcome = messages
     .filter((m) => m.id !== "welcome")
     .filter((m) => !m.isLoading)
     .slice(-CHAT_HISTORY_LIMIT);
-  return [WELCOME_MESSAGE, ...nonWelcome];
+  return [buildWelcomeMessage(enforcedGameModelId), ...nonWelcome];
 };
 
 const normalizeStoredMessage = (value: any): Message | null => {
@@ -106,13 +124,23 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   onGenerateRequest,
 }) => {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
+  const { enforcedGameModelId, scopeReady } = useEnforcedGameModelScope();
+  const [messages, setMessages] = useState<Message[]>(() => [buildWelcomeMessage(null)]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [chatStorageKey, setChatStorageKey] = useState(`${CHAT_STORAGE_KEY_PREFIX}:anon`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!scopeReady) return;
+    setMessages((prev) => {
+      const onlyWelcome = prev.length === 1 && prev[0]?.id === "welcome";
+      if (!onlyWelcome) return prev;
+      return [buildWelcomeMessage(enforcedGameModelId)];
+    });
+  }, [scopeReady, enforcedGameModelId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -137,7 +165,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
           const normalized = parsed
             .map((item: any) => normalizeStoredMessage(item))
             .filter(Boolean) as Message[];
-          setMessages(clampMessages(normalized));
+          setMessages(clampMessages(normalized, enforcedGameModelId));
         }
       }
     } catch {
@@ -145,17 +173,20 @@ export const CoachChat: React.FC<CoachChatProps> = ({
     } finally {
       setHydrated(true);
     }
-  }, [chatStorageKey]);
+  }, [chatStorageKey, enforcedGameModelId]);
 
   useEffect(() => {
     if (!hydrated) return;
     if (typeof window === "undefined") return;
     try {
-      localStorage.setItem(chatStorageKey, JSON.stringify(clampMessages(messages)));
+      localStorage.setItem(
+        chatStorageKey,
+        JSON.stringify(clampMessages(messages, enforcedGameModelId))
+      );
     } catch {
       // Best-effort local persistence only.
     }
-  }, [messages, hydrated, chatStorageKey]);
+  }, [messages, hydrated, chatStorageKey, enforcedGameModelId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -167,17 +198,20 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       content: input.trim(),
     };
 
-    setMessages((prev) => clampMessages([...prev, userMessage]));
+    setMessages((prev) => clampMessages([...prev, userMessage], enforcedGameModelId));
     setInput("");
     setIsLoading(true);
 
     // Add loading message
     const loadingId = `loading-${Date.now()}`;
     setMessages((prev) =>
-      clampMessages([
-        ...prev,
-        { id: loadingId, role: "assistant", content: "", isLoading: true },
-      ])
+      clampMessages(
+        [
+          ...prev,
+          { id: loadingId, role: "assistant", content: "", isLoading: true },
+        ],
+        enforcedGameModelId
+      )
     );
 
     try {
@@ -200,35 +234,47 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       });
 
       const data = await res.json();
+      const lockedModel =
+        String(data.enforcedGameModelId || enforcedGameModelId || "").trim() || null;
+      const extractedParams = {
+        ...(data.extractedParams || {}),
+        ...(lockedModel ? { gameModelId: lockedModel } : {}),
+      };
 
       // Remove loading message and add response
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== loadingId);
-        return clampMessages([
-          ...filtered,
-          {
-            id: `assistant-${Date.now()}`,
-            role: "assistant",
-            content: data.message || data.error || "Something went wrong",
-            intent: data.intent,
-            recommendations: data.recommendations,
-            referencedItems: data.referencedItems,
-            extractedParams: data.extractedParams,
-            readyToGenerate: data.readyToGenerate,
-          },
-        ]);
+        return clampMessages(
+          [
+            ...filtered,
+            {
+              id: `assistant-${Date.now()}`,
+              role: "assistant",
+              content: data.message || data.error || "Something went wrong",
+              intent: data.intent,
+              recommendations: data.recommendations,
+              referencedItems: data.referencedItems,
+              extractedParams,
+              readyToGenerate: data.readyToGenerate,
+            },
+          ],
+          lockedModel
+        );
       });
     } catch (err: any) {
       setMessages((prev) => {
         const filtered = prev.filter((m) => m.id !== loadingId);
-        return clampMessages([
-          ...filtered,
-          {
-            id: `error-${Date.now()}`,
-            role: "assistant",
-            content: "Sorry, I had trouble processing that. Please try again.",
-          },
-        ]);
+        return clampMessages(
+          [
+            ...filtered,
+            {
+              id: `error-${Date.now()}`,
+              role: "assistant",
+              content: "Sorry, I had trouble processing that. Please try again.",
+            },
+          ],
+          enforcedGameModelId
+        );
       });
     } finally {
       setIsLoading(false);
@@ -251,11 +297,15 @@ export const CoachChat: React.FC<CoachChatProps> = ({
   const handleGenerateNew = (params: any) => {
     const normalizeCoachLevelForGeneration = (value?: string) => {
       const v = String(value || "").toUpperCase();
-      if (v === "GRASSROOTS") return "GRASSROOTS";
+      if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
       if (v === "USSF_C") return "USSF_C";
       if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-      if (v === "USSF_D") return "GRASSROOTS";
       return undefined;
+    };
+
+    const scopedParams = {
+      ...(params || {}),
+      ...(enforcedGameModelId ? { gameModelId: enforcedGameModelId } : {}),
     };
 
     const buildSessionQuery = (input: any) => {
@@ -286,14 +336,14 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       return queryParams.toString();
     };
 
-    const query = buildSessionQuery(params || {});
+    const query = buildSessionQuery(scopedParams);
     const targetUrl = `/demo/session?${query}`;
 
     // Let parent run any local UI side-effects (e.g. closing chat panel), but do not
     // depend on client router transitions for this action.
     if (onGenerateRequest) {
       try {
-        onGenerateRequest(params);
+        onGenerateRequest(scopedParams);
       } catch (err) {
         console.warn("[COACH_CHAT] onGenerateRequest side-effects failed", err);
       }
@@ -304,7 +354,7 @@ export const CoachChat: React.FC<CoachChatProps> = ({
       try {
         sessionStorage.setItem(
           "coachAssistant.pendingGenerate",
-          JSON.stringify({ params, targetUrl, ts: Date.now() })
+          JSON.stringify({ params: scopedParams, targetUrl, ts: Date.now() })
         );
       } catch {
         // best effort only
@@ -328,11 +378,16 @@ export const CoachChat: React.FC<CoachChatProps> = ({
         <p className="text-xs text-slate-400 mt-0.5">
           Describe your training needs in plain language
         </p>
+        {enforcedGameModelId && (
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-700/50 bg-emerald-950/40 px-2 py-1 text-[11px] text-emerald-300">
+            Club model locked: {formatGameModelLabel(enforcedGameModelId)}
+          </p>
+        )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-        {messages.map((msg) => (
+        {(Array.isArray(messages) ? messages : [buildWelcomeMessage(enforcedGameModelId)]).map((msg) => (
           <div
             key={msg.id}
             className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}

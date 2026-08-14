@@ -1,0 +1,327 @@
+{
+  "savedAt": "2026-08-12T18:16:52.718Z",
+  "title": "U14 combo — pass & press",
+  "boardId": "c0aed7c5-8e0e-41b6-ae9b-e0da560fcd52",
+  "shareMode": "CLUB",
+  "ageGroup": "U14",
+  "note": "Final saved board after erase + add player + reload",
+  "diagram": {
+    "areas": [
+      {
+        "x": 35,
+        "y": 25,
+        "label": "Press zone",
+        "shape": "rect",
+        "width": 22,
+        "height": 18
+      },
+      {
+        "x": 42,
+        "y": 48,
+        "label": "Pocket",
+        "shape": "circle",
+        "width": 14,
+        "height": 14
+      }
+    ],
+    "balls": [
+      {
+        "x": 52,
+        "y": 42
+      },
+      {
+        "x": 40,
+        "y": 55
+      }
+    ],
+    "goals": [
+      {
+        "x": 50,
+        "y": 2,
+        "id": "goal-left",
+        "type": "BIG",
+        "width": 16
+      },
+      {
+        "x": 50,
+        "y": 98,
+        "id": "goal-right",
+        "type": "BIG",
+        "width": 16
+      }
+    ],
+    "pitch": {
+      "format": "11V11",
+      "variant": "FULL",
+      "showZones": false,
+      "orientation": "HORIZONTAL"
+    },
+    "arrows": [
+      {
+        "to": {
+          "playerId": "home-10-10"
+        },
+        "from": {
+          "playerId": "home-8-6"
+        },
+        "type": "pass",
+        "style": "solid",
+        "weight": "normal"
+      },
+      {
+        "to": {
+          "playerId": "home-9-9"
+        },
+        "from": {
+          "playerId": "home-10-10"
+        },
+        "type": "pass",
+        "style": "solid",
+        "weight": "normal"
+      },
+      {
+        "to": {
+          "x": 45,
+          "y": 22
+        },
+        "from": {
+          "playerId": "home-9-9"
+        },
+        "type": "run",
+        "style": "dashed",
+        "weight": "normal"
+      },
+      {
+        "to": {
+          "playerId": "home-8-6"
+        },
+        "from": {
+          "playerId": "away-6-3"
+        },
+        "type": "press",
+        "style": "solid",
+        "weight": "bold"
+      }
+    ],
+    "labels": [
+      {
+        "x": 48,
+        "y": 20,
+        "text": "Third-man run"
+      },
+      {
+        "x": 58,
+        "y": 50,
+        "text": "Pass & move"
+      }
+    ],
+    "players": [
+      {
+        "x": 50,
+        "y": 89.9,
+        "id": "home-1-0",
+        "role": "GK",
+        "team": "ATT",
+        "number": 1,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 82,
+        "y": 76.3,
+        "id": "home-2-1",
+        "role": "RB",
+        "team": "ATT",
+        "number": 2,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 62,
+        "y": 78,
+        "id": "home-5-2",
+        "role": "CB",
+        "team": "ATT",
+        "number": 5,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 38,
+        "y": 78,
+        "id": "home-6-3",
+        "role": "CB",
+        "team": "ATT",
+        "number": 6,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 18,
+        "y": 76.3,
+        "id": "home-3-4",
+        "role": "LB",
+        "team": "ATT",
+        "number": 3,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 82,
+        "y": 59.3,
+        "id": "home-7-5",
+        "role": "RM",
+        "team": "ATT",
+        "number": 7,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 62,
+        "y": 61,
+        "id": "home-8-6",
+        "role": "CM",
+        "team": "ATT",
+        "number": 8,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 38,
+        "y": 61,
+        "id": "home-4-7",
+        "role": "CM",
+        "team": "ATT",
+        "number": 4,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 18,
+        "y": 59.3,
+        "id": "home-11-8",
+        "role": "LM",
+        "team": "ATT",
+        "number": 11,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 48,
+        "y": 38,
+        "id": "home-9-9",
+        "role": "ST",
+        "team": "ATT",
+        "number": 9,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 40,
+        "y": 42.3,
+        "id": "home-10-10",
+        "role": "ST",
+        "team": "ATT",
+        "number": 10,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 50,
+        "y": 10.1,
+        "id": "away-1-0",
+        "role": "GK",
+        "team": "DEF",
+        "number": 1,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 82,
+        "y": 23.7,
+        "id": "away-2-1",
+        "role": "RB",
+        "team": "DEF",
+        "number": 2,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 62,
+        "y": 22,
+        "id": "away-5-2",
+        "role": "CB",
+        "team": "DEF",
+        "number": 5,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 38,
+        "y": 22,
+        "id": "away-6-3",
+        "role": "CB",
+        "team": "DEF",
+        "number": 6,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 18,
+        "y": 23.7,
+        "id": "away-3-4",
+        "role": "LB",
+        "team": "DEF",
+        "number": 3,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 50,
+        "y": 35.59999999999999,
+        "id": "away-8-5",
+        "role": "CM",
+        "team": "DEF",
+        "number": 8,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 55,
+        "y": 28,
+        "id": "away-4-6",
+        "role": "CM",
+        "team": "DEF",
+        "number": 4,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 68,
+        "y": 39,
+        "id": "away-10-7",
+        "role": "CM",
+        "team": "DEF",
+        "number": 10,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 80,
+        "y": 56,
+        "id": "away-7-8",
+        "role": "RW",
+        "team": "DEF",
+        "number": 7,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 50,
+        "y": 61.1,
+        "id": "away-9-9",
+        "role": "ST",
+        "team": "DEF",
+        "number": 9,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 20,
+        "y": 56,
+        "id": "away-11-10",
+        "role": "LW",
+        "team": "DEF",
+        "number": 11,
+        "labelStyle": "number-only"
+      },
+      {
+        "x": 60,
+        "y": 58,
+        "id": "att-extra",
+        "role": "CM",
+        "team": "ATT",
+        "number": 14
+      }
+    ]
+  }
+}

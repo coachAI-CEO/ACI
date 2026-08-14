@@ -24,6 +24,28 @@ import type { FixDecisionCode } from "./services/fixer";
 import { requireAdmin, requireAdminPermission, logAdminAction, AdminRequest } from "./middleware/admin-auth";
 import { hashPassword } from "./services/auth";
 import { generateVerificationToken, sendVerificationEmail } from "./services/email";
+import {
+  deleteClubMembership,
+  isClubMembershipRole,
+  listClubMembershipsForUsers,
+  upsertClubMembership,
+} from "./services/club-memberships";
+import {
+  getClubPhilosophy,
+  philosophyHasContent,
+  updateClubPhilosophy,
+} from "./services/club-philosophy";
+import {
+  ensureGameModelTemplatesSeeded,
+  getGameModelTemplate,
+  listGameModelTemplates,
+  updateGameModelTemplate,
+} from "./services/game-model-templates";
+import {
+  confirmAdminOpsAction,
+  runAdminOpsAssistant,
+} from "./services/admin-ops-assistant";
+import { ClubRole, GameModelId } from "@prisma/client";
 import { z } from "zod";
 
 const r = express.Router();
@@ -35,8 +57,10 @@ const CLUB_GAME_MODELS = new Set([
   "ROCKLIN_FC",
 ]);
 
-// Protect ALL admin routes
-r.use(requireAdmin);
+// Only gate /admin/* — this router is mounted at app root, so a bare
+// r.use(requireAdmin) was incorrectly 403'ing DOC Hub and other routes
+// for non-SUPER_ADMIN users (including club DOCs).
+r.use("/admin", requireAdmin);
 
 const normalizeJobStatus = {
   running: false,
@@ -71,7 +95,8 @@ const stripJobStatus = {
 
 // Primary model pricing defaults (per 1M tokens).
 // Keep configurable so analytics stay aligned with deployed model choices.
-const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.1-flash-lite-preview";
+// gemini-3.5-flash (non-lite) is banned -- see gemini.ts for why.
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_MODEL_PRIMARY || "gemini-3.5-flash-lite";
 const GEMINI_INPUT_PRICE_PER_1M = Number(process.env.GEMINI_INPUT_PRICE_PER_1M) || 0.50;
 const GEMINI_OUTPUT_PRICE_PER_1M = Number(process.env.GEMINI_OUTPUT_PRICE_PER_1M) || 3.00;
 
@@ -618,10 +643,9 @@ function pick<T>(arr: T[]): T {
 
 function formationsForAge(ageGroup: string): string[] {
   // Keep these conservative/compatible with current prompts
-  if (ageGroup === "U8" || ageGroup === "U9") return ["2-3-1", "3-2-1"];
-  if (ageGroup === "U10" || ageGroup === "U11") return ["2-3-1", "3-2-1"];
-  if (ageGroup === "U12" || ageGroup === "U13") return ["3-3-2", "2-3-3"];
-  if (ageGroup === "U14" || ageGroup === "U15") return ["4-3-3", "3-4-3"];
+  if (ageGroup === "U8" || ageGroup === "U9" || ageGroup === "U10") return ["2-3-1", "3-2-1"];
+  if (ageGroup === "U11" || ageGroup === "U12") return ["3-2-3", "2-3-2-1", "3-3-2"];
+  if (ageGroup === "U13" || ageGroup === "U14" || ageGroup === "U15") return ["4-3-3", "3-4-3"];
   if (ageGroup === "U16" || ageGroup === "U17") return ["4-3-3", "4-2-3-1"];
   if (ageGroup === "U18") return ["4-3-3", "4-2-3-1"];
   return ["4-3-3", "4-2-3-1"];
@@ -643,7 +667,7 @@ async function runRandomSessionJob(jobId: string) {
   const phases = ["ATTACKING", "DEFENDING", "TRANSITION"] as const;
   const zones = ["DEFENSIVE_THIRD", "MIDDLE_THIRD", "ATTACKING_THIRD"] as const;
   const playerLevels = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;
-  const coachLevels = ["GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+  const coachLevels = ["USSF_D", "USSF_C", "USSF_B_PLUS"] as const;
   const spaceConstraints = ["FULL", "HALF", "THIRD", "QUARTER"] as const;
 
   for (let i = 0; i < job.total; i++) {
@@ -1605,7 +1629,7 @@ r.post("/admin/drills/regenerate", requireAdminPermission('canReviewQA'), async 
     formationAttacking: drillJson.formationAttacking || "4-3-3",
     formationDefending: drillJson.formationDefending || drillJson.formationAttacking || "4-3-3",
     playerLevel: drillJson.playerLevel || "INTERMEDIATE",
-    coachLevel: drillJson.coachLevel || "GRASSROOTS",
+    coachLevel: drillJson.coachLevel || "USSF_D",
     numbersMin: drillRow.numbersMin ?? drillJson.numbersMin ?? 8,
     numbersMax: drillRow.numbersMax ?? drillJson.numbersMax ?? 12,
     goalsAvailable: drillJson.goalsAvailable ?? 2,
@@ -1720,7 +1744,7 @@ r.post("/admin/sessions/regenerate", requireAdminPermission('canReviewQA'), asyn
     formationAttacking: formation,
     formationDefending: formation,
     playerLevel: (sessionRow.playerLevel as any) || sessionJson.playerLevel || "INTERMEDIATE",
-    coachLevel: (sessionRow.coachLevel as any) || sessionJson.coachLevel || "GRASSROOTS",
+    coachLevel: (sessionRow.coachLevel as any) || sessionJson.coachLevel || "USSF_D",
     numbersMin: (sessionRow.numbersMin as any) ?? sessionJson.numbersMin ?? 8,
     numbersMax: (sessionRow.numbersMax as any) ?? sessionJson.numbersMax ?? 12,
     goalsAvailable: (sessionRow.goalsAvailable as any) ?? sessionJson.goalsAvailable ?? 2,
@@ -2158,7 +2182,7 @@ r.post("/admin/users/quick-create", requireAdminPermission('canManageUsers'), as
     adminRole: z.enum(["SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"]).optional(),
     password: z.string().min(8).optional().or(z.literal("").transform(() => undefined)),
     autoVerifyEmail: z.boolean().optional(),
-    coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).optional(),
+    coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).optional(),
     teamAgeGroups: z.array(z.string()).optional(),
   });
 
@@ -2359,10 +2383,16 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
       }),
       prisma.user.count()
     ]);
+
+    const membershipsByUser = await listClubMembershipsForUsers(users.map((u) => u.id));
+    const usersWithMemberships = users.map((user) => ({
+      ...user,
+      clubMemberships: membershipsByUser.get(user.id) ?? [],
+    }));
     
     return res.json({
       ok: true,
-      users,
+      users: usersWithMemberships,
       pagination: {
         page,
         limit,
@@ -2993,7 +3023,7 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
     const { coachLevel, teamAgeGroups, promoteToCoach } = req.body;
     
     const schema = z.object({
-      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       teamAgeGroups: z.array(z.string()).optional(),
       promoteToCoach: z.boolean().optional(),
     });
@@ -3241,7 +3271,7 @@ r.post("/admin/access-permissions", requireAdminPermission('canManageUsers'), as
       id: z.string().uuid().optional(), // If provided, update existing
       userId: z.string().uuid().nullable().optional(), // Specific user ID (if set, overrides coachLevel)
       resourceType: z.enum(["SESSION", "VAULT", "BOTH", "VIDEO_REVIEW"]),
-      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
+      coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       ageGroups: z.array(z.string()).default([]), // Empty = all age groups
       formats: z.array(z.enum(["7v7", "9v9", "11v11"])).default([]), // Empty = all formats
       canGenerateSessions: z.boolean().default(false),
@@ -3644,12 +3674,334 @@ r.delete("/admin/clubs/:clubId", requireAdminPermission("canManageUsers"), async
   }
 });
 
+const ADMIN_GAME_MODELS = [
+  {
+    value: "COACHAI",
+    label: "Balanced (CoachAI)",
+    summary: "Flexible balanced model — adaptable sessions across moments.",
+    exclusive: false,
+  },
+  {
+    value: "POSSESSION",
+    label: "Possession",
+    summary: "Ball security, support angles, and controlled progression.",
+    exclusive: false,
+  },
+  {
+    value: "PRESSING",
+    label: "Pressing",
+    summary: "Coordinated regains via triggers, compactness, and lock-side pressure.",
+    exclusive: false,
+  },
+  {
+    value: "TRANSITION",
+    label: "Transition",
+    summary: "First actions after regain/loss in short windows.",
+    exclusive: false,
+  },
+  {
+    value: "ROCKLIN_FC",
+    label: "Rocklin FC",
+    summary: "Club-exclusive vertical-possession identity with immediate regain intent.",
+    exclusive: true,
+  },
+] as const;
+
+/**
+ * GET /admin/game-models
+ * Catalog of system game models (with 4-stage templates) + every club's DNA status.
+ */
+r.get("/admin/game-models", requireAdminPermission("canManageUsers"), async (_req: AdminRequest, res) => {
+  try {
+    await ensureGameModelTemplatesSeeded();
+    const templates = await listGameModelTemplates();
+    const templateById = new Map(templates.map((t) => [t.gameModelId, t]));
+
+    const clubs = await prisma.club.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        active: true,
+        gameModelId: true,
+        philosophyAttackingOrganization: true,
+        philosophyDefensiveTransition: true,
+        philosophyDefensiveOrganization: true,
+        philosophyAttackingTransition: true,
+        philosophyUpdatedAt: true,
+        philosophyUpdatedBy: true,
+        _count: { select: { memberships: true } },
+      },
+    });
+
+    const clubRows = clubs.map((club) => {
+      const philosophy = {
+        attackingOrganization: club.philosophyAttackingOrganization,
+        defensiveTransition: club.philosophyDefensiveTransition,
+        defensiveOrganization: club.philosophyDefensiveOrganization,
+        attackingTransition: club.philosophyAttackingTransition,
+      };
+      const filledStages = [
+        philosophy.attackingOrganization,
+        philosophy.defensiveTransition,
+        philosophy.defensiveOrganization,
+        philosophy.attackingTransition,
+      ].filter((v) => Boolean(v && String(v).trim())).length;
+
+      return {
+        clubId: club.id,
+        clubName: club.name,
+        clubCode: club.code,
+        active: club.active,
+        gameModelId: club.gameModelId,
+        memberCount: club._count.memberships,
+        philosophy,
+        filledStages,
+        hasPhilosophy: philosophyHasContent(philosophy),
+        philosophyUpdatedAt: club.philosophyUpdatedAt,
+        philosophyUpdatedBy: club.philosophyUpdatedBy,
+      };
+    });
+
+    const models = ADMIN_GAME_MODELS.map((model) => {
+      const assigned = clubRows.filter((c) => c.gameModelId === model.value);
+      const template = templateById.get(model.value as GameModelId);
+      return {
+        value: model.value,
+        label: template?.label || model.label,
+        summary: template?.summary || model.summary,
+        exclusive: template?.exclusive ?? model.exclusive,
+        clubCount: assigned.length,
+        clubs: assigned.map((c) => ({
+          clubId: c.clubId,
+          clubName: c.clubName,
+          filledStages: c.filledStages,
+          active: c.active,
+        })),
+        template: template
+          ? {
+              philosophy: template.philosophy,
+              filledStages: template.filledStages,
+              updatedAt: template.updatedAt,
+              updatedBy: template.updatedBy,
+            }
+          : null,
+      };
+    });
+
+    return res.json({ ok: true, models, clubs: clubRows });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to load game models" });
+  }
+});
+
+/**
+ * GET /admin/game-models/:gameModelId
+ */
+r.get(
+  "/admin/game-models/:gameModelId",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const record = await getGameModelTemplate(String(req.params.gameModelId || ""));
+      if (!record) {
+        return res.status(404).json({ ok: false, error: "Game model not found" });
+      }
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message || "Failed to load template" });
+    }
+  }
+);
+
+const AdminGameModelTemplatePatchSchema = z
+  .object({
+    label: z.string().min(1).max(80).optional(),
+    summary: z.string().max(500).nullable().optional(),
+    attackingOrganization: z.string().max(4000).nullable().optional(),
+    defensiveTransition: z.string().max(4000).nullable().optional(),
+    defensiveOrganization: z.string().max(4000).nullable().optional(),
+    attackingTransition: z.string().max(4000).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.label !== undefined ||
+      body.summary !== undefined ||
+      body.attackingOrganization !== undefined ||
+      body.defensiveTransition !== undefined ||
+      body.defensiveOrganization !== undefined ||
+      body.attackingTransition !== undefined,
+    { message: "At least one template field is required" }
+  );
+
+/**
+ * PATCH /admin/game-models/:gameModelId
+ * Edit system 4-stage DNA for a game model (used when club DNA is empty).
+ */
+r.patch(
+  "/admin/game-models/:gameModelId",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ ok: false, error: "Authentication required" });
+      }
+
+      const parsed = AdminGameModelTemplatePatchSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid template payload",
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const gameModelId = String(req.params.gameModelId || "");
+      const record = await updateGameModelTemplate(gameModelId, parsed.data, req.userId);
+      if (!record) {
+        return res.status(404).json({ ok: false, error: "Game model not found" });
+      }
+
+      await logAdminAction(
+        req.userId,
+        "game_model.template_updated",
+        {
+          resourceType: "GameModelTemplate",
+          resourceId: gameModelId,
+          data: { filledStages: record.filledStages, label: record.label },
+        },
+        req
+      );
+
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      if (error?.message === "Invalid game model") {
+        return res.status(400).json({ ok: false, error: error.message });
+      }
+      return res.status(500).json({ ok: false, error: error.message || "Failed to update template" });
+    }
+  }
+);
+
+/**
+ * GET /admin/clubs/:clubId/philosophy
+ */
+r.get(
+  "/admin/clubs/:clubId/philosophy",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const record = await getClubPhilosophy(String(req.params.clubId || ""));
+      if (!record) {
+        return res.status(404).json({ ok: false, error: "Club not found" });
+      }
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      return res.status(500).json({ ok: false, error: error.message || "Failed to load philosophy" });
+    }
+  }
+);
+
+const AdminPhilosophyPatchSchema = z
+  .object({
+    gameModelId: z.nativeEnum(GameModelId).optional(),
+    attackingOrganization: z.string().max(4000).nullable().optional(),
+    defensiveTransition: z.string().max(4000).nullable().optional(),
+    defensiveOrganization: z.string().max(4000).nullable().optional(),
+    attackingTransition: z.string().max(4000).nullable().optional(),
+  })
+  .refine(
+    (body) =>
+      body.gameModelId !== undefined ||
+      body.attackingOrganization !== undefined ||
+      body.defensiveTransition !== undefined ||
+      body.defensiveOrganization !== undefined ||
+      body.attackingTransition !== undefined,
+    { message: "At least one game model or philosophy field is required" }
+  );
+
+/**
+ * PATCH /admin/clubs/:clubId/philosophy
+ * Platform admin may change locked game model + DNA and push live for coaches.
+ */
+r.patch(
+  "/admin/clubs/:clubId/philosophy",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ ok: false, error: "Authentication required" });
+      }
+
+      const parsed = AdminPhilosophyPatchSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid philosophy payload",
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = String(req.params.clubId || "");
+      const before = await getClubPhilosophy(clubId);
+      if (!before) {
+        return res.status(404).json({ ok: false, error: "Club not found" });
+      }
+
+      const record = await updateClubPhilosophy(clubId, parsed.data, req.userId);
+      if (!record) {
+        return res.status(404).json({ ok: false, error: "Club not found" });
+      }
+
+      await logAdminAction(
+        req.userId,
+        "club.philosophy_updated",
+        {
+          resourceType: "Club",
+          resourceId: clubId,
+          data: {
+            gameModelId: record.gameModelId,
+            previousGameModelId: before.gameModelId,
+            filledStages: [
+              record.philosophy.attackingOrganization,
+              record.philosophy.defensiveTransition,
+              record.philosophy.defensiveOrganization,
+              record.philosophy.attackingTransition,
+            ].filter((v) => Boolean(v && String(v).trim())).length,
+          },
+        },
+        req
+      );
+
+      return res.json({ ok: true, ...record });
+    } catch (error: any) {
+      if (error?.message === "Invalid game model for club") {
+        return res.status(400).json({ ok: false, error: error.message });
+      }
+      return res.status(500).json({ ok: false, error: error.message || "Failed to update philosophy" });
+    }
+  }
+);
+
 r.post("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
   try {
     const { clubId, userId } = req.params;
     const club = await getClubById(clubId);
     if (!club) {
       return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const roleRaw = (req.body as { role?: unknown } | undefined)?.role;
+    const role =
+      roleRaw === undefined || roleRaw === null || roleRaw === ""
+        ? ClubRole.COACH
+        : roleRaw;
+    if (!isClubMembershipRole(role)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid club membership role. Use DOC, SECTION_DIRECTOR, or COACH.",
+      });
     }
 
     const user = await prisma.user.findUnique({
@@ -3665,20 +4017,96 @@ r.post("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUs
       data: { organizationName: club.name },
     });
 
+    const membership = await upsertClubMembership({
+      userId,
+      clubId,
+      role,
+    });
+
     await logAdminAction(
       req.userId!,
       "club.user_assigned",
       {
         resourceType: "Club",
         resourceId: clubId,
-        data: { userId, userEmail: user.email, clubName: club.name },
+        data: {
+          userId,
+          userEmail: user.email,
+          clubName: club.name,
+          role: membership.role,
+        },
       },
       req
     );
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, membership });
   } catch (error: any) {
     return res.status(500).json({ ok: false, error: error.message || "Failed to assign user" });
+  }
+});
+
+r.patch("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const { clubId, userId } = req.params;
+    const club = await getClubById(clubId);
+    if (!club) {
+      return res.status(404).json({ ok: false, error: "Club not found" });
+    }
+
+    const schema = z.object({
+      role: z.enum(["DOC", "SECTION_DIRECTOR", "COACH"]),
+      sectionId: z.string().uuid().nullable().optional(),
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invalid club membership payload",
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      return res.status(404).json({ ok: false, error: "User not found" });
+    }
+
+    const membership = await upsertClubMembership({
+      userId,
+      clubId,
+      role: parsed.data.role as ClubRole,
+      sectionId: parsed.data.sectionId,
+    });
+
+    // Keep legacy org-name mapping in sync for vault/admin list filters.
+    await prisma.user.update({
+      where: { id: userId },
+      data: { organizationName: club.name },
+    });
+
+    await logAdminAction(
+      req.userId!,
+      "club.user_role_updated",
+      {
+        resourceType: "Club",
+        resourceId: clubId,
+        data: {
+          userId,
+          userEmail: user.email,
+          clubName: club.name,
+          role: membership.role,
+          sectionId: membership.sectionId,
+        },
+      },
+      req
+    );
+
+    return res.json({ ok: true, membership });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to update club role" });
   }
 });
 
@@ -3702,6 +4130,7 @@ r.delete("/admin/clubs/:clubId/users/:userId", requireAdminPermission("canManage
       where: { id: userId },
       data: { organizationName: null },
     });
+    await deleteClubMembership(userId, clubId);
 
     await logAdminAction(
       req.userId!,
@@ -4205,5 +4634,53 @@ r.get("/admin/analytics/club-accounts", requireAdminPermission('canViewAnalytics
     return res.status(500).json({ ok: false, error: error.message });
   }
 });
+
+// ------------------------------------
+// Admin Ops Assistant
+// ------------------------------------
+
+r.post(
+  "/admin/ops-assistant",
+  requireAdminPermission("canAccessAdminDashboard"),
+  async (req: AdminRequest, res) => {
+    try {
+      const message = String(req.body?.message || "").trim();
+      if (!message) {
+        return res.status(400).json({ ok: false, error: "message is required" });
+      }
+      const history = Array.isArray(req.body?.history) ? req.body.history : [];
+      const result = await runAdminOpsAssistant({
+        message,
+        history,
+        adminUserId: req.userId!,
+        req,
+      });
+      return res.json(result);
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  }
+);
+
+r.post(
+  "/admin/ops-assistant/confirm",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const confirmId = String(req.body?.confirmId || "").trim();
+      if (!confirmId) {
+        return res.status(400).json({ ok: false, error: "confirmId is required" });
+      }
+      const result = await confirmAdminOpsAction({
+        confirmId,
+        adminUserId: req.userId!,
+        req,
+      });
+      return res.status(result.ok ? 200 : 400).json(result);
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  }
+);
 
 export default r;

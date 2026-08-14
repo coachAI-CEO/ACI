@@ -5,9 +5,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CoachChat from "@/components/CoachChat";
 import { DrillDiagram } from "@/components/DrillDiagram";
+import MyBoardsPanel from "@/components/boards/MyBoardsPanel";
 import { SAMPLE_DIAGRAM_V1 } from "@/sample-diagram-v1";
 import type { DiagramV1 } from "@/types/diagram";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
+import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
+import { fetchUserFeatures } from "@/lib/features";
 
 const coachQuotes = [
   {
@@ -69,19 +72,19 @@ const PRESSING_DIAGRAM: DiagramV1 = {
 const drillOfDayEntries: Array<{
   title: string;
   focus: string;
-  promptHint: string;
+  sessionQuery: string;
   diagram: DiagramV1;
 }> = [
   {
     title: "Third-Man Combination to Mini Goals",
     focus: "Timing support runs and wall passes in the final third.",
-    promptHint: "Use this structure in U14 attacking sessions with 10 players.",
+    sessionQuery: "ageGroup=U14&phase=ATTACKING&numbersMin=8&numbersMax=12",
     diagram: SAMPLE_DIAGRAM_V1,
   },
   {
     title: "Wide Pressing Trap",
     focus: "Force play to the right sideline, then lock passing lanes.",
-    promptHint: "Build a 20-minute defending phase around this pressing trigger.",
+    sessionQuery: "ageGroup=U14&phase=DEFENDING",
     diagram: PRESSING_DIAGRAM,
   },
 ];
@@ -147,8 +150,8 @@ const quickLinks = [
   },
   {
     href: "/doc-hub",
-    label: "DOC Hub",
-    desc: "Training docs & guides",
+    label: "DOC Console",
+    desc: "Club coach oversight & game model",
     icon: (
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
         <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
@@ -159,7 +162,6 @@ const quickLinks = [
     color: "from-indigo-500/25 to-violet-500/10 border-indigo-500/25 hover:border-indigo-400/50",
     hoverGlow: "hover:shadow-indigo-500/15",
     textColor: "text-indigo-400",
-    beta: true,
   },
 ];
 
@@ -169,6 +171,30 @@ export default function Home() {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [drillIndex, setDrillIndex] = useState(0);
   const [greeting, setGreeting] = useState("Good evening");
+  const [showDocHub, setShowDocHub] = useState(false);
+  const [tacticalBoardV1, setTacticalBoardV1] = useState(false);
+
+  useEffect(() => {
+    const syncDocHub = () => setShowDocHub(canAccessDocHub(readStoredUser()));
+    syncDocHub();
+    window.addEventListener("userLogin", syncDocHub);
+    window.addEventListener("storage", syncDocHub);
+    return () => {
+      window.removeEventListener("userLogin", syncDocHub);
+      window.removeEventListener("storage", syncDocHub);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadFeatures = () => {
+      fetchUserFeatures()
+        .then((f) => setTacticalBoardV1(Boolean(f?.tacticalBoardV1)))
+        .catch(() => setTacticalBoardV1(false));
+    };
+    loadFeatures();
+    window.addEventListener("userLogin", loadFeatures);
+    return () => window.removeEventListener("userLogin", loadFeatures);
+  }, []);
 
   useEffect(() => {
     const quoteKey = "dashboardCoachQuoteIndex";
@@ -199,12 +225,34 @@ export default function Home() {
   }, []);
 
   const drillOfDay = drillOfDayEntries[drillIndex];
+  const visibleQuickLinks = [
+    ...(tacticalBoardV1
+      ? [
+          {
+            href: "/boards",
+            label: "Tactical Board",
+            desc: "Create and edit boards",
+            icon: (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <rect x="3.5" y="4" width="17" height="16" rx="2" />
+                <circle cx="9" cy="11" r="1.5" />
+                <circle cx="15" cy="13" r="1.5" />
+                <path d="M9 11l6 2" />
+              </svg>
+            ),
+            color: "from-emerald-500/25 to-teal-500/10 border-emerald-500/25 hover:border-emerald-400/50",
+            hoverGlow: "hover:shadow-emerald-500/15",
+            textColor: "text-emerald-400",
+          },
+        ]
+      : []),
+    ...quickLinks.filter((link) => link.href !== "/doc-hub" || showDocHub),
+  ];
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
-    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
     if (v === "USSF_C") return "USSF_C";
     if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-    if (v === "USSF_D") return "GRASSROOTS";
     return undefined;
   };
 
@@ -225,7 +273,7 @@ export default function Home() {
             <p className="mt-0.5 text-[13px] text-slate-500">Ready to build something great today?</p>
           </div>
           <div className="flex gap-2.5">
-            {quickLinks.map((link) => (
+            {visibleQuickLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -317,6 +365,8 @@ export default function Home() {
 
         {/* Right column — scrollable within its space */}
         <div className="flex flex-col gap-4 min-h-0 overflow-y-auto pr-1">
+          <MyBoardsPanel enabled={tacticalBoardV1} />
+
           {/* Drill of the Day */}
           <article className="shrink-0 rounded-2xl border border-teal-500/[0.1] bg-gradient-to-b from-[#0a1318]/80 to-[#0a0f1a]/60 overflow-hidden shadow-[0_0_30px_-12px_rgba(20,184,166,0.06)]">
             <div className="flex items-center gap-3 border-b border-teal-500/[0.06] bg-gradient-to-r from-teal-950/25 to-transparent px-5 py-3">
@@ -339,7 +389,7 @@ export default function Home() {
                 <DrillDiagram diagram={drillOfDay.diagram} width={340} height={190} />
               </div>
               <Link
-                href={`/demo/drill?prompt=${encodeURIComponent(drillOfDay.promptHint)}`}
+                href={`/demo/session?${drillOfDay.sessionQuery}`}
                 className="mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-400/50 hover:bg-emerald-500/15 hover:text-emerald-200"
               >
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">

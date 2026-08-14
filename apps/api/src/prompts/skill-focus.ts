@@ -20,7 +20,7 @@ export function buildSkillFocusPrompt(context: SkillFocusContext): string {
   const ctx = JSON.stringify(context, null, 2);
   const coachLevel = String(context.coachLevel || "").toUpperCase();
   const playerLevel = String(context.playerLevel || "").toUpperCase();
-  const isGrassroots = coachLevel === "GRASSROOTS";
+  const isUssfD = coachLevel === "USSF_D";
 
   return [
     "SYSTEM: You are a soccer coach assistant.",
@@ -49,14 +49,14 @@ export function buildSkillFocusPrompt(context: SkillFocusContext): string {
     "- Make it age-appropriate.",
     "- Tailor the psychology guidance to skill level, age group, and game model.",
     `- Input coachLevel=${coachLevel || "UNKNOWN"}, playerLevel=${playerLevel || "UNKNOWN"} MUST be respected.`,
-    isGrassroots
-      ? "- GRASSROOTS PROFILE: use simple, positive, fun-first language. Corrections must be encouraging, short, and easy to execute."
+    isUssfD
+      ? "- USSF_D PROFILE: use simple, positive, fun-first language. Corrections must be encouraging, short, and easy to execute."
       : "- USSF_C / USSF_B_PLUS PROFILE: use specific tactical/technical coaching language with clear corrective detail.",
-    isGrassroots
-      ? "- For corrections in GRASSROOTS: use 'try this', 'next rep', 'great idea, now...' style phrasing. Avoid harsh/negative tone."
+    isUssfD
+      ? "- For corrections in USSF_D: use 'try this', 'next rep', 'great idea, now...' style phrasing. Avoid harsh/negative tone."
       : "- For corrections in USSF_C/USSF_B_PLUS: include precise details (body shape, trigger, spacing, timing, pressing cue, cover angle).",
-    isGrassroots
-      ? "- For GRASSROOTS: prioritize confidence, enjoyment, repetition quality, and simple decision cues over dense tactical language."
+    isUssfD
+      ? "- For USSF_D: prioritize confidence, enjoyment, repetition quality, and simple decision cues over dense tactical language."
       : "- For USSF_C/USSF_B_PLUS: keep cues specific to game moments and tactical consequences.",
     "- Keep it specific to the session theme and drills.",
     "- Use 3-5 keySkills and 3-5 coachingPoints.",

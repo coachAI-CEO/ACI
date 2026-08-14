@@ -2,6 +2,8 @@
  * Shared admin API utilities
  */
 
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const AUTH_REFRESH_URL = "/api/auth/refresh";
 
@@ -23,22 +25,11 @@ export function getAdminHeaders(): HeadersInit {
   }
 }
 
-function setAuthCookie(token: string | null) {
-  if (typeof document === "undefined") return;
-  if (!token) {
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
-    return;
-  }
-  document.cookie = `accessToken=${encodeURIComponent(token)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
-}
-
 function clearAuthState() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("refreshToken");
-  localStorage.removeItem("user");
-  setAuthCookie(null);
-  window.dispatchEvent(new Event("userLogin"));
+  clearAuthStorage();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("userLogin"));
+  }
 }
 
 async function tryRefreshAccessToken(): Promise<string | null> {
@@ -57,7 +48,7 @@ async function tryRefreshAccessToken(): Promise<string | null> {
   if (!refreshData?.accessToken) return null;
 
   localStorage.setItem("accessToken", refreshData.accessToken);
-  setAuthCookie(refreshData.accessToken);
+  setAccessTokenCookie(refreshData.accessToken);
   return refreshData.accessToken as string;
 }
 

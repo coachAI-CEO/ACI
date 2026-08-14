@@ -4,6 +4,7 @@ import FormationSelect from "@/components/FormationSelect";
 import PlayerCountInputs from "@/components/PlayerCountInputs";
 import QAScoresDisplay from "@/components/QAScoresDisplay";
 import DrillActions from "@/components/DrillActions";
+import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 import type { DiagramV1 } from "@/types/diagram";
 import { cookies } from "next/headers";
 
@@ -32,6 +33,7 @@ type DrillApiResponse = {
     zone: string;
     ageGroup?: string;
     durationMin?: number;
+    goalsAvailable?: number;
     json: {
       title?: string;
       diagram?: DiagramV1; // New format
@@ -47,6 +49,7 @@ type DrillApiResponse = {
       progressions?: string[];
       ageGroup?: string;
       durationMin?: number;
+      goalsAvailable?: number;
     };
   };
   qa?: {
@@ -96,16 +99,16 @@ const zoneLabel: Record<string, string> = {
 
 // Formation constraints by age group (prevents clarity issues)
 const FORMATION_BY_AGE: Record<string, string[]> = {
-  // 7v7 formations (U8-U12)
+  // 7v7 formations (U8-U10)
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  // 9v9 formations (U13-U14)
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
-  // 11v11 formations (U15-U18)
+  // 9v9 formations (U11-U12)
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  // 11v11 formations (U13-U18)
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -133,7 +136,7 @@ function getDefaultConfig(): GeneratorConfig {
     formationAttacking: getDefaultFormation(ageGroup), // Ensures valid formation for age
     formationDefending: getDefaultFormation(ageGroup), // Default to same as attacking
     playerLevel: "INTERMEDIATE",
-    coachLevel: "GRASSROOTS",
+    coachLevel: "USSF_D",
     numbersMin: 8,
     numbersMax: 10,
     gkOptional: false,
@@ -433,17 +436,11 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                 <label className="block uppercase tracking-wide text-[10px] text-slate-400">
                   Game model
                 </label>
-                <select
+                <ScopedGameModelSelect
                   name="gameModelId"
                   defaultValue={config.gameModelId}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                >
-                  <option value="POSSESSION">Possession</option>
-                  <option value="PRESSING">Pressing</option>
-                  <option value="TRANSITION">Transition</option>
-                  <option value="COACHAI">Balanced (CoachAI)</option>
-                  <option value="ROCKLIN_FC">Rocklin FC</option>
-                </select>
+                  className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-70"
+                />
               </div>
 
               {/* Phase */}
@@ -579,7 +576,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
                   defaultValue={config.coachLevel}
                   className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                 >
-                  <option value="GRASSROOTS">Grassroots</option>
+                  <option value="USSF_D">USSF D</option>
                   <option value="USSF_C">USSF C</option>
                   <option value="USSF_B_PLUS">USSF B+</option>
                 </select>
@@ -684,7 +681,7 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
         </details>
 
         {/* Main diagram + details layout */}
-        {hasDrill && data && diagram ? (
+        {hasDrill && data && (diagram || config.drillType === "COOLDOWN") ? (
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
           <div className="max-w-xl space-y-4">
             <DrillDiagramCard
@@ -693,6 +690,10 @@ export default async function DrillDemoPage({ searchParams }: PageProps) {
               phase={data.drill.phase}
               zone={data.drill.zone}
               diagram={diagram}
+              drillId={data.drill.id ?? data.drill.refCode}
+              drillType={config.drillType}
+              sessionSummary={data.drill.json?.description}
+              goalsAvailable={data.drill.goalsAvailable ?? data.drill.json?.goalsAvailable ?? config.goalsAvailable}
               description={data.drill.json?.description}
               organization={
                 typeof data.drill.json?.organization === "object" &&

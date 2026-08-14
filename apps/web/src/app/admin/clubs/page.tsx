@@ -295,6 +295,7 @@ function AssignUserModal({
   const [found, setFound] = useState<{ id: string; email: string; name: string | null; subscriptionPlan: string } | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [clubRole, setClubRole] = useState<"DOC" | "SECTION_DIRECTOR" | "COACH">("COACH");
   const [error, setError] = useState<string | null>(null);
 
   async function searchUser() {
@@ -327,6 +328,7 @@ function AssignUserModal({
       const res = await fetch(`${API_BASE}/admin/clubs/${clubId}/users/${found.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+        body: JSON.stringify({ role: clubRole }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error ?? "Assignment failed");
@@ -404,6 +406,23 @@ function AssignUserModal({
                   ⚠ This user is on {found.subscriptionPlan}. They will be assigned but cannot access club content until they upgrade to COACH_BASIC or higher.
                 </p>
               )}
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+                  Club role
+                </label>
+                <select
+                  value={clubRole}
+                  onChange={(e) =>
+                    setClubRole(e.target.value as "DOC" | "SECTION_DIRECTOR" | "COACH")
+                  }
+                  disabled={assigning}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 focus:border-blue-500 focus:outline-none disabled:opacity-60"
+                >
+                  <option value="COACH">Coach</option>
+                  <option value="SECTION_DIRECTOR">Section Director</option>
+                  <option value="DOC">DOC</option>
+                </select>
+              </div>
             </div>
           )}
 

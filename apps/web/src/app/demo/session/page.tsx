@@ -17,9 +17,12 @@ import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
+import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
+import { createForkBoard, createForkSessionBoard } from "@/lib/boards";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
+import ScopedGameModelSelect from "@/components/ScopedGameModelSelect";
 
 type OrganizationObject = {
   setupSteps?: string[];
@@ -45,6 +48,18 @@ type SessionDrill = {
   constraints?: string[];
   diagram?: DiagramV1;
   diagramV1?: DiagramV1;
+  // Drawn server-side, in parallel, as part of session generation -- see
+  // generateDrillDiagramSvg in the API -- so the diagram can render
+  // alongside the session text instead of fetching separately after.
+  diagramSvg?: string | null;
+  // COOLDOWN-only: a coach debrief (reinforcement points, questions to ask
+  // players, what to watch for next session) generated from this session's
+  // actual content -- replaces the old generic "stretch and reflect" slot.
+  debrief?: {
+    keyTakeaways?: string[];
+    questionsToAsk?: string[];
+    watchFor?: string[];
+  } | null;
   json?: any;
   rpeMin?: number;
   rpeMax?: number;
@@ -67,6 +82,7 @@ type SessionApiResponse = {
     coachLevel?: string;
     ageGroup?: string;
     durationMin?: number;
+    goalsAvailable?: number;
     summary?: string;
     drills: SessionDrill[];
     sessionPlan?: {
@@ -188,12 +204,12 @@ const zoneLabel: Record<string, string> = {
 };
 
 const coachLevelLabel: Record<string, string> = {
-  GRASSROOTS: "Grassroots",
+  USSF_D: "USSF D",
   USSF_C: "USSF C",
   USSF_B_PLUS: "USSF B+",
 };
 const coachLevelOptions = [
-  { key: "GRASSROOTS", label: "Grassroots" },
+  { key: "USSF_D", label: "USSF D" },
   { key: "USSF_C", label: "USSF C" },
   { key: "USSF_B_PLUS", label: "USSF B+" },
 ] as const;
@@ -202,15 +218,15 @@ function normalizeCoachLevel(value?: string): string {
   const v = String(value || "").toUpperCase();
   if (v === "USSF_B_PLUS" || v === "USSF B+" || v === "USSF_B") return "USSF_B_PLUS";
   if (v === "USSF_C" || v === "USSF C") return "USSF_C";
-  if (v === "GRASSROOTS") return "GRASSROOTS";
+  if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
   return v;
 }
 
 function getLanguageLevelBadge(coachLevel?: string) {
   const key = normalizeCoachLevel(coachLevel);
-  if (key === "GRASSROOTS") {
+  if (key === "USSF_D") {
     return {
-      label: "Language: Grassroots",
+      label: "Language: USSF D",
       className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
     };
   }
@@ -344,10 +360,10 @@ const FORMATION_BY_AGE: Record<string, string[]> = {
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -365,7 +381,7 @@ function getDefaultFormation(ageGroup: string): string {
 
 function getDefaultConfig(): SessionConfig {
   const ageGroup = "U12";
-  const coachLevel = "GRASSROOTS";
+  const coachLevel = "USSF_D";
   const balanced = getBalancedDefaultCombo(coachLevel);
   const phase: Phase = balanced.phase;
   const zone: Zone = balanced.zone;
@@ -379,7 +395,7 @@ function getDefaultConfig(): SessionConfig {
     formationAttacking: getDefaultFormation(ageGroup),
     formationDefending: getDefaultFormation(ageGroup),
     playerLevel: "BEGINNER",
-    coachLevel: "GRASSROOTS",
+    coachLevel: "USSF_D",
     numbersMin: 10,
     numbersMax: 14,
     goalsAvailable: 2,
@@ -412,14 +428,11 @@ function getConfigFromSearchParams(
   const defaults = getDefaultConfig();
   const phase = parseStringOrDefault(searchParams.get("phase"), defaults.phase || "ATTACKING") as Phase;
   const zone = parseStringOrDefault(searchParams.get("zone"), defaults.zone || "ATTACKING_THIRD") as Zone;
-  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "GRASSROOTS");
-  const guardedPlayerLevelDefault =
-    coachLevel === "GRASSROOTS" ? "BEGINNER" : defaults.playerLevel;
-  const rawPlayerLevel = parseStringOrDefault(searchParams.get("playerLevel"), guardedPlayerLevelDefault);
-  const playerLevel = coachLevel === "GRASSROOTS" ? "BEGINNER" : rawPlayerLevel;
+  const coachLevel = parseStringOrDefault(searchParams.get("coachLevel"), defaults.coachLevel || "USSF_D");
+  const playerLevel = parseStringOrDefault(searchParams.get("playerLevel"), defaults.playerLevel);
   
   // Get topic from params, or default to first topic for the phase/zone + coach level combination
-  const topicParam = searchParams.get("topic");
+  const topicParam = searchParams.get("topic") || searchParams.get("prompt");
   const availableTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
   const defaultTopic = availableTopics[0] || defaults.topic || "";
   const topic = topicParam && availableTopics.includes(topicParam) ? topicParam : defaultTopic;
@@ -506,16 +519,13 @@ async function fetchSession(
     const refreshData = await refreshRes.json().catch(() => ({}));
     if (!refreshData?.accessToken) return null;
     localStorage.setItem("accessToken", refreshData.accessToken);
-    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    setAccessTokenCookie(refreshData.accessToken);
     return refreshData.accessToken as string;
   };
 
   const clearAuthState = () => {
     if (typeof window === "undefined") return;
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    clearAuthStorage();
     window.dispatchEvent(new Event("userLogin"));
   };
 
@@ -662,16 +672,13 @@ async function fetchProgressiveSeries(
     const refreshData = await refreshRes.json().catch(() => ({}));
     if (!refreshData?.accessToken) return null;
     localStorage.setItem("accessToken", refreshData.accessToken);
-    document.cookie = `accessToken=${encodeURIComponent(refreshData.accessToken)}; path=/; Max-Age=604800; SameSite=Lax; Secure`;
+    setAccessTokenCookie(refreshData.accessToken);
     return refreshData.accessToken as string;
   };
 
   const clearAuthState = () => {
     if (typeof window === "undefined") return;
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    localStorage.removeItem("user");
-    document.cookie = "accessToken=; path=/; Max-Age=0; SameSite=Lax";
+    clearAuthStorage();
     window.dispatchEvent(new Event("userLogin"));
   };
 
@@ -906,6 +913,8 @@ function SessionDemoPageContent() {
   const [settingsOpen, setSettingsOpen] = useState(true);
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
+  const [forkingDrillKey, setForkingDrillKey] = useState<string | null>(null);
+  const [forkingSession, setForkingSession] = useState(false);
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
     sessionTitle: string;
@@ -925,16 +934,15 @@ function SessionDemoPageContent() {
     seriesId: string | null;
   } | null>(null);
   const pendingSeriesIdRef = useRef<string | null>(null);
-  const { enforcedGameModelId, scopedGameModelOptions } = useEnforcedGameModelScope();
+  const { enforcedGameModelId } = useEnforcedGameModelScope();
 
   const config = getConfigFromSearchParams(searchParams);
   const effectiveGameModelId = enforcedGameModelId || config.gameModelId;
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
-    if (v === "GRASSROOTS") return "GRASSROOTS";
+    if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
     if (v === "USSF_C") return "USSF_C";
     if (v === "USSF_B_PLUS" || v === "USSF_B" || v === "USSF_A") return "USSF_B_PLUS";
-    if (v === "USSF_D") return "GRASSROOTS";
     return undefined;
   };
   const hasParams = searchParams.toString().length > 0;
@@ -1122,7 +1130,7 @@ function SessionDemoPageContent() {
     drills.forEach((drill: any) => {
       const refCode = drill.refCode;
       if (!refCode) return;
-      if (data?.session?.coachLevel === "GRASSROOTS") return;
+      if (normalizeCoachLevel(data?.session?.coachLevel) === "USSF_D") return;
       if (diagramOverrides[refCode]) return;
       if (diagramFetchInFlight.current.has(refCode)) return;
       const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
@@ -2114,18 +2122,11 @@ function SessionDemoPageContent() {
                       <label className="block uppercase tracking-wide text-[10px] text-slate-400">
                         Game model
                       </label>
-                      <select
-                        key={effectiveGameModelId}
+                      <ScopedGameModelSelect
                         name="gameModelId"
                         defaultValue={effectiveGameModelId}
-                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
-                      >
-                        {scopedGameModelOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px] disabled:cursor-not-allowed disabled:opacity-70"
+                      />
                     </div>
 
                     <div className="space-y-1">
@@ -2223,7 +2224,7 @@ function SessionDemoPageContent() {
                         defaultValue={config.coachLevel}
                         className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-[11px]"
                       >
-                        <option value="GRASSROOTS">Grassroots</option>
+                        <option value="USSF_D">USSF D</option>
                         <option value="USSF_C">USSF C</option>
                         <option value="USSF_B_PLUS">USSF B+</option>
                       </select>
@@ -2243,7 +2244,7 @@ function SessionDemoPageContent() {
                         <option value="INTERMEDIATE">Intermediate</option>
                         <option value="ADVANCED">Advanced</option>
                       </select>
-                      <p id="playerLevelGuardrailHint" className="min-h-[14px] text-[10px] text-amber-300" />
+                      <p id="playerLevelRuleHint" className="min-h-[14px] text-[10px] text-amber-300" />
                     </div>
                   </div>
                 </div>
@@ -3128,6 +3129,36 @@ function SessionDemoPageContent() {
                 >
                   View in Vault
                 </Link>
+                {userFeatures?.tacticalBoardV1 && resolvedSessionId && session ? (
+                  <button
+                    type="button"
+                    disabled={forkingSession}
+                    onClick={async () => {
+                      setForkingSession(true);
+                      try {
+                        const result = await createForkSessionBoard({
+                          sessionId: resolvedSessionId,
+                          title: `${session.title || "Session"} — slides`,
+                        });
+                        if (!result.ok || !result.board?.id) {
+                          alert(result.message || result.error || "Could not open session on board");
+                          return;
+                        }
+                        const from = `/demo/session?sessionId=${encodeURIComponent(resolvedSessionId)}`;
+                        router.push(
+                          `/board/${result.board.id}?from=${encodeURIComponent(from)}`
+                        );
+                      } catch (e: any) {
+                        alert(e?.message || "Could not open session on board");
+                      } finally {
+                        setForkingSession(false);
+                      }
+                    }}
+                    className="inline-flex h-9 items-center rounded-full border border-emerald-500/35 bg-emerald-500/15 px-3.5 text-[13px] font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50"
+                  >
+                    {forkingSession ? "Opening…" : "Open session on board"}
+                  </button>
+                ) : null}
                 {resolvedSessionId && session && (
                   <button
                     type="button"
@@ -3433,7 +3464,7 @@ function SessionDemoPageContent() {
 
                 return (
                   <section key={drillKey} className="rounded-3xl border border-slate-700/70 bg-slate-900/70 p-6 space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-semibold">{drill.title}</h3>
@@ -3455,6 +3486,40 @@ function SessionDemoPageContent() {
                           )}
                         </div>
                       </div>
+                      {userFeatures?.tacticalBoardV1 && session?.id && drill.drillType !== "COOLDOWN" ? (
+                        <button
+                          type="button"
+                          disabled={forkingDrillKey === drillKey}
+                          onClick={async () => {
+                            const sessionId = session.id;
+                            if (!sessionId) return;
+                            setForkingDrillKey(drillKey);
+                            try {
+                              const result = await createForkBoard({
+                                sessionId,
+                                drillIndex: index,
+                                drillRefCode: drill.refCode,
+                                title: `${drill.title || "Drill"} — board`,
+                              });
+                              if (!result.ok || !result.board?.id) {
+                                alert(result.message || result.error || "Could not open on board");
+                                return;
+                              }
+                              const from = `/demo/session?sessionId=${encodeURIComponent(sessionId)}`;
+                              router.push(
+                                `/board/${result.board.id}?from=${encodeURIComponent(from)}`
+                              );
+                            } catch (e: any) {
+                              alert(e?.message || "Could not open on board");
+                            } finally {
+                              setForkingDrillKey(null);
+                            }
+                          }}
+                          className="shrink-0 min-h-11 rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-3.5 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50"
+                        >
+                          {forkingDrillKey === drillKey ? "Opening…" : "Open on board"}
+                        </button>
+                      ) : null}
                     </div>
 
                     {drill.description && (
@@ -3462,18 +3527,36 @@ function SessionDemoPageContent() {
                     )}
 
                     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
-                      {diagram && (
-                        <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
-                          <DrillDiagramCard
-                            title={drill.title}
-                            gameModelId={session.gameModelId}
-                            phase={session.phase || "ATTACKING"}
-                            zone={session.zone || "ATTACKING_THIRD"}
-                            diagram={diagram}
-                            description={humanizeSessionText(drill.description)}
-                            organization={organizationObj ?? undefined}
-                          />
-                        </div>
+                      {(diagram || drill.drillType === "COOLDOWN") && (
+                        (() => {
+                          const drillRef = drill as SessionDrill & { id?: unknown; refCode?: unknown };
+                          const diagramDrillId =
+                            typeof drillRef.id === "string"
+                              ? drillRef.id
+                              : typeof drillRef.refCode === "string"
+                              ? drillRef.refCode
+                              : null;
+
+                          return (
+                            <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
+                              <DrillDiagramCard
+                                title={drill.title}
+                                gameModelId={session.gameModelId}
+                                phase={session.phase || "ATTACKING"}
+                                zone={session.zone || "ATTACKING_THIRD"}
+                                diagram={diagram}
+                                drillId={diagramDrillId}
+                                drillType={drill.drillType}
+                                sessionSummary={session.summary}
+                                goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
+                                description={humanizeSessionText(drill.description)}
+                                organization={organizationObj ?? undefined}
+                                initialSvg={typeof drill.diagramSvg === "string" ? drill.diagramSvg : null}
+                                debrief={drill.debrief ?? null}
+                              />
+                            </div>
+                          );
+                        })()
                       )}
 
                       <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">

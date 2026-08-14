@@ -2,6 +2,8 @@
  * Feature checking utilities for subscription plans
  */
 
+import { fetchAuthMe } from "@/lib/auth-me";
+
 export type SubscriptionPlan = 'FREE' | 'COACH_BASIC' | 'COACH_PRO' | 'CLUB_STANDARD' | 'CLUB_PREMIUM' | 'TRIAL';
 
 export interface UserFeatures {
@@ -13,6 +15,8 @@ export interface UserFeatures {
   canGenerateWeeklySummaries: boolean;
   canInviteCoaches: boolean;
   canManageOrganization: boolean;
+  /** API feature flag TACTICAL_BOARD_V1 — not subscription-tied. */
+  tacticalBoardV1?: boolean;
 }
 
 // Feature mapping - must match backend SUBSCRIPTION_LIMITS
@@ -26,6 +30,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: false,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   COACH_BASIC: {
     canExportPDF: true,
@@ -36,6 +41,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   COACH_PRO: {
     canExportPDF: true,
@@ -46,6 +52,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
   CLUB_STANDARD: {
     canExportPDF: true,
@@ -56,6 +63,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: true,
     canManageOrganization: true,
+    tacticalBoardV1: false,
   },
   CLUB_PREMIUM: {
     canExportPDF: true,
@@ -66,6 +74,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: true,
     canManageOrganization: true,
+    tacticalBoardV1: false,
   },
   TRIAL: {
     canExportPDF: true,
@@ -76,6 +85,7 @@ const FEATURES_BY_PLAN: Record<SubscriptionPlan, UserFeatures> = {
     canGenerateWeeklySummaries: true,
     canInviteCoaches: false,
     canManageOrganization: false,
+    tacticalBoardV1: false,
   },
 };
 
@@ -92,34 +102,27 @@ export function getFeaturesForPlan(plan: SubscriptionPlan | string | null | unde
  */
 export async function fetchUserFeatures(): Promise<UserFeatures | null> {
   try {
-    const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+    const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (!accessToken) {
-      return getFeaturesForPlan('FREE');
+      return getFeaturesForPlan("FREE");
     }
 
-    const response = await fetch('/api/auth/me', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    });
-
-    if (!response.ok) {
-      return getFeaturesForPlan('FREE');
+    const data = await fetchAuthMe();
+    if (!data?.ok) {
+      return getFeaturesForPlan("FREE");
     }
 
-    const data = await response.json();
-    if (data.ok && data.user?.features) {
-      return data.user.features;
+    if (data.user?.features && typeof data.user.features === "object") {
+      return data.user.features as UserFeatures;
     }
 
-    // Fallback to plan-based features
-    if (data.ok && data.user?.subscriptionPlan) {
+    if (typeof data.user?.subscriptionPlan === "string") {
       return getFeaturesForPlan(data.user.subscriptionPlan);
     }
 
-    return getFeaturesForPlan('FREE');
+    return getFeaturesForPlan("FREE");
   } catch (error) {
-    console.error('Error fetching user features:', error);
-    return getFeaturesForPlan('FREE');
+    console.error("Error fetching user features:", error);
+    return getFeaturesForPlan("FREE");
   }
 }

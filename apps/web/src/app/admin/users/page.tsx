@@ -27,6 +27,14 @@ import { adminFetch, API_BASE, getAdminHeaders } from "../_lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type ClubMembership = {
+  id: string;
+  clubId: string;
+  clubName: string;
+  sectionId: string | null;
+  role: "DOC" | "SECTION_DIRECTOR" | "COACH";
+};
+
 type User = {
   id: string;
   email: string;
@@ -47,13 +55,19 @@ type User = {
   organizationName?: string | null;
   clubId?: string | null;
   club?: { id: string; name: string; code: string } | null;
+  clubMemberships?: ClubMembership[];
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROLES = ["FREE", "COACH", "CLUB", "ADMIN", "TRIAL"] as const;
 const ADMIN_ROLES = ["", "SUPER_ADMIN", "ADMIN", "MODERATOR", "SUPPORT"] as const;
-const COACH_LEVELS = ["", "GRASSROOTS", "USSF_C", "USSF_B_PLUS"] as const;
+const COACH_LEVELS = ["", "USSF_D", "USSF_C", "USSF_B_PLUS"] as const;
+const CLUB_MEMBERSHIP_ROLES = [
+  { value: "COACH", label: "Coach" },
+  { value: "SECTION_DIRECTOR", label: "Section Director" },
+  { value: "DOC", label: "DOC" },
+] as const;
 const PLANS = [
   "FREE", "TRIAL", "COACH_BASIC", "COACH_PRO", "CLUB_STANDARD", "CLUB_PREMIUM"
 ] as const;
@@ -78,6 +92,17 @@ const ROLE_COLORS: Record<string, string> = {
   TRIAL: "bg-yellow-900/40 text-yellow-300",
 };
 
+const CLUB_ROLE_COLORS: Record<string, string> = {
+  DOC: "bg-violet-500/20 text-violet-200",
+  SECTION_DIRECTOR: "bg-sky-500/20 text-sky-200",
+  COACH: "bg-slate-700/60 text-slate-300",
+};
+
+function clubRoleLabel(role: string) {
+  if (role === "SECTION_DIRECTOR") return "Section Dir";
+  return role;
+}
+
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
 function Badge({
@@ -99,6 +124,38 @@ function StatusDot({ ok }: { ok: boolean }) {
     <span
       className={`inline-block h-2 w-2 rounded-full ${ok ? "bg-emerald-400" : "bg-red-400"}`}
     />
+  );
+}
+
+function ActionIcon({
+  label,
+  onClick,
+  disabled,
+  className = "text-slate-600 hover:bg-slate-700 hover:text-emerald-300",
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className={`group relative rounded p-1.5 transition-colors disabled:opacity-40 ${className}`}
+    >
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-slate-600 bg-slate-950 px-2 py-1 text-[10px] font-medium text-slate-100 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+      >
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -602,12 +659,21 @@ function ClubAssignModal({
   onDone,
   onClose,
 }: {
-  user: { id: string; email: string; organizationName?: string | null };
+  user: {
+    id: string;
+    email: string;
+    organizationName?: string | null;
+    clubMemberships?: ClubMembership[];
+  };
   onDone: () => void;
   onClose: () => void;
 }) {
+  const primaryMembership = user.clubMemberships?.[0] ?? null;
   const [clubs, setClubs] = useState<Array<{ id: string; name: string; code: string; active: boolean }>>([]);
-  const [clubId, setClubId] = useState("");
+  const [clubId, setClubId] = useState(primaryMembership?.clubId ?? "");
+  const [clubRole, setClubRole] = useState<"DOC" | "SECTION_DIRECTOR" | "COACH">(
+    primaryMembership?.role ?? "COACH"
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -623,8 +689,13 @@ function ClubAssignModal({
         }>("/admin/clubs");
         const list = data.clubs ?? [];
         setClubs(list);
-        const current = list.find((c) => c.name === user.organizationName);
-        setClubId(current?.id ?? "");
+        if (primaryMembership?.clubId) {
+          setClubId(primaryMembership.clubId);
+          setClubRole(primaryMembership.role);
+        } else {
+          const current = list.find((c) => c.name === user.organizationName);
+          setClubId(current?.id ?? "");
+        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to load clubs");
       } finally {
@@ -632,16 +703,20 @@ function ClubAssignModal({
       }
     };
     load();
-  }, [user.organizationName]);
+  }, [user.organizationName, primaryMembership?.clubId, primaryMembership?.role]);
 
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
+      const previousClubId =
+        primaryMembership?.clubId ??
+        clubs.find((c) => c.name === user.organizationName)?.id ??
+        null;
+
       if (!clubId) {
-        const current = clubs.find((c) => c.name === user.organizationName);
-        if (current) {
-          const res = await fetch(`${API_BASE}/admin/clubs/${current.id}/users/${user.id}`, {
+        if (previousClubId) {
+          const res = await fetch(`${API_BASE}/admin/clubs/${previousClubId}/users/${user.id}`, {
             method: "DELETE",
             headers: getAdminHeaders(),
           });
@@ -649,9 +724,24 @@ function ClubAssignModal({
           if (!res.ok || !data.ok) throw new Error(data.error ?? "Failed to remove club");
         }
       } else {
+        if (previousClubId && previousClubId !== clubId) {
+          const removeRes = await fetch(
+            `${API_BASE}/admin/clubs/${previousClubId}/users/${user.id}`,
+            {
+              method: "DELETE",
+              headers: getAdminHeaders(),
+            }
+          );
+          const removeData = await removeRes.json();
+          if (!removeRes.ok || !removeData.ok) {
+            throw new Error(removeData.error ?? "Failed to move user off previous club");
+          }
+        }
+
         const res = await fetch(`${API_BASE}/admin/clubs/${clubId}/users/${user.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...getAdminHeaders() },
+          body: JSON.stringify({ role: clubRole }),
         });
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error ?? "Failed to assign club");
@@ -704,6 +794,29 @@ function ClubAssignModal({
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+            Club role
+          </label>
+          <select
+            value={clubRole}
+            onChange={(e) =>
+              setClubRole(e.target.value as "DOC" | "SECTION_DIRECTOR" | "COACH")
+            }
+            disabled={loading || saving || !clubId}
+            className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:border-emerald-500 focus:outline-none disabled:opacity-60"
+          >
+            {CLUB_MEMBERSHIP_ROLES.map((role) => (
+              <option key={role.value} value={role.value}>
+                {role.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            DOC and Section Director unlock DOC Hub. This is separate from platform Role (L1).
+          </p>
         </div>
 
         <div className="flex gap-3 pt-1 border-t border-slate-800">
@@ -834,7 +947,21 @@ function UserRow({
 
         {/* Club L5 */}
         <td className="px-3 py-3">
-          {user.club ? (
+          {user.clubMemberships && user.clubMemberships.length > 0 ? (
+            <div className="space-y-1">
+              {user.clubMemberships.map((m) => (
+                <div key={m.id} className="flex items-center gap-1.5">
+                  <Building2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-emerald-300 font-medium truncate max-w-[110px]">
+                    {m.clubName}
+                  </span>
+                  <Badge className={CLUB_ROLE_COLORS[m.role] ?? "bg-slate-700 text-slate-300"}>
+                    {clubRoleLabel(m.role)}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          ) : user.club ? (
             <div className="flex items-center gap-1.5">
               <Building2 className="h-3 w-3 text-emerald-400 shrink-0" />
               <span className="text-xs text-emerald-300 font-medium">{user.club.name}</span>
@@ -843,6 +970,7 @@ function UserRow({
             <div className="flex items-center gap-1.5">
               <Building2 className="h-3 w-3 text-emerald-400 shrink-0" />
               <span className="text-xs text-emerald-300 font-medium">{user.organizationName}</span>
+              <Badge className="bg-amber-500/15 text-amber-300">No role</Badge>
             </div>
           ) : (
             <span className="text-xs text-slate-700">—</span>
@@ -860,52 +988,56 @@ function UserRow({
         {/* Actions */}
         <td className="px-3 py-3">
           <div className="flex items-center gap-1">
-            <button
+            <ActionIcon
+              label="Assign club / role"
               onClick={() => setShowClubAssign(true)}
-              className="rounded p-1.5 text-slate-600 hover:bg-slate-700 hover:text-emerald-300 transition-colors"
-              title="Assign club"
+              className="text-slate-600 hover:bg-slate-700 hover:text-emerald-300"
             >
               <Building2 className="h-3 w-3" />
-            </button>
-            <button
+            </ActionIcon>
+            <ActionIcon
+              label="Edit coach level"
               onClick={() => setShowCoachLevel(true)}
-              className="rounded p-1.5 text-slate-600 hover:bg-slate-700 hover:text-amber-300 transition-colors"
-              title="Edit coach level"
+              className="text-slate-600 hover:bg-slate-700 hover:text-amber-300"
             >
               <Pencil className="h-3 w-3" />
-            </button>
-            <button
+            </ActionIcon>
+            <ActionIcon
+              label="Reset password"
               onClick={() => setShowReset(true)}
-              className="rounded p-1.5 text-slate-600 hover:bg-slate-700 hover:text-amber-300 transition-colors"
-              title="Reset password"
+              className="text-slate-600 hover:bg-slate-700 hover:text-amber-300"
             >
               <KeyRound className="h-3 w-3" />
-            </button>
+            </ActionIcon>
             {!user.emailVerified && (
-              <button
-                onClick={verifyEmail}
+              <ActionIcon
+                label="Verify email"
+                onClick={() => void verifyEmail()}
                 disabled={verifying}
-                className="rounded p-1.5 text-slate-600 hover:bg-slate-700 hover:text-emerald-300 transition-colors disabled:opacity-40"
-                title="Verify email"
+                className="text-slate-600 hover:bg-slate-700 hover:text-emerald-300"
               >
                 <MailCheck className="h-3 w-3" />
-              </button>
+              </ActionIcon>
             )}
-            <button
+            <ActionIcon
+              label={user.blocked ? "Unblock user" : "Block user"}
               onClick={() => setShowBlock(true)}
-              className={`rounded p-1.5 transition-colors ${user.blocked ? "text-red-500 hover:bg-red-900/20 hover:text-red-300" : "text-slate-600 hover:bg-slate-700 hover:text-red-400"}`}
-              title={user.blocked ? "Unblock user" : "Block user"}
+              className={
+                user.blocked
+                  ? "text-red-500 hover:bg-red-900/20 hover:text-red-300"
+                  : "text-slate-600 hover:bg-slate-700 hover:text-red-400"
+              }
             >
               <Ban className="h-3 w-3" />
-            </button>
-            <button
-              onClick={deleteUser}
+            </ActionIcon>
+            <ActionIcon
+              label="Delete user"
+              onClick={() => void deleteUser()}
               disabled={deletingThis}
-              className="rounded p-1.5 text-slate-600 hover:bg-red-900/20 hover:text-red-400 transition-colors disabled:opacity-40"
-              title="Delete user"
+              className="text-slate-600 hover:bg-red-900/20 hover:text-red-400"
             >
               <Trash2 className="h-3 w-3" />
-            </button>
+            </ActionIcon>
           </div>
         </td>
       </tr>
@@ -1044,8 +1176,8 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/60 overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/60">
+        <div className="overflow-x-auto overflow-y-visible">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-800">

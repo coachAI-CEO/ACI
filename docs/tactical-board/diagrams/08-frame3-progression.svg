@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 480" role="img" aria-labelledby="t8">
+  <title id="t8">Frame 3 final third after high press pocket</title>
+  <rect width="920" height="480" fill="#0b1220"/>
+  <text x="460" y="24" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="15" font-weight="700">8 - Frame 3 progression / final third (after high-press F1 + pocket F2)</text>
+  <text x="460" y="44" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Focus in LEFT third - ATT finishes the idea wide or central - DEF recovers into their box (rest defence)</text>
+
+  <g transform="translate(60,60)">
+    <rect width="800" height="300" rx="4" fill="#1a7a3c"/>
+    <rect width="800" height="300" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <line x1="400" y1="0" x2="400" y2="300" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <circle cx="400" cy="150" r="40" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="0" y="75" width="70" height="150" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="730" y="75" width="70" height="150" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="-8" y="120" width="8" height="60" fill="#ef4444"/>
+    <rect x="800" y="120" width="8" height="60" fill="#3b82f6"/>
+
+    <!-- ghost F2 pocket -->
+    <rect x="300" y="80" width="160" height="140" fill="none" stroke="#64748b" stroke-width="2" stroke-dasharray="6 4" opacity="0.7"/>
+    <text x="380" y="74" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="10">F2 pocket (left behind)</text>
+
+    <!-- F3 final third focus -->
+    <rect x="40" y="70" width="200" height="160" fill="#fbbf24" opacity="0.22" stroke="#fbbf24" stroke-width="3"/>
+    <text x="140" y="62" text-anchor="middle" fill="#fde68a" font-family="system-ui,sans-serif" font-size="11" font-weight="700">Final third / finish</text>
+    <circle cx="130" cy="150" r="7" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+
+    <!-- ATT progressed left -->
+    <circle cx="720" cy="150" r="11" fill="#1e3a8a" stroke="#fff" stroke-width="1.5"/><text x="720" y="154" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">1</text>
+    <circle cx="520" cy="110" r="12" fill="#1e40af" stroke="#fff" stroke-width="1.5"/><text x="520" y="114" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">4</text>
+    <circle cx="520" cy="195" r="12" fill="#1e40af" stroke="#fff" stroke-width="1.5"/><text x="520" y="199" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">5</text>
+    <circle cx="300" cy="150" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="300" y="154" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">6</text>
+    <circle cx="220" cy="95" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="220" y="99" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">8</text>
+    <circle cx="250" cy="210" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="250" y="214" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">10</text>
+    <circle cx="400" cy="40" r="12" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="400" y="44" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">2</text>
+    <circle cx="380" cy="265" r="12" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="380" y="269" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">3</text>
+    <!-- wide finish / cutback actors -->
+    <circle cx="100" cy="55" r="14" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="100" y="59" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">7</text>
+    <circle cx="90" cy="150" r="14" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="90" y="154" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">9</text>
+    <circle cx="110" cy="230" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="110" y="234" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">11</text>
+
+    <defs>
+      <marker id="fW" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#fff"/></marker>
+      <marker id="fO" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#fdba74"/></marker>
+      <marker id="fR" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#f87171"/></marker>
+    </defs>
+    <!-- progressive pass / switch into final third -->
+    <line x1="285" y1="145" x2="120" y2="70" stroke="#fff" stroke-width="2.5" marker-end="url(#fW)"/>
+    <line x1="115" y1="70" x2="100" y2="135" stroke="#fdba74" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#fO)"/>
+    <line x1="105" y1="145" x2="115" y2="215" stroke="#fdba74" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#fO)"/>
+    <!-- DEF recover / cover -->
+    <line x1="200" y1="100" x2="150" y2="130" stroke="#f87171" stroke-width="2" marker-end="url(#fR)"/>
+
+    <!-- DEF recovering into their defensive third - compact rest defence -->
+    <!-- Nearest pressers chasing back -->
+    <circle cx="200" cy="90" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="200" y="94" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">8</text>
+    <circle cx="210" cy="170" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="210" y="174" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">6</text>
+    <!-- back four ON their box now (recovered) -->
+    <circle cx="95" cy="85" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="95" y="89" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">2</text>
+    <circle cx="70" cy="125" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="70" y="129" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">4</text>
+    <circle cx="70" cy="175" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="70" y="179" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">5</text>
+    <circle cx="100" cy="220" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="100" y="224" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">3</text>
+    <!-- late recovering STs / wide - deeper midfield trail -->
+    <circle cx="280" cy="50" r="12" fill="#dc2626" stroke="#fff" stroke-width="1.5" opacity="0.85"/><text x="280" y="54" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">9</text>
+    <circle cx="300" cy="250" r="12" fill="#dc2626" stroke="#fff" stroke-width="1.5" opacity="0.85"/><text x="300" y="254" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">10</text>
+    <circle cx="250" cy="40" r="11" fill="#dc2626" stroke="#fff" stroke-width="1.5" opacity="0.8"/><text x="250" y="44" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">7</text>
+    <circle cx="260" cy="270" r="11" fill="#dc2626" stroke="#fff" stroke-width="1.5" opacity="0.8"/><text x="260" y="274" text-anchor="middle" fill="#fff" font-size="9" font-family="system-ui" font-weight="700">11</text>
+    <circle cx="35" cy="150" r="13" fill="#7f1d1d" stroke="#fff" stroke-width="1.5"/><text x="35" y="154" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">1</text>
+
+    <text x="85" y="290" text-anchor="middle" fill="#cbd5e1" font-family="system-ui,sans-serif" font-size="10" font-weight="700">BACK on box</text>
+    <text x="205" y="290" text-anchor="middle" fill="#fb7185" font-family="system-ui,sans-serif" font-size="10" font-weight="700">chase / delay</text>
+    <text x="280" y="290" text-anchor="middle" fill="#fca5a5" font-family="system-ui,sans-serif" font-size="10">late recover</text>
+
+    <rect x="100" y="305" width="600" height="22" rx="4" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5" transform="translate(0,-8)"/>
+    <text x="400" y="312" text-anchor="middle" fill="#fef3c7" font-family="system-ui,sans-serif" font-size="11">ATT #7 attacks the channel; #9/#11 arrive; DEF back four recover to the box while #6+#8 delay</text>
+  </g>
+
+  <text x="460" y="420" text-anchor="middle" fill="#86efac" font-family="system-ui,sans-serif" font-size="12" font-weight="600">After high press + pocket: Frame 3 is progression into THEIR box - DEF finally deep because they are recovering</text>
+  <text x="460" y="445" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="11">This is the only frame where DEF parked near their own goal is correct (rest defence / recovery) - not Frame 1</text>
+</svg>

@@ -4,16 +4,16 @@ import { useEffect } from "react";
 import { getTopicsForPhaseAndZone } from "@/data/session-topics";
 
 const FORMATION_BY_AGE: Record<string, string[]> = {
-  // 7v7 formations (U8-U12)
+  // 7v7 formations (U8-U10)
   U8: ["2-3-1", "3-2-1"],
   U9: ["2-3-1", "3-2-1"],
   U10: ["2-3-1", "3-2-1"],
-  U11: ["2-3-1", "3-2-1"],
-  U12: ["2-3-1", "3-2-1"],
-  // 9v9 formations (U13-U14)
-  U13: ["3-2-3", "2-3-2-1", "3-3-2"],
-  U14: ["3-2-3", "2-3-2-1", "3-3-2"],
-  // 11v11 formations (U15-U18)
+  // 9v9 formations (U11-U12)
+  U11: ["3-2-3", "2-3-2-1", "3-3-2"],
+  U12: ["3-2-3", "2-3-2-1", "3-3-2"],
+  // 11v11 formations (U13-U18)
+  U13: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
+  U14: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U15: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U16: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
   U17: ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"],
@@ -110,9 +110,9 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         // Update helper text
         const helperTexts = document.querySelectorAll(".formation-helper");
         helperTexts.forEach(helperText => {
-          if (["U8", "U9", "U10", "U11", "U12"].includes(ageGroup)) {
+          if (["U8", "U9", "U10"].includes(ageGroup)) {
             helperText.textContent = "7v7 formations";
-          } else if (["U13", "U14"].includes(ageGroup)) {
+          } else if (["U11", "U12"].includes(ageGroup)) {
             helperText.textContent = "9v9 formations";
           } else {
             helperText.textContent = "11v11 formations";
@@ -123,7 +123,7 @@ export default function SessionForm({ children }: { children: React.ReactNode })
       const updateTopics = () => {
         const phase = phaseSelect.value || "ATTACKING";
         const zone = zoneSelect.value || "ATTACKING_THIRD";
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
+        const coachLevel = coachLevelSelect.value || "USSF_D";
         const validTopics = getTopicsForPhaseAndZone(phase, zone, coachLevel);
         const currentTopic = topicSelect.value;
         const currentOptions = Array.from(topicSelect.options).map(opt => opt.value);
@@ -148,60 +148,49 @@ export default function SessionForm({ children }: { children: React.ReactNode })
         }
       };
 
-      const updatePlayerLevelGuardrail = () => {
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
-        const isGrassroots = coachLevel === "GRASSROOTS";
-        const playerOptions = Array.from(playerLevelSelect.options);
 
-        playerLevelSelect.disabled = isGrassroots;
-
-        playerOptions.forEach((option) => {
-          option.disabled = isGrassroots && option.value !== "BEGINNER";
-        });
-
-        if (isGrassroots && playerLevelSelect.value !== "BEGINNER") {
-          playerLevelSelect.value = "BEGINNER";
+      // USSF_C and USSF_B_PLUS coaches are never paired with Beginner
+      // players -- these licenses coach competitive teams in practice, and
+      // it's also the one combination that tested unreliably across every
+      // model (advanced tactical vocabulary fighting genuinely simple
+      // constraints in the same output). Disable the option rather than
+      // hide it, so it's clear it's a rule, not a missing choice.
+      const updatePlayerLevelOptions = () => {
+        const coachLevel = coachLevelSelect.value || "USSF_D";
+        const beginnerOption = Array.from(playerLevelSelect.options).find((opt) => opt.value === "BEGINNER");
+        if (!beginnerOption) return;
+        const beginnerAllowed = coachLevel === "USSF_D";
+        beginnerOption.disabled = !beginnerAllowed;
+        if (!beginnerAllowed && playerLevelSelect.value === "BEGINNER") {
+          playerLevelSelect.value = "INTERMEDIATE";
           playerLevelSelect.dispatchEvent(new Event("change", { bubbles: true }));
         }
-
-        const hint = document.getElementById("playerLevelGuardrailHint");
+        const hint = document.getElementById("playerLevelRuleHint");
         if (hint) {
-          hint.textContent = isGrassroots
-            ? "Grassroots guardrail: player level is locked to Beginner."
-            : "";
-        }
-      };
-      const enforcePlayerLevelGuardrail = () => {
-        const coachLevel = coachLevelSelect.value || "GRASSROOTS";
-        if (coachLevel === "GRASSROOTS" && playerLevelSelect.value !== "BEGINNER") {
-          playerLevelSelect.value = "BEGINNER";
-          const hint = document.getElementById("playerLevelGuardrailHint");
-          if (hint) {
-            hint.textContent = "Grassroots guardrail: player level is fixed to Beginner.";
-          }
+          hint.textContent = beginnerAllowed
+            ? ""
+            : `${coachLevel === "USSF_C" ? "USSF C" : "USSF B+"} coaches are paired with Intermediate or Advanced players.`;
         }
       };
 
       // Run once immediately to fix any mismatches
       updateFormations();
       updateTopics();
-      updatePlayerLevelGuardrail();
-      
+      updatePlayerLevelOptions();
+
       // Listen for changes that should impact formations/topics
       ageGroupSelect.addEventListener("change", updateFormations);
       phaseSelect.addEventListener("change", updateTopics);
       zoneSelect.addEventListener("change", updateTopics);
       coachLevelSelect.addEventListener("change", updateTopics);
-      coachLevelSelect.addEventListener("change", updatePlayerLevelGuardrail);
-      playerLevelSelect.addEventListener("change", enforcePlayerLevelGuardrail);
-      
+      coachLevelSelect.addEventListener("change", updatePlayerLevelOptions);
+
       return () => {
         ageGroupSelect.removeEventListener("change", updateFormations);
         phaseSelect.removeEventListener("change", updateTopics);
         zoneSelect.removeEventListener("change", updateTopics);
         coachLevelSelect.removeEventListener("change", updateTopics);
-        coachLevelSelect.removeEventListener("change", updatePlayerLevelGuardrail);
-        playerLevelSelect.removeEventListener("change", enforcePlayerLevelGuardrail);
+        coachLevelSelect.removeEventListener("change", updatePlayerLevelOptions);
       };
     };
 

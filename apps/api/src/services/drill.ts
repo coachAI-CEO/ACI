@@ -13,6 +13,7 @@ import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
+import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
 
 /**
  * Sanitize LLM output to enforce clarity rules:
@@ -20,7 +21,7 @@ import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-
  * - Merge alternate keys into canonical ones
  * - Remove nested json wrappers
  */
-function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
+export function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
   const warnings: string[] = [];
   console.log("[SANITIZER] Starting sanitization...");
   console.log("[SANITIZER] drill.organization type:", typeof drill.organization);
@@ -97,68 +98,106 @@ function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
     if (!diagram || typeof diagram !== "object") return;
 
     const safePlayers = Array.isArray(players) ? players : [];
+    const isGoalkeeper = (player: any) => {
+      const role = String(player?.role || "").toUpperCase();
+      return player?.number === 1 || role === "GK" || role.includes("GOALKEEPER");
+    };
+    const normalizeGoalkeeperPositions = () => {
+      const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
+      const fullGoals = goals.filter(isFullSizeGoal);
+      const gks = safePlayers.filter(isGoalkeeper);
+      if (gks.length === 0) return;
+      if (fullGoals.length === 0) {
+        demoteDiagramGoalkeepers(diagram);
+        return;
+      }
+      const orientation = diagram.pitch?.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL";
+
+      for (const gk of gks) {
+        const team = String(gk.team || "");
+        const ownGoalCandidates = fullGoals.filter((goal: any) => {
+          const attacks = String(goal?.teamAttacks || "");
+          return attacks && attacks !== team && (attacks === "ATT" || attacks === "DEF");
+        });
+        const candidates = ownGoalCandidates.length > 0 ? ownGoalCandidates : fullGoals;
+        const closestGoal =
+          candidates.length > 0
+            ? candidates.reduce((best: any, goal: any) => {
+                const bestDist =
+                  Math.abs(Number(gk.x ?? 50) - Number(best.x ?? 50)) +
+                  Math.abs(Number(gk.y ?? 50) - Number(best.y ?? 50));
+                const goalDist =
+                  Math.abs(Number(gk.x ?? 50) - Number(goal.x ?? 50)) +
+                  Math.abs(Number(gk.y ?? 50) - Number(goal.y ?? 50));
+                return goalDist < bestDist ? goal : best;
+              }, candidates[0])
+            : null;
+
+        if (orientation === "VERTICAL") {
+          const goalY = Number.isFinite(closestGoal?.y) ? Number(closestGoal.y) : Number(gk.y ?? 50);
+          gk.x = Number.isFinite(closestGoal?.x) ? Number(closestGoal.x) : 50;
+          gk.y = goalY < 50 ? Math.max(6, goalY + 3) : Math.min(94, goalY - 3);
+          gk.facingAngle = goalY < 50 ? 90 : 270;
+        } else {
+          const goalX = Number.isFinite(closestGoal?.x) ? Number(closestGoal.x) : Number(gk.x ?? 50);
+          gk.x = goalX < 50 ? Math.max(6, goalX + 3) : Math.min(94, goalX - 3);
+          gk.y = Number.isFinite(closestGoal?.y) ? Number(closestGoal.y) : 50;
+          gk.facingAngle = goalX < 50 ? 0 : 180;
+        }
+      }
+    };
 
     if (diagram.pitch && typeof diagram.pitch === "object") {
       diagram.pitch.showZones = false;
     }
 
-    // Ensure orientation matches data layout
-    if (diagram.pitch && typeof diagram.pitch === "object") {
-      const inferOrientation = () => {
-        const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
-        if (goals.length > 0) {
-          const left = goals.some((g: any) => typeof g.x === "number" && g.x < 20);
-          const right = goals.some((g: any) => typeof g.x === "number" && g.x > 80);
-          const top = goals.some((g: any) => typeof g.y === "number" && g.y < 20);
-          const bottom = goals.some((g: any) => typeof g.y === "number" && g.y > 80);
-          if ((left || right) && !(top || bottom)) return "HORIZONTAL";
-          if ((top || bottom) && !(left || right)) return "VERTICAL";
-        }
-        if (safePlayers.length >= 2) {
-          const xs = safePlayers.map((p: any) => p.x).filter((n: any) => Number.isFinite(n));
-          const ys = safePlayers.map((p: any) => p.y).filter((n: any) => Number.isFinite(n));
-          const rangeX = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
-          const rangeY = ys.length ? Math.max(...ys) - Math.min(...ys) : 0;
-          return rangeY >= rangeX ? "VERTICAL" : "HORIZONTAL";
-        }
-        return "HORIZONTAL";
-      };
-      const inferred = inferOrientation();
-      if (diagram.pitch.orientation !== inferred) {
-        diagram.pitch.orientation = inferred;
-        warnings.push(`${prefix}Adjusted pitch.orientation to ${inferred}`);
-      }
+    // The diagram is ALWAYS horizontal -- this is a fixed, absolute
+    // convention (drill-optimized-v2.ts DIAGRAM DIRECTION LOCK), not
+    // something to infer per-drill. This used to run a goals/player-spread
+    // heuristic to guess HORIZONTAL vs VERTICAL, which (a) had no reason to
+    // exist anymore once orientation stopped being a per-drill choice, and
+    // (b) had its own bug: it compared raw percent-space ranges directly
+    // without accounting for the field's actual landscape pixel aspect
+    // ratio, so it would sometimes conclude "VERTICAL" for a layout that
+    // renders perfectly horizontal once mapped onto the wide field rect.
+    // Sandbox data confirmed the model itself gets this field wrong often
+    // on goal-less drills (no goal position to anchor against) -- forcing
+    // it here removes the ambiguity instead of trying to infer around it.
+    if (diagram.pitch && typeof diagram.pitch === "object" && diagram.pitch.orientation !== "HORIZONTAL") {
+      diagram.pitch.orientation = "HORIZONTAL";
+      warnings.push(`${prefix}Forced pitch.orientation to HORIZONTAL (fixed convention, never inferred)`);
     }
 
-    // Align goal teamAttacks with player positioning (prevents side mismatches)
+    // Force goal.teamAttacks to match the fixed, absolute direction
+    // convention (drill-optimized-v2.ts DIAGRAM DIRECTION LOCK): DEF always
+    // defends the LEFT edge, ATT always attacks the RIGHT edge. This used
+    // to infer teamAttacks from the ATT player centroid instead, but sandbox
+    // data showed the model systematically swaps the teamAttacks label on
+    // ~65% of two-goal drills (ATT's goal ends up at x~0-6, DEF's at
+    // x~94-100 -- the exact mirror of the rule) while still calling itself
+    // HORIZONTAL. Since the correct side is now a fixed absolute fact, not
+    // something to infer from player positions, don't trust the model's
+    // label at all -- assign it deterministically from which edge each
+    // goal actually sits closer to.
     if (diagram.pitch && typeof diagram.pitch === "object") {
       const goals = Array.isArray(diagram.goals) ? diagram.goals : [];
-      if (goals.length >= 2 && safePlayers.length > 0) {
-        const attPlayers = safePlayers.filter((p: any) => p.team === "ATT");
-        const defPlayers = safePlayers.filter((p: any) => p.team === "DEF");
-        if (attPlayers.length > 0) {
-          const attCentroidX =
-            attPlayers.reduce((sum: number, p: any) => sum + (p.x || 0), 0) /
-            attPlayers.length;
-          const attCentroidY =
-            attPlayers.reduce((sum: number, p: any) => sum + (p.y || 0), 0) /
-            attPlayers.length;
-
-          if (diagram.pitch.orientation === "HORIZONTAL") {
-            const leftGoal = goals.reduce((min: any, g: any) => (g.x < min.x ? g : min), goals[0]);
-            const rightGoal = goals.reduce((max: any, g: any) => (g.x > max.x ? g : max), goals[0]);
-            const distLeft = Math.abs(attCentroidX - leftGoal.x);
-            const distRight = Math.abs(attCentroidX - rightGoal.x);
-            if (distRight < distLeft) {
-              leftGoal.teamAttacks = "DEF";
-              rightGoal.teamAttacks = "ATT";
-              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (right side)`);
-            } else {
-              leftGoal.teamAttacks = "ATT";
-              rightGoal.teamAttacks = "DEF";
-              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (left side)`);
-            }
-          } else {
+      if (goals.length >= 2) {
+        if (diagram.pitch.orientation === "HORIZONTAL") {
+          const leftGoal = goals.reduce((min: any, g: any) => (g.x < min.x ? g : min), goals[0]);
+          const rightGoal = goals.reduce((max: any, g: any) => (g.x > max.x ? g : max), goals[0]);
+          if (leftGoal.teamAttacks !== "DEF" || rightGoal.teamAttacks !== "ATT") {
+            leftGoal.teamAttacks = "DEF";
+            rightGoal.teamAttacks = "ATT";
+            warnings.push(`${prefix}Forced goal.teamAttacks to the fixed convention: DEF's own goal on the right, ATT's own goal on the left`);
+          }
+        } else {
+          // VERTICAL is deprecated under the always-horizontal rule; keep a
+          // legacy centroid-based fallback since there's no fixed top/bottom
+          // convention to force here.
+          const attPlayers = safePlayers.filter((p: any) => p.team === "ATT");
+          if (attPlayers.length > 0) {
+            const attCentroidY =
+              attPlayers.reduce((sum: number, p: any) => sum + (p.y || 0), 0) / attPlayers.length;
             const topGoal = goals.reduce((min: any, g: any) => (g.y < min.y ? g : min), goals[0]);
             const bottomGoal = goals.reduce((max: any, g: any) => (g.y > max.y ? g : max), goals[0]);
             const distTop = Math.abs(attCentroidY - topGoal.y);
@@ -166,14 +205,48 @@ function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
             if (distBottom < distTop) {
               topGoal.teamAttacks = "DEF";
               bottomGoal.teamAttacks = "ATT";
-              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (bottom side)`);
             } else {
               topGoal.teamAttacks = "ATT";
               bottomGoal.teamAttacks = "DEF";
-              warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (top side)`);
             }
+            warnings.push(`${prefix}Adjusted goal.teamAttacks based on ATT centroid (legacy VERTICAL fallback)`);
           }
         }
+      }
+    }
+    normalizeGoalkeeperPositions();
+
+    // Force each L/R-prefixed role (LB/LM/LW/LCB/LCM/LWB vs their R-
+    // prefixed counterparts) onto the correct half of the pitch width,
+    // per drill-optimized-v2.ts's POSITION SIDE LOCK: ATT faces right, so
+    // ATT's Left-prefixed roles belong at low y (top half) and Right-
+    // prefixed at high y (bottom half); DEF faces the opposite way
+    // (toward the incoming ATT), so DEF is mirrored -- DEF's Left-prefixed
+    // roles belong at high y (bottom half), Right-prefixed at low y (top
+    // half). This is exactly the kind of side-relative spatial reasoning
+    // the model gets right most of the time but not reliably (the sandbox's
+    // roleSide scorer exists because of that) -- like orientation and goal
+    // direction above, don't leave it purely to the prompt: mirror any
+    // player that landed on the wrong half instead of trusting the model's
+    // y value as-is.
+    for (const p of safePlayers) {
+      const team = String((p as any)?.team || "").toUpperCase();
+      if (team !== "ATT" && team !== "DEF") continue;
+      const role = String((p as any)?.role || "").toUpperCase();
+      const match = role.match(/^([LR])[A-Z]/);
+      if (!match) continue;
+      const y = Number((p as any).y);
+      if (!Number.isFinite(y) || (y >= 40 && y <= 60)) continue; // too central to judge reliably
+
+      const isLeftRole = match[1] === "L";
+      // ATT: left->top (y<50), right->bottom (y>50). DEF: mirrored.
+      const wantsTopHalf = team === "ATT" ? isLeftRole : !isLeftRole;
+      const isTopHalf = y < 50;
+      if (isTopHalf !== wantsTopHalf) {
+        (p as any).y = 100 - y;
+        warnings.push(
+          `${prefix}Mirrored ${team} role="${(p as any).role}" from y=${y} to y=${100 - y} (POSITION SIDE LOCK: wrong half for that team/side)`
+        );
       }
     }
 
@@ -184,11 +257,25 @@ function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[] } {
     if (!Array.isArray(diagram.safeZones)) diagram.safeZones = [];
   };
 
-  if (drill.diagram) {
-    ensureDiagramVisuals(drill.diagram, drill.diagram.players, "");
-  }
-  if (drill.json?.diagram) {
-    ensureDiagramVisuals(drill.json.diagram, drill.json.diagram.players, "[json] ");
+  // COOLDOWN drills don't need a tactical diagram -- there's no formation,
+  // no ball work, nothing spatial to draw. The prompt already asks the
+  // model to omit it, but that's a request, not a guarantee (and older
+  // stored drills may still carry one from before this rule existed), so
+  // strip it deterministically instead of rendering whatever the model
+  // returned. The UI shows the session summary in its place.
+  if (String(drill.drillType || "").toUpperCase() === "COOLDOWN") {
+    if (drill.diagram) {
+      delete drill.diagram;
+      warnings.push("Removed diagram from COOLDOWN drill (not needed -- session summary shown instead)");
+    }
+    if (drill.json?.diagram) delete drill.json.diagram;
+  } else {
+    if (drill.diagram) {
+      ensureDiagramVisuals(drill.diagram, drill.diagram.players, "");
+    }
+    if (drill.json?.diagram) {
+      ensureDiagramVisuals(drill.json.diagram, drill.json.diagram.players, "[json] ");
+    }
   }
   
   // 6. Convert organization from string to structured object
@@ -498,7 +585,12 @@ export async function generateAndReviewDrill(
     // 1) Generate (45s timeout for reliability - Gemini can be slow for complex prompts)
     const prompt = buildDrillPrompt(input);
     console.log(`[DRILL] Starting generation with ${prompt.length} char prompt...`);
-    const genText = await generateText(prompt, { timeout: 45000, retries: 0 });
+    const generationModel = process.env.GEMINI_DRILL_MODEL || process.env.GEMINI_GENERATION_MODEL;
+    const genText = await generateText(prompt, {
+      timeout: Number(process.env.DRILL_GENERATION_TIMEOUT_MS || 45000),
+      retries: Number(process.env.GEMINI_MAX_RETRIES ?? 1),
+      model: generationModel,
+    });
   let drill: any = parseJsonSafe(genText);
   if (!drill) throw new Error("LLM returned non-JSON drill");
 
@@ -549,9 +641,12 @@ export async function generateAndReviewDrill(
     // never hard-crash on post-processing, but log the error
   }
 
-  // Re-enrich diagram with LLM if tactical elements are generic/missing
+  // Re-enrich diagram with LLM if tactical elements are generic/missing.
+  // Skip entirely for COOLDOWN -- it has no diagram to enrich, and calling
+  // needsDiagramEnrichment(undefined) would return true and trigger a
+  // wasted Gemini call to generate one.
   try {
-    if (needsDiagramEnrichment(drill?.diagram)) {
+    if (String(input.drillType || "").toUpperCase() !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
       const reenriched = await reenrichDiagramFromDrillJson(drill);
       if (reenriched) {
         drill.diagram = reenriched;
@@ -563,6 +658,8 @@ export async function generateAndReviewDrill(
   } catch (err: any) {
     console.error("[DRILL] Diagram re-enrichment failed:", err?.message || String(err));
   }
+  enforceDiagramGoalAvailability(drill, input);
+  if (processedFields?.json) enforceDiagramGoalAvailability(processedFields.json, input);
 
   // 2) First QA (40s timeout - QA can be slow with large drill objects)
   // Update metrics context for QA
@@ -575,7 +672,12 @@ export async function generateAndReviewDrill(
   
   const qaPrompt = buildQAReviewerPrompt(drill);
   console.log(`[DRILL] Starting QA with ${qaPrompt.length} char prompt...`);
-  const qaText = await generateText(qaPrompt, { timeout: 40000, retries: 0 }); // 40s timeout, no retries for speed
+  const qaModel = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL;
+  const qaText = await generateText(qaPrompt, {
+    timeout: Number(process.env.DRILL_QA_TIMEOUT_MS || 25000),
+    retries: Number(process.env.GEMINI_MAX_RETRIES ?? 1),
+    model: qaModel,
+  });
   const qaJson: any = parseJsonSafe(qaText);
   if (!qaJson) throw new Error("LLM returned non-JSON QA");
 
@@ -613,6 +715,7 @@ export async function generateAndReviewDrill(
     drillType: input.drillType, // Store drillType in JSON
     qa: finalQa,
   };
+  enforceDiagramGoalAvailability(jsonForDb, input);
 
   // Final cleanup: ensure forbidden keys are removed from jsonForDb
   if (jsonForDb.diagramV1) {

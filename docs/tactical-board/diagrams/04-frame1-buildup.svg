@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 460" role="img" aria-labelledby="t4">
+  <title id="t4">Frame 1 goal-kick play-out 433 vs 442</title>
+  <rect width="920" height="460" fill="#0b1220"/>
+  <text x="460" y="24" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="15" font-weight="700">4 - Frame 1 DEFAULT: Goal-kick play-out (ATT 4-3-3 vs DEF 4-4-2)</text>
+  <text x="460" y="44" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">GK starts with ball - DEF entire block is HIGH (as high as the box), not a deep mid-block</text>
+
+  <g transform="translate(60,60)">
+    <rect width="800" height="300" rx="4" fill="#1a7a3c"/>
+    <rect width="800" height="300" fill="none" stroke="#fff" stroke-width="2.5"/>
+    <line x1="400" y1="0" x2="400" y2="300" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <circle cx="400" cy="150" r="40" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="0" y="75" width="70" height="150" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="730" y="75" width="70" height="150" fill="none" stroke="#fff" stroke-width="2" opacity="0.75"/>
+    <rect x="-8" y="120" width="8" height="60" fill="#ef4444"/>
+    <rect x="800" y="120" width="8" height="60" fill="#3b82f6"/>
+
+    <!-- yellow first-line zone on ATT box -->
+    <rect x="560" y="65" width="200" height="170" fill="#fbbf24" opacity="0.2" stroke="#fbbf24" stroke-width="3"/>
+    <text x="660" y="58" text-anchor="middle" fill="#fde68a" font-family="system-ui,sans-serif" font-size="11" font-weight="700">Goal-kick zone / 4v2 first line</text>
+
+    <!-- ATT build from GK -->
+    <circle cx="765" cy="150" r="15" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="765" y="155" text-anchor="middle" fill="#fff" font-size="11" font-family="system-ui" font-weight="700">1</text>
+    <circle cx="690" cy="95" r="15" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="690" y="100" text-anchor="middle" fill="#fff" font-size="11" font-family="system-ui" font-weight="700">4</text>
+    <circle cx="690" cy="205" r="15" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="690" y="210" text-anchor="middle" fill="#fff" font-size="11" font-family="system-ui" font-weight="700">5</text>
+    <circle cx="630" cy="150" r="15" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="630" y="155" text-anchor="middle" fill="#fff" font-size="11" font-family="system-ui" font-weight="700">6</text>
+    <circle cx="710" cy="40" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="710" y="44" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">2</text>
+    <circle cx="710" cy="265" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="710" y="269" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">3</text>
+    <circle cx="560" cy="100" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="560" y="104" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">8</text>
+    <circle cx="560" cy="205" r="13" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="560" y="209" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">10</text>
+    <circle cx="480" cy="55" r="12" fill="#1d4ed8" stroke="#fff" stroke-width="1.5"/><text x="480" y="59" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">7</text>
+    <circle cx="480" cy="250" r="12" fill="#1d4ed8" stroke="#fff" stroke-width="1.5"/><text x="480" y="254" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">11</text>
+    <circle cx="440" cy="150" r="12" fill="#1d4ed8" stroke="#fff" stroke-width="1.5"/><text x="440" y="154" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">9</text>
+
+    <defs>
+      <marker id="aW" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#fff"/></marker>
+      <marker id="aO" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="#fdba74"/></marker>
+    </defs>
+    <line x1="750" y1="145" x2="708" y2="110" stroke="#fff" stroke-width="2.5" marker-end="url(#aW)"/>
+    <line x1="645" y1="150" x2="678" y2="115" stroke="#fdba74" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#aO)"/>
+
+    <!-- DEF HIGH PRESS - entire block near the box, NOT deep -->
+    <!-- Press line ON the yellow box edge -->
+    <circle cx="555" cy="110" r="14" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="555" y="115" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">9</text>
+    <circle cx="555" cy="190" r="14" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="555" y="195" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">10</text>
+    <!-- Cover / midfield just behind press, still in ATT half -->
+    <circle cx="500" cy="70" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="500" y="74" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">7</text>
+    <circle cx="500" cy="125" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="500" y="129" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">8</text>
+    <circle cx="500" cy="180" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="500" y="184" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">6</text>
+    <circle cx="500" cy="235" r="13" fill="#dc2626" stroke="#fff" stroke-width="1.5"/><text x="500" y="239" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">11</text>
+    <!-- Back four HIGH - around ATT half / halfway, compact behind mids -->
+    <circle cx="430" cy="55" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="430" y="59" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">2</text>
+    <circle cx="430" cy="115" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="430" y="119" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">4</text>
+    <circle cx="430" cy="185" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="430" y="189" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">5</text>
+    <circle cx="430" cy="245" r="13" fill="#b91c1c" stroke="#fff" stroke-width="1.5"/><text x="430" y="249" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">3</text>
+    <!-- Only GK deep -->
+    <circle cx="40" cy="150" r="13" fill="#7f1d1d" stroke="#fff" stroke-width="1.5"/><text x="40" y="154" text-anchor="middle" fill="#fff" font-size="10" font-family="system-ui" font-weight="700">1</text>
+
+    <!-- line labels -->
+    <text x="555" y="290" text-anchor="middle" fill="#fb7185" font-family="system-ui,sans-serif" font-size="10" font-weight="700">PRESS on box</text>
+    <text x="500" y="290" text-anchor="middle" fill="#fdba74" font-family="system-ui,sans-serif" font-size="10" font-weight="700">COVER</text>
+    <text x="430" y="290" text-anchor="middle" fill="#cbd5e1" font-family="system-ui,sans-serif" font-size="10" font-weight="700">BACK (high)</text>
+
+    <rect x="140" y="305" width="520" height="22" rx="4" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5" transform="translate(0,-8)"/>
+    <text x="400" y="312" text-anchor="middle" fill="#fef3c7" font-family="system-ui,sans-serif" font-size="11">GK #1 starts; ATT #4+#5+#6 make 4v2 vs DEF #9+#10 - whole DEF block pushed to the box</text>
+  </g>
+
+  <text x="460" y="420" text-anchor="middle" fill="#86efac" font-family="system-ui,sans-serif" font-size="12" font-weight="600">Default play-out = goal kick high press (not conservative mid-block)</text>
+  <text x="460" y="442" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="11">Blue = ATT 4-3-3 build from GK   |   Red = DEF 4-4-2 high press / cover / high back line</text>
+</svg>

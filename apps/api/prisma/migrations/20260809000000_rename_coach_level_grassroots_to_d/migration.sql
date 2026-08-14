@@ -1,0 +1,11 @@
+-- Rename CoachLevel enum value GRASSROOTS -> USSF_D.
+-- D license is a genuine step above grassroots in the real USSF pathway
+-- (Grassroots -> D -> C -> B -> A -> Pro); this repositions the app's
+-- entry-level coachLevel tier to that real license, not a synonym for
+-- untrained/volunteer coaching. Grassroots/low-level coaching is planned
+-- as a separate, independent area going forward -- not part of this scale.
+--
+-- ALTER TYPE ... RENAME VALUE relabels the enum value in place, so every
+-- existing row already stored as 'GRASSROOTS' becomes 'USSF_D' automatically
+-- -- no data migration needed beyond this rename.
+ALTER TYPE "CoachLevel" RENAME VALUE 'GRASSROOTS' TO 'USSF_D';

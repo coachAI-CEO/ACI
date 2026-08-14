@@ -103,7 +103,7 @@ r.post("/organization/invite", requireRole("CLUB"), requireFeature("canInviteCoa
     const schema = z.object({
       email: z.string().email(),
       name: z.string().optional(),
-      coachLevel: z.enum(["GRASSROOTS", "USSF_C", "USSF_B_PLUS"]).optional(),
+      coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).optional(),
       teamAgeGroups: z.array(z.string()).optional(),
     });
 

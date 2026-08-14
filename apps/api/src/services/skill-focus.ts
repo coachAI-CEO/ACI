@@ -18,8 +18,7 @@ function buildSessionContext(session: any): SkillFocusContext {
   const json = session.json || {};
   const coachLevel = String(session.coachLevel || json.coachLevel || "").toUpperCase() || null;
   const playerLevelRaw = String(session.playerLevel || json.playerLevel || "").toUpperCase();
-  const playerLevel =
-    coachLevel === "GRASSROOTS" ? "BEGINNER" : playerLevelRaw || null;
+  const playerLevel = playerLevelRaw || null;
   return {
     title: session.title,
     ageGroup: session.ageGroup,
@@ -46,8 +45,7 @@ function buildSeriesContext(sessions: any[]): SkillFocusContext {
   const firstJson = first.json || {};
   const coachLevel = String(first.coachLevel || firstJson.coachLevel || "").toUpperCase() || null;
   const playerLevelRaw = String(first.playerLevel || firstJson.playerLevel || "").toUpperCase();
-  const playerLevel =
-    coachLevel === "GRASSROOTS" ? "BEGINNER" : playerLevelRaw || null;
+  const playerLevel = playerLevelRaw || null;
   return {
     title: `Series: ${first.title}`,
     ageGroup: first.ageGroup,

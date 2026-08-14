@@ -6,8 +6,106 @@ const API_BASE =
     ? process.env.API_URL
     : process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-// System prompt for the AI to understand coaching requests
-const SYSTEM_PROMPT = `You are an expert soccer/football coaching assistant. Your job is to understand what the coach needs and help them find or create training sessions.
+type ClubPhilosophy = {
+  attackingOrganization?: string | null;
+  defensiveTransition?: string | null;
+  defensiveOrganization?: string | null;
+  attackingTransition?: string | null;
+};
+
+type ClubChatScope = {
+  enforcedGameModelId: string | null;
+  clubName: string | null;
+  philosophy: ClubPhilosophy | null;
+};
+
+const GAME_MODEL_LABELS: Record<string, string> = {
+  POSSESSION: "Possession",
+  PRESSING: "Pressing",
+  TRANSITION: "Transition",
+  COACHAI: "Balanced (CoachAI)",
+  ROCKLIN_FC: "Rocklin FC",
+};
+
+function philosophyHasContent(philosophy?: ClubPhilosophy | null): boolean {
+  if (!philosophy) return false;
+  return Boolean(
+    philosophy.attackingOrganization ||
+      philosophy.defensiveTransition ||
+      philosophy.defensiveOrganization ||
+      philosophy.attackingTransition
+  );
+}
+
+function buildSystemPrompt(scope: ClubChatScope): string {
+  const lockedModel = scope.enforcedGameModelId;
+  const modelLabel = lockedModel
+    ? GAME_MODEL_LABELS[lockedModel] || lockedModel
+    : null;
+
+  const gameModelSection = lockedModel
+    ? [
+        "**REQUIRED - Always ask if missing:**",
+        "- ageGroup: U8, U9, U10, U11, U12, U13, U14, U15, U16, U17, U18",
+        "",
+        `**LOCKED GAME MODEL (MANDATORY):** gameModelId must ALWAYS be "${lockedModel}" (${modelLabel}).`,
+        "- Do NOT ask which style/game model they want.",
+        "- Do NOT suggest POSSESSION / PRESSING / TRANSITION / COACHAI / ROCKLIN_FC alternatives.",
+        "- Do NOT change gameModelId even if the coach mentions another style.",
+        "- Frame every idea, search, and generate recommendation inside this locked model.",
+        `- extractedParams.gameModelId must always be "${lockedModel}".`,
+        `- needsClarification must NEVER include "gameModelId".`,
+      ].join("\n")
+    : [
+        "**REQUIRED - Always ask if missing:**",
+        "- ageGroup: U8, U9, U10, U11, U12, U13, U14, U15, U16, U17, U18",
+        "- gameModelId: What style of play?",
+        "  - POSSESSION: Build-up play, keeping the ball, patient attacking",
+        "  - PRESSING: High press, counter-pressing, winning ball back quickly",
+        "  - TRANSITION: Quick switches between attack/defense, counter-attacks",
+        "  - ROCKLIN_FC: Vertical possession, final-third intensity, immediate counterpress then compact recovery",
+        "  - COACHAI: General/mixed approach",
+      ].join("\n");
+
+  const dnaLines: string[] = [];
+  if (lockedModel && philosophyHasContent(scope.philosophy)) {
+    dnaLines.push(
+      "",
+      `## CLUB DNA (${scope.clubName || "Club"} — MANDATORY IDEAS)`,
+      "Use this club philosophy as the source of coaching ideas. Stay inside these four stages.",
+      "When suggesting session focus, topics, coaching points, or vault matches, align to this DNA."
+    );
+    if (scope.philosophy?.attackingOrganization) {
+      dnaLines.push(
+        "",
+        "Stage 1 — Attacking Organization (in possession):",
+        scope.philosophy.attackingOrganization
+      );
+    }
+    if (scope.philosophy?.defensiveTransition) {
+      dnaLines.push(
+        "",
+        "Stage 2 — Defensive Transition (on ball loss):",
+        scope.philosophy.defensiveTransition
+      );
+    }
+    if (scope.philosophy?.defensiveOrganization) {
+      dnaLines.push(
+        "",
+        "Stage 3 — Defensive Organization (out of possession):",
+        scope.philosophy.defensiveOrganization
+      );
+    }
+    if (scope.philosophy?.attackingTransition) {
+      dnaLines.push(
+        "",
+        "Stage 4 — Attacking Transition (on ball regain):",
+        scope.philosophy.attackingTransition
+      );
+    }
+  }
+
+  return `You are an expert soccer/football coaching assistant. Your job is to understand what the coach needs and help them find or create training sessions.
 
 ## YOUR ROLE
 You help coaches by:
@@ -19,14 +117,7 @@ You help coaches by:
 ## SESSION PARAMETERS TO EXTRACT
 These are the parameters needed to generate a good session. Ask about important missing ones:
 
-**REQUIRED - Always ask if missing:**
-- ageGroup: U8, U9, U10, U11, U12, U13, U14, U15, U16, U17, U18 (IMPORTANT: different ages need different complexity)
-- gameModelId: What style of play?
-  - POSSESSION: Build-up play, keeping the ball, patient attacking
-  - PRESSING: High press, counter-pressing, winning ball back quickly  
-  - TRANSITION: Quick switches between attack/defense, counter-attacks
-  - ROCKLIN_FC: Vertical possession, final-third intensity, immediate counterpress then compact recovery
-  - COACHAI: General/mixed approach
+${gameModelSection}
 
 **IMPORTANT - Ask if relevant:**
 - phase: ATTACKING (scoring goals), DEFENDING (stopping goals), TRANSITION (switching phases)
@@ -39,7 +130,7 @@ These are the parameters needed to generate a good session. Ask about important 
 
 **HELPFUL CONTEXT - Ask when relevant:**
 - coachLevel: What's your coaching background?
-  - GRASSROOTS: New/parent coach, basic drills
+  - USSF_D: D License, foundational tactics
   - USSF_C: C License, intermediate tactics
   - USSF_B_PLUS: B+ (or higher) license, advanced/high-level tactics
 - playerLevel: BEGINNER, INTERMEDIATE, ADVANCED
@@ -50,16 +141,23 @@ These are the parameters needed to generate a good session. Ask about important 
 - formationAttacking: What formation do you play? e.g., "4-3-3", "4-4-2", "3-5-2", "3-2-3" (for smaller formats)
 - formationDefending: Defensive shape if different
 - spaceConstraint: FULL (full pitch), HALF, QUARTER
+${dnaLines.join("\n")}
 
 ## CONVERSATION GUIDELINES
 1. **Be conversational** - Don't interrogate. Weave questions naturally.
-2. **Infer when possible** - "My U12s struggle with keeping possession" → ageGroup=U12, gameModelId=POSSESSION
-3. **Ask the most important missing info first** - Age group and game model are most critical
-4. **Translate problems to training needs**:
-   - "We lose the ball too easily" → Possession training
-   - "We can't score against packed defenses" → Attacking third, breaking low blocks
-   - "We're slow getting back" → Transition defending
-   - "Opposition always plays through us" → Pressing, defensive shape
+2. **Infer when possible** - "My U12s struggle with keeping possession" → ageGroup=U12${
+    lockedModel
+      ? `; keep gameModelId=${lockedModel} and translate the problem into a topic/phase inside that model`
+      : ", gameModelId=POSSESSION"
+  }
+3. **Ask the most important missing info first** - Age group${
+    lockedModel ? " is most critical (game model is already locked)" : " and game model are most critical"
+  }
+4. **Translate problems to training needs** inside the active game model:
+   - Ball-loss / security problems → Attacking Organization + Defensive Transition cues
+   - Can't create vs low block → Attacking Organization / Attacking Transition in attacking third
+   - Slow recoveries → Defensive Transition
+   - Played through centrally → Defensive Organization / pressing triggers
 
 ## RESPONSE FORMAT
 Respond ONLY with valid JSON:
@@ -68,13 +166,13 @@ Respond ONLY with valid JSON:
   "message": "Your friendly conversational response",
   "extractedParams": {
     "ageGroup": "U14" | null,
-    "gameModelId": "POSSESSION" | null,
+    "gameModelId": ${lockedModel ? `"${lockedModel}"` : `"POSSESSION" | null`},
     "phase": "ATTACKING" | null,
     "zone": "MIDDLE_THIRD" | null,
     "topic": "specific focus" | null,
     "numberOfSessions": 1,
     "playerLevel": "INTERMEDIATE" | null,
-    "coachLevel": "GRASSROOTS" | "USSF_C" | "USSF_B_PLUS" | null,
+    "coachLevel": "USSF_D" | "USSF_C" | "USSF_B_PLUS" | null,
     "durationMin": 90 | null,
     "numbersMin": 16 | null,
     "numbersMax": 20 | null,
@@ -85,7 +183,7 @@ Respond ONLY with valid JSON:
     "spaceConstraint": "FULL" | null
   },
   "searchQuery": "semantic search query for vault",
-  "needsClarification": ["ageGroup", "gameModelId"] | null,
+  "needsClarification": ["ageGroup"] | null,
   "readyToGenerate": false
 }
 
@@ -93,6 +191,7 @@ Set "readyToGenerate": true only when you have at least: ageGroup, gameModelId, 
 Set "intent": "clarify" when you need more info.
 Set "intent": "search" when you have enough to look in the vault.
 Set "intent": "generate" when coach confirms they want a new session.`;
+}
 
 function hasMinimumGenerationParams(params: any): boolean {
   if (!params || typeof params !== "object") return false;
@@ -100,6 +199,40 @@ function hasMinimumGenerationParams(params: any): boolean {
   const hasGameModel = Boolean(params.gameModelId);
   const hasPhaseOrTopic = Boolean(params.phase || params.topic);
   return hasAgeGroup && hasGameModel && hasPhaseOrTopic;
+}
+
+async function loadClubChatScope(authHeader: string | null): Promise<ClubChatScope> {
+  const empty: ClubChatScope = {
+    enforcedGameModelId: null,
+    clubName: null,
+    philosophy: null,
+  };
+  if (!authHeader) return empty;
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: authHeader },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return empty;
+    const data = await res.json().catch(() => ({}));
+    const user = data?.user || {};
+    return {
+      enforcedGameModelId: String(user.enforcedGameModelId || "").trim() || null,
+      clubName: String(user.clubName || "").trim() || null,
+      philosophy: user.clubPhilosophy || null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function forceScopedParams(params: any, scope: ClubChatScope): any {
+  const next = { ...(params || {}) };
+  if (scope.enforcedGameModelId) {
+    next.gameModelId = scope.enforcedGameModelId;
+  }
+  return next;
 }
 
 export async function POST(request: NextRequest) {
@@ -114,13 +247,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const authHeader =
+      request.headers.get("authorization") || request.headers.get("Authorization");
+    const scope = await loadClubChatScope(authHeader);
+    const systemPrompt = buildSystemPrompt(scope);
+
     // Build conversation context
     const conversationHistory = history
       .slice(-6)
       .map((m: any) => `${m.role === "user" ? "Coach" : "Assistant"}: ${m.content}`)
       .join("\n");
 
-    const prompt = `${SYSTEM_PROMPT}
+    const prompt = `${systemPrompt}
 
 Previous conversation:
 ${conversationHistory || "(New conversation)"}
@@ -129,8 +267,6 @@ Coach's latest message: "${message}"
 
 Analyze this request and respond in the JSON format specified above.`;
 
-    const authHeader =
-      request.headers.get("authorization") || request.headers.get("Authorization");
     const baseHeaders: Record<string, string> = { "Content-Type": "application/json" };
     if (authHeader) {
       baseHeaders.Authorization = authHeader;
@@ -143,7 +279,6 @@ Analyze this request and respond in the JSON format specified above.`;
       body: JSON.stringify({ prompt }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT),
     }).catch(async () => {
-      // Fallback: call Gemini directly through our generate endpoint
       return null;
     });
 
@@ -152,7 +287,6 @@ Analyze this request and respond in the JSON format specified above.`;
     if (aiResponse && aiResponse.ok) {
       const aiData = await aiResponse.json();
       try {
-        // Try to parse the AI response as JSON
         const jsonMatch = aiData.text?.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           parsed = JSON.parse(jsonMatch[0]);
@@ -167,9 +301,17 @@ Analyze this request and respond in the JSON format specified above.`;
       parsed = {
         intent: "search",
         message: "Let me search for sessions that might help with that...",
-        extractedParams: extractBasicParams(message),
+        extractedParams: extractBasicParams(message, scope.enforcedGameModelId),
         searchQuery: message,
       };
+    }
+
+    parsed.extractedParams = forceScopedParams(parsed.extractedParams, scope);
+    if (Array.isArray(parsed.needsClarification) && scope.enforcedGameModelId) {
+      parsed.needsClarification = parsed.needsClarification.filter(
+        (item: string) => item !== "gameModelId"
+      );
+      if (parsed.needsClarification.length === 0) parsed.needsClarification = null;
     }
 
     // If intent is search or generate, search the vault
@@ -203,18 +345,8 @@ Analyze this request and respond in the JSON format specified above.`;
     } else if (parsed.intent === "search" && parsed.readyToGenerate) {
       responseMessage += "\n\nI didn't find exact matches in your vault. Would you like me to generate a new session?";
     }
-    
-    // Helper functions to format enum values
-    const formatGameModel = (value: string) => {
-      const labels: Record<string, string> = {
-        POSSESSION: "Possession",
-        PRESSING: "Pressing",
-        TRANSITION: "Transition",
-        COACHAI: "Balanced",
-        ROCKLIN_FC: "Rocklin FC",
-      };
-      return labels[value] || value;
-    };
+
+    const formatGameModel = (value: string) => GAME_MODEL_LABELS[value] || value;
 
     const formatPhase = (value: string) => {
       const labels: Record<string, string> = {
@@ -238,36 +370,58 @@ Analyze this request and respond in the JSON format specified above.`;
 
     const formatCoachLevel = (value: string) => {
       const labels: Record<string, string> = {
-        GRASSROOTS: "Grassroots",
+        USSF_D: "USSF D",
         USSF_C: "USSF C",
         USSF_B_PLUS: "USSF B+",
       };
       return labels[value] || value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
     };
 
-    // Show extracted parameters if we have some
     if (parsed.extractedParams && (parsed.intent === "search" || parsed.intent === "generate" || parsed.readyToGenerate)) {
       const params = parsed.extractedParams;
       const paramSummary = [];
       if (params.ageGroup) paramSummary.push(`• Age Group: ${params.ageGroup}`);
-      if (params.gameModelId) paramSummary.push(`• Style: ${formatGameModel(params.gameModelId)}`);
+      if (params.gameModelId) {
+        paramSummary.push(
+          `• Style: ${formatGameModel(params.gameModelId)}${
+            scope.enforcedGameModelId ? " (club locked)" : ""
+          }`
+        );
+      }
       if (params.phase) paramSummary.push(`• Phase: ${formatPhase(params.phase)}`);
       if (params.zone) paramSummary.push(`• Zone: ${formatZone(params.zone)}`);
       if (params.topic) paramSummary.push(`• Topic: ${params.topic}`);
-      if (params.numberOfSessions && params.numberOfSessions > 1) paramSummary.push(`• Sessions: ${params.numberOfSessions} (series)`);
+      if (params.numberOfSessions && params.numberOfSessions > 1) {
+        paramSummary.push(`• Sessions: ${params.numberOfSessions} (series)`);
+      }
       if (params.durationMin) paramSummary.push(`• Duration: ${params.durationMin} min`);
-      if (params.numbersMin && params.numbersMax) paramSummary.push(`• Players: ${params.numbersMin}-${params.numbersMax}`);
-      if (params.formationAttacking) paramSummary.push(`• Formation: ${params.formationAttacking}${params.formationDefending && params.formationDefending !== params.formationAttacking ? ` / ${params.formationDefending}` : ""}`);
+      if (params.numbersMin && params.numbersMax) {
+        paramSummary.push(`• Players: ${params.numbersMin}-${params.numbersMax}`);
+      }
+      if (params.formationAttacking) {
+        paramSummary.push(
+          `• Formation: ${params.formationAttacking}${
+            params.formationDefending && params.formationDefending !== params.formationAttacking
+              ? ` / ${params.formationDefending}`
+              : ""
+          }`
+        );
+      }
       if (params.coachLevel) paramSummary.push(`• Coach Level: ${formatCoachLevel(params.coachLevel)}`);
-      if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) paramSummary.push(`• Goals: ${params.goalsAvailable}`);
-      if (params.hasGKs !== null && params.hasGKs !== undefined) paramSummary.push(`• GKs: ${params.hasGKs ? "Yes" : "No"}`);
-      
+      if (params.goalsAvailable !== null && params.goalsAvailable !== undefined) {
+        paramSummary.push(`• Goals: ${params.goalsAvailable}`);
+      }
+      if (params.hasGKs !== null && params.hasGKs !== undefined) {
+        paramSummary.push(`• GKs: ${params.hasGKs ? "Yes" : "No"}`);
+      }
+
       if (paramSummary.length > 0) {
         responseMessage += `\n\n**Session Parameters:**\n${paramSummary.join("\n")}`;
       }
     }
 
-    const readyToGenerate = Boolean(parsed.readyToGenerate) || hasMinimumGenerationParams(parsed.extractedParams);
+    const readyToGenerate =
+      Boolean(parsed.readyToGenerate) || hasMinimumGenerationParams(parsed.extractedParams);
 
     return NextResponse.json({
       ok: true,
@@ -277,6 +431,8 @@ Analyze this request and respond in the JSON format specified above.`;
       recommendations,
       needsClarification: parsed.needsClarification,
       readyToGenerate,
+      enforcedGameModelId: scope.enforcedGameModelId,
+      clubName: scope.clubName,
     });
   } catch (e: any) {
     console.error("[COACH_CHAT] Error:", e);
@@ -287,17 +443,16 @@ Analyze this request and respond in the JSON format specified above.`;
   }
 }
 
-// Simple parameter extraction fallback
-function extractBasicParams(message: string): any {
+function extractBasicParams(message: string, enforcedGameModelId?: string | null): any {
   const lower = message.toLowerCase();
   const params: any = {
     numberOfSessions: 1,
   };
 
-  // Age groups - multiple patterns
-  const ageMatch = lower.match(/u-?(\d{1,2})s?(?:\s|$|,)/i) || 
-                   lower.match(/under[- ]?(\d{1,2})/i) ||
-                   lower.match(/(\d{1,2})\s*year/i);
+  const ageMatch =
+    lower.match(/u-?(\d{1,2})s?(?:\s|$|,)/i) ||
+    lower.match(/under[- ]?(\d{1,2})/i) ||
+    lower.match(/(\d{1,2})\s*year/i);
   if (ageMatch) {
     const age = parseInt(ageMatch[1]);
     if (age >= 6 && age <= 19) {
@@ -305,46 +460,77 @@ function extractBasicParams(message: string): any {
     }
   }
 
-  // Game models - with problem-to-solution mapping
-  if (lower.includes("possession") || lower.includes("keep the ball") || 
-      lower.includes("build up") || lower.includes("build-up") ||
-      lower.includes("lose the ball") || lower.includes("can't keep")) {
+  if (enforcedGameModelId) {
+    params.gameModelId = enforcedGameModelId;
+  } else if (
+    lower.includes("possession") ||
+    lower.includes("keep the ball") ||
+    lower.includes("build up") ||
+    lower.includes("build-up") ||
+    lower.includes("lose the ball") ||
+    lower.includes("can't keep")
+  ) {
     params.gameModelId = "POSSESSION";
-  } else if (lower.includes("press") || lower.includes("high press") ||
-             lower.includes("win the ball") || lower.includes("recover")) {
+  } else if (
+    lower.includes("press") ||
+    lower.includes("high press") ||
+    lower.includes("win the ball") ||
+    lower.includes("recover")
+  ) {
     params.gameModelId = "PRESSING";
-  } else if (lower.includes("transition") || lower.includes("counter") ||
-             lower.includes("quick attack") || lower.includes("fast break")) {
+  } else if (
+    lower.includes("transition") ||
+    lower.includes("counter") ||
+    lower.includes("quick attack") ||
+    lower.includes("fast break")
+  ) {
     params.gameModelId = "TRANSITION";
   } else if (lower.includes("rocklin")) {
     params.gameModelId = "ROCKLIN_FC";
   }
 
-  // Phases
-  if (lower.includes("attack") || lower.includes("offensive") || 
-      lower.includes("score") || lower.includes("create chance") ||
-      lower.includes("final third") || lower.includes("breaking")) {
+  if (
+    lower.includes("attack") ||
+    lower.includes("offensive") ||
+    lower.includes("score") ||
+    lower.includes("create chance") ||
+    lower.includes("final third") ||
+    lower.includes("breaking")
+  ) {
     params.phase = "ATTACKING";
-  } else if (lower.includes("defend") || lower.includes("defensive") ||
-             lower.includes("stop") || lower.includes("prevent")) {
+  } else if (
+    lower.includes("defend") ||
+    lower.includes("defensive") ||
+    lower.includes("stop") ||
+    lower.includes("prevent")
+  ) {
     params.phase = "DEFENDING";
   } else if (lower.includes("transition")) {
     params.phase = "TRANSITION";
   }
 
-  // Zones
-  if (lower.includes("defensive third") || lower.includes("own third") ||
-      lower.includes("back line") || lower.includes("from the back")) {
+  if (
+    lower.includes("defensive third") ||
+    lower.includes("own third") ||
+    lower.includes("back line") ||
+    lower.includes("from the back")
+  ) {
     params.zone = "DEFENSIVE_THIRD";
-  } else if (lower.includes("middle third") || lower.includes("midfield") ||
-             lower.includes("central")) {
+  } else if (
+    lower.includes("middle third") ||
+    lower.includes("midfield") ||
+    lower.includes("central")
+  ) {
     params.zone = "MIDDLE_THIRD";
-  } else if (lower.includes("attacking third") || lower.includes("final third") ||
-             lower.includes("box") || lower.includes("penalty area")) {
+  } else if (
+    lower.includes("attacking third") ||
+    lower.includes("final third") ||
+    lower.includes("box") ||
+    lower.includes("penalty area")
+  ) {
     params.zone = "ATTACKING_THIRD";
   }
 
-  // Duration
   const durationMatch = lower.match(/(\d+)\s*(?:min|minute)/i);
   if (durationMatch) {
     const dur = parseInt(durationMatch[1]);
@@ -353,7 +539,6 @@ function extractBasicParams(message: string): any {
     }
   }
 
-  // Player count
   const playerMatch = lower.match(/(\d+)\s*(?:player|kid|athlete)/i);
   if (playerMatch) {
     const count = parseInt(playerMatch[1]);
@@ -363,89 +548,40 @@ function extractBasicParams(message: string): any {
     }
   }
 
-  // Formation
   const formationMatch = lower.match(/(\d-\d-\d(?:-\d)?)/);
   if (formationMatch) {
     params.formationAttacking = formationMatch[1];
-  }
-  
-  // Common formations by name
-  if (lower.includes("4-3-3") || lower.includes("433")) params.formationAttacking = "4-3-3";
-  else if (lower.includes("4-4-2") || lower.includes("442")) params.formationAttacking = "4-4-2";
-  else if (lower.includes("4-2-3-1") || lower.includes("4231")) params.formationAttacking = "4-2-3-1";
-  else if (lower.includes("3-5-2") || lower.includes("352")) params.formationAttacking = "3-5-2";
-  else if (lower.includes("3-4-3") || lower.includes("343")) params.formationAttacking = "3-4-3";
-  // 9v9 formations
-  else if (lower.includes("3-2-3") || lower.includes("323")) params.formationAttacking = "3-2-3";
-  else if (lower.includes("2-3-2-1")) params.formationAttacking = "2-3-2-1";
-  // 7v7 formations
-  else if (lower.includes("2-3-1") || lower.includes("231")) params.formationAttacking = "2-3-1";
-  else if (lower.includes("3-2-1") || lower.includes("321")) params.formationAttacking = "3-2-1";
-
-  // Goals available
-  const goalsMatch = lower.match(/(\d+)\s*(?:goal|net)/i);
-  if (goalsMatch) {
-    params.goalsAvailable = parseInt(goalsMatch[1]);
-  } else if (lower.includes("no goals") || lower.includes("no nets") || lower.includes("without goals")) {
-    params.goalsAvailable = 0;
-  } else if (lower.includes("full size goal") || lower.includes("big goal")) {
-    params.goalsAvailable = 2;
-  } else if (lower.includes("mini goal") || lower.includes("small goal") || lower.includes("pug")) {
-    params.goalsAvailable = 4;
+    params.formationDefending = formationMatch[1];
   }
 
-  // GKs
-  if (lower.includes("goalkeeper") || lower.includes("gk") || lower.includes("keeper")) {
-    params.hasGKs = true;
-  } else if (lower.includes("no goalkeeper") || lower.includes("no gk") || lower.includes("without keeper")) {
-    params.hasGKs = false;
+  if (lower.includes("series") || lower.includes("progressive") || lower.includes("week")) {
+    const seriesMatch = lower.match(/(\d)\s*(?:session|day|week)/i);
+    if (seriesMatch) {
+      const n = parseInt(seriesMatch[1]);
+      if (n >= 2 && n <= 5) params.numberOfSessions = n;
+    } else {
+      params.numberOfSessions = 3;
+    }
   }
 
-  // Coach level
-  if (lower.includes("grassroot") || lower.includes("parent coach") || lower.includes("volunteer")) {
-    params.coachLevel = "GRASSROOTS";
-  } else if (lower.includes("d license") || lower.includes("d-license")) {
-    params.coachLevel = "GRASSROOTS";
-  } else if (lower.includes("c license") || lower.includes("c-license")) {
-    params.coachLevel = "USSF_C";
-  } else if (lower.includes("b+ license") || lower.includes("b plus")) {
-    params.coachLevel = "USSF_B_PLUS";
-  } else if (lower.includes("b license") || lower.includes("b-license")) {
-    params.coachLevel = "USSF_B_PLUS";
-  } else if (lower.includes("a license") || lower.includes("a-license") || lower.includes("professional")) {
-    params.coachLevel = "USSF_B_PLUS";
-  }
-
-  // Series
-  const seriesMatch = lower.match(/(\d+)\s*session/i);
-  if (seriesMatch && parseInt(seriesMatch[1]) > 1) {
-    params.numberOfSessions = Math.min(5, parseInt(seriesMatch[1]));
-  } else if (lower.includes("series") || lower.includes("progressive") || lower.includes("multiple")) {
-    params.numberOfSessions = 3;
-  }
-
-  // Player level inference
-  if (lower.includes("beginner") || lower.includes("new to") || lower.includes("just started")) {
+  if (lower.includes("beginner") || lower.includes("novice")) {
     params.playerLevel = "BEGINNER";
-  } else if (lower.includes("advanced") || lower.includes("competitive") || lower.includes("travel team")) {
+  } else if (lower.includes("advanced") || lower.includes("elite")) {
     params.playerLevel = "ADVANCED";
-  } else if (lower.includes("intermediate") || lower.includes("rec")) {
+  } else if (lower.includes("intermediate")) {
     params.playerLevel = "INTERMEDIATE";
   }
 
-  // Extract topic - look for specific coaching concepts
-  const topicPatterns = [
-    /(?:work on|train|practice|improve|focus on|session (?:on|for|about))\s+([^,.]+)/i,
-    /(?:struggling with|problem with|issues? with|trouble with)\s+([^,.]+)/i,
-    /(?:need help with|want to work on)\s+([^,.]+)/i,
-  ];
-  
-  for (const pattern of topicPatterns) {
-    const match = message.match(pattern);
-    if (match) {
-      params.topic = match[1].trim();
-      break;
-    }
+  if (lower.includes("d license") || lower.includes("ussf d") || lower.includes("grassroots")) {
+    params.coachLevel = "USSF_D";
+  } else if (lower.includes("c license") || lower.includes("ussf c")) {
+    params.coachLevel = "USSF_C";
+  } else if (
+    lower.includes("b license") ||
+    lower.includes("ussf b") ||
+    lower.includes("a license")
+  ) {
+    params.coachLevel = "USSF_B_PLUS";
   }
 
   return params;

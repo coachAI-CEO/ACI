@@ -12,7 +12,12 @@ import {
   ChevronRight,
   Lock,
   Cpu,
+  Compass,
+  LayoutGrid,
 } from "lucide-react";
+import AdminOpsAssistant from "@/components/admin/AdminOpsAssistant";
+import { useEffect, useMemo, useState } from "react";
+import { fetchUserFeatures } from "@/lib/features";
 
 // ─── Nav structure ────────────────────────────────────────────────────────────
 
@@ -36,7 +41,7 @@ function isGroup(item: NavItem): item is NavGroup {
   return "group" in item;
 }
 
-const NAV: NavItem[] = [
+const NAV_BASE: NavItem[] = [
   {
     label: "Overview",
     href: "/admin",
@@ -56,6 +61,13 @@ const NAV: NavItem[] = [
         label: "Club Management",
         href: "/admin/clubs",
         icon: Building2,
+        layer: "L5",
+        badge: "NEW",
+      },
+      {
+        label: "Game Models",
+        href: "/admin/game-models",
+        icon: Compass,
         layer: "L5",
         badge: "NEW",
       },
@@ -99,7 +111,9 @@ const LAYER_COLORS: Record<string, string> = {
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
   const isActive = item.exact
     ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(item.href + "/");
+    : pathname === item.href ||
+      pathname.startsWith(item.href + "/") ||
+      (item.href === "/boards" && pathname.startsWith("/board/"));
 
   const Icon = item.icon;
 
@@ -107,7 +121,7 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
     <Link
       href={item.href}
       className={`
-        group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all
+        group flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all
         ${
           isActive
             ? "bg-emerald-500/15 text-emerald-300 shadow-sm"
@@ -120,26 +134,23 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
           isActive ? "text-emerald-400" : "text-slate-500 group-hover:text-slate-300"
         }`}
       />
-      <span className="truncate">{item.label}</span>
-      {item.layer && (
-        <span
-          className={`ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
-            LAYER_COLORS[item.layer] ?? "bg-slate-700 text-slate-400"
-          }`}
-        >
-          {item.layer}
-        </span>
-      )}
-      {item.badge && !item.layer && (
-        <span className="ml-auto shrink-0 rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300 border border-emerald-500/30">
-          {item.badge}
-        </span>
-      )}
-      {item.badge && item.layer && (
-        <span className="shrink-0 rounded-md bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300 border border-emerald-500/30">
-          {item.badge}
-        </span>
-      )}
+      <span className="min-w-0 flex-1 leading-snug">{item.label}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        {item.layer ? (
+          <span
+            className={`rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+              LAYER_COLORS[item.layer] ?? "bg-slate-700 text-slate-400"
+            }`}
+          >
+            {item.layer}
+          </span>
+        ) : null}
+        {item.badge ? (
+          <span className="rounded-md border border-emerald-500/30 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-300">
+            {item.badge}
+          </span>
+        ) : null}
+      </span>
     </Link>
   );
 }
@@ -147,8 +158,30 @@ function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function AdminSidebar({ pathname }: { pathname: string }) {
+  const [showBoards, setShowBoards] = useState(false);
+
+  useEffect(() => {
+    fetchUserFeatures()
+      .then((f) => setShowBoards(Boolean(f?.tacticalBoardV1)))
+      .catch(() => setShowBoards(false));
+  }, []);
+
+  const nav = useMemo(() => {
+    if (!showBoards) return NAV_BASE;
+    return [
+      ...NAV_BASE.slice(0, 1),
+      {
+        label: "Tactical Board",
+        href: "/boards",
+        icon: LayoutGrid,
+        badge: "NEW",
+      } satisfies NavLeaf,
+      ...NAV_BASE.slice(1),
+    ];
+  }, [showBoards]);
+
   return (
-    <aside className="sticky top-0 z-20 flex h-screen w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
+    <aside className="sticky top-0 z-20 flex h-screen w-64 shrink-0 flex-col border-r border-slate-800 bg-slate-950">
       {/* Logo / brand */}
       <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-800 px-4">
         <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 border border-emerald-500/30">
@@ -162,7 +195,7 @@ function AdminSidebar({ pathname }: { pathname: string }) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {NAV.map((item, i) => {
+        {nav.map((item, i) => {
           if (isGroup(item)) {
             return (
               <div key={i} className="pt-3 first:pt-0">
@@ -233,9 +266,11 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/admin/users":     ["Admin", "Users"],
   "/admin/access":    ["Admin", "Access Control", "Permissions"],
   "/admin/clubs":     ["Admin", "Access Control", "Club Management"],
+  "/admin/game-models": ["Admin", "Access Control", "Game Models"],
   "/admin/analytics": ["Admin", "Analytics"],
   "/admin/content":   ["Admin", "Content & QA"],
   "/admin/system":    ["Admin", "System"],
+  "/boards":          ["Admin", "Tactical Board"],
 };
 
 function TopBar({ pathname }: { pathname: string }) {
@@ -293,6 +328,8 @@ export default function AdminLayout({
         <TopBar pathname={pathname} />
         <main className="min-h-[calc(100vh-3.5rem)] p-6">{children}</main>
       </div>
+
+      <AdminOpsAssistant />
     </div>
   );
 }
