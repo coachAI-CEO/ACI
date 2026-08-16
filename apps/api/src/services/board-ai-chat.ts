@@ -1119,9 +1119,22 @@ function wantsBounceIntoEight(message?: string): boolean {
   );
 }
 
-function bouncePasserNumber(current: WebDiagramV1 | undefined, bounceN: number): number {
+function bouncePasserNumber(
+  current: WebDiagramV1 | undefined,
+  bounceN: number,
+  message?: string
+): number {
   const att = (current?.players || []).filter((p) => p.team === 'ATT');
-  return [2, 3, 4, 5].find((n) => n !== bounceN && att.some((p) => p.number === n)) || bounceN;
+  const has = (n: number) => n !== bounceN && att.some((p) => p.number === n);
+  if (/\b(?:our |the )?right\b/i.test(message || '')) {
+    const n = [2, 7].find(has);
+    if (n) return n;
+  }
+  if (/\b(?:our |the )?left\b/i.test(message || '')) {
+    const n = [3, 11].find(has);
+    if (n) return n;
+  }
+  return [2, 3, 4, 5].find(has) || bounceN;
 }
 
 function retargetDslActionsFromMessage(
@@ -1133,7 +1146,7 @@ function retargetDslActionsFromMessage(
   let actions = [...(dsl.actions || [])];
   const bounceN = bounceTargetNumber(current, 8);
   if (wantsBounceIntoEight(message)) {
-    const passerN = bouncePasserNumber(current, bounceN);
+    const passerN = bouncePasserNumber(current, bounceN, message);
     actions = actions.map((a) => {
       if (a.type !== 'pass') return a;
       const toAtt = /^att-(\d+)$/i.exec(a.to_id);
@@ -1142,7 +1155,12 @@ function retargetDslActionsFromMessage(
       const fromAtt = /^att-(\d+)$/i.exec(a.from_id);
       const fromShirt = fromAtt ? Number(fromAtt[1]) : null;
       const already = toN === bounceN && fromShirt !== bounceN;
-      if (already) return a;
+      if (already) {
+        if (fromShirt !== passerN && (fromShirt === 4 || fromShirt === 5)) {
+          return { ...a, from_id: `att-${passerN}` };
+        }
+        return a;
+      }
       const retarget =
         toN === 1 ||
         (bounceN === 8 && toN === 6) ||
@@ -1284,7 +1302,7 @@ export function retargetNamedRunArrows(diagram: WebDiagramV1, message: string): 
 export function retargetBouncePassArrows(diagram: WebDiagramV1, message: string): WebDiagramV1 {
   if (!wantsBounceIntoEight(message)) return diagram;
   const bounceN = bounceTargetNumber(diagram, 8);
-  const fromN = bouncePasserNumber(diagram, bounceN);
+  const fromN = bouncePasserNumber(diagram, bounceN, message);
   const idFor = (n: number) =>
     (diagram.players || []).find((p) => p.team === 'ATT' && p.number === n)?.id;
   const toId = idFor(bounceN);
@@ -1300,7 +1318,12 @@ export function retargetBouncePassArrows(diagram: WebDiagramV1, message: string)
       const fromShirt = fromPlayer?.number;
       if (toN == null) return a;
       const already = toN === bounceN && fromShirt !== bounceN;
-      if (already) return a;
+      if (already) {
+        if (fromShirt !== fromN && (fromShirt === 4 || fromShirt === 5) && fromId) {
+          return { ...a, from: { playerId: fromId } };
+        }
+        return a;
+      }
       const retarget =
         toN === 1 ||
         (bounceN === 8 && toN === 6) ||
@@ -1548,6 +1571,16 @@ function expectedMatchShirts(diagram: WebDiagramV1): number {
 
 function isFrozenStartFrame(frame?: SeqFrame | null): boolean {
   return /\bfrozen board\b/i.test(String(frame?.note || ''));
+}
+
+function isStartLikeFrame(frame?: { id?: string; title?: string; note?: string } | null): boolean {
+  if (!frame) return false;
+  if (/\bfrozen board\b/i.test(String(frame.note || '')) || frame.id === 'f-start') return true;
+  const t = String(frame.title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\d+\.\s*/, '');
+  return t === 'start' || t === 'start (board)' || t.startsWith('start (');
 }
 
 const FROZEN_START_NOTE =
@@ -2899,7 +2932,9 @@ export function scrubImportOrganisation(text: string): string {
         .replace(/\+\s*(?:a )?GK\b/gi, '')
         .replace(/\(\s*\d+ numbered players plus(?: a)? goalkeeper\s*\)/gi, '')
         .replace(/\b(?:a |the )?(?:GK|goalkeepers?) waiting outside\b/gi, '')
-        .replace(/\bdefenders waiting outside\b/gi, '');
+        .replace(/\bdefenders waiting outside\b/gi, '')
+        .replace(/\bwith(?: a)? GK\b/gi, '')
+        .replace(/\band GK\b/gi, '');
     }
   }
   return t;
@@ -3191,7 +3226,7 @@ export function buildAskReadings(
         freezePlayers: freezeAsked,
         reshape: false,
         sequence: true,
-        playCount: playCount || 4,
+        playCount: playCount || 2,
         channel,
         startFromFrame: startFrom,
         intent: `Start from existing Frame ${startFrom}. Keep earlier frames. Add detailed teaching beats after it. Do not prepend another Start (board) frame.${freezeAsked ? ' Do not move shirts.' : ''}`,
@@ -3203,7 +3238,7 @@ export function buildAskReadings(
         freezePlayers: freezeAsked,
         reshape: false,
         sequence: true,
-        playCount: playCount || 4,
+        playCount: playCount || 2,
         channel,
         startFromFrame: startFrom,
         intent: `Treat Frame ${startFrom} as the new Start. Rebuild a detailed teaching sequence from that snapshot. Do not add a duplicate Start frame.${freezeAsked ? ' Do not move shirts.' : ''}`,
@@ -3320,7 +3355,7 @@ export function buildAskReadings(
       freezePlayers: !sequenceAsked,
       reshape: false,
       sequence: sequenceAsked,
-      playCount: sequenceAsked ? 4 : null,
+      playCount: sequenceAsked ? 2 : null,
       channel,
       startFromFrame: null,
       intent: `Draw the coach’s ask on the current board on ${side}. Keep roster ids.${sequenceAsked ? ' Frame 1 = current board; later frames add the play.' : ' Prefer arrows and captions over moving the whole shape.'} Do not invent a different start.`,
@@ -3332,10 +3367,10 @@ export function buildAskReadings(
       freezePlayers: false,
       reshape: false,
       sequence: true,
-      playCount: 4,
+      playCount: 2,
       channel,
       startFromFrame: null,
-      intent: `Teach the ask as a sequence. Frame 1 = current board unchanged. Frames 2–4 show the play develop on ${side}. Players may move with the ball. No extra Start frame.`,
+      intent: `Teach the ask as a sequence. Frame 1 = current board unchanged. Frame 2 shows the play on ${side}. Players may move with the ball. No extra Start frame.`,
     }),
     reading({
       n: 3,
@@ -3344,7 +3379,7 @@ export function buildAskReadings(
       freezePlayers: false,
       reshape: true,
       sequence: sequenceAsked || playOut,
-      playCount: sequenceAsked ? 4 : null,
+      playCount: sequenceAsked ? 2 : null,
       channel,
       startFromFrame: null,
       intent: `Reshape to a clean legal setup for this phase, then draw the coach’s ask on ${side}.`,
@@ -3420,10 +3455,12 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
       t = t
         .replace(/\binto (?:the |our |ATT |att )?(?:CM )?\#?8\b/gi, `into #${cm}`)
         .replace(/\b(?:ATT|att) \#8\b/g, `#${cm}`)
+        .replace(/\b(?:attacking )?midfielder \#8\b/gi, `#${cm}`)
         .replace(/\bCM \#8\b/gi, `#${cm}`)
         .replace(/\b\#8 receives\b/gi, `#${cm} receives`)
         .replace(/\bbounce off the 8\b/gi, `bounce off the ${cm}`)
-        .replace(/\bbounce into the 8\b/gi, `bounce into #${cm}`);
+        .replace(/\bbounce into the 8\b/gi, `bounce into #${cm}`)
+        .replace(/\binto \#8\b/gi, `into #${cm}`);
     }
   }
   if (diagram && /\bmid[- ]?block\b/i.test(t)) {
@@ -3431,7 +3468,12 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
   }
   t = t
     .replace(/\b(\d+)\s+pinks?\s*\/\s*(\d+)\s+blue\b/gi, '$1 blue / $2 red')
-    .replace(/\b(\d+)\s+blue\s*\/\s*(\d+)\s+pinks?\b/gi, '$1 red / $2 blue');
+    .replace(/\b(\d+)\s+blue\s*\/\s*(\d+)\s+pinks?\b/gi, '$1 red / $2 blue')
+    .replace(/\bthird_left\b/gi, 'their defensive third')
+    .replace(/\bthird_middle\b/gi, 'the middle third')
+    .replace(/\bthird_right\b/gi, 'our defensive third')
+    .replace(/\bhalf_att\b/gi, 'our half')
+    .replace(/\bssg_grid\b/gi, 'the grid');
   if (diagram && (diagram.players || []).length >= 14) {
     const setup = readBoardSetup(diagram);
     if (setup.attFormation && setup.defFormation && setup.attFormation !== setup.defFormation) {
@@ -3468,6 +3510,7 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
       )
       .replace(/\b(?:a )?sequence of \d+ (?:teaching )?frames?\b/gi, `${nFrames}-frame strip`)
       .replace(/\b\d+-slide\b/gi, `${nFrames}-frame`)
+      .replace(/\b(?:four|4)[- ]frames?\b/gi, nFrames === 1 ? '1-frame' : `${nFrames}-frame`)
       .replace(/\b(?:four|4) slides?\b/gi, nFrames === 1 ? '1 frame' : `${nFrames} frames`);
   }
   const shirts = diagram?.players || [];
@@ -3486,7 +3529,7 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
     const line = `On the grass: ${att} blue (${fmt('ATT')}) · ${def} red (${fmt('DEF')})${neuBit}.`;
     if (!/On the grass:/i.test(t)) t = `${t}\n\n${line}`;
     t = t.replace(
-      /\b\d+\s*ATT\s*\+\s*\d+\s*DEF\b/gi,
+      /\b\d+\s*ATT\s*\+\s*\d+\s*DEF(?:\s*\+\s*\d+\s*neutrals?)?\b/gi,
       neu ? `${att} ATT + ${def} DEF + ${neu} neutrals` : `${att} ATT + ${def} DEF`
     );
   }
@@ -3672,14 +3715,19 @@ export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
   const frames = diagram.sequence?.frames;
   const active =
     frames?.find((f) => f.id === diagram.sequence?.activeFrameId) || frames?.[frames.length - 1];
-  const live: WebDiagramV1 = active
+  const preferred =
+    active && !isStartLikeFrame(active) ? active : frames?.[frames.length - 1] || active;
+  const live: WebDiagramV1 = preferred
     ? {
         ...diagram,
-        players: active.players?.length ? active.players : diagram.players,
-        areas: active.areas?.length ? active.areas : diagram.areas,
-        labels: active.labels?.length ? active.labels : diagram.labels,
-        balls: active.balls?.length ? active.balls : diagram.balls,
-        arrows: active.arrows?.length ? active.arrows : diagram.arrows,
+        players: preferred.players?.length ? preferred.players : diagram.players,
+        areas: preferred.areas?.length ? preferred.areas : diagram.areas,
+        labels: preferred.labels?.length ? preferred.labels : diagram.labels,
+        balls: preferred.balls?.length ? preferred.balls : diagram.balls,
+        arrows: preferred.arrows?.length ? preferred.arrows : diagram.arrows,
+        sequence: diagram.sequence
+          ? { ...diagram.sequence, activeFrameId: preferred.id }
+          : diagram.sequence,
       }
     : diagram;
 

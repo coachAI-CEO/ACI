@@ -97,6 +97,9 @@ function liveDiagram(diagram: WebDiagramV1): WebDiagramV1 {
     balls: preferred.balls?.length ? preferred.balls : diagram.balls,
     arrows: preferred.arrows?.length ? preferred.arrows : diagram.arrows,
     elements: preferred.elements?.length ? preferred.elements : diagram.elements,
+    sequence: diagram.sequence
+      ? { ...diagram.sequence, activeFrameId: preferred.id }
+      : diagram.sequence,
   };
 }
 
@@ -134,6 +137,10 @@ function normalizePhase(
     /\b(train this|how should we train|how can we train)\b/i.test(t) &&
     isFunctionBoard(diagram)
   ) {
+    const rondo =
+      /rondo/i.test(areaIntent(diagram)) ||
+      (/\brondo\b/i.test(blob) && (diagram.players || []).length <= 10);
+    if (rondo) return 'ATTACKING';
     if (/\b(compact(?:ness)?|wide deliver|defending that (?:big )?goal)\b/.test(blob)) {
       return 'DEFENDING';
     }

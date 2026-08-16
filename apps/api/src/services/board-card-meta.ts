@@ -30,16 +30,28 @@ function asDiagram(raw: unknown): LooseDiagram {
   return raw as LooseDiagram;
 }
 
+function isStartLikeFrame(frame?: { id?: string; title?: string } | null): boolean {
+  if (!frame) return false;
+  if (frame.id === 'f-start') return true;
+  const t = String(frame.title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\d+\.\s*/, '');
+  return t === 'start' || t === 'start (board)' || t.startsWith('start (');
+}
+
 function activeLayers(diagram: LooseDiagram): LooseDiagram {
   const frames = diagram.sequence?.frames;
   if (!Array.isArray(frames) || !frames.length) return diagram;
   const active =
-    frames.find((f) => f.id && f.id === diagram.sequence?.activeFrameId) || frames[0];
+    frames.find((f) => f.id && f.id === diagram.sequence?.activeFrameId) || frames[frames.length - 1];
+  const preferred =
+    active && !isStartLikeFrame(active) ? active : frames[frames.length - 1] || active;
   return {
-    players: active.players?.length ? active.players : diagram.players,
-    labels: active.labels?.length ? active.labels : diagram.labels,
-    areas: active.areas?.length ? active.areas : diagram.areas,
-    balls: active.balls?.length ? active.balls : diagram.balls,
+    players: preferred.players?.length ? preferred.players : diagram.players,
+    labels: preferred.labels?.length ? preferred.labels : diagram.labels,
+    areas: preferred.areas?.length ? preferred.areas : diagram.areas,
+    balls: preferred.balls?.length ? preferred.balls : diagram.balls,
   };
 }
 

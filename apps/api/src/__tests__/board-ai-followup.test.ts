@@ -2414,5 +2414,146 @@ describe('round-9 mixed talk defects', () => {
     expect(params.phase).toBe('ATTACKING');
     expect(params.topic.toLowerCase()).toMatch(/rondo/);
   });
+
+  test('bounce copy names the live CM, not attacking midfielder #8', () => {
+    const seven = defaultMatchBoardDiagram('7V7');
+    const out = scrubCoachReply(
+      'WHAT I SAW\nBounce into attacking midfielder #8.\nON THE BOARD\nPass 2 → 6.',
+      seven
+    );
+    expect(out).not.toMatch(/attacking midfielder #8/i);
+    expect(out).toMatch(/#6/);
+  });
+
+  test('slide copy matches the live 2-frame strip, not four-frame', () => {
+    const two: WebDiagramV1 = {
+      ...eleven,
+      sequence: {
+        frames: [
+          { id: 'f1', title: '1. Start', durationMs: 1600, players: eleven.players, arrows: [], areas: [], labels: [] },
+          { id: 'f2', title: '2. Play', durationMs: 1600, players: eleven.players, arrows: [], areas: [], labels: [] },
+        ],
+        activeFrameId: 'f1',
+      },
+    };
+    const out = scrubCoachReply('WHAT I SAW\nA four-frame freeze then pass.', two);
+    expect(out).not.toMatch(/four-frame/i);
+    expect(out).toMatch(/2-frame/);
+  });
+
+  test('train this on a rondo stays attacking even if chat said compact', () => {
+    const params = buildBoardSessionParams({
+      message: 'Train this',
+      history: [
+        { role: 'user', content: '4v4+2 rondo.' },
+        { role: 'assistant', content: 'Compact 50×50 defending block.' },
+        { role: 'user', content: 'Train this' },
+      ],
+      diagram: rondoDiagram(),
+      ageGroup: 'U10',
+    });
+    expect(params.phase).toBe('ATTACKING');
+  });
+
+  test('chat copy never leaks third_left', () => {
+    const out = scrubCoachReply('WHAT I SAW\nHigh press in third_left.', eleven);
+    expect(out).not.toMatch(/third_left/i);
+    expect(out).toMatch(/their defensive third/i);
+  });
+
+  test('5v5 import copy drops invented with GK', () => {
+    expect(scrubImportOrganisation('5v5 in a 20×20 with GK.')).not.toMatch(/\bGK\b/i);
+  });
+
+  test('play out from our right bounce uses 2 not 4', () => {
+    const eleven442: WebDiagramV1 = {
+      ...eleven,
+      players: [
+        ...build11v11FormationPlayers('4-3-3', 'ATT'),
+        ...build11v11FormationPlayers('4-4-2', 'DEF'),
+      ],
+    };
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'current',
+        grid: { intent: 'full_pitch', format: '11V11', attFormation: '4-3-3', defFormation: '4-4-2' },
+        entities: [],
+        equipment: [],
+        actions: [{ type: 'pass', from_id: 'att-4', to_id: 'att-8' }],
+        moves: [],
+      },
+      {
+        freeze: false,
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: true,
+        keepPriorFrame: true,
+        reshape: false,
+        currentFormat: '11V11',
+        current: eleven442,
+        message: 'Play out from our right against a 4-4-2 that jumps the 6.',
+      }
+    );
+    const pass = locked.actions.find((a) => a.type === 'pass');
+    expect(pass?.from_id).toBe('att-2');
+    expect(pass?.to_id).toBe('att-8');
+
+    const four = eleven442.players.find((p) => p.team === 'ATT' && p.number === 4)!;
+    const eight = eleven442.players.find((p) => p.team === 'ATT' && p.number === 8)!;
+    const two = eleven442.players.find((p) => p.team === 'ATT' && p.number === 2)!;
+    const after = applyCoachShirtEdits(
+      {
+        ...eleven442,
+        arrows: [
+          {
+            from: { playerId: four.id },
+            to: { playerId: eight.id },
+            type: 'pass',
+            style: 'solid',
+            weight: 'normal',
+          },
+        ],
+      },
+      'Play out from our right against a 4-4-2 that jumps the 6.'
+    );
+    expect(after.arrows[0].from.playerId).toBe(two.id);
+    expect(after.arrows[0].to.playerId).toBe(eight.id);
+  });
+
+  test('readings skip the leftover Start frame so leftover 4-2-3-1 is not live', () => {
+    const startPlayers = [
+      ...build11v11FormationPlayers('4-3-3', 'ATT'),
+      ...build11v11FormationPlayers('4-2-3-1', 'DEF'),
+    ];
+    const playPlayers = [
+      ...build11v11FormationPlayers('4-3-3', 'ATT'),
+      ...build11v11FormationPlayers('4-4-2', 'DEF'),
+    ];
+    const diagram: WebDiagramV1 = {
+      pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format: '11V11', showZones: false },
+      players: startPlayers,
+      arrows: [],
+      areas: [],
+      labels: [],
+      sequence: {
+        activeFrameId: 'f-start',
+        frames: [
+          { id: 'f-start', title: 'Start (board)', durationMs: 1600, players: startPlayers, arrows: [], areas: [], labels: [] },
+          { id: 'f-play', title: 'Play', durationMs: 1600, players: playPlayers, arrows: [], areas: [], labels: [] },
+        ],
+      },
+    };
+    const setup = readBoardSetup(diagram);
+    expect(setup.defFormation).toBe('4-4-2');
+    const copy = scrubCoachReply('WHAT I SAW\nThey sit in a 4-2-3-1.', diagram);
+    expect(copy).not.toMatch(/4-2-3-1/);
+    expect(copy).toMatch(/4-4-2/);
+  });
+
+  test('census copy does not stutter neutrals', () => {
+    const out = scrubCoachReply('WHAT I SAW\n4 ATT + 2 DEF + 2 neutrals.', rondoDiagram());
+    expect(out.match(/neutrals/gi)?.length).toBe(1);
+  });
 });
 
