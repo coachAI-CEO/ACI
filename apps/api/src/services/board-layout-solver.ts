@@ -243,6 +243,23 @@ function layoutRondoPlayers(
   });
 }
 
+/** Pinks / floaters sit on the short ends of the box (top/bottom on screen = extreme x). */
+function pinRondoNeutralsToShortEnds(
+  players: WebDiagramV1['players'],
+  box: Box
+): WebDiagramV1['players'] {
+  const neus = players.filter((p) => p.team === 'NEUTRAL');
+  if (neus.length < 2) return players;
+  const cy = box.y + box.height / 2;
+  return players.map((p) => {
+    if (p.team !== 'NEUTRAL') return p;
+    const i = neus.findIndex((x) => x.id === p.id);
+    if (i === 0) return { ...p, x: clamp(box.x + Math.min(8, box.width * 0.18)), y: cy };
+    if (i === 1) return { ...p, x: clamp(box.x + box.width - Math.min(8, box.width * 0.18)), y: cy };
+    return p;
+  });
+}
+
 /** 4v4+2 (and 3v3+2) extras are floaters, not extra blues. */
 function markRondoNeutrals(
   players: WebDiagramV1['players']
@@ -413,10 +430,19 @@ function placeEquipment(
 ): BoardElement[] {
   const out: BoardElement[] = [];
   let n = 0;
+  let centralMini = 0;
+  const centralUv = [
+    { u: 0.44, v: 0.44 },
+    { u: 0.56, v: 0.44 },
+    { u: 0.44, v: 0.56 },
+    { u: 0.56, v: 0.56 },
+  ];
   for (const item of equipment) {
     for (let q = 0; q < item.quantity; q++) {
       n += 1;
-      const pt = placeFromToken(box, item.placement, q, item.quantity, 'NEUTRAL');
+      const central = item.kind === 'mini-goal' && item.placement === 'grid_c';
+      const uv = central ? centralUv[centralMini++ % centralUv.length] : null;
+      const pt = uv ? pointInBox(box, uv.u, uv.v) : placeFromToken(box, item.placement, q, item.quantity, 'NEUTRAL');
       out.push({
         id: `el-${item.kind}-${n}`,
         kind: item.kind,
@@ -664,7 +690,9 @@ export function solveBoardLayout(
   }
 
   if (dsl.activity === 'rondo' || dsl.grid.intent === 'rondo') {
-    players = demoteRondoKeepers(markRondoNeutrals(layoutRondoPlayers(players, box)));
+    players = demoteRondoKeepers(
+      pinRondoNeutralsToShortEnds(markRondoNeutrals(layoutRondoPlayers(players, box)), box)
+    );
   } else if (
     (dsl.grid.intent === 'ssg_grid' || dsl.activity === 'technical_exercise') &&
     players.length <= 16 &&
@@ -685,11 +713,13 @@ export function solveBoardLayout(
     weight: 'normal' as const,
   }));
 
+  // Freeze / seed=current must keep live kit. Re-placing from history
+  // ("four mini-goals" + "central 10×10") clustered 32-P6 side Us.
   const elements =
-    (dsl.equipment || []).length > 0
-      ? placeEquipment(dsl.equipment || [], box)
-      : seed === 'current'
-        ? current?.elements || []
+    seed === 'current'
+      ? current?.elements || []
+      : (dsl.equipment || []).length > 0
+        ? placeEquipment(dsl.equipment || [], box)
         : [];
   const format = resolvePitchFormat(dsl, current);
   const keepLiveArea =
@@ -710,7 +740,7 @@ export function solveBoardLayout(
     arrows,
     areas: keepLiveArea
       ? current!.areas
-      : dsl.grid.intent === 'full_pitch'
+      : dsl.grid.intent === 'full_pitch' || dsl.activity === 'match_scenario'
         ? []
         : [
             {

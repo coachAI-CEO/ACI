@@ -498,10 +498,27 @@ function fourSideMiniGoals(): BoardSymbolicDsl['equipment'] {
   ];
 }
 
+function fourCentralMiniGoals(): BoardSymbolicDsl['equipment'] {
+  return [
+    { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+    { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+    { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+    { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+  ];
+}
+
+function isMatchScaleBoard(dsl: BoardSymbolicDsl): boolean {
+  const intent = dsl.grid.intent;
+  return (
+    dsl.activity === 'match_scenario' &&
+    intent !== 'rondo' &&
+    intent !== 'ssg_grid'
+  );
+}
+
 /** Match-scale boards must not keep SSG mini-goals from the import review. */
 function stripMatchScaleMiniGoals(dsl: BoardSymbolicDsl): BoardSymbolicDsl {
-  if (dsl.seed !== 'formation' || dsl.grid.intent !== 'full_pitch') return dsl;
-  if (dsl.activity !== 'match_scenario') return dsl;
+  if (!isMatchScaleBoard(dsl)) return dsl;
   if (!miniGoalCount(dsl.equipment)) return dsl;
   return {
     ...dsl,
@@ -511,7 +528,7 @@ function stripMatchScaleMiniGoals(dsl: BoardSymbolicDsl): BoardSymbolicDsl {
 
 function wantsTwoMiniGoals(blob?: string): boolean {
   if (!blob) return false;
-  if (/\b(four|4)\s+mini[- ]?goals?\b/i.test(blob)) return false;
+  if (/\b(four|4)\s+(?:central\s+|centre\s+)?mini[- ]?goals?\b/i.test(blob)) return false;
   return (
     /\b(two|2)\s+mini[- ]?goals?\b/i.test(blob) ||
     /\b(50\s*[x×]\s*50|compact(?:ness)?)\b/i.test(blob)
@@ -521,9 +538,25 @@ function wantsTwoMiniGoals(blob?: string): boolean {
 function wantsFourMiniGoals(blob?: string): boolean {
   if (!blob) return false;
   return (
-    /\b(four|4)\s+mini[- ]?goals?\b/i.test(blob) ||
+    /\b(four|4)\s+(?:central\s+|centre\s+)?mini[- ]?goals?\b/i.test(blob) ||
     /\bone on each (?:side|end)\b/i.test(blob)
   );
+}
+
+function wantsCentralMiniGoals(blob?: string): boolean {
+  if (!blob || !wantsFourMiniGoals(blob)) return false;
+  // "central 10×10 zone" is the inner pressure grid, not clustered mini-goals.
+  if (/\b(?:4|four)\s+(?:central|centre|back[- ]to[- ]back)\s+mini[- ]?goals?\b/i.test(blob)) {
+    return true;
+  }
+  if (
+    /\bmini[- ]?goals?\s+(?:that are\s+)?(?:central|back[- ]to[- ]back|in the (?:dead )?cent(?:er|re))\b/i.test(
+      blob
+    )
+  ) {
+    return true;
+  }
+  return /\bback[- ]to[- ]back\b/i.test(blob);
 }
 
 function stackedMiniGoals(equipment: BoardSymbolicDsl['equipment']): boolean {
@@ -536,12 +569,13 @@ export function ensureDslEquipmentFromMessage(
   dsl: BoardSymbolicDsl,
   message?: string
 ): BoardSymbolicDsl {
-  if (dsl.seed === 'formation' && dsl.grid.intent === 'full_pitch' && dsl.activity === 'match_scenario') {
+  if (isMatchScaleBoard(dsl)) {
     return stripMatchScaleMiniGoals(dsl);
   }
   const rest = (dsl.equipment || []).filter((e) => e.kind !== 'mini-goal');
   if (wantsFourMiniGoals(message) && (miniGoalCount(dsl.equipment) !== 4 || stackedMiniGoals(dsl.equipment))) {
-    return { ...dsl, equipment: [...rest, ...fourSideMiniGoals()] };
+    const kit = wantsCentralMiniGoals(message) ? fourCentralMiniGoals() : fourSideMiniGoals();
+    return { ...dsl, equipment: [...rest, ...kit] };
   }
   if (wantsTwoMiniGoals(message) && miniGoalCount(dsl.equipment) !== 2) {
     return { ...dsl, equipment: [...rest, ...twoEndMiniGoals()] };
@@ -618,7 +652,7 @@ function padTeam(
   const used = new Set(
     next.filter((e) => e.team === team && e.number != null).map((e) => Number(e.number))
   );
-  const prefer = team === 'DEF' ? [7, 9, 11, 10, 4, 8, 6] : [2, 3, 4, 5, 6, 8, 7, 11];
+  const prefer = team === 'DEF' ? [7, 9, 11, 10, 4, 8, 6] : [2, 3, 4, 5, 6, 8, 10, 7, 11];
   const takeNumber = () => {
     for (const n of prefer) if (!used.has(n)) return n;
     for (let n = 2; n <= 11; n++) if (!used.has(n)) return n;
@@ -635,6 +669,28 @@ function padTeam(
     });
   }
   return next;
+}
+
+function uniquifyTeamNumbers(
+  entities: BoardSymbolicDsl['entities']
+): BoardSymbolicDsl['entities'] {
+  const used: Record<'ATT' | 'DEF' | 'NEUTRAL', Set<number>> = {
+    ATT: new Set(),
+    DEF: new Set(),
+    NEUTRAL: new Set(),
+  };
+  return entities.map((e) => {
+    if (isGkEntity(e) || e.number == null) return e;
+    const pool = used[e.team];
+    if (!pool.has(e.number)) {
+      pool.add(e.number);
+      return e;
+    }
+    let n = 2;
+    while (pool.has(n) || n === 1) n += 1;
+    pool.add(n);
+    return { ...e, number: n };
+  });
 }
 
 /** 4v4+2 / 5v2 in the ask should actually produce that many shirts. */
@@ -663,6 +719,8 @@ export function ensureRondoRosterFromMessage(
   entities = padTeam(entities, 'ATT', attN, 'perimeter');
   entities = padTeam(entities, 'DEF', defN, 'inside');
   if (neuN) entities = padTeam(entities, 'NEUTRAL', neuN, 'perimeter');
+  entities = uniquifyTeamNumbers(entities);
+  if (attN >= 7) entities = ensureNumbersOnTeam(entities, 'ATT', [2, 3, 4, 5, 6, 8, 10]);
   return { ...dsl, activity: 'rondo', entities, grid: { ...dsl.grid, intent: 'rondo' } };
 }
 
@@ -757,6 +815,7 @@ export function ensureImportOverloadRoster(
   let entities = dsl.entities || [];
   entities = padTeam(entities, 'ATT', attN, 'inside');
   entities = padTeam(entities, 'DEF', defN, waiting ? 'perimeter' : 'inside');
+  entities = uniquifyTeamNumbers(entities);
   if (attN >= 7 && defN >= 6) {
     entities = ensureNumbersOnTeam(entities, 'DEF', [7, 9, 11]);
     entities = ensureNumbersOnTeam(entities, 'ATT', [2, 3, 4, 5, 6, 8]);
@@ -800,16 +859,17 @@ export function inferGridIntentFromMessage(
   if (/\b(our half|own half)\b/.test(m) && !/\b(their half|their third)\b/.test(m)) {
     return 'half_att';
   }
-  if (
-    /\b(high press|how we could press|ways to press|press(?:ing)? in|press them|after we lose it)\b/.test(
-      m
-    )
-  ) {
-    return 'third_left';
-  }
   if (/\bmid[- ]?block\b/.test(m)) {
     if (/\b(our half|own half|defensive half)\b/.test(m)) return 'half_att';
     return 'third_middle';
+  }
+  if (
+    /\b(high press|how we could press|ways to press|press(?:ing)? in|press them|after we lose it)\b/.test(
+      m
+    ) &&
+    !/\bnot a high press\b/.test(m)
+  ) {
+    return 'third_left';
   }
   if (/\b(their (?:defensive |final )?third|attacking third|final third|counterpress)\b/.test(m)) {
     return 'third_left';

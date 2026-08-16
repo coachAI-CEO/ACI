@@ -1038,7 +1038,7 @@ export function lockDslForTurn(
   if (opts.hasImage || opts.rosterHint) {
     next = ensureImportOverloadRoster(next, [opts.message, opts.rosterHint].filter(Boolean).join('\n'));
   }
-  next = retargetDslActionsFromMessage(next, opts.message);
+  next = retargetDslActionsFromMessage(next, opts.message, opts.current);
   next = ensureComboActionsFromMessage(next, opts.message, opts.current);
   next = lockDslFormat(next, {
     message: opts.message,
@@ -1112,13 +1112,15 @@ export function ensureComboActionsFromMessage(
 
 function retargetDslActionsFromMessage(
   dsl: BoardSymbolicDsl,
-  message?: string
+  message?: string,
+  current?: WebDiagramV1
 ): BoardSymbolicDsl {
   if (!message) return dsl;
   let actions = [...(dsl.actions || [])];
-  if (/\bjump(?:s|ing)?(?: the)? 6\b/i.test(message)) {
+  const bounceN = bounceTargetNumber(current, 8);
+  if (/\bjump(?:s|ing)?(?: the)? 6\b/i.test(message) || /\bbounce.{0,40}\b8\b/i.test(message)) {
     actions = actions.map((a) =>
-      a.type === 'pass' && /att-6$/i.test(a.to_id) ? { ...a, to_id: 'att-8' } : a
+      a.type === 'pass' && /att-(?:6|8)$/i.test(a.to_id) ? { ...a, to_id: `att-${bounceN}` } : a
     );
   }
   const runShirt = namedRunShirt(message);
@@ -1130,6 +1132,15 @@ function retargetDslActionsFromMessage(
       : [...actions, { type: 'run' as const, from_id: id, to_id: 'def-1' }];
   }
   return { ...dsl, actions };
+}
+
+function bounceTargetNumber(current: WebDiagramV1 | undefined, prefer: number): number {
+  const att = (current?.players || []).filter(
+    (p) => p.team === 'ATT' && p.number !== 1 && String(p.role || '').toUpperCase() !== 'GK'
+  );
+  if (att.some((p) => p.number === prefer)) return prefer;
+  const cm = [8, 6, 10, 4].find((n) => att.some((p) => p.number === n));
+  return cm || prefer;
 }
 
 function namedRunShirt(message: string): number | null {
@@ -1553,9 +1564,35 @@ export function ensureSequenceStartsFromOriginal(
     wantsSequenceFromMessage(message) ||
     isPlayOutRequest(message) ||
     wantsKeepPriorFrame(message) ||
+    /\bfreeze that\b/i.test(message) ||
     (wantsCurrentBoardSeed(message) && Boolean(inferGridIntentFromMessage(message))) ||
     aiFrames.length >= 2 ||
     keepExistingFilmstrip;
+
+  const leavingFunction =
+    looksLikeFunctionPractice(original) &&
+    !looksLikeFunctionPractice(result) &&
+    (result.players || []).length >= need - 2;
+  if (leavingFunction) {
+    const playLayers = snapshotBoardLayers(result);
+    const startFrame: SeqFrame = {
+      id: 'f-start',
+      title: '1. Start (board)',
+      durationMs: 1600,
+      ...playLayers,
+      arrows: [],
+    };
+    const play: SeqFrame = {
+      id: 'f-2',
+      title: '2. Play',
+      durationMs: 1600,
+      ...playLayers,
+    };
+    return {
+      ...result,
+      sequence: { frames: [startFrame, play], activeFrameId: 'f-2' },
+    };
+  }
 
   if (!wantsSeq) {
     const origFrames = original.sequence?.frames || [];
@@ -1740,14 +1777,17 @@ function isGkPlayerLoose(p: { number?: number; role?: string }) {
   return p.number === 1 || String(p.role || '').toUpperCase() === 'GK';
 }
 
-/** Function / SSG / rondo — not a full 11v11 match picture. */
+/** Function / SSG / rondo — not a full match picture for this format. */
 export function looksLikeFunctionPractice(diagram: WebDiagramV1): boolean {
   const players = diagram.players || [];
   const n = players.length;
+  const need = expectedMatchShirts(diagram);
+  // 7v7 match is 14 shirts — must not count as a rondo just because n ≤ 16.
+  if (n >= need - 2) return false;
   if ((diagram.elements || []).some((e) => e.kind === 'mini-goal')) return true;
   if (n > 0 && n <= 16) return true;
   const gks = players.filter(isGkPlayerLoose);
-  return gks.length <= 1 && n > 0 && n <= 18;
+  return gks.length <= 1 && n > 0 && n < need;
 }
 
 function largestArea(diagram: WebDiagramV1) {
@@ -2766,10 +2806,19 @@ export function scrubImportOrganisation(text: string): string {
       .replace(/\bOrganisation:?\s*6\s*v\s*6\s*\+\s*(?:2\s*)?GK(?:\s+plus\s+neutral\/?server)?\b/gi, 'Organisation: 7v6 + GK')
       .replace(/\b6\s*v\s*6\s*\+\s*(?:2\s*)?GK(?:\s+plus\s+neutral\/?server)?\b/gi, '7v6 + GK');
   }
-  if (/\b(20\s*[x×]\s*20|increasing pressure|four\s+mini[- ]?goals?|inner\s*10)\b/i.test(t)) {
+  if (/\b(20\s*[x×]\s*20|increasing pressure|four\s+mini[- ]?goals?|inner\s*10|5\s*v\s*5)\b/i.test(t)) {
     t = t
       .replace(/\bOrganisation:?\s*5\s*v\s*1\s*\+\s*4(?:\s+outside)?(?:\s+floaters?)?\b/gi, 'Organisation: 5v5')
       .replace(/\b5\s*v\s*1\s*\+\s*4(?:\s+outside)?(?:\s+floaters?)?\b/gi, '5v5');
+    if (/\b5\s*v\s*5\b/i.test(t)) {
+      t = t
+        .replace(/\b5v5\s*\+\s*(?:1\s*)?GK\b/gi, '5v5')
+        .replace(/\bplus(?: a)? goalkeepers?\b/gi, '')
+        .replace(/\+\s*(?:a )?GK\b/gi, '')
+        .replace(/\(\s*\d+ numbered players plus(?: a)? goalkeeper\s*\)/gi, '')
+        .replace(/\b(?:a |the )?(?:GK|goalkeepers?) waiting outside\b/gi, '')
+        .replace(/\bdefenders waiting outside\b/gi, '');
+    }
   }
   return t;
 }
@@ -3272,6 +3321,30 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
   const def = (diagram?.players || []).filter((p) => p.team === 'DEF').length;
   if (att === 7 && def === 3) {
     t = t.replace(/\b7\s*v\s*7\b/gi, '7v3');
+  }
+  const format = diagram?.pitch?.format;
+  if (format === '7V7') t = t.replace(/\b11\s*v\s*11\b/gi, '7v7');
+  if (format === '9V9') t = t.replace(/\b11\s*v\s*11\b/gi, '9v9');
+  const attNums = new Set(
+    (diagram?.players || [])
+      .filter((p) => p.team === 'ATT')
+      .map((p) => p.number)
+      .filter((n): n is number => typeof n === 'number')
+  );
+  if (diagram && !attNums.has(8)) {
+    const cm = [6, 10, 4, 7, 11].find((n) => attNums.has(n));
+    if (cm) {
+      t = t
+        .replace(/\binto (?:the |our |ATT |att )?(?:CM )?\#?8\b/gi, `into #${cm}`)
+        .replace(/\b(?:ATT|att) \#8\b/g, `#${cm}`)
+        .replace(/\bCM \#8\b/gi, `#${cm}`)
+        .replace(/\b\#8 receives\b/gi, `#${cm} receives`)
+        .replace(/\bbounce off the 8\b/gi, `bounce off the ${cm}`)
+        .replace(/\bbounce into the 8\b/gi, `bounce into #${cm}`);
+    }
+  }
+  if (diagram && /\bmid[- ]?block\b/i.test(t)) {
+    t = t.replace(/\bour defensive (?:block|shape|unit)\b/gi, 'our mid-block');
   }
   if (diagram && (diagram.players || []).length >= 20) {
     const setup = readBoardSetup(diagram);

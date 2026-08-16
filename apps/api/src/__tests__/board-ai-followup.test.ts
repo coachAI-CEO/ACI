@@ -15,6 +15,7 @@ import {
   dropNamedShirt,
   retargetNamedRunArrows,
   lockSequencePlayersToOriginal,
+  looksLikeFunctionPractice,
   scrubCoachReply,
   scrubImportOrganisation,
   wantsFrozenPlayers,
@@ -1988,6 +1989,304 @@ describe('import follow-ups keep the function picture', () => {
       }
     );
     expect(locked.equipment.some((e) => e.kind === 'mini-goal')).toBe(false);
+  });
+});
+
+describe('round-9 mixed talk defects', () => {
+  test('7v3 import uniquifies a duplicate 8 into a 10', () => {
+    const dsl = ensureRondoRosterFromMessage(
+      {
+        activity: 'rondo',
+        seed: 'blank',
+        grid: { intent: 'rondo', format: '9V9' },
+        entities: [
+          { id: 'att-2', team: 'ATT', number: 2, relative_position: 'perimeter' },
+          { id: 'att-3', team: 'ATT', number: 3, relative_position: 'perimeter' },
+          { id: 'att-4', team: 'ATT', number: 4, relative_position: 'perimeter' },
+          { id: 'att-5', team: 'ATT', number: 5, relative_position: 'perimeter' },
+          { id: 'att-6', team: 'ATT', number: 6, relative_position: 'perimeter' },
+          { id: 'att-8a', team: 'ATT', number: 8, relative_position: 'perimeter' },
+          { id: 'att-8b', team: 'ATT', number: 8, relative_position: 'inside' },
+          { id: 'def-4', team: 'DEF', number: 4, relative_position: 'inside' },
+          { id: 'def-6', team: 'DEF', number: 6, relative_position: 'inside' },
+          { id: 'def-8', team: 'DEF', number: 8, relative_position: 'inside' },
+        ],
+        equipment: [],
+        actions: [],
+        moves: [],
+      },
+      '7v3 rondo in a 20x20 with 4 central mini-goals'
+    );
+    const attNums = dsl.entities.filter((e) => e.team === 'ATT').map((e) => e.number);
+    expect(attNums.filter((n) => n === 8)).toHaveLength(1);
+    expect(attNums).toContain(10);
+  });
+
+  test('four central mini-goals cluster in the box, not the four sides', () => {
+    const dsl = ensureDslEquipmentFromMessage(
+      {
+        activity: 'rondo',
+        seed: 'blank',
+        grid: { intent: 'rondo', format: '9V9' },
+        entities: [],
+        equipment: [],
+        actions: [],
+        moves: [],
+      },
+      '7v3 rondo in a 20x20 with 4 central mini-goals back-to-back'
+    );
+    expect(dsl.equipment.filter((e) => e.kind === 'mini-goal')).toHaveLength(4);
+    expect(dsl.equipment.every((e) => e.placement === 'grid_c')).toBe(true);
+    const after = solveBoardLayout(dsl);
+    const minis = (after.elements || []).filter((e) => e.kind === 'mini-goal');
+    expect(minis).toHaveLength(4);
+    const ys = minis.map((e) => e.y);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(20);
+  });
+
+  test('rondo neutrals sit on the short ends of the box', () => {
+    const after = solveBoardLayout({
+      activity: 'rondo',
+      seed: 'blank',
+      grid: { intent: 'rondo', format: '7V7' },
+      entities: [
+        { id: 'att-2', team: 'ATT', number: 2, relative_position: 'perimeter' },
+        { id: 'att-3', team: 'ATT', number: 3, relative_position: 'perimeter' },
+        { id: 'def-5', team: 'DEF', number: 5, relative_position: 'inside' },
+        { id: 'def-6', team: 'DEF', number: 6, relative_position: 'inside' },
+        { id: 'neu-10', team: 'NEUTRAL', number: 10, relative_position: 'perimeter' },
+        { id: 'neu-11', team: 'NEUTRAL', number: 11, relative_position: 'perimeter' },
+      ],
+      equipment: [],
+      actions: [],
+      moves: [],
+    });
+    const neus = after.players.filter((p) => p.team === 'NEUTRAL');
+    expect(neus).toHaveLength(2);
+    const xs = neus.map((p) => p.x).sort((a, b) => a - b);
+    expect(xs[1] - xs[0]).toBeGreaterThan(10);
+    expect(Math.abs(neus[0].y - neus[1].y)).toBeLessThan(8);
+  });
+
+  test('high press after a rondo strips leftover mini-goals', () => {
+    const rondo = rondoDiagram();
+    const locked = lockDslForTurn(
+      {
+        activity: 'rondo',
+        seed: 'blank',
+        grid: { intent: 'rondo', format: '9V9' },
+        entities: [],
+        equipment: [
+          { kind: 'mini-goal', placement: 'grid_n', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_e', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_s', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_w', quantity: 1 },
+        ],
+        actions: [],
+        moves: [],
+      },
+      {
+        freeze: false,
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: true,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '9V9',
+        current: rondo,
+        message: 'Forget that — high press in their third, keep the shirts, us 3-2-3.',
+        rosterHint: 'What I saw: 7v3 rondo in a 20x20 with 4 central mini-goals back-to-back.',
+      }
+    );
+    expect(locked.activity).toBe('match_scenario');
+    expect(locked.equipment.filter((e) => e.kind === 'mini-goal')).toEqual([]);
+    const after = solveBoardLayout(locked, rondo);
+    expect((after.elements || []).filter((e) => e.kind === 'mini-goal')).toEqual([]);
+    expect(after.players.length).toBeGreaterThanOrEqual(18);
+  });
+
+  test('forget-the-rondo filmstrip does not keep the 10-shirt start', () => {
+    const rondo = rondoDiagram();
+    const match = defaultMatchBoardDiagram('9V9');
+    const sequenced = ensureSequenceStartsFromOriginal(
+      match,
+      rondo,
+      'Forget that — high press in their third, keep the shirts, us 3-2-3.'
+    );
+    expect(sequenced.sequence?.frames[0].players.length).toBe(18);
+    expect(sequenced.sequence?.frames[1].players.length).toBe(18);
+  });
+
+  test('freeze that on a 10-shirt rondo creates Frame 2', () => {
+    const rondo = rondoDiagram();
+    const next = {
+      ...rondo,
+      arrows: [
+        {
+          from: { playerId: rondo.players[0].id },
+          to: { playerId: rondo.players[1].id },
+          type: 'pass' as const,
+          style: 'solid' as const,
+          weight: 'normal' as const,
+        },
+      ],
+    };
+    const sequenced = ensureSequenceStartsFromOriginal(
+      next,
+      rondo,
+      'Freeze that. When we win it, finish the nearest mini-goal — don’t restack.'
+    );
+    expect(sequenced.sequence?.frames.length).toBe(2);
+    expect(sequenced.sequence?.frames[0].players.length).toBe(10);
+    expect(sequenced.sequence?.frames[1].arrows.length).toBeGreaterThan(0);
+  });
+
+  test('mid-block not a high press is the middle third', () => {
+    expect(
+      inferGridIntentFromMessage('No wait, I wanted a mid block not a high press. Compact in the middle.')
+    ).toBe('third_middle');
+  });
+
+  test('7v7 copy does not call the picture 11v11, and bounce-into-8 names the live CM', () => {
+    const seven = defaultMatchBoardDiagram('7V7');
+    const reply = scrubCoachReply(
+      'What I saw: 11v11 play out. Bounce has to go into ATT #8, not back to the GK. ATT #8 receives on the half-turn.',
+      seven
+    );
+    expect(reply).toMatch(/7v7/i);
+    expect(reply).not.toMatch(/11\s*v\s*11/i);
+    const attNums = new Set(seven.players.filter((p) => p.team === 'ATT').map((p) => p.number));
+    expect(attNums.has(8)).toBe(false);
+    expect(reply).not.toMatch(/ATT #8|into the 8|CM #8/);
+    expect(reply).toMatch(/into #6|#6 receives/);
+  });
+
+  test('7v7 forget-the-rondo filmstrip does not keep the 6-shirt start', () => {
+    const six = rondoDiagram().players.slice(0, 6);
+    const rondo: WebDiagramV1 = {
+      ...rondoDiagram(),
+      pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format: '7V7', showZones: false },
+      players: six,
+      sequence: {
+        frames: [
+          {
+            id: 'f-start',
+            title: '1. Start (board)',
+            durationMs: 1600,
+            note: 'Frozen board — keep this picture as Frame 1 for later teaching sequences.',
+            players: six,
+            arrows: [],
+            areas: [],
+            labels: [],
+          },
+        ],
+        activeFrameId: 'f-start',
+      },
+    };
+    expect(looksLikeFunctionPractice(rondo)).toBe(true);
+    const match = defaultMatchBoardDiagram('7V7');
+    expect(looksLikeFunctionPractice(match)).toBe(false);
+    const sequenced = ensureSequenceStartsFromOriginal(
+      match,
+      rondo,
+      'Ok forget the rondo — play out 2-3-1 vs 3-2-1 that jumps the 6.'
+    );
+    expect(sequenced.sequence?.frames[0].players.length).toBe(14);
+    expect(sequenced.sequence?.frames[1].players.length).toBe(14);
+  });
+
+  test('inner 10x10 with four side mini-goals is not a central cluster', () => {
+    const dsl = ensureDslEquipmentFromMessage(
+      {
+        activity: 'technical_exercise',
+        seed: 'blank',
+        grid: { intent: 'ssg_grid', format: '11V11' },
+        entities: [],
+        equipment: [],
+        actions: [],
+        moves: [],
+      },
+      '20x20 increasing pressure, four mini-goals one on each side, inner 10x10 central zone'
+    );
+    const placements = dsl.equipment.filter((e) => e.kind === 'mini-goal').map((e) => e.placement);
+    expect(placements.sort()).toEqual(['grid_e', 'grid_n', 'grid_s', 'grid_w']);
+  });
+
+  test('freeze seed current keeps live mini-goal seats', () => {
+    const current = solveBoardLayout({
+      activity: 'technical_exercise',
+      seed: 'blank',
+      grid: { intent: 'ssg_grid', format: '11V11' },
+      entities: [
+        { id: 'att-6', team: 'ATT', number: 6, relative_position: 'inside' },
+        { id: 'def-4', team: 'DEF', number: 4, relative_position: 'inside' },
+      ],
+      equipment: [
+        { kind: 'mini-goal', placement: 'grid_n', quantity: 1 },
+        { kind: 'mini-goal', placement: 'grid_e', quantity: 1 },
+        { kind: 'mini-goal', placement: 'grid_s', quantity: 1 },
+        { kind: 'mini-goal', placement: 'grid_w', quantity: 1 },
+      ],
+      actions: [],
+      moves: [],
+    });
+    const side = (current.elements || [])
+      .filter((e) => e.kind === 'mini-goal')
+      .map((e) => `${Math.round(e.x)}:${Math.round(e.y)}`)
+      .sort();
+    const after = solveBoardLayout(
+      {
+        activity: 'technical_exercise',
+        seed: 'current',
+        grid: { intent: 'ssg_grid', format: '11V11' },
+        entities: [],
+        equipment: [
+          { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+          { kind: 'mini-goal', placement: 'grid_c', quantity: 1 },
+        ],
+        actions: [],
+        moves: [],
+      },
+      current
+    );
+    const kept = (after.elements || [])
+      .filter((e) => e.kind === 'mini-goal')
+      .map((e) => `${Math.round(e.x)}:${Math.round(e.y)}`)
+      .sort();
+    expect(kept).toEqual(side);
+  });
+
+  test('match high press does not paint a third box', () => {
+    const after = solveBoardLayout({
+      activity: 'match_scenario',
+      seed: 'formation',
+      grid: { intent: 'third_left', format: '11V11', attFormation: '4-3-3', defFormation: '4-4-2' },
+      entities: [],
+      equipment: [],
+      actions: [],
+      moves: [],
+    });
+    expect(after.areas).toEqual([]);
+  });
+
+  test('mid-block copy does not say our defensive while us is ATT', () => {
+    const nine = defaultMatchBoardDiagram('9V9');
+    const reply = scrubCoachReply(
+      'Dropped into a mid-block. Compact in our defensive block in the middle third.',
+      nine
+    );
+    expect(reply).not.toMatch(/our defensive block/i);
+    expect(reply).toMatch(/our mid-block/);
+  });
+
+  test('5v5 review copy does not invent a GK waiting outside', () => {
+    const reply = scrubImportOrganisation(
+      'Organisation: 5v5. 10 numbered players plus a goalkeeper. GK waiting outside, defenders waiting outside.'
+    );
+    expect(reply).not.toMatch(/goalkeeper|GK waiting|defenders waiting/i);
+    expect(reply).toMatch(/5v5/);
   });
 });
 

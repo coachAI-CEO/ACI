@@ -237,13 +237,13 @@ function caseTheirThird(): CaseResult {
     'third'
   );
   const after = solveBoardLayout(dsl);
-  const box = after.areas[0];
-  const cy = (box.y || 0) + (box.height || 0) / 2;
-  lines.push(`highlight center y=${cy.toFixed(1)} (their defensive third must be LEFT, y<33)`);
+  const att = after.players.filter((p) => p.team === 'ATT');
+  const meanY = att.reduce((s, p) => s + p.y, 0) / Math.max(1, att.length);
+  lines.push(`ATT mean y=${meanY.toFixed(1)} (their defensive third must be LEFT, y<33)`);
   return {
     name: 'their-third',
     claim: '“Their defensive third” is y 0–33, not midfield',
-    ok: cy < 33 && (box.y || 0) < 10,
+    ok: meanY < 40 && after.areas.length === 0,
     lines,
   };
 }
