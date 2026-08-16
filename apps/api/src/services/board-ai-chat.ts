@@ -1110,6 +1110,20 @@ export function ensureComboActionsFromMessage(
   return { ...dsl, actions };
 }
 
+function wantsBounceIntoEight(message?: string): boolean {
+  return Boolean(
+    message &&
+      (/\bjump(?:s|ing)?(?: the)? 6\b/i.test(message) ||
+        /\bbounce.{0,40}\b8\b/i.test(message) ||
+        /\binto (?:the |our |ATT |att )?(?:CM )?\#?8\b/i.test(message))
+  );
+}
+
+function bouncePasserNumber(current: WebDiagramV1 | undefined, bounceN: number): number {
+  const att = (current?.players || []).filter((p) => p.team === 'ATT');
+  return [2, 3, 4, 5].find((n) => n !== bounceN && att.some((p) => p.number === n)) || bounceN;
+}
+
 function retargetDslActionsFromMessage(
   dsl: BoardSymbolicDsl,
   message?: string,
@@ -1118,10 +1132,29 @@ function retargetDslActionsFromMessage(
   if (!message) return dsl;
   let actions = [...(dsl.actions || [])];
   const bounceN = bounceTargetNumber(current, 8);
-  if (/\bjump(?:s|ing)?(?: the)? 6\b/i.test(message) || /\bbounce.{0,40}\b8\b/i.test(message)) {
-    actions = actions.map((a) =>
-      a.type === 'pass' && /att-(?:6|8)$/i.test(a.to_id) ? { ...a, to_id: `att-${bounceN}` } : a
-    );
+  if (wantsBounceIntoEight(message)) {
+    const passerN = bouncePasserNumber(current, bounceN);
+    actions = actions.map((a) => {
+      if (a.type !== 'pass') return a;
+      const toAtt = /^att-(\d+)$/i.exec(a.to_id);
+      if (!toAtt) return a;
+      const toN = Number(toAtt[1]);
+      const fromAtt = /^att-(\d+)$/i.exec(a.from_id);
+      const fromShirt = fromAtt ? Number(fromAtt[1]) : null;
+      const already = toN === bounceN && fromShirt !== bounceN;
+      if (already) return a;
+      const retarget =
+        toN === 1 ||
+        (bounceN === 8 && toN === 6) ||
+        (bounceN !== 8 && (toN === 8 || toN === 7)) ||
+        fromShirt === bounceN;
+      if (!retarget) return a;
+      let next = { ...a, to_id: `att-${bounceN}` };
+      if (fromShirt === bounceN) {
+        next = { ...next, from_id: `att-${passerN}` };
+      }
+      return next;
+    });
   }
   const runShirt = namedRunShirt(message);
   if (runShirt != null) {
@@ -1248,10 +1281,59 @@ export function retargetNamedRunArrows(diagram: WebDiagramV1, message: string): 
   };
 }
 
+export function retargetBouncePassArrows(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  if (!wantsBounceIntoEight(message)) return diagram;
+  const bounceN = bounceTargetNumber(diagram, 8);
+  const fromN = bouncePasserNumber(diagram, bounceN);
+  const idFor = (n: number) =>
+    (diagram.players || []).find((p) => p.team === 'ATT' && p.number === n)?.id;
+  const toId = idFor(bounceN);
+  const fromId = idFor(fromN);
+  if (!toId) return diagram;
+  const mapArrows = (arrows: WebDiagramV1['arrows']) =>
+    (arrows || []).map((a) => {
+      if (a.type !== 'pass') return a;
+      const toPlayer = (diagram.players || []).find((p) => p.id === a.to.playerId);
+      const fromPlayer = (diagram.players || []).find((p) => p.id === a.from.playerId);
+      if (toPlayer && toPlayer.team !== 'ATT') return a;
+      const toN = toPlayer?.number;
+      const fromShirt = fromPlayer?.number;
+      if (toN == null) return a;
+      const already = toN === bounceN && fromShirt !== bounceN;
+      if (already) return a;
+      const retarget =
+        toN === 1 ||
+        (bounceN === 8 && toN === 6) ||
+        (bounceN !== 8 && (toN === 8 || toN === 7)) ||
+        fromShirt === bounceN;
+      if (!retarget) return a;
+      let next = { ...a, to: { playerId: toId } };
+      if (fromShirt === bounceN && fromId) {
+        next = { ...next, from: { playerId: fromId } };
+      }
+      return next;
+    });
+  return {
+    ...diagram,
+    arrows: mapArrows(diagram.arrows),
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start' ? f : { ...f, arrows: mapArrows(f.arrows) }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
 export function applyCoachShirtEdits(diagram: WebDiagramV1, message: string): WebDiagramV1 {
   return retargetDeliveryTowardGoal(
-    retargetNamedRunArrows(
-      dropNamedShirt(nudgeAttSixHigher(nudgeRondoCorrection(diagram, message), message), message),
+    retargetBouncePassArrows(
+      retargetNamedRunArrows(
+        dropNamedShirt(nudgeAttSixHigher(nudgeRondoCorrection(diagram, message), message), message),
+        message
+      ),
       message
     ),
     message
@@ -3274,6 +3356,7 @@ export function formatAskReadingsReply(input: {
   ask: string;
   readings: BoardAskReading[];
   board?: BoardSetupReading | null;
+  diagram?: WebDiagramV1;
 }): string {
   const asked = input.ask.replace(/\s+/g, ' ').trim().slice(0, 220);
   const fromAsk = inferFormationsFromMessage(input.ask);
@@ -3300,7 +3383,7 @@ export function formatAskReadingsReply(input: {
     items,
     ASK_READINGS_CTA,
   ].filter((line): line is string => Boolean(line));
-  return scrubCoachReply(parts.join('\n\n'));
+  return scrubCoachReply(parts.join('\n\n'), input.diagram);
 }
 
 export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
@@ -3346,33 +3429,66 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
   if (diagram && /\bmid[- ]?block\b/i.test(t)) {
     t = t.replace(/\bour defensive (?:block|shape|unit)\b/gi, 'our mid-block');
   }
-  if (diagram && (diagram.players || []).length >= 20) {
+  t = t
+    .replace(/\b(\d+)\s+pinks?\s*\/\s*(\d+)\s+blue\b/gi, '$1 blue / $2 red')
+    .replace(/\b(\d+)\s+blue\s*\/\s*(\d+)\s+pinks?\b/gi, '$1 red / $2 blue');
+  if (diagram && (diagram.players || []).length >= 14) {
     const setup = readBoardSetup(diagram);
-    if (setup.attFormation === '4-4-2' && setup.defFormation === '4-3-3') {
+    if (setup.attFormation && setup.defFormation && setup.attFormation !== setup.defFormation) {
+      const esc = (f: string) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       t = t
-        .replace(/\b4-3-3 formation for our\b/gi, '4-4-2 shape for our')
-        .replace(/\bour attacking unit\b/gi, 'our 4-4-2 block')
-        .replace(/\bagainst their 4-4-2\b/gi, 'against their 4-3-3')
-        .replace(/\bour 4-3-3\b/gi, 'our 4-4-2')
-        .replace(/\btheir 4-4-2\b/gi, 'their 4-3-3')
-        .replace(/\btheir attacking shape\b/gi, 'their 4-3-3');
-      if (!/\b4-3-3\b/.test(t) && /\b4-4-2\b/.test(t)) {
-        t = t.replace(/\bagainst their\b/i, 'against their 4-3-3');
+        .replace(
+          new RegExp(`${esc(setup.defFormation)} formation for our`, 'gi'),
+          `${setup.attFormation} shape for our`
+        )
+        .replace(
+          new RegExp(`against their ${esc(setup.attFormation)}`, 'gi'),
+          `against their ${setup.defFormation}`
+        )
+        .replace(new RegExp(`\\bour ${esc(setup.defFormation)}\\b`, 'gi'), `our ${setup.attFormation}`)
+        .replace(new RegExp(`\\btheir ${esc(setup.attFormation)}\\b`, 'gi'), `their ${setup.defFormation}`)
+        .replace(/\bour attacking unit\b/gi, `our ${setup.attFormation} block`)
+        .replace(/\btheir attacking shape\b/gi, `their ${setup.defFormation}`);
+      for (const f of ['4-3-3', '4-4-2', '4-2-3-1', '3-5-2']) {
+        if (f === setup.attFormation || f === setup.defFormation) continue;
+        t = t.replace(new RegExp(`\\b${esc(f)}\\b`, 'g'), (match, offset: number, str: string) => {
+          const before = str.slice(Math.max(0, offset - 28), offset).toLowerCase();
+          if (/\b(their|them|def|opposition|away)\b/.test(before)) return setup.defFormation!;
+          if (/\b(our|us|att|attacking)\b/.test(before)) return setup.attFormation!;
+          return setup.defFormation!;
+        });
       }
     }
   }
+  const nFrames = diagram?.sequence?.frames?.length || 0;
+  if (nFrames >= 1) {
+    t = t
+      .replace(/\bSlide (\d+)\b/gi, (_m, n) =>
+        Number(n) > nFrames ? `Slide ${nFrames}` : `Slide ${n}`
+      )
+      .replace(/\b(?:a )?sequence of \d+ (?:teaching )?frames?\b/gi, `${nFrames}-frame strip`)
+      .replace(/\b\d+-slide\b/gi, `${nFrames}-frame`)
+      .replace(/\b(?:four|4) slides?\b/gi, nFrames === 1 ? '1 frame' : `${nFrames} frames`);
+  }
   const shirts = diagram?.players || [];
+  const neu = shirts.filter((p) => p.team === 'NEUTRAL').length;
   const ssg = (diagram?.areas || []).some((a) => /ssg/i.test(String(a.label || '')));
-  if (ssg && shirts.length >= 10 && shirts.length <= 16) {
-    const fmt = (team: 'ATT' | 'DEF') =>
+  const rondo = (diagram?.areas || []).some((a) => /rondo/i.test(String(a.label || '')));
+  if ((ssg || rondo || neu >= 2) && shirts.length >= 6 && shirts.length <= 16) {
+    const fmt = (team: 'ATT' | 'DEF' | 'NEUTRAL') =>
       shirts
         .filter((p) => p.team === team)
         .map((p) =>
           p.number === 1 || String(p.role || '').toUpperCase() === 'GK' ? 'GK' : `#${p.number}`
         )
         .join('/');
-    const line = `On the grass: ${att} blue (${fmt('ATT')}) · ${def} red (${fmt('DEF')}).`;
+    const neuBit = neu ? ` · ${neu} amber (${fmt('NEUTRAL')})` : '';
+    const line = `On the grass: ${att} blue (${fmt('ATT')}) · ${def} red (${fmt('DEF')})${neuBit}.`;
     if (!/On the grass:/i.test(t)) t = `${t}\n\n${line}`;
+    t = t.replace(
+      /\b\d+\s*ATT\s*\+\s*\d+\s*DEF\b/gi,
+      neu ? `${att} ATT + ${def} DEF + ${neu} neutrals` : `${att} ATT + ${def} DEF`
+    );
   }
   return t;
 }
@@ -3634,9 +3750,12 @@ export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
   const focusThird = focusY == null ? null : thirdFromY(focusY);
   const channel = focusY == null ? null : channelFromX(focusX);
 
+  const attN = players.filter((p) => p.team === 'ATT').length;
+  const defN = players.filter((p) => p.team === 'DEF').length;
+  const neuN = players.filter((p) => p.team === 'NEUTRAL').length;
   const summaryParts = [
     usable
-      ? `Board has ${attOut.length + 1} ATT + ${defOut.length + 1} DEF shirts.`
+      ? `Board has ${attN} ATT + ${defN} DEF${neuN ? ` + ${neuN} neutrals` : ''} shirts.`
       : 'Board lineup is thin / incomplete.',
     attFormation || defFormation
       ? `Inferred formations: ATT ${attFormation || '?'} vs DEF ${defFormation || '?'}.`
@@ -4425,6 +4544,7 @@ export async function runBoardAiChat(input: {
         ask: originalAsk,
         readings,
         board: readBoardSetup(input.diagram),
+        diagram: input.diagram,
       }),
       applied: false,
       diagram: input.diagram,

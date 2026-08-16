@@ -131,9 +131,18 @@ function normalizePhase(
     return 'TRANSITION_TO_ATTACK';
   }
   if (
-    /\b(high press|mid[- ]?block|low block|defensive organization|out of possession|defend)\b/.test(t) ||
+    /\b(train this|how should we train|how can we train)\b/i.test(t) &&
+    isFunctionBoard(diagram)
+  ) {
+    if (/\b(compact(?:ness)?|wide deliver|defending that (?:big )?goal)\b/.test(blob)) {
+      return 'DEFENDING';
+    }
+    return 'ATTACKING';
+  }
+  if (
+    /\b(high press|mid[- ]?block|low block|defensive organization|out of possession|defend(?:ing)?)\b/.test(t) ||
     (/\b(train this|how should we train|how can we train)\b/i.test(t) &&
-      /\b(defend|compact|wide deliver)/.test(blob))
+      /\b(defend(?:ing)?|compact(?:ness)?|wide deliver)\b/.test(blob))
   ) {
     return 'DEFENDING';
   }

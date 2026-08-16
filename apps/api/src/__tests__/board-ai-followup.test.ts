@@ -16,6 +16,7 @@ import {
   retargetNamedRunArrows,
   lockSequencePlayersToOriginal,
   looksLikeFunctionPractice,
+  applyCoachShirtEdits,
   scrubCoachReply,
   scrubImportOrganisation,
   wantsFrozenPlayers,
@@ -2287,6 +2288,131 @@ describe('round-9 mixed talk defects', () => {
     );
     expect(reply).not.toMatch(/goalkeeper|GK waiting|defenders waiting/i);
     expect(reply).toMatch(/5v5/);
+  });
+
+  test('7v7 bounce into 8 retargets 6→7 onto the live CM', () => {
+    const seven = defaultMatchBoardDiagram('7V7');
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'current',
+        grid: { intent: 'full_pitch', format: '7V7', attFormation: '2-3-1', defFormation: '3-2-1' },
+        entities: [],
+        equipment: [],
+        actions: [{ type: 'pass', from_id: 'att-6', to_id: 'att-7' }],
+        moves: [],
+      },
+      {
+        freeze: false,
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: true,
+        keepPriorFrame: true,
+        reshape: false,
+        currentFormat: '7V7',
+        current: seven,
+        message: "That's not it — bounce into the 8, not back to the GK.",
+      }
+    );
+    const pass = locked.actions.find((a) => a.type === 'pass');
+    expect(pass?.to_id).toBe('att-6');
+    expect(pass?.from_id).not.toBe('att-6');
+
+    const six = seven.players.find((p) => p.team === 'ATT' && p.number === 6);
+    const sevenShirt = seven.players.find((p) => p.team === 'ATT' && p.number === 7);
+    const two = seven.players.find((p) => p.team === 'ATT' && p.number === 2);
+    const after = applyCoachShirtEdits(
+      {
+        ...seven,
+        arrows: [
+          {
+            from: { playerId: six!.id },
+            to: { playerId: sevenShirt!.id },
+            type: 'pass',
+            style: 'solid',
+            weight: 'normal',
+          },
+        ],
+      },
+      'Bounce has to go into ATT #8, not back to the GK.'
+    );
+    expect(after.arrows[0].to.playerId).toBe(six!.id);
+    expect(after.arrows[0].from.playerId).toBe(two!.id);
+  });
+
+  test('slide-count copy matches the 2-frame strip', () => {
+    const two: WebDiagramV1 = {
+      ...eleven,
+      sequence: {
+        frames: [
+          {
+            id: 'f-start',
+            title: '1. Start',
+            durationMs: 1600,
+            players: eleven.players,
+            arrows: [],
+            areas: [],
+            labels: [],
+          },
+          {
+            id: 'f-2',
+            title: '2. Play',
+            durationMs: 1600,
+            players: eleven.players,
+            arrows: [],
+            areas: [],
+            labels: [],
+          },
+        ],
+        activeFrameId: 'f-2',
+      },
+    };
+    const reply = scrubCoachReply('Applied Slide 3 of a 4-slide sequence. Four slides on the strip.', two);
+    expect(reply).not.toMatch(/Slide 3|4-slide|Four slides/i);
+    expect(reply).toMatch(/Slide 2|2 frames/i);
+  });
+
+  test('WHAT I SAW leftover 4-2-3-1 becomes their live 4-4-2', () => {
+    const diagram: WebDiagramV1 = {
+      ...eleven,
+      players: [
+        ...build11v11FormationPlayers('4-3-3', 'ATT'),
+        ...build11v11FormationPlayers('4-4-2', 'DEF'),
+      ],
+    };
+    const reply = scrubCoachReply(
+      'What I saw: 4-2-3-1 play out from our right against a jumping 6.',
+      diagram
+    );
+    expect(reply).toMatch(/4-4-2/);
+    expect(reply).not.toMatch(/4-2-3-1/);
+  });
+
+  test('4v4+2 readings census does not invent a phantom GK', () => {
+    const reading = readBoardSetup(rondoDiagram());
+    expect(reading.summary).toMatch(/4 ATT \+ 4 DEF \+ 2 neutrals/);
+    expect(reading.summary).not.toMatch(/5 ATT \+ 5 DEF/);
+    const reply = scrubCoachReply('Numbered readings for 5 ATT + 5 DEF in the grid.', rondoDiagram());
+    expect(reply).toMatch(/4 ATT \+ 4 DEF \+ 2 neutrals/);
+    expect(reply).toMatch(/On the grass:/);
+  });
+
+  test('import copy maps 7 pink / 3 blue to product colours', () => {
+    expect(scrubCoachReply('What I saw: 7 pink / 3 blue in a 20x20.')).toMatch(/7 blue \/ 3 red/);
+  });
+
+  test('train this on a live rondo is attacking, not leftover defending', () => {
+    const params = buildBoardSessionParams({
+      message: 'How should we train this?',
+      history: [
+        { role: 'user', content: '4v4+2 rondo. Two defenders inside.' },
+        { role: 'assistant', content: 'Drew the rondo.' },
+      ],
+      diagram: rondoDiagram(),
+      ageGroup: 'U10',
+    });
+    expect(params.phase).toBe('ATTACKING');
+    expect(params.topic.toLowerCase()).toMatch(/rondo/);
   });
 });
 
