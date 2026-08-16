@@ -8,7 +8,21 @@ export type BoardLoadProgress = {
   label: string;
 };
 
-function labelForElapsed(t: number): string {
+function labelForElapsed(t: number, kind: "text" | "image" | "pdf"): string {
+  if (kind === "pdf") {
+    if (t < 3) return "Reading your PDF…";
+    if (t < 8) return "Interpreting the diagram…";
+    if (t < 16) return "Recreating it on the board…";
+    if (t < 30) return "Tuning shirts & arrows…";
+    return "Almost done…";
+  }
+  if (kind === "image") {
+    if (t < 3) return "Reading your picture…";
+    if (t < 8) return "Interpreting the shape…";
+    if (t < 16) return "Recreating it on the board…";
+    if (t < 30) return "Tuning shirts & arrows…";
+    return "Almost done…";
+  }
   if (t < 2) return "Reading your request…";
   if (t < 6) return "Planning the scenario…";
   if (t < 14) return "Placing players & arrows…";
@@ -22,7 +36,10 @@ function labelForElapsed(t: number): string {
  * when `busy` becomes false. Not streamed from the model — but tied to the
  * actual request lifecycle (starts on send, completes on response).
  */
-export function useBoardLoadProgress(busy: boolean): BoardLoadProgress {
+export function useBoardLoadProgress(
+  busy: boolean,
+  kind: "text" | "image" | "pdf" = "text"
+): BoardLoadProgress {
   const [visible, setVisible] = useState(false);
   const [percent, setPercent] = useState(0);
   const [label, setLabel] = useState("Starting…");
@@ -34,18 +51,24 @@ export function useBoardLoadProgress(busy: boolean): BoardLoadProgress {
 
     setVisible(true);
     setPercent(4);
-    setLabel("Reading your request…");
+    setLabel(
+      kind === "pdf"
+        ? "Reading your PDF…"
+        : kind === "image"
+          ? "Reading your picture…"
+          : "Reading your request…"
+    );
     const start = Date.now();
     const id = window.setInterval(() => {
       if (!busyRef.current) return;
       const t = (Date.now() - start) / 1000;
       const p = Math.min(92, Math.round(4 + 88 * (1 - Math.exp(-t / 9))));
       setPercent(p);
-      setLabel(labelForElapsed(t));
+      setLabel(labelForElapsed(t, kind));
     }, 180);
 
     return () => window.clearInterval(id);
-  }, [busy]);
+  }, [busy, kind]);
 
   useEffect(() => {
     if (busy) return;

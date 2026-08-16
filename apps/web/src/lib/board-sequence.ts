@@ -31,6 +31,7 @@ export function extractFrameLayers(diagram: DiagramV1 | DiagramFrameLayers): Dia
     goals: clone(diagram.goals || []),
     coach: diagram.coach ? clone(diagram.coach) : undefined,
     cones: diagram.cones ? clone(diagram.cones) : undefined,
+    elements: diagram.elements ? clone(diagram.elements) : undefined,
   };
 }
 
@@ -45,6 +46,7 @@ export function applyFrameLayers(diagram: DiagramV1, layers: DiagramFrameLayers)
     goals: clone(layers.goals || []),
     coach: layers.coach ? clone(layers.coach) : undefined,
     cones: layers.cones ? clone(layers.cones) : undefined,
+    elements: layers.elements ? clone(layers.elements) : undefined,
   };
 }
 
@@ -62,6 +64,7 @@ export function layersToFrame(
     goals: cloned.goals,
     coach: cloned.coach,
     cones: cloned.cones,
+    elements: cloned.elements,
     id: meta?.id || newFrameId(),
     title: meta?.title,
     note: meta?.note,
@@ -232,6 +235,7 @@ export function interpolateLayers(
     goals: clone(snap.goals || []),
     coach: snap.coach ? clone(snap.coach) : undefined,
     cones: snap.cones ? clone(snap.cones) : undefined,
+    elements: snap.elements ? clone(snap.elements) : undefined,
   };
 }
 

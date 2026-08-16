@@ -139,6 +139,7 @@ export async function boardAiChat(
     message: string;
     diagram: DiagramV1;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
+    image?: { mimeType: string; data: string; fileName?: string };
   }
 ): Promise<{
   ok: boolean;

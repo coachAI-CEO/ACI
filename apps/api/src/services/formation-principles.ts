@@ -79,12 +79,31 @@ export function inferFormationsFromMessage(message: string): {
     text.match(/\b(4-3-3|4-4-2|4-2-3-1|3-5-2)\s+(?:att|attacking|home)\b/i)?.[1];
   const defNamed =
     text.match(
-      /\b(?:def|defending|away|them|their|vs|versus|against|v\.?)\s+(?:a\s+|in\s+a\s+)?(4-3-3|4-4-2|4-2-3-1|3-5-2)\b/i
+      /\b(?:def|defending|away|them|their|vs|versus|against|v\.?)\s+(?:a\s+|in\s+a\s+|that\s+|the\s+|their\s+)?(4-3-3|4-4-2|4-2-3-1|3-5-2)\b/i
     )?.[1] ||
-    text.match(/\b(4-3-3|4-4-2|4-2-3-1|3-5-2)\s+(?:def|defending|away)\b/i)?.[1];
+    text.match(
+      /\b(4-3-3|4-4-2|4-2-3-1|3-5-2)\s+(?:def|defending|away|out of possession|oop|block)\b/i
+    )?.[1];
 
   let att = toFormationId11(attNamed);
   let def = toFormationId11(defNamed);
+
+  if (!def) {
+    const oop = text.match(
+      /\b(4-3-3|4-4-2|4-2-3-1|3-5-2)\s+(?:out of possession|oop|defensive(?:ly)?|mid[- ]?block|block)\b/i
+    );
+    if (oop) def = toFormationId11(oop[1]);
+  }
+
+  // “our 4-4-2 out of possession” is a defensive block, not ATT in possession
+  if (
+    att &&
+    /\bout of possession|oop|mid[- ]?block|defensive(?:ly)?\b/i.test(text) &&
+    !/\b(?:att|attacking|in possession)\b/i.test(text)
+  ) {
+    if (!def) def = att;
+    att = null;
+  }
 
   // "X vs Y" / "X against Y" — first = ATT, second = DEF when not tagged
   const vs = text.match(
@@ -95,9 +114,10 @@ export function inferFormationsFromMessage(message: string): {
     if (!def) def = toFormationId11(vs[2]);
   }
 
-  if (!att && ids[0]) att = ids[0];
-  if (!def && ids[1]) def = ids[1];
-  // Single formation mentioned → ATT shape; DEF defaults to classic press shape for play-out
+  const againstOnly = /\b(?:against|vs\.?|versus|v\.?)\b/.test(text) && ids.length === 1;
+  if (!att && ids[0] && ids[0] !== def && !againstOnly) att = ids[0];
+  if (!def && ids[1] && ids[1] !== att) def = ids[1];
+  // Single formation mentioned as ATT shape; DEF defaults to classic press shape for play-out
   if (!def && att) def = '4-4-2';
 
   return { att, def };

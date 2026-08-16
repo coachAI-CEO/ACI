@@ -2,7 +2,11 @@
  * Web DiagramV1 (canonical store for TacticalBoard) + mapping from API normalizer output.
  */
 
+import { mergePracticeElements, type BoardElement } from './board-elements';
+
 export type WebDiagramTeam = 'ATT' | 'DEF' | 'NEUTRAL';
+export type { BoardElement };
+export type WebDiagramElement = BoardElement;
 
 export type WebDiagramV1 = {
   pitch: {
@@ -10,6 +14,7 @@ export type WebDiagramV1 = {
     orientation: 'HORIZONTAL' | 'VERTICAL';
     format?: '7V7' | '9V9' | '11V11';
     showZones?: boolean;
+    showThirds?: boolean;
     zones?: {
       leftWide?: boolean;
       leftHalfSpace?: boolean;
@@ -44,6 +49,8 @@ export type WebDiagramV1 = {
   };
   balls?: Array<{ x: number; y: number }>;
   cones?: Array<{ x: number; y: number; color?: string }>;
+  /** Practice kit: mini-goals, cones, mannequins, poles. */
+  elements?: BoardElement[];
   arrows: Array<{
     from: { playerId?: string; x?: number; y?: number };
     to: { playerId?: string; x?: number; y?: number };
@@ -78,6 +85,7 @@ export type WebDiagramV1 = {
       goals?: WebDiagramV1['goals'];
       coach?: WebDiagramV1['coach'];
       cones?: WebDiagramV1['cones'];
+      elements?: WebDiagramV1['elements'];
     }>;
   };
 };
@@ -164,11 +172,72 @@ const FORMATION_3_5_2: FormationSlot[] = [
   { number: 10, role: 'ST', x: 42, depth: 0.64 },
 ];
 
+const FORMATION_2_3_1: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.08 },
+  { number: 2, role: 'RB', x: 72, depth: 0.28 },
+  { number: 3, role: 'LB', x: 28, depth: 0.28 },
+  { number: 6, role: 'CM', x: 50, depth: 0.42 },
+  { number: 7, role: 'RM', x: 78, depth: 0.48 },
+  { number: 11, role: 'LM', x: 22, depth: 0.48 },
+  { number: 9, role: 'ST', x: 50, depth: 0.68 },
+];
+
+const FORMATION_3_2_1: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.08 },
+  { number: 4, role: 'CB', x: 50, depth: 0.26 },
+  { number: 2, role: 'RB', x: 78, depth: 0.3 },
+  { number: 3, role: 'LB', x: 22, depth: 0.3 },
+  { number: 6, role: 'CM', x: 38, depth: 0.48 },
+  { number: 8, role: 'CM', x: 62, depth: 0.48 },
+  { number: 9, role: 'ST', x: 50, depth: 0.68 },
+];
+
+const FORMATION_3_2_3: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.07 },
+  { number: 4, role: 'CB', x: 50, depth: 0.24 },
+  { number: 2, role: 'RB', x: 78, depth: 0.28 },
+  { number: 3, role: 'LB', x: 22, depth: 0.28 },
+  { number: 6, role: 'CM', x: 38, depth: 0.44 },
+  { number: 8, role: 'CM', x: 62, depth: 0.44 },
+  { number: 7, role: 'RW', x: 82, depth: 0.62 },
+  { number: 9, role: 'ST', x: 50, depth: 0.68 },
+  { number: 11, role: 'LW', x: 18, depth: 0.62 },
+];
+
+const FORMATION_2_3_2_1: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.07 },
+  { number: 4, role: 'CB', x: 62, depth: 0.26 },
+  { number: 5, role: 'CB', x: 38, depth: 0.26 },
+  { number: 6, role: 'CDM', x: 50, depth: 0.4 },
+  { number: 8, role: 'CM', x: 68, depth: 0.46 },
+  { number: 10, role: 'CM', x: 32, depth: 0.46 },
+  { number: 7, role: 'RAM', x: 65, depth: 0.6 },
+  { number: 11, role: 'LAM', x: 35, depth: 0.6 },
+  { number: 9, role: 'ST', x: 50, depth: 0.7 },
+];
+
+const FORMATION_3_3_2: FormationSlot[] = [
+  { number: 1, role: 'GK', x: 50, depth: 0.07 },
+  { number: 4, role: 'CB', x: 50, depth: 0.24 },
+  { number: 2, role: 'RB', x: 78, depth: 0.28 },
+  { number: 3, role: 'LB', x: 22, depth: 0.28 },
+  { number: 6, role: 'CDM', x: 50, depth: 0.4 },
+  { number: 8, role: 'CM', x: 68, depth: 0.48 },
+  { number: 10, role: 'CM', x: 32, depth: 0.48 },
+  { number: 9, role: 'ST', x: 60, depth: 0.66 },
+  { number: 11, role: 'ST', x: 40, depth: 0.66 },
+];
+
 const FORMATIONS_11: Record<string, FormationSlot[]> = {
   '4-4-2': FORMATION_4_4_2,
   '4-3-3': FORMATION_4_3_3,
   '4-2-3-1': FORMATION_4_2_3_1,
   '3-5-2': FORMATION_3_5_2,
+  '2-3-1': FORMATION_2_3_1,
+  '3-2-1': FORMATION_3_2_1,
+  '3-2-3': FORMATION_3_2_3,
+  '2-3-2-1': FORMATION_2_3_2_1,
+  '3-3-2': FORMATION_3_3_2,
 };
 
 function clampPitch(n: number) {
@@ -208,25 +277,42 @@ export function build11v11FormationPlayers(
   return formationPlayers(slots, team, team === 'ATT' ? 'home' : 'away');
 }
 
+const DEFAULT_FORMATIONS_FOR_FORMAT: Record<
+  '7V7' | '9V9' | '11V11',
+  { att: string; def: string }
+> = {
+  '7V7': { att: '2-3-1', def: '3-2-1' },
+  '9V9': { att: '3-2-3', def: '2-3-2-1' },
+  '11V11': { att: '4-3-3', def: '4-2-3-1' },
+};
+
+/** Blank-board seed for a format band. Us = ATT, own goal RIGHT. */
+export function defaultMatchBoardDiagram(
+  format: '7V7' | '9V9' | '11V11' = '11V11'
+): WebDiagramV1 {
+  const { att, def } = DEFAULT_FORMATIONS_FOR_FORMAT[format] || DEFAULT_FORMATIONS_FOR_FORMAT['11V11'];
+  return {
+    pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format, showZones: false },
+    players: [
+      ...build11v11FormationPlayers(att, 'ATT'),
+      ...build11v11FormationPlayers(def, 'DEF'),
+    ],
+    balls: [{ x: 50, y: 50 }],
+    goals: [
+      { id: 'goal-left', x: 50, y: 2, type: 'BIG', width: 16 },
+      { id: 'goal-right', x: 50, y: 98, type: 'BIG', width: 16 },
+    ],
+    arrows: [],
+    areas: [],
+    labels: [],
+  };
+}
+
 /**
  * Default new-board seed:
  * FULL horizontal pitch, home ATT 4-3-3 (right) vs away DEF 4-2-3-1 (left), ball centre, both goals.
  */
-export const DEFAULT_MATCH_BOARD_DIAGRAM: WebDiagramV1 = {
-  pitch: { variant: 'FULL', orientation: 'HORIZONTAL', format: '11V11', showZones: false },
-  players: [
-    ...formationPlayers(FORMATION_4_3_3, 'ATT', 'home'),
-    ...formationPlayers(FORMATION_4_2_3_1, 'DEF', 'away'),
-  ],
-  balls: [{ x: 50, y: 50 }],
-  goals: [
-    { id: 'goal-left', x: 50, y: 2, type: 'BIG', width: 16 },
-    { id: 'goal-right', x: 50, y: 98, type: 'BIG', width: 16 },
-  ],
-  arrows: [],
-  areas: [],
-  labels: [],
-};
+export const DEFAULT_MATCH_BOARD_DIAGRAM: WebDiagramV1 = defaultMatchBoardDiagram('11V11');
 
 function clamp01to100(n: number): number {
   if (!Number.isFinite(n)) return 50;
@@ -451,6 +537,7 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
       orientation,
       format: mapPitchFormat(pitchSrc.format),
       showZones: typeof pitchSrc.showZones === 'boolean' ? pitchSrc.showZones : undefined,
+      showThirds: typeof pitchSrc.showThirds === 'boolean' ? pitchSrc.showThirds : undefined,
       zones:
         pitchSrc.zones && typeof pitchSrc.zones === 'object'
           ? {
@@ -467,6 +554,10 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
     coach,
     balls: balls && balls.length ? balls : undefined,
     cones: cones && cones.length ? cones : undefined,
+    elements: (() => {
+      const els = mergePracticeElements({ elements: src.elements, cones, goals });
+      return els.length ? els : undefined;
+    })(),
     arrows,
     areas,
     labels,
@@ -486,6 +577,7 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
       goals: active.goals,
       coach: active.coach,
       cones: active.cones,
+      elements: active.elements,
       sequence,
     };
   }
@@ -508,6 +600,7 @@ function layersFromDiagram(d: WebDiagramV1): Omit<
     goals: d.goals,
     coach: d.coach,
     cones: d.cones,
+    elements: d.elements,
   };
 }
 
@@ -524,6 +617,7 @@ function normalizeFrameLayers(raw: any): ReturnType<typeof layersFromDiagram> | 
     goals: raw.goals,
     coach: raw.coach,
     cones: raw.cones,
+    elements: raw.elements,
   });
   if (!nested) return null;
   return layersFromDiagram(nested);
@@ -577,7 +671,7 @@ function swapXY<T extends { x?: number; y?: number }>(p: T): T {
   return { ...p, x: p.y, y: p.x };
 }
 
-function formatFromAgeGroup(ageGroup?: string | null): WebDiagramV1['pitch']['format'] | undefined {
+export function formatFromAgeGroup(ageGroup?: string | null): WebDiagramV1['pitch']['format'] | undefined {
   const age = Number(String(ageGroup || '').replace(/^U/i, ''));
   if (!Number.isFinite(age) || age <= 0) return undefined;
   if (age <= 10) return '7V7';
@@ -594,6 +688,7 @@ function remapLayersToBoardAxes(d: {
   goals?: WebDiagramV1['goals'];
   coach?: WebDiagramV1['coach'];
   cones?: WebDiagramV1['cones'];
+  elements?: WebDiagramV1['elements'];
 }) {
   const swapPoint = (pt: { playerId?: string; x?: number; y?: number }) => {
     if (isFiniteNumber(pt.x) && isFiniteNumber(pt.y)) return { ...pt, x: pt.y, y: pt.x };
@@ -620,6 +715,7 @@ function remapLayersToBoardAxes(d: {
     goals: d.goals?.map((g) => swapXY(g)),
     coach: d.coach ? swapXY(d.coach) : undefined,
     cones: d.cones?.map((c) => swapXY(c)),
+    elements: d.elements?.map((el) => swapXY(el)),
   };
 }
 

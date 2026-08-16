@@ -8,6 +8,7 @@ export type BoardCardMeta = {
 };
 
 type LooseDiagram = {
+  pitch?: { format?: string };
   players?: Array<{ team?: string; role?: string; number?: number; x: number; y: number }>;
   labels?: Array<{ text?: string }>;
   areas?: Array<{ label?: string }>;
@@ -67,13 +68,28 @@ function parseSetupText(text: string): Pick<BoardCardMeta, 'phase' | 'zone' | 'c
 
 function inferFormationFromPlayers(
   players: Array<{ team?: string; role?: string }>,
-  team: 'ATT' | 'DEF'
+  team: 'ATT' | 'DEF',
+  format?: string | null
 ): string | null {
   const side = players.filter((p) => p.team === team);
-  if (side.length < 8) return null;
+  if (side.length < 5) return null;
   const roles = side.map((p) => String(p.role || '').toUpperCase());
   const count = (re: RegExp) => roles.filter((r) => re.test(r)).length;
+  const n = side.length;
+  const fmt = String(format || '').toUpperCase();
 
+  if (fmt === '7V7' || n === 7) {
+    if (count(/^(CB|RCB|LCB)$/) >= 1 && count(/^(RB|LB)$/) >= 2) return '3-2-1';
+    return '2-3-1';
+  }
+  if (fmt === '9V9' || n === 9) {
+    if (count(/^(RAM|LAM|CAM)$/) >= 1) return '2-3-2-1';
+    if (count(/^(RW|LW)$/) >= 1) return '3-2-3';
+    if (count(/^(ST|CF)$/) >= 2) return '3-3-2';
+    return '3-2-3';
+  }
+
+  if (n < 8) return null;
   if (count(/^(CB|RCB|LCB)$/) >= 3 && count(/^(RWB|LWB|WB)$/) >= 1) return '3-5-2';
   if (count(/^(ST|CF)$/) >= 2 && count(/^(RM|LM)$/) >= 1) return '4-4-2';
   if (count(/^(CDM|DM)$/) >= 2 || count(/^(RAM|LAM|CAM)$/) >= 1) return '4-2-3-1';
@@ -111,12 +127,13 @@ export function summarizeBoardCardMeta(raw: unknown): BoardCardMeta {
     }
   }
 
+  const format = asDiagram(raw).pitch?.format;
   return {
     phase: parsed.phase,
     zone,
     channel,
-    attFormation: inferFormationFromPlayers(players, 'ATT'),
-    defFormation: inferFormationFromPlayers(players, 'DEF'),
+    attFormation: inferFormationFromPlayers(players, 'ATT', format),
+    defFormation: inferFormationFromPlayers(players, 'DEF', format),
     slideCount: Math.max(1, asDiagram(raw).sequence?.frames?.length || 1),
   };
 }

@@ -1,6 +1,28 @@
-import { generateText, setMetricsContext, clearMetricsContext } from '../gemini';
+import { generateText, generateMultimodalText, setMetricsContext, clearMetricsContext } from '../gemini';
+import { isBoardChatPdf, type BoardChatImage } from './board-ai-image';
 import { parseWebDiagramV1 } from './board-diagram-schema';
 import { toWebDiagramV1, type WebDiagramV1 } from './web-diagram-v1';
+import {
+  boardSymbolicDslEnabled,
+  lockDslFormat,
+  ensureDslEquipmentFromMessage,
+  stripUnmentionedRondoMiniGoals,
+  ensureRondoRosterFromMessage,
+  ensureImportOverloadRoster,
+  promoteRondoNeutralsFromMessage,
+  inferGridIntentFromMessage,
+  lockDslSeed,
+  parseBoardSymbolicDsl,
+  BOARD_GRID_INTENTS,
+  type BoardSymbolicDsl,
+} from './board-symbolic-dsl';
+import {
+  boardInvariantErrors,
+  enforceBoardInvariants,
+  separateOverlappingPlayers,
+  solveBoardLayout,
+  unstackDiagram,
+} from './board-layout-solver';
 import {
   getClubPhilosophy,
   philosophyHasContent,
@@ -10,8 +32,11 @@ import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-mod
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
   buildFormationPlaybookGuidance,
+  inferFormationsFromMessage,
+  toFormationId11,
   type FormationId11,
 } from './formation-principles';
+import { summarizeBoardCardMeta } from './board-card-meta';
 import {
   isSessionImproveRequest,
   runBoardSessionBridge,
@@ -177,6 +202,7 @@ function compactDiagram(diagram: WebDiagramV1): WebDiagramV1 {
     goals?: WebDiagramV1['goals'];
     coach?: WebDiagramV1['coach'];
     cones?: WebDiagramV1['cones'];
+    elements?: WebDiagramV1['elements'];
   }) => ({
     players: (d.players || []).map((p) => ({
       id: p.id,
@@ -202,6 +228,7 @@ function compactDiagram(diagram: WebDiagramV1): WebDiagramV1 {
     goals: d.goals,
     ...(d.coach ? { coach: d.coach } : {}),
     ...(d.cones ? { cones: d.cones } : {}),
+    ...(d.elements && d.elements.length ? { elements: d.elements } : {}),
   });
 
   const root = {
@@ -238,6 +265,7 @@ function layersFromRepaired(d: WebDiagramV1) {
     goals: d.goals,
     coach: d.coach,
     cones: d.cones,
+    elements: d.elements,
   };
 }
 
@@ -246,18 +274,20 @@ export function repairBoardDiagramWithSequence(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
-  const repairOne = (d: WebDiagramV1) =>
-    repairBoardDiagramOppositionNearPlay(
-      repairBoardDiagramFocusZone(
-        repairBoardDiagramLabels(
-          repairBoardDiagramArrows(
-            repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d))
-          )
-        ),
-        message
-      ),
-      message
+  const repairOne = (d: WebDiagramV1) => {
+    const cleaned = repairBoardDiagramArrows(
+      repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d))
     );
+    const placed = looksLikeFunctionPractice(cleaned)
+      ? repairImportPracticeLayout(cleaned)
+      : repairBoardDiagramTeamEnds(
+          repairBoardDiagramOppositionNearPlay(
+            repairBoardDiagramFocusZone(cleaned, message),
+            message
+          )
+        );
+    return unstackDiagramPlayers(repairBoardDiagramLabels(placed));
+  };
 
   let working: WebDiagramV1 = diagram;
   const freezePlayers = wantsFrozenPlayers(message);
@@ -281,6 +311,7 @@ export function repairBoardDiagramWithSequence(
       goals: f.goals,
       coach: f.coach,
       cones: f.cones,
+      elements: f.elements,
     };
     const repaired = freezePlayers
       ? repairBoardDiagramLabels(
@@ -326,15 +357,17 @@ export function repairBoardDiagramWithSequence(
     );
     if (placed.sequence?.frames?.length) {
       frames = placed.sequence.frames.map((f) => {
-        const cleaned = repairBoardDiagramLabels(
-          repairBoardDiagramArrows({
-            pitch: working.pitch,
-            players: f.players,
-            arrows: f.arrows,
-            areas: f.areas,
-            labels: f.labels,
-            balls: f.balls,
-          })
+        const cleaned = unstackDiagramPlayers(
+          repairBoardDiagramLabels(
+            repairBoardDiagramArrows({
+              pitch: working.pitch,
+              players: f.players,
+              arrows: f.arrows,
+              areas: f.areas,
+              labels: f.labels,
+              balls: f.balls,
+            })
+          )
         );
         return {
           id: f.id,
@@ -351,7 +384,7 @@ export function repairBoardDiagramWithSequence(
     frames.find((f) => f.id === seq.activeFrameId)?.id || frames[0].id;
   const active = frames.find((f) => f.id === activeFrameId) || frames[0];
 
-  return {
+  return unstackDiagramPlayers({
     ...working,
     ...layersFromRepaired({
       pitch: working.pitch,
@@ -363,14 +396,14 @@ export function repairBoardDiagramWithSequence(
       goals: active.goals,
       coach: active.coach,
       cones: active.cones,
+      elements: active.elements,
     } as WebDiagramV1),
     sequence: { frames, activeFrameId },
-  };
+  });
 }
 
 type SeqFrame = NonNullable<WebDiagramV1['sequence']>['frames'][number];
 
-const SEQ_MIN_PLAYER_GAP = 7;
 const SEQ_STRUCTURE_MAX_DRIFT = 18;
 const SEQ_ACTIVE_NEAR_BALL = 22;
 
@@ -815,45 +848,517 @@ function softAnchorStructurePlayers(
   });
 }
 
-function separateOverlappingPlayers(
-  players: WebDiagramV1['players']
-): WebDiagramV1['players'] {
-  const next = players.map((p) => ({ ...p }));
-  for (let pass = 0; pass < 4; pass++) {
-    for (let i = 0; i < next.length; i++) {
-      for (let j = i + 1; j < next.length; j++) {
-        const a = next[i];
-        const b = next[j];
-        const d = dist(a, b);
-        if (d >= SEQ_MIN_PLAYER_GAP || d < 0.01) {
-          if (d < 0.01) {
-            // Identical coords — push along a stable axis by team/number
-            const push = SEQ_MIN_PLAYER_GAP / 2;
-            next[j] = {
-              ...b,
-              x: clamp01to100Local(b.x + push),
-              y: clamp01to100Local(b.y + (b.team === a.team ? push : -push)),
-            };
-          }
-          continue;
-        }
-        const ux = (b.x - a.x) / d;
-        const uy = (b.y - a.y) / d;
-        const need = (SEQ_MIN_PLAYER_GAP - d) / 2;
-        next[i] = {
-          ...a,
-          x: clamp01to100Local(a.x - ux * need),
-          y: clamp01to100Local(a.y - uy * need),
-        };
-        next[j] = {
-          ...b,
-          x: clamp01to100Local(b.x + ux * need),
-          y: clamp01to100Local(b.y + uy * need),
-        };
+function compactRosterForDsl(diagram: WebDiagramV1) {
+  return {
+    format: diagram.pitch?.format || '11V11',
+    playerCount: (diagram.players || []).length,
+    players: (diagram.players || []).map((p) => ({
+      id: p.id,
+      number: p.number,
+      team: p.team,
+      role: p.role,
+    })),
+  };
+}
+
+function diagramLooksLikeFunction(diagram?: WebDiagramV1 | null): boolean {
+  if (!diagram) return false;
+  const frames = diagram.sequence?.frames;
+  const active =
+    frames?.find((f) => f.id === diagram.sequence?.activeFrameId) || frames?.[frames.length - 1];
+  const live = active
+    ? {
+        players: active.players?.length ? active.players : diagram.players,
+        areas: active.areas?.length ? active.areas : diagram.areas,
+        elements: active.elements?.length ? active.elements : diagram.elements,
       }
+    : diagram;
+  if ((live.elements || []).some((e) => e.kind === 'mini-goal')) return true;
+  if ((live.areas || []).some((a) => /rondo|ssg/i.test(String(a.label || '')))) return true;
+  const n = live.players?.length || 0;
+  const format = diagram.pitch?.format || '11V11';
+  const expected = format === '7V7' ? 14 : format === '9V9' ? 18 : 22;
+  return n > 0 && n <= expected - 6;
+}
+
+function liveLooksLikeDefendingFunction(diagram?: WebDiagramV1 | null): boolean {
+  const gk = (diagram?.players || []).find(
+    (p) => p.team === 'ATT' && (p.number === 1 || String(p.role || '').toUpperCase() === 'GK')
+  );
+  if (gk && gk.y >= 70 && diagramLooksLikeFunction(diagram)) return true;
+  if (!diagramLooksLikeFunction(diagram)) return false;
+  const att = (diagram?.players || []).filter(
+    (p) => p.team === 'ATT' && p.number !== 1 && String(p.role || '').toUpperCase() !== 'GK'
+  );
+  if (!att.length) return false;
+  const avgY = att.reduce((s, p) => s + p.y, 0) / att.length;
+  return avgY >= 55;
+}
+
+function scaleShouldDefend(
+  current: WebDiagramV1 | undefined,
+  message?: string,
+  rosterHint?: string
+): boolean {
+  if (liveLooksLikeDefendingFunction(current)) return true;
+  return /\b(defend(?:ing)? that (?:big )?goal|don['\u2019]?t flip|compact(?:ness)?|wide deliver)/i.test(
+    [message, rosterHint].filter(Boolean).join('\n')
+  );
+}
+
+export function lockDslForTurn(
+  dsl: BoardSymbolicDsl,
+  opts: {
+    freeze: boolean;
+    hasImage: boolean;
+    importDrawEleven: boolean;
+    fromCurrentBoard: boolean;
+    keepPriorFrame: boolean;
+    reshape: boolean;
+    currentFormat?: '7V7' | '9V9' | '11V11';
+    current?: WebDiagramV1;
+    message?: string;
+    rosterHint?: string;
+  }
+): BoardSymbolicDsl {
+  let next = lockDslSeed(dsl, {
+    freeze: opts.freeze,
+    fromCurrentBoard: opts.fromCurrentBoard,
+    keepPriorFrame: opts.keepPriorFrame,
+    reshape: opts.reshape,
+    hasImage: opts.hasImage,
+    importDrawEleven: opts.importDrawEleven,
+  });
+  next = lockDslFormat(next, {
+    message: opts.message,
+    currentFormat: opts.currentFormat,
+  });
+  if (opts.freeze) {
+    const liveIntent = String(opts.current?.areas?.[0]?.label || '');
+    const pinned = (BOARD_GRID_INTENTS as readonly string[]).includes(liveIntent)
+      ? (liveIntent as BoardSymbolicDsl['grid']['intent'])
+      : next.grid.intent;
+    next = {
+      ...next,
+      seed: 'current',
+      moves: [],
+      grid: { ...next.grid, intent: pinned },
+    };
+  }
+  if (opts.message) {
+    const inferred = inferFormationsFromMessage(opts.message);
+    next = {
+      ...next,
+      grid: {
+        ...next.grid,
+        ...(inferred.att ? { attFormation: inferred.att } : {}),
+        ...(inferred.def ? { defFormation: inferred.def } : {}),
+      },
+    };
+  }
+  if (!opts.freeze && opts.message) {
+    const intent = inferGridIntentFromMessage(opts.message);
+    const matchAfterFunction =
+      Boolean(intent && intent !== 'rondo' && intent !== 'ssg_grid') &&
+      (diagramLooksLikeFunction(opts.current) ||
+        next.activity === 'rondo' ||
+        next.grid.intent === 'rondo' ||
+        next.activity === 'technical_exercise');
+    if (intent) {
+      const keepBlank =
+        !matchAfterFunction &&
+        (next.seed === 'blank' ||
+          next.activity === 'rondo' ||
+          next.activity === 'technical_exercise' ||
+          opts.keepPriorFrame);
+      next = {
+        ...next,
+        activity: matchAfterFunction ? 'match_scenario' : next.activity,
+        seed: matchAfterFunction
+          ? 'formation'
+          : keepBlank
+            ? 'blank'
+            : opts.fromCurrentBoard || next.seed === 'current'
+              ? 'current'
+              : opts.reshape
+                ? 'formation'
+                : next.seed === 'blank'
+                  ? 'blank'
+                  : next.seed || 'formation',
+        entities: matchAfterFunction ? [] : next.entities,
+        equipment: matchAfterFunction ? [] : next.equipment,
+        grid: {
+          ...next.grid,
+          intent:
+            intent === 'rondo' ||
+            intent === 'ssg_grid' ||
+            matchAfterFunction ||
+            next.grid.intent === 'full_pitch' ||
+            !next.grid.intent
+              ? intent
+              : next.grid.intent,
+          ...(matchAfterFunction &&
+          opts.importDrawEleven &&
+          scaleShouldDefend(opts.current, opts.message, opts.rosterHint)
+            ? { attFormation: '4-4-2' as const, defFormation: '4-3-3' as const }
+            : {}),
+        },
+      };
     }
   }
-  return next;
+  if (
+    !opts.freeze &&
+    opts.importDrawEleven &&
+    scaleShouldDefend(opts.current, opts.message, opts.rosterHint)
+  ) {
+    next = {
+      ...next,
+      activity: 'match_scenario',
+      seed: 'formation',
+      entities: [],
+      equipment: [],
+      actions: [],
+      moves: [],
+      grid: {
+        ...next.grid,
+        intent: 'full_pitch',
+        attFormation: '4-4-2',
+        defFormation: '4-3-3',
+      },
+    };
+  }
+  if (next.activity === 'rondo' || next.grid.intent === 'rondo') {
+    next = { ...next, activity: 'rondo', grid: { ...next.grid, intent: 'rondo' } };
+    next = ensureRondoRosterFromMessage(
+      next,
+      [opts.message, opts.rosterHint].filter(Boolean).join('\n')
+    );
+    next = promoteRondoNeutralsFromMessage(next, opts.message);
+  }
+  if (opts.hasImage || opts.rosterHint) {
+    next = ensureImportOverloadRoster(next, [opts.message, opts.rosterHint].filter(Boolean).join('\n'));
+  }
+  next = retargetDslActionsFromMessage(next, opts.message);
+  next = ensureComboActionsFromMessage(next, opts.message, opts.current);
+  next = lockDslFormat(next, {
+    message: opts.message,
+    currentFormat: opts.currentFormat,
+  });
+  next = ensureDslEquipmentFromMessage(
+    next,
+    [opts.message, opts.rosterHint].filter(Boolean).join('\n')
+  );
+  return stripUnmentionedRondoMiniGoals(
+    next,
+    [opts.message, opts.rosterHint].filter(Boolean).join('\n')
+  );
+}
+
+function shirtIdForCombo(
+  current: WebDiagramV1 | undefined,
+  n: number,
+  preferDef: boolean
+): string {
+  const all = current?.players || [];
+  const defs = all.filter((p) => p.number === n && p.team === 'DEF');
+  const atts = all.filter((p) => p.number === n && p.team === 'ATT');
+  if (preferDef && defs[0]) return defs[0].id;
+  if (atts[0]) return atts[0].id;
+  if (defs[0]) return defs[0].id;
+  if (preferDef) {
+    const pool = all.filter(
+      (p) => p.team === 'DEF' && p.number !== 1 && String(p.role || '').toUpperCase() !== 'GK'
+    );
+    const central = [...pool].sort(
+      (a, b) => Math.abs(a.x - 50) + Math.abs(a.y - 50) - (Math.abs(b.x - 50) + Math.abs(b.y - 50))
+    )[0];
+    if (central) return central.id;
+  }
+  return `${preferDef ? 'def' : 'att'}-${n}`;
+}
+
+/** “9 plays wide to the 7 and the 7 delivers” must still emit arrows on a freeze. */
+export function ensureComboActionsFromMessage(
+  dsl: BoardSymbolicDsl,
+  message?: string,
+  current?: WebDiagramV1
+): BoardSymbolicDsl {
+  if (!message) return dsl;
+  const wide = message.match(/\b(?:the )?(\d+)\s+plays wide to(?: the)? (\d+)\b/i);
+  const delivers = message.match(/\b(?:the )?(\d+)\s+delivers\b/i);
+  if (!wide && !delivers) return dsl;
+  const preferDef =
+    liveLooksLikeDefendingFunction(current) ||
+    (current?.areas || []).some((a) => /ssg/i.test(String(a.label || '')));
+  let actions = [...(dsl.actions || [])];
+  if (wide) {
+    const fromN = Number(wide[1]);
+    const toN = Number(wide[2]);
+    const from_id = shirtIdForCombo(current, fromN, preferDef);
+    const to_id = shirtIdForCombo(current, toN, preferDef);
+    if (!actions.some((a) => a.type === 'pass' && a.from_id === from_id && a.to_id === to_id)) {
+      actions = [...actions, { type: 'pass' as const, from_id, to_id }];
+    }
+  }
+  if (delivers) {
+    const n = Number(delivers[1]);
+    const from_id = shirtIdForCombo(current, n, preferDef);
+    if (!actions.some((a) => (a.type === 'run' || a.type === 'pass') && a.from_id === from_id)) {
+      actions = [...actions, { type: 'run' as const, from_id, to_id: 'att-1' }];
+    }
+  }
+  return { ...dsl, actions };
+}
+
+function retargetDslActionsFromMessage(
+  dsl: BoardSymbolicDsl,
+  message?: string
+): BoardSymbolicDsl {
+  if (!message) return dsl;
+  let actions = [...(dsl.actions || [])];
+  if (/\bjump(?:s|ing)?(?: the)? 6\b/i.test(message)) {
+    actions = actions.map((a) =>
+      a.type === 'pass' && /att-6$/i.test(a.to_id) ? { ...a, to_id: 'att-8' } : a
+    );
+  }
+  const runShirt = namedRunShirt(message);
+  if (runShirt != null) {
+    const id = `att-${runShirt}`;
+    const hasRun = actions.some((a) => a.type === 'run');
+    actions = hasRun
+      ? actions.map((a) => (a.type === 'run' ? { ...a, from_id: id } : a))
+      : [...actions, { type: 'run' as const, from_id: id, to_id: 'def-1' }];
+  }
+  return { ...dsl, actions };
+}
+
+function namedRunShirt(message: string): number | null {
+  const m =
+    message.match(/\b(?:the )?(\d+)(?:'s|’s)? run\b/i) ||
+    message.match(/\brun (?:from |off |in behind from )(?:the |our )?#?(\d+)\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function applyLockedDsl(
+  dsl: BoardSymbolicDsl,
+  current: WebDiagramV1,
+  _message: string
+): WebDiagramV1 | null {
+  const solved = enforceBoardInvariants(solveBoardLayout(dsl, current), dsl);
+  const inv = boardInvariantErrors(solved, dsl);
+  const solvedN = solved.players?.length || 0;
+  const currentN = current.players?.length || 0;
+  // Abort a true upsample. Applying fewer shirts than the leftover default is progress.
+  if (inv.some((e) => e.startsWith('upsample')) && solvedN >= currentN) return null;
+  const validated = parseWebDiagramV1(solved);
+  if (!validated.ok) return null;
+  return validated.diagram;
+}
+
+function mapTeachingPlayers(
+  diagram: WebDiagramV1,
+  mapPlayer: (p: WebDiagramV1['players'][number]) => WebDiagramV1['players'][number]
+): WebDiagramV1 {
+  return {
+    ...diagram,
+    players: (diagram.players || []).map(mapPlayer),
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start'
+              ? f
+              : { ...f, players: (f.players || []).map(mapPlayer) }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
+/** “Too deep / 6 higher” = toward the opponent (lower y), never toward our goal. */
+export function nudgeAttSixHigher(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  if (!/\b6\b/.test(message) || !/\b(too deep|higher|in front of their)\b/i.test(message)) {
+    return diagram;
+  }
+  return mapTeachingPlayers(diagram, (p) => {
+    if (p.team !== 'ATT' || p.number !== 6) return p;
+    return { ...p, y: Math.max(8, Math.min(100, p.y - 18)) };
+  });
+}
+
+/** “Drop the 8 without moving anyone else” — tuck that ATT shirt toward our goal (higher y). */
+export function dropNamedShirt(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  const m = message.match(/\bdrop(?:ping)?(?: the| our)? (\d+)\b/i);
+  if (!m) return diagram;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n)) return diagram;
+  return mapTeachingPlayers(diagram, (p) => {
+    if (p.team !== 'ATT' || p.number !== n) return p;
+    return { ...p, y: Math.max(8, Math.min(100, p.y + 12)) };
+  });
+}
+
+/** Pin “the 9’s run” to ATT #9 even if the model attached it to #10. Inject the run if missing. */
+export function retargetNamedRunArrows(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  const n = namedRunShirt(message);
+  if (n == null) return diagram;
+  const shirt = (diagram.players || []).find((p) => p.team === 'ATT' && p.number === n);
+  if (!shirt) return diagram;
+  const behind = { x: shirt.x, y: Math.max(6, shirt.y - 22) };
+  const mapArrows = (arrows: WebDiagramV1['arrows'] | undefined) => {
+    const next = (arrows || []).map((a) =>
+      String(a.type).toLowerCase() === 'run' ? { ...a, from: { ...a.from, playerId: shirt.id } } : a
+    );
+    if (next.some((a) => String(a.type).toLowerCase() === 'run')) return next;
+    return [
+      ...next,
+      {
+        from: { playerId: shirt.id },
+        to: behind,
+        type: 'run' as const,
+        style: 'dashed' as const,
+        weight: 'normal' as const,
+      },
+    ];
+  };
+  return {
+    ...diagram,
+    arrows: mapArrows(diagram.arrows),
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start' ? f : { ...f, arrows: mapArrows(f.arrows) }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
+export function applyCoachShirtEdits(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  return retargetDeliveryTowardGoal(
+    retargetNamedRunArrows(
+      dropNamedShirt(nudgeAttSixHigher(nudgeRondoCorrection(diagram, message), message), message),
+      message
+    ),
+    message
+  );
+}
+
+/** “pinks on the ends / defenders compact” must actually move the rondo, not rebuild the same ellipse. */
+export function nudgeRondoCorrection(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  const t = String(message || '');
+  const wantsEnds =
+    /\b(on the ends?|short ends?|neutrals? on the)\b/i.test(t) ||
+    (/\bpinks?\b/i.test(t) && /\b(ends?|sideline)\b/i.test(t));
+  const wantsCompact = /\b(compact|tighter|inside)\b/i.test(t);
+  if (!wantsEnds && !wantsCompact) return diagram;
+  const n = diagram.players?.length || 0;
+  if (n < 4 || n > 12) return diagram;
+  const box = diagram.areas?.[0];
+  const bx = Number(box?.x);
+  const by = Number(box?.y);
+  const bw = Number(box?.width);
+  const bh = Number(box?.height);
+  if (!Number.isFinite(bx) || !Number.isFinite(by) || !(bw > 8 && bh > 8)) return diagram;
+  const cx = bx + bw / 2;
+  const cy = by + bh / 2;
+  const neus = (diagram.players || []).filter((p) => p.team === 'NEUTRAL');
+  const atts = (diagram.players || []).filter((p) => p.team === 'ATT');
+  const next = (diagram.players || []).map((p) => {
+    if (wantsEnds && p.team === 'NEUTRAL' && neus.length >= 2) {
+      const i = neus.findIndex((x) => x.id === p.id);
+      // Short ends of the on-screen box = top/bottom (x). Paper 10×15 pinks sit there.
+      if (i === 0) return { ...p, x: bx + Math.min(8, bw * 0.18), y: cy };
+      if (i === 1) return { ...p, x: bx + bw - Math.min(8, bw * 0.18), y: cy };
+    }
+    if (wantsEnds && p.team === 'ATT' && atts.length >= 2) {
+      const i = atts.findIndex((x) => x.id === p.id);
+      if (i === 0) return { ...p, x: cx, y: by + Math.min(8, bh * 0.18) };
+      if (i === 1) return { ...p, x: cx, y: by + bh - Math.min(8, bh * 0.18) };
+    }
+    if (wantsCompact && p.team === 'DEF') {
+      return {
+        ...p,
+        x: clampPct(p.x * 0.5 + cx * 0.5),
+        y: clampPct(p.y * 0.5 + cy * 0.5),
+      };
+    }
+    return p;
+  });
+  const mapPlayers = (players: WebDiagramV1['players'] | undefined) => {
+    if (!players?.length) return players;
+    const byId = new Map(next.map((p) => [p.id, p]));
+    return players.map((p) => byId.get(p.id) || p);
+  };
+  return {
+    ...diagram,
+    players: next,
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start' ? f : { ...f, players: mapPlayers(f.players) || f.players }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
+function clampPct(n: number) {
+  return Math.max(0, Math.min(100, n));
+}
+
+/** “the 7 delivers” from a DEF shirt goes into OUR box (RIGHT / high y), not their mini-goal end. */
+export function retargetDeliveryTowardGoal(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  if (!/\b(deliver(?:s|y|ed)?|cross(?:es|ed)?)\b/i.test(message)) return diagram;
+  const m = String(message).match(/\b(?:the )?(\d+)\s+delivers\b/i);
+  const n = m ? Number(m[1]) : NaN;
+  if (!Number.isFinite(n)) return diagram;
+  const shirt = (diagram.players || []).find((p) => p.number === n);
+  if (!shirt) return diagram;
+  const towardOurGoal =
+    shirt.team === 'DEF' || liveLooksLikeDefendingFunction(diagram);
+  const y = towardOurGoal ? Math.min(92, Math.max(shirt.y + 16, 78)) : Math.max(8, shirt.y - 22);
+  const mapArrows = (arrows: WebDiagramV1['arrows'] | undefined) =>
+    (arrows || []).map((a) => {
+      if (a.from.playerId !== shirt.id) return a;
+      const kind = String(a.type || '').toLowerCase();
+      if (kind !== 'run' && kind !== 'pass' && kind !== 'cross' && kind !== 'delivery') return a;
+      const toY = typeof a.to.y === 'number' ? a.to.y : towardOurGoal ? 0 : 100;
+      const wrongWay = towardOurGoal ? toY < 60 : toY > 40;
+      if (!wrongWay && typeof a.to.y === 'number') return a;
+      return { ...a, type: kind === 'pass' ? a.type : 'run', to: { x: shirt.x, y } };
+    });
+  return {
+    ...diagram,
+    arrows: mapArrows(diagram.arrows),
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start' ? f : { ...f, arrows: mapArrows(f.arrows) }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
+function unstackDiagramPlayers(diagram: WebDiagramV1): WebDiagramV1 {
+  return unstackDiagram(diagram);
+}
+
+function wantsCurrentBoardSeed(message: string): boolean {
+  return /\b(from this board|from there|from here|looking at the board|keep these players|keep (?:the )?(?:players?|shirts?)|keep us|don['\u2019]?t flip|do not flip|don['\u2019]?t restack|do not restack)\b/i.test(
+    message
+  );
+}
+
+/** Freeze the current picture as Frame 1, then draw a new activity on later frames. */
+export function wantsKeepPriorFrame(message: string): boolean {
+  return /\bfreeze (?:this |the )?(?:board|picture|setup|diagram)\b/i.test(message);
 }
 
 function wantsSequenceFromMessage(message: string): boolean {
@@ -864,8 +1369,29 @@ function wantsSequenceFromMessage(message: string): boolean {
 
 /** Coach forbade moving shirts — arrows/captions only. */
 export function wantsFrozenPlayers(message: string): boolean {
-  return /\b(without moving|don'?t move|do not move|keep (?:the )?(?:players?|shirts?|positions?|coordinates?) (?:fixed|still|as[- ]is)|leave (?:the )?(?:players?|shirts?)|freeze (?:the )?(?:players?|shirts?|positions?)|coordinates? fixed|as they (?:are|stand)|no (?:player )?movement)\b/i.test(
-    message
+  const m = String(message || '');
+  if (
+    /\b(without moving|don['\u2019]?t move|do not move|nobody else moves|don['\u2019]?t restack|do not restack|don['\u2019]?t flip|do not flip)\b/i.test(
+      m
+    )
+  ) {
+    return true;
+  }
+  // "freeze that, then a pass" — not "freeze this board and show a rondo".
+  if (
+    /\bfreeze that\b/i.test(m) &&
+    !/\b(rondo|ssg|high press|mid[- ]?block|2-3-1|3-2-3|11\s*v\s*11)\b/i.test(m)
+  ) {
+    return true;
+  }
+  return /\b(keep (?:the )?(?:players?|shirts?|positions?|coordinates?) (?:fixed|still|as[- ]is)|leave (?:the )?(?:players?|shirts?)|freeze (?:the )?(?:players?|shirts?|positions?)|coordinates? fixed|as they (?:are|stand)|no (?:player )?movement)\b/i.test(
+    m
+  );
+}
+
+export function wantsScaleToEleven(message: string): boolean {
+  return /\bscale.{0,60}11\s*v\s*11\b|\bsame idea.{0,40}11\s*v\s*11\b|\b11\s*v\s*11.{0,40}scale\b/i.test(
+    String(message || '')
   );
 }
 
@@ -890,9 +1416,9 @@ export function lockSequencePlayersToOriginal(
 ): WebDiagramV1 {
   const roster = original.players || [];
   if (!roster.length) return result;
-  const frames = result.sequence?.frames?.map((f) => ({
+  const frames = result.sequence?.frames?.map((f, i) => ({
     ...f,
-    players: lockPlayersToRoster(f.players, roster),
+    players: i === 0 && isFrozenStartFrame(f) ? f.players : lockPlayersToRoster(f.players, roster),
   }));
   return {
     ...result,
@@ -922,10 +1448,22 @@ function dropReshapeFramesWhenFrozen(frames: SeqFrame[]): SeqFrame[] {
   return [start, ...rest];
 }
 
+function expectedMatchShirts(diagram: WebDiagramV1): number {
+  const format = diagram.pitch?.format;
+  return format === '7V7' ? 14 : format === '9V9' ? 18 : 22;
+}
+
+function isFrozenStartFrame(frame?: SeqFrame | null): boolean {
+  return /\bfrozen board\b/i.test(String(frame?.note || ''));
+}
+
+const FROZEN_START_NOTE =
+  'Frozen board — keep this picture as Frame 1 for later teaching sequences.';
+
 function snapshotBoardLayers(
   diagram: Pick<
     WebDiagramV1,
-    'players' | 'arrows' | 'areas' | 'labels' | 'balls' | 'goals' | 'coach' | 'cones'
+    'players' | 'arrows' | 'areas' | 'labels' | 'balls' | 'goals' | 'coach' | 'cones' | 'elements'
   >
 ) {
   return {
@@ -937,6 +1475,7 @@ function snapshotBoardLayers(
     goals: diagram.goals,
     coach: diagram.coach,
     cones: diagram.cones,
+    elements: diagram.elements,
   };
 }
 
@@ -1003,20 +1542,61 @@ export function ensureSequenceStartsFromOriginal(
   message: string
 ): WebDiagramV1 {
   const aiFrames = result.sequence?.frames || [];
-  const freezePlayers = wantsFrozenPlayers(message);
+  const need = expectedMatchShirts(original);
+  const priorStart = original.sequence?.frames?.[0];
+  const priorN = priorStart?.players?.length || 0;
+  const liveN = (original.players || []).length;
+  const keepExistingFilmstrip =
+    isFrozenStartFrame(priorStart) ||
+    (Boolean(priorStart) && priorN >= need - 2 && liveN < priorN && liveN < need);
   const wantsSeq =
     wantsSequenceFromMessage(message) ||
     isPlayOutRequest(message) ||
-    aiFrames.length >= 2;
+    wantsKeepPriorFrame(message) ||
+    (wantsCurrentBoardSeed(message) && Boolean(inferGridIntentFromMessage(message))) ||
+    aiFrames.length >= 2 ||
+    keepExistingFilmstrip;
 
-  if (!wantsSeq) return result;
+  if (!wantsSeq) {
+    const origFrames = original.sequence?.frames || [];
+    const nextFrames = result.sequence?.frames || [];
+    const sameRoster =
+      (result.players || []).length === (original.players || []).length &&
+      (result.players || []).length > 0;
+    if (origFrames.length >= 2 && nextFrames.length < 2 && sameRoster) {
+      const play: SeqFrame = {
+        id: 'f-2',
+        title: '2. Play',
+        durationMs: 1600,
+        ...snapshotBoardLayers(result),
+      };
+      return {
+        ...result,
+        sequence: {
+          frames: [origFrames[0], play],
+          activeFrameId: 'f-2',
+        },
+      };
+    }
+    return result;
+  }
 
-  const startLayers = snapshotBoardLayers(original);
+  const freezePlayers = wantsFrozenPlayers(message);
+  const liveLayers = snapshotBoardLayers(original);
+  const freezeThisTurn = wantsKeepPriorFrame(message);
+  const keepFrozenStart =
+    isFrozenStartFrame(priorStart) ||
+    (Boolean(priorStart) && priorN >= need - 2 && liveN < priorN && liveN < need);
+  const startLayers =
+    keepFrozenStart && priorStart ? snapshotBoardLayers(priorStart) : liveLayers;
   const startFrame: SeqFrame = {
     id: 'f-start',
     title: '1. Start (board)',
-    note: 'Saved starting picture — original positions before the teaching sequence.',
-    durationMs: 1600,
+    note:
+      freezeThisTurn || keepFrozenStart
+        ? FROZEN_START_NOTE
+        : 'Saved starting picture — original positions before the teaching sequence.',
+    durationMs: keepFrozenStart ? priorStart?.durationMs || 1600 : 1600,
     ...startLayers,
   };
 
@@ -1156,6 +1736,144 @@ function clamp01to100Local(n: number) {
   return Math.max(0, Math.min(100, n));
 }
 
+function isGkPlayerLoose(p: { number?: number; role?: string }) {
+  return p.number === 1 || String(p.role || '').toUpperCase() === 'GK';
+}
+
+/** Function / SSG / rondo — not a full 11v11 match picture. */
+export function looksLikeFunctionPractice(diagram: WebDiagramV1): boolean {
+  const players = diagram.players || [];
+  const n = players.length;
+  if ((diagram.elements || []).some((e) => e.kind === 'mini-goal')) return true;
+  if (n > 0 && n <= 16) return true;
+  const gks = players.filter(isGkPlayerLoose);
+  return gks.length <= 1 && n > 0 && n <= 18;
+}
+
+function largestArea(diagram: WebDiagramV1) {
+  const areas = (diagram.areas || []).filter(
+    (a) => typeof a.x === 'number' && typeof a.y === 'number'
+  );
+  if (!areas.length) return null;
+  return areas.slice().sort((a, b) => {
+    const aa = (a.width ?? 10) * (a.height ?? 10);
+    const bb = (b.width ?? 10) * (b.height ?? 10);
+    return bb - aa;
+  })[0];
+}
+
+function swapAttDefTeams(diagram: WebDiagramV1): WebDiagramV1 {
+  return {
+    ...diagram,
+    players: (diagram.players || []).map((p) =>
+      p.team === 'ATT' ? { ...p, team: 'DEF' as const } : p.team === 'DEF' ? { ...p, team: 'ATT' as const } : p
+    ),
+  };
+}
+
+function flipPointLength<T extends { x: number; y: number }>(p: T): T {
+  return { ...p, y: clamp01to100Local(100 - p.y) };
+}
+
+function flipRefLength(ref: { playerId?: string; x?: number; y?: number } | undefined) {
+  if (!ref) return ref;
+  if (typeof ref.x === 'number' && typeof ref.y === 'number') {
+    return { ...ref, y: clamp01to100Local(100 - ref.y) };
+  }
+  return ref;
+}
+
+/** Mirror along the goal-to-goal axis so a practice drawn at the LEFT goal sits at the RIGHT (us) goal. */
+export function flipDiagramLength(diagram: WebDiagramV1): WebDiagramV1 {
+  const players = (diagram.players || []).map((p) => flipPointLength(p));
+  const balls = (diagram.balls || []).map((b) =>
+    typeof b.x === 'number' && typeof b.y === 'number' ? flipPointLength(b) : b
+  );
+  const labels = (diagram.labels || []).map((l) => flipPointLength(l));
+  const cones = (diagram.cones || []).map((c) => flipPointLength(c));
+  const elements = (diagram.elements || []).map((el) => ({
+    ...flipPointLength(el),
+    rotation:
+      typeof el.rotation === 'number' ? (((el.rotation + 180) % 360) + 360) % 360 : el.rotation,
+  }));
+  const goals = (diagram.goals || []).map((g) => flipPointLength(g));
+  const areas = (diagram.areas || []).map((a) => {
+    if (typeof a.x !== 'number' || typeof a.y !== 'number') return a;
+    const h = a.height ?? 10;
+    return { ...a, y: clamp01to100Local(100 - a.y - h) };
+  });
+  const arrows = (diagram.arrows || []).map((a) => ({
+    ...a,
+    from: flipRefLength(a.from) || a.from,
+    to: flipRefLength(a.to) || a.to,
+    ...(a.control && typeof a.control.x === 'number' && typeof a.control.y === 'number'
+      ? { control: flipPointLength(a.control) }
+      : {}),
+    ...(a.path
+      ? {
+          path: a.path.map((pt) =>
+            typeof pt.x === 'number' && typeof pt.y === 'number' ? flipPointLength(pt) : pt
+          ),
+        }
+      : {}),
+  }));
+  const coach =
+    diagram.coach && typeof diagram.coach.x === 'number' && typeof diagram.coach.y === 'number'
+      ? flipPointLength(diagram.coach)
+      : diagram.coach;
+  return {
+    ...diagram,
+    players,
+    balls,
+    labels,
+    cones,
+    elements,
+    goals,
+    areas,
+    arrows,
+    coach,
+  };
+}
+
+/**
+ * Function practice: our goal is RIGHT. If the GK / boxed area landed on the left,
+ * flip it. The unit with the GK (the coached defending unit) is ATT / blue.
+ */
+export function repairImportPracticeLayout(diagram: WebDiagramV1): WebDiagramV1 {
+  if (!looksLikeFunctionPractice(diagram)) return diagram;
+  let d = diagram;
+  const gk = (d.players || []).find(isGkPlayerLoose);
+  const main = largestArea(d);
+  const anchorY =
+    gk?.y ??
+    (main && typeof main.y === 'number' ? main.y + (main.height ?? 10) / 2 : null);
+  if (anchorY != null && anchorY < 48) {
+    d = flipDiagramLength(d);
+  }
+  const gk2 = (d.players || []).find(isGkPlayerLoose);
+  if (gk2 && gk2.team === 'DEF') {
+    d = swapAttDefTeams(d);
+  } else {
+    d = repairBoardDiagramTeamEnds(d);
+  }
+  const gk3 = (d.players || []).find(isGkPlayerLoose);
+  const box = largestArea(d);
+  if (gk3 && box && typeof box.x === 'number' && typeof box.y === 'number') {
+    const w = box.width ?? 10;
+    const h = box.height ?? 10;
+    if (!pointInArea(gk3, { x: box.x, y: box.y, width: w, height: h })) {
+      const nextY = clamp01to100Local(gk3.y - h * 0.72);
+      d = {
+        ...d,
+        areas: (d.areas || []).map((a) =>
+          a === box || (a.x === box.x && a.y === box.y) ? { ...a, y: nextY } : a
+        ),
+      };
+    }
+  }
+  return d;
+}
+
 /**
  * Detect when the model drew attack along diagram-x (vertical on a HORIZONTAL pitch)
  * and remap to goal-to-goal on diagram-y.
@@ -1163,31 +1881,37 @@ function clamp01to100Local(n: number) {
  */
 export function isBoardOrientationSwapped(diagram: WebDiagramV1): boolean {
   const players = diagram.players || [];
-  const attGk = players.find(
-    (p) =>
-      p.team === 'ATT' && (p.number === 1 || String(p.role || '').toUpperCase() === 'GK')
-  );
-  const defGk = players.find(
-    (p) =>
-      p.team === 'DEF' && (p.number === 1 || String(p.role || '').toUpperCase() === 'GK')
-  );
-  if (!attGk || !defGk) {
-    // Fallback: ATT centroid should be higher y than DEF
-    const att = players.filter((p) => p.team === 'ATT');
-    const def = players.filter((p) => p.team === 'DEF');
-    if (att.length < 3 || def.length < 3) return false;
-    const avg = (list: typeof players, key: 'x' | 'y') =>
-      list.reduce((s, p) => s + p[key], 0) / list.length;
-    const ax = avg(att, 'x');
-    const ay = avg(att, 'y');
-    const dx = avg(def, 'x');
-    const dy = avg(def, 'y');
-    return Math.abs(ax - dx) > Math.abs(ay - dy) + 15 && Math.abs(ax - dx) > 35;
+  if (players.length < 4) return false;
+
+  const attGk = players.find((p) => p.team === 'ATT' && isGkPlayerLoose(p));
+  const defGk = players.find((p) => p.team === 'DEF' && isGkPlayerLoose(p));
+  const gk = attGk || defGk || players.find(isGkPlayerLoose);
+
+  const touchlineDist = (p: { x: number; y: number }) => Math.min(p.x, 100 - p.x);
+  const goalLineDist = (p: { x: number; y: number }) => Math.min(p.y, 100 - p.y);
+
+  // Two GKs: swapped if they sit top↔bottom instead of left↔right
+  if (attGk && defGk) {
+    const ySpan = Math.abs(attGk.y - defGk.y);
+    const xSpan = Math.abs(attGk.x - defGk.x);
+    return xSpan > 40 && xSpan > ySpan + 12;
   }
-  const ySpan = Math.abs(attGk.y - defGk.y);
-  const xSpan = Math.abs(attGk.x - defGk.x);
-  // Swapped if keepers are far apart on x and not clearly split on y
-  return xSpan > 40 && xSpan > ySpan + 12;
+
+  // One GK / function: GK belongs on a goal line (LEFT/RIGHT), not a touchline (TOP/BOTTOM).
+  if (gk) {
+    if (touchlineDist(gk) < 30 && touchlineDist(gk) + 10 < goalLineDist(gk)) {
+      return true;
+    }
+  }
+
+  const xs = players.map((p) => p.x);
+  const ys = players.map((p) => p.y);
+  const xSpread = Math.max(...xs) - Math.min(...xs);
+  const ySpread = Math.max(...ys) - Math.min(...ys);
+  // Session stacked along the width axis (top↔bottom on screen)
+  if (xSpread > ySpread + 16 && xSpread > 30) return true;
+
+  return false;
 }
 
 /** Map (x,y) from vertical-attack mistake → horizontal pitch coords. */
@@ -1275,6 +1999,13 @@ export function repairBoardDiagramOrientation(diagram: WebDiagramV1): WebDiagram
     ...remapSwappedPoint(c),
   }));
 
+  const elements = (diagram.elements || []).map((el) => ({
+    ...el,
+    ...remapSwappedPoint(el),
+    rotation:
+      typeof el.rotation === 'number' ? (((el.rotation + 90) % 360) + 360) % 360 : el.rotation,
+  }));
+
   const coach =
     diagram.coach && typeof diagram.coach.x === 'number' && typeof diagram.coach.y === 'number'
       ? { ...diagram.coach, ...remapSwappedPoint(diagram.coach) }
@@ -1293,7 +2024,27 @@ export function repairBoardDiagramOrientation(diagram: WebDiagramV1): WebDiagram
     arrows,
     goals,
     cones,
+    elements,
     coach,
+  };
+}
+
+/**
+ * DEF own goal is LEFT (low y); ATT own goal is RIGHT (high y).
+ * If the model painted the defending unit as red on the right, swap shirts.
+ */
+export function repairBoardDiagramTeamEnds(diagram: WebDiagramV1): WebDiagramV1 {
+  const players = diagram.players || [];
+  const att = players.filter((p) => p.team === 'ATT');
+  const def = players.filter((p) => p.team === 'DEF');
+  if (att.length < 3 || def.length < 3) return diagram;
+  const avgY = (list: typeof players) => list.reduce((s, p) => s + p.y, 0) / list.length;
+  if (avgY(def) <= avgY(att) + 12) return diagram;
+  return {
+    ...diagram,
+    players: players.map((p) =>
+      p.team === 'ATT' ? { ...p, team: 'DEF' } : p.team === 'DEF' ? { ...p, team: 'ATT' } : p
+    ),
   };
 }
 
@@ -1870,6 +2621,10 @@ function isForceDrawRequest(message: string): boolean {
   );
 }
 
+function isImportJustDraw(message: string): boolean {
+  return /\bjust draw(?: it)?\b/i.test(String(message || ''));
+}
+
 function isTinyBoardOp(message: string): boolean {
   return /\b(clear (?:the )?board|reset (?:the )?board|remove (?:all )?arrows|delete (?:the )?label|undo)\b/i.test(
     message
@@ -1889,7 +2644,183 @@ function historyWithoutCurrentTurn(
 }
 
 const ASK_READINGS_CTA =
-  'Reply **1**, **2**, or **3** to draw. Or say **just draw it** for option 1.';
+  'Reply **1**, **2**, or **3**. Or say **just draw it** for option 1.';
+
+export const SOURCE_DIAGRAMS_CTA =
+  'Reply **all** to put each diagram on its own frame.';
+
+export const IMPORT_REVIEW_CTA =
+  'Reply **A A A** (pictures · us · draw). Or say **just draw it** for first diagram, coached team, as written.';
+
+export const IMPORT_REVIEW_QUESTIONS = [
+  'Questions — I will not guess. Pick one letter per line.',
+  '',
+  'Q1 Pictures',
+  '- **A** first diagram only',
+  '- **B** every diagram, each on its own frame',
+  '- **C** a specific one (name it)',
+  '',
+  'Q2 Who is us',
+  '- **A** the team being coached in the session',
+  '- **B** the attacking side',
+  '- **C** as labelled in the file',
+  '',
+  'Q3 How to draw',
+  '- **A** as written (area, numbers, mini-goals, floaters — do not scale to 11v11)',
+  '- **B** same idea scaled to 11v11 on this board',
+  '',
+  IMPORT_REVIEW_CTA,
+].join('\n');
+
+export type ImportReviewAnswers = {
+  pictures: 'first' | 'all' | 'named';
+  us: 'coached' | 'attackers' | 'labelled';
+  draw: 'as_written' | 'eleven';
+  namedHint: string | null;
+};
+
+export function assistantOfferedImportReview(history: BoardAiChatMessage[]): boolean {
+  const last = [...history].reverse().find((m) => m.role === 'assistant');
+  return /Q1 Pictures|Reply \*\*A A A\*\*|I will not guess/i.test(last?.content || '');
+}
+
+export function parseImportReviewAnswers(message: string): ImportReviewAnswers | null {
+  const t = String(message || '').trim();
+  if (!t) return null;
+  if (isImportJustDraw(t)) {
+    return { pictures: 'first', us: 'coached', draw: 'as_written', namedHint: null };
+  }
+  const q1 = t.match(/q\s*1[:\s.)-]*([ABC])/i)?.[1];
+  const q2 = t.match(/q\s*2[:\s.)-]*([ABC])/i)?.[1];
+  const q3 = t.match(/q\s*3[:\s.)-]*([ABC])/i)?.[1];
+  let a = q1?.toUpperCase() || '';
+  let b = q2?.toUpperCase() || '';
+  let c = q3?.toUpperCase() || '';
+  if (!a || !b || !c) {
+    const compact = t.replace(/[\s,.;:|/_*-]/g, '').toUpperCase();
+    const m = compact.match(/^([ABC])([ABC])([ABC])/);
+    if (m) {
+      a = a || m[1];
+      b = b || m[2];
+      c = c || m[3];
+    }
+  }
+  if (!a || !b || !c) return null;
+  const namedHint =
+    a === 'C'
+      ? t.replace(/q\s*[123][:\s.)-]*[ABC]/gi, '').replace(/[ABC](?:\s+[ABC]){0,2}/gi, '').trim().slice(0, 160) ||
+        null
+      : null;
+  return {
+    pictures: a === 'B' ? 'all' : a === 'C' ? 'named' : 'first',
+    us: b === 'B' ? 'attackers' : b === 'C' ? 'labelled' : 'coached',
+    draw: c === 'B' ? 'eleven' : 'as_written',
+    namedHint,
+  };
+}
+
+function formatImportLocks(answers: ImportReviewAnswers): string {
+  const pictures =
+    answers.pictures === 'all'
+      ? 'every source diagram, one frame each'
+      : answers.pictures === 'named'
+        ? `only this picture: ${answers.namedHint || '(coach named it — use their words)'}`
+        : 'first diagram only';
+  const us =
+    answers.us === 'attackers'
+      ? 'us = the attacking side'
+      : answers.us === 'labelled'
+        ? 'us = as labelled in the file'
+        : 'us = the team being coached in the session';
+  const draw =
+    answers.draw === 'eleven'
+      ? 'scale the same idea to 11v11 on this board'
+      : 'draw the practice AS WRITTEN — do not scale to 11v11';
+  return [`LOCKED IMPORT ANSWERS (do not guess):`, `- Pictures: ${pictures}`, `- ${us}`, `- ${draw}`].join('\n');
+}
+
+const IMPORT_REVIEW_BLOCK_START =
+  /(?:^|\n)\s*(?:\*{0,2}Questions\b[\s\S]{0,80}I will not guess|\*{0,2}Q1 Pictures\b)/i;
+
+function stripImportReviewQuestions(reply: string): string {
+  let t = String(reply || '').replace(/\r\n/g, '\n');
+  const idx = t.search(IMPORT_REVIEW_BLOCK_START);
+  if (idx >= 0) t = t.slice(0, idx);
+  t = t.replace(/(?:^|\n)\s*(?:\*{0,2}On the board\b[\s\S]*)$/i, '');
+  t = t.replace(/(?:^|\n)\s*(?:\*{0,2}Coaching points\b[\s\S]*)$/i, '');
+  return t.trim();
+}
+
+function ensureImportReviewQuestions(reply: string): string {
+  const body = stripImportReviewQuestions(scrubImportOrganisation(reply));
+  return body ? `${body}\n\n${IMPORT_REVIEW_QUESTIONS}` : IMPORT_REVIEW_QUESTIONS;
+}
+
+/** Compactness 50×50 reviews that said 6v6+GK still counted 7 golds — name 7v6+GK.
+ *  20×20 increasing-pressure reviews that said 5v1+4 outside floaters are 5v5. */
+export function scrubImportOrganisation(text: string): string {
+  let t = String(text || '');
+  const compact = /\b(50\s*[x×]\s*50|compact(?:ness)?|wide deliver|7\s*v\s*6)\b/i.test(t);
+  if (compact) {
+    t = t
+      .replace(/\bOrganisation:?\s*6\s*v\s*6\s*\+\s*(?:2\s*)?GK(?:\s+plus\s+neutral\/?server)?\b/gi, 'Organisation: 7v6 + GK')
+      .replace(/\b6\s*v\s*6\s*\+\s*(?:2\s*)?GK(?:\s+plus\s+neutral\/?server)?\b/gi, '7v6 + GK');
+  }
+  if (/\b(20\s*[x×]\s*20|increasing pressure|four\s+mini[- ]?goals?|inner\s*10)\b/i.test(t)) {
+    t = t
+      .replace(/\bOrganisation:?\s*5\s*v\s*1\s*\+\s*4(?:\s+outside)?(?:\s+floaters?)?\b/gi, 'Organisation: 5v5')
+      .replace(/\b5\s*v\s*1\s*\+\s*4(?:\s+outside)?(?:\s+floaters?)?\b/gi, '5v5');
+  }
+  return t;
+}
+
+export function assistantOfferedSourceDiagrams(history: BoardAiChatMessage[]): boolean {
+  const last = [...history].reverse().find((m) => m.role === 'assistant');
+  return /Reply \*\*all\*\* to put each diagram|drew (?:the )?first diagram|drew diagram 1 of /i.test(
+    last?.content || ''
+  );
+}
+
+export function wantsAllSourceDiagrams(
+  message: string,
+  history: BoardAiChatMessage[] = []
+): boolean {
+  const t = String(message || '').trim();
+  if (!t) return false;
+  if (/^(all|all \d+|the rest|remaining)$/i.test(t)) return true;
+  if (
+    /\b(all (?:\d+ )?diagrams?|draw all|every diagram|other diagrams?|rest of the diagrams?|all frames|each diagram)\b/i.test(
+      t
+    )
+  ) {
+    return true;
+  }
+  if (
+    assistantOfferedSourceDiagrams(history) &&
+    /^(yes|y|ok|okay|sure|do it|please)$/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function fileLooksLikeSingleDiagram(reply: string): boolean {
+  if (/\bonly (?:one|1) (?:tactical )?(?:diagram|picture)\b/i.test(reply)) return true;
+  const m = reply.match(/diagram 1 of (\d+)/i);
+  if (m) return Number(m[1]) <= 1;
+  return false;
+}
+
+function ensureSourceDiagramFollowUp(reply: string, drewAll: boolean): string {
+  if (drewAll) return reply;
+  if (/Reply \*\*all\*\* to put each diagram/i.test(reply)) return reply;
+  if (fileLooksLikeSingleDiagram(reply)) return reply;
+  const alreadyNoted = /drew diagram 1 of |drew the first diagram/i.test(reply);
+  const diagramsBlock = alreadyNoted
+    ? `\n\n${SOURCE_DIAGRAMS_CTA}`
+    : `\n\nDiagrams\n- Drew the first diagram from the file.\n- ${SOURCE_DIAGRAMS_CTA}`;
+  return `${reply.trim()}${diagramsBlock}`;
+}
 
 const WORD_TO_COUNT: Record<string, number> = {
   one: 1,
@@ -1945,12 +2876,26 @@ export function parsePickedReadingIndex(message: string): 1 | 2 | 3 | null {
     const n = parseCountToken(goWith[1]);
     return n === 1 || n === 2 || n === 3 ? n : null;
   }
+  // Title aliases are picks only when the coach is naming an option, not correcting a picture.
+  if (/\bthat'?s not it\b|\bno wait\b|\bnot back to\b/i.test(t)) return null;
+  if (t.length > 90) return null;
+  if (/\bjump(?:ing)? the 6\b/i.test(t)) return 1;
+  if (/\btrap wide\b/i.test(t)) return 2;
+  if (/\bsqueeze the 9\b/i.test(t)) return 3;
+  if (/\bsplit cbs\b/i.test(t)) return 1;
+  if (/\bwide fullback triangle\b/i.test(t)) return 2;
+  if (/\bbounce off the 8\b/i.test(t)) return 3;
   return null;
 }
 
 export function assistantOfferedAskReadings(history: BoardAiChatMessage[]): boolean {
   const last = [...history].reverse().find((m) => m.role === 'assistant');
-  return /Reply \*\*1\*\*, \*\*2\*\*, or \*\*3\*\* to draw/i.test(last?.content || '');
+  const t = last?.content || '';
+  return (
+    /Reply \*\*1\*\*, \*\*2\*\*, or \*\*3\*\*/i.test(t) ||
+    /ways to play that/i.test(t) ||
+    /how I can draw that/i.test(t)
+  );
 }
 
 function lastAssistantWasClarify(history: BoardAiChatMessage[]): boolean {
@@ -2035,6 +2980,23 @@ function reading(
   return partial;
 }
 
+export function wantsTacticalReadings(message: string): boolean {
+  const t = String(message || '');
+  if (isForceDrawRequest(t)) return false;
+  return (
+    /\b(readings?|interpretations?|best way|numbered)\b/i.test(t) ||
+    /\b(give me|show me|offer)\s+(?:\d+|two|three|a few|some)\b/i.test(t) ||
+    /\b(2 or 3|two or three)\b/i.test(t) ||
+    /\bhow (?:else |(?:could|would|can|should) )(?:we |i |you )?(?:press|play out|build(?:[- ]?up)?|defend|attack)\b/i.test(
+      t
+    )
+  );
+}
+
+function isPressAsk(message: string): boolean {
+  return /\b(high press|press(?:ing)?|counterpress|gegenpress|press after)\b/i.test(message);
+}
+
 export function buildAskReadings(
   message: string,
   diagram: WebDiagramV1
@@ -2047,6 +3009,47 @@ export function buildAskReadings(
   const startFrom = inferStartFromFrame(message);
   const channel = inferAskChannel(message, board);
   const side = channelPhrase(channel);
+
+  if (wantsTacticalReadings(message) && isPressAsk(message)) {
+    return [
+      reading({
+        n: 1,
+        title: 'Jump the 6',
+        summary: `First presser jumps their pivot. Cover the bounce on ${side}. Keep this roster.`,
+        freezePlayers: false,
+        reshape: false,
+        sequence: false,
+        playCount: null,
+        channel,
+        startFromFrame: null,
+        intent: `High press: jump their #6 / pivot on ${side}. Keep roster ids. Step the block into their third (LEFT, y 0–33). Cover the bounce behind the first presser.`,
+      }),
+      reading({
+        n: 2,
+        title: 'Trap wide',
+        summary: 'Show inside, force onto the touchline, press the receiver against the line.',
+        freezePlayers: false,
+        reshape: false,
+        sequence: false,
+        playCount: null,
+        channel: channel || 'left',
+        startFromFrame: null,
+        intent: `High press trap wide: show inside, force onto the touchline, press the wide receiver. Keep roster ids. Compact the block in their third (LEFT).`,
+      }),
+      reading({
+        n: 3,
+        title: 'Squeeze the 9',
+        summary: 'Curve the front to isolate their striker and force the goalkeeper back.',
+        freezePlayers: false,
+        reshape: false,
+        sequence: false,
+        playCount: null,
+        channel,
+        startFromFrame: null,
+        intent: `High press: curve the front three to isolate their #9 / target. Force GK backwards. Keep roster ids. Block lives in their third (LEFT).`,
+      }),
+    ];
+  }
 
   if (startFrom) {
     return [
@@ -2081,7 +3084,7 @@ export function buildAskReadings(
         freezePlayers: freezeAsked,
         reshape: false,
         sequence: true,
-        playCount: 4,
+        playCount: 2,
         channel,
         startFromFrame: startFrom,
         intent: `Expand Frame ${startFrom} into receive / combine / finish beats. Frame 1 is that picture. No extra Start (board) frame.${freezeAsked ? ' Copy shirt x/y onto every frame.' : ''}`,
@@ -2113,7 +3116,7 @@ export function buildAskReadings(
         freezePlayers: freezeAsked,
         reshape: false,
         sequence: true,
-        playCount: 4,
+        playCount: 2,
         channel,
         startFromFrame: null,
         intent: `Pick the strongest combination on ${side} and show it as one detailed sequence (Frame 1 = current board, then 3 teaching beats).${freezeAsked ? ' Do not move shirts.' : ''}`,
@@ -2141,39 +3144,39 @@ export function buildAskReadings(
     return [
       reading({
         n: 1,
-        title: 'Play out from this picture',
-        summary: `Keep the shirts. Add a play-out sequence on ${side} from the board as it stands.`,
+        title: 'Split CBs, 6 drops',
+        summary: `Play out through a back three: CBs split, #6 drops between, first pass on ${side}.`,
         freezePlayers: false,
         reshape: false,
         sequence: true,
-        playCount: 4,
+        playCount: 2,
         channel,
         startFromFrame: null,
-        intent: `Play out from the current board on ${side}. Keep the same roster ids and roughly the same shape. Frame 1 = current board. Teaching frames show goal-kick → pocket → progress. Do not invent a different start.`,
+        intent: `Play out from the current board. Split the centre-backs, #6 drops between them, first progression on ${side}. Honor DEF formation from the ask (e.g. 4-4-2). Frame 1 = current board, Frame 2 = the play.`,
       }),
       reading({
         n: 2,
-        title: 'Playbook chassis, then play out',
-        summary: 'Reset to the 11v11 play-out chassis (#6 between split CBs, DEF high to the box), then the sequence.',
+        title: 'Wide fullback triangle',
+        summary: 'Play out around the press through the fullback / wide mid triangle, then inside.',
         freezePlayers: false,
         reshape: true,
         sequence: true,
-        playCount: 4,
+        playCount: 2,
         channel,
         startFromFrame: null,
-        intent: `Reshape to the play-out chassis from the formation playbook, then draw the play-out sequence on ${side}. #6 between split CBs. DEF high to the ATT box.`,
+        intent: `Reshape to a legal play-out vs the named opponent (honor 4-4-2 if asked). Play out wide through the fullback triangle on ${side}. Frame 1 start, Frame 2 the play.`,
       }),
       reading({
         n: 3,
-        title: 'Wide / flank play-out',
-        summary: `Same start picture, but the first progression goes wide on ${side === 'the channel already on the board' ? 'a flank' : side} instead of through the 6.`,
+        title: 'Bounce off the 8',
+        summary: 'GK or CB into the 6, bounce into the 8, then progress through the pocket.',
         freezePlayers: false,
         reshape: false,
         sequence: true,
-        playCount: 4,
+        playCount: 2,
         channel,
         startFromFrame: null,
-        intent: `Play out from the current board using a flank triangle / wide progression on ${side}, not a central #6 drop as the first action. Frame 1 = current board.`,
+        intent: `Play out from this picture: bounce off the #8 / pocket rather than the first wide pass. Honor DEF formation from the ask. Frame 1 = current, Frame 2 = the play.`,
       }),
     ];
   }
@@ -2224,17 +3227,81 @@ export function formatAskReadingsReply(input: {
   board?: BoardSetupReading | null;
 }): string {
   const asked = input.ask.replace(/\s+/g, ' ').trim().slice(0, 220);
-  const boardLine = input.board?.summary ? `\n${input.board.summary}` : '';
+  const fromAsk = inferFormationsFromMessage(input.ask);
+  const playOut = isPlayOutRequest(input.ask);
+  const named = [
+    fromAsk.att || input.board?.attFormation
+      ? `ATT ${fromAsk.att || input.board?.attFormation}`
+      : null,
+    fromAsk.def ? `DEF ${fromAsk.def}` : null,
+  ]
+    .filter(Boolean)
+    .join(' vs ');
+  const askOverlay =
+    named || playOut
+      ? `\nYou asked for ${named || 'this picture'}${playOut ? ' · playing out from the back' : ''}. Live shirts may still show the previous phase until you pick.`
+      : '';
+  const boardLine = askOverlay || (input.board?.summary ? `\n${input.board.summary}` : '');
   const items = input.readings
     .map((r) => `**${r.n}. ${r.title}**\n${r.summary}`)
     .join('\n\n');
   const parts = [
-    `Here’s how I can draw that — pick one.${boardLine}`,
+    `Here are 2–3 ways to play that — pick one.${boardLine}`,
     asked ? `You asked: “${asked}”` : null,
     items,
     ASK_READINGS_CTA,
   ].filter((line): line is string => Boolean(line));
-  return parts.join('\n\n');
+  return scrubCoachReply(parts.join('\n\n'));
+}
+
+export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
+  let t = String(text || '')
+    .replace(/\b(?:home|away)-\d+(?:-\d+)?\b/gi, (m) => {
+      const n = m.split('-')[1];
+      return n ? `#${n}` : m;
+    })
+    .replace(/\b(?:att|def)-(\d+)\b/gi, '#$1')
+    .replace(/\bneutral(?:-auto)?-\d+\b/gi, 'a neutral')
+    .replace(/\bBall @\(\s*[\d.]+\s*,\s*#?\s*[\d.]+\s*\)\.?/gi, '')
+    .replace(/(?:with\s+)?\bseed set to current\b[,.]?/gi, '')
+    .replace(/\(#(\d+)\s*,\s*#\1\)/g, '#$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const att = (diagram?.players || []).filter((p) => p.team === 'ATT').length;
+  const def = (diagram?.players || []).filter((p) => p.team === 'DEF').length;
+  if (att === 7 && def === 3) {
+    t = t.replace(/\b7\s*v\s*7\b/gi, '7v3');
+  }
+  if (diagram && (diagram.players || []).length >= 20) {
+    const setup = readBoardSetup(diagram);
+    if (setup.attFormation === '4-4-2' && setup.defFormation === '4-3-3') {
+      t = t
+        .replace(/\b4-3-3 formation for our\b/gi, '4-4-2 shape for our')
+        .replace(/\bour attacking unit\b/gi, 'our 4-4-2 block')
+        .replace(/\bagainst their 4-4-2\b/gi, 'against their 4-3-3')
+        .replace(/\bour 4-3-3\b/gi, 'our 4-4-2')
+        .replace(/\btheir 4-4-2\b/gi, 'their 4-3-3')
+        .replace(/\btheir attacking shape\b/gi, 'their 4-3-3');
+      if (!/\b4-3-3\b/.test(t) && /\b4-4-2\b/.test(t)) {
+        t = t.replace(/\bagainst their\b/i, 'against their 4-3-3');
+      }
+    }
+  }
+  const shirts = diagram?.players || [];
+  const ssg = (diagram?.areas || []).some((a) => /ssg/i.test(String(a.label || '')));
+  if (ssg && shirts.length >= 10 && shirts.length <= 16) {
+    const fmt = (team: 'ATT' | 'DEF') =>
+      shirts
+        .filter((p) => p.team === team)
+        .map((p) =>
+          p.number === 1 || String(p.role || '').toUpperCase() === 'GK' ? 'GK' : `#${p.number}`
+        )
+        .join('/');
+    const line = `On the grass: ${att} blue (${fmt('ATT')}) · ${def} red (${fmt('DEF')}).`;
+    if (!/On the grass:/i.test(t)) t = `${t}\n\n${line}`;
+  }
+  return t;
 }
 
 export function needsAskReadings(input: {
@@ -2246,11 +3313,10 @@ export function needsAskReadings(input: {
   if (isTinyBoardOp(message)) return false;
   const offered = assistantOfferedAskReadings(history);
   const picked = parsePickedReadingIndex(message);
-  if (offered && picked) return false;
-  if (offered && isForceDrawRequest(message)) return false;
-  if (!offered && isForceDrawRequest(message)) return false;
+  if (offered && (picked || isForceDrawRequest(message))) return false;
+  if (isForceDrawRequest(message)) return false;
   if (!offered && picked) return false;
-  return true;
+  return wantsTacticalReadings(message);
 }
 
 export function messageWithReadingLocks(ask: string, chosen: BoardAskReading): string {
@@ -2265,7 +3331,9 @@ export function messageWithReadingLocks(ask: string, chosen: BoardAskReading): s
   }
   if (chosen.sequence) {
     bits.push(
-      `show a sequence of ${chosen.playCount || 3} teaching frames after the start`
+      chosen.playCount && chosen.playCount > 2
+        ? `show a sequence of ${chosen.playCount} teaching frames after the start`
+        : 'Frame 1 is the start picture; Frame 2 is the play'
     );
   }
   if (chosen.channel) bits.push(`on the ${chosen.channel} side`);
@@ -2286,8 +3354,8 @@ export function isBoardReferencingRequest(message: string): boolean {
 
 export type BoardSetupReading = {
   usable: boolean;
-  attFormation: FormationId11 | null;
-  defFormation: FormationId11 | null;
+  attFormation: string | null;
+  defFormation: string | null;
   phase: string | null;
   focusThird: 'DEFENSIVE' | 'MIDDLE' | 'ATTACKING' | null;
   channel: 'LEFT' | 'CENTER' | 'RIGHT' | null;
@@ -2412,39 +3480,67 @@ function phaseFromBoardText(text: string): string | null {
 
 /** Read formations / phase / focus from the live board so chat can ground on it. */
 export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
-  const players = diagram.players || [];
+  const frames = diagram.sequence?.frames;
+  const active =
+    frames?.find((f) => f.id === diagram.sequence?.activeFrameId) || frames?.[frames.length - 1];
+  const live: WebDiagramV1 = active
+    ? {
+        ...diagram,
+        players: active.players?.length ? active.players : diagram.players,
+        areas: active.areas?.length ? active.areas : diagram.areas,
+        labels: active.labels?.length ? active.labels : diagram.labels,
+        balls: active.balls?.length ? active.balls : diagram.balls,
+        arrows: active.arrows?.length ? active.arrows : diagram.arrows,
+      }
+    : diagram;
+
+  const players = live.players || [];
   const attOut = players.filter((p) => p.team === 'ATT' && p.number !== 1);
   const defOut = players.filter((p) => p.team === 'DEF' && p.number !== 1);
   const usable = attOut.length >= 4 && defOut.length >= 4;
+  const card = summarizeBoardCardMeta(live);
 
-  const attFormation = inferFormationForTeam(players, 'ATT');
-  const defFormation = inferFormationForTeam(players, 'DEF');
+  const attFormation = card.attFormation || inferFormationForTeam(players, 'ATT');
+  const defFormation = card.defFormation || inferFormationForTeam(players, 'DEF');
 
-  const labelText = (diagram.labels || []).map((l) => l.text || '').join(' · ');
-  const areaText = (diagram.areas || []).map((a) => a.label || '').join(' · ');
+  const labelText = (live.labels || []).map((l) => l.text || '').join(' · ');
+  const areaText = (live.areas || []).map((a) => a.label || '').join(' · ');
+  const intent = String(live.areas?.[0]?.label || '').toLowerCase();
+  const hasPress = (live.arrows || []).some((a) => String(a.type || '').toLowerCase() === 'press');
   const phase =
-    phaseFromBoardText(`${labelText} ${areaText}`) ||
-    (usable
-      ? (() => {
-          const ball = diagram.balls?.[0];
-          const y =
-            ball && typeof ball.y === 'number'
-              ? ball.y
-              : diagram.areas?.[0] && typeof diagram.areas[0].y === 'number'
-                ? diagram.areas[0].y + (diagram.areas[0].height || 0) / 2
-                : null;
-          if (y == null) return 'Attacking Organization (from board shape)';
-          const third = thirdFromY(y);
-          if (third === 'DEFENSIVE') return 'Attacking Organization · build-up';
-          if (third === 'ATTACKING') return 'Attacking Organization · final third';
-          return 'Attacking Organization · progression';
-        })()
-      : null);
+    intent === 'rondo' || /rondo/.test(areaText)
+      ? 'Possession · rondo'
+      : intent === 'ssg_grid' || /ssg/.test(areaText)
+        ? 'Possession · small-sided'
+        : hasPress || intent === 'third_left'
+          ? 'Defensive Organization · high press'
+          : intent === 'third_middle' || /\bmid[- ]?block\b/i.test(`${labelText} ${areaText}`)
+            ? 'Defensive Organization · mid-block'
+            : phaseFromBoardText(`${labelText} ${areaText}`) ||
+              (usable
+                ? (() => {
+                    const ball = live.balls?.[0];
+                    const y =
+                      ball && typeof ball.y === 'number'
+                        ? ball.y
+                        : live.areas?.[0] && typeof live.areas[0].y === 'number'
+                          ? live.areas[0].y + (live.areas[0].height || 0) / 2
+                          : null;
+                    if (y == null) return 'Attacking Organization (from board shape)';
+                    const third = thirdFromY(y);
+                    if (third === 'DEFENSIVE') return 'Attacking Organization · build-up';
+                    if (third === 'ATTACKING') return 'Attacking Organization · final third';
+                    return 'Attacking Organization · progression';
+                  })()
+                : null);
 
   const focusY = (() => {
-    const ball = diagram.balls?.[0];
+    const area = live.areas?.[0];
+    if (area && typeof area.y === 'number' && intent && intent !== 'full_pitch') {
+      return area.y + (area.height || 0) / 2;
+    }
+    const ball = live.balls?.[0];
     if (ball && typeof ball.y === 'number') return ball.y;
-    const area = diagram.areas?.[0];
     if (area && typeof area.y === 'number') return area.y + (area.height || 0) / 2;
     if (attOut.length) {
       return attOut.reduce((s, p) => s + p.y, 0) / attOut.length;
@@ -2452,9 +3548,12 @@ export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
     return null;
   })();
   const focusX = (() => {
-    const ball = diagram.balls?.[0];
+    const area = live.areas?.[0];
+    if (area && typeof area.x === 'number' && intent && intent !== 'full_pitch') {
+      return area.x + (area.width || 0) / 2;
+    }
+    const ball = live.balls?.[0];
     if (ball && typeof ball.x === 'number') return ball.x;
-    const area = diagram.areas?.[0];
     if (area && typeof area.x === 'number') return area.x + (area.width || 0) / 2;
     return 50;
   })();
@@ -2462,7 +3561,6 @@ export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
   const focusThird = focusY == null ? null : thirdFromY(focusY);
   const channel = focusY == null ? null : channelFromX(focusX);
 
-  const ball = diagram.balls?.[0];
   const summaryParts = [
     usable
       ? `Board has ${attOut.length + 1} ATT + ${defOut.length + 1} DEF shirts.`
@@ -2473,9 +3571,6 @@ export function readBoardSetup(diagram: WebDiagramV1): BoardSetupReading {
     phase ? `Phase from board: ${phase}.` : null,
     focusThird
       ? `Focus in ${focusThird === 'DEFENSIVE' ? 'our defensive third (RIGHT)' : focusThird === 'ATTACKING' ? 'our attacking third (LEFT)' : 'middle third'}${channel ? ` · ${channel.toLowerCase()} channel` : ''}.`
-      : null,
-    ball && typeof ball.x === 'number' && typeof ball.y === 'number'
-      ? `Ball @(${Math.round(ball.x)},${Math.round(ball.y)}).`
       : null,
     labelText ? `Caption: “${labelText.slice(0, 120)}”.` : null,
   ].filter(Boolean);
@@ -2529,6 +3624,7 @@ function hasPhaseDetail(text: string): boolean {
     /\b(in possession|out of possession|build[-\s]?up|build(?:ing)? out|play(?:ing)? out(?: the back)?|from the back|build from (?:the )?back|press after (?:a )?loss|after (?:ball )?loss|on (?:the )?regain|counterpress|rest defence|rest defense)\b/i.test(
       text
     ) ||
+    /\b(mid[- ]?block|high press|low block|rondo|press(?:ing)? in)\b/i.test(text) ||
     /\bphase\b[\s\S]{0,30}\b(attack|defend|transition|possession)\b/i.test(text)
   );
 }
@@ -2539,6 +3635,15 @@ export type ScenarioGaps = {
   missingPhase: boolean;
 };
 
+function livePlayerCount(diagram?: WebDiagramV1 | null): number {
+  if (!diagram) return 0;
+  if ((diagram.players || []).length) return diagram.players.length;
+  const frames = diagram.sequence?.frames || [];
+  const active =
+    frames.find((f) => f.id === diagram.sequence?.activeFrameId) || frames[frames.length - 1];
+  return active?.players?.length || 0;
+}
+
 export function assessScenarioGaps(
   message: string,
   history: BoardAiChatMessage[] = [],
@@ -2548,10 +3653,12 @@ export function assessScenarioGaps(
   const board = diagram ? readBoardSetup(diagram) : null;
   // Live board with both teams can supply formations + phase — don't re-ask.
   const boardUsable = Boolean(board?.usable);
+  const liveRoster = livePlayerCount(diagram) >= 5;
+  const formatKnown = Boolean(diagram?.pitch?.format);
   return {
-    missingFormation: !hasFormationDetail(blob) && !boardUsable,
+    missingFormation: !hasFormationDetail(blob) && !boardUsable && !formatKnown && !liveRoster,
     missingChannel: !hasChannelDetail(blob) && !board?.channel,
-    missingPhase: !hasPhaseDetail(blob) && !boardUsable,
+    missingPhase: !hasPhaseDetail(blob) && !boardUsable && !liveRoster,
   };
 }
 
@@ -2566,7 +3673,7 @@ export function needsBoardClarification(
     return false;
   }
   // Usable live board already encodes formations + phase/focus — read it instead of clarifying
-  if (diagram && readBoardSetup(diagram).usable) {
+  if (diagram && (readBoardSetup(diagram).usable || livePlayerCount(diagram) >= 5)) {
     return false;
   }
   const gaps = assessScenarioGaps(message, history, diagram);
@@ -2623,6 +3730,11 @@ function buildPrompt(input: {
   clarifyRequired: boolean;
   gaps: ScenarioGaps;
   lockedReading?: BoardAskReading | null;
+  hasImage?: boolean;
+  sourceDiagramMode?: 'first' | 'all' | 'named' | null;
+  importReview?: boolean;
+  importAnswers?: ImportReviewAnswers | null;
+  symbolicDsl?: boolean;
 }): string {
   const historyBlock =
     input.history.length === 0
@@ -2632,14 +3744,20 @@ function buildPrompt(input: {
           .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
           .join('\n');
 
-  const playerIndex = formatBothTeamsPlayerIndex(input.diagram);
-  const sequenceTeamBrief = formatSequenceBothTeamsBrief(input.diagram);
+  const playerIndex =
+    input.symbolicDsl && !input.importReview
+      ? compactRosterForDsl(input.diagram)
+          .players.map((p) => `${p.id} (#${p.number ?? '?'} ${p.role || p.team})`)
+          .join('\n') || '(no players yet)'
+      : formatBothTeamsPlayerIndex(input.diagram);
+  const sequenceTeamBrief =
+    input.symbolicDsl && !input.importReview ? '' : formatSequenceBothTeamsBrief(input.diagram);
   const boardReading = readBoardSetup(input.diagram);
 
   const focusHint = inferFocusThirdFromMessage(input.message);
   const formationPlaybookGuidance = buildFormationPlaybookGuidance(
     conversationBlob(input.message, input.history),
-    { att: boardReading.attFormation, def: boardReading.defFormation }
+    { att: toFormationId11(boardReading.attFormation), def: toFormationId11(boardReading.defFormation) }
   );
 
   const clarifyBlock = input.clarifyRequired
@@ -2744,7 +3862,7 @@ function buildPrompt(input: {
     '- Mirror lateral roles for DEF so right-sided players stay on that team’s right (bottom of screen when DEF faces right).',
     '',
     'PITCH THIRDS (critical — do not confuse with midfield):',
-    '- “Us” on this board = ATT (home). “Them” = DEF (away).',
+    '- “Us” on this board = ATT (blue / home), own goal RIGHT. “Them” = DEF (red / away), own goal LEFT.',
     '- Left third y 0–33 = DEF goal end = THEIR defensive third = OUR attacking / final third.',
     '- Middle third y 33–67 = midfield third. Only use when coach says midfield/middle third.',
     '- Right third y 67–100 = ATT goal end = OUR defensive third = THEIR attacking third.',
@@ -2760,108 +3878,182 @@ function buildPrompt(input: {
     '- 7v7: 2-3-1, 3-2-1',
     '- 9v9: 3-2-3, 2-3-2-1, 3-3-2',
     '- 11v11: 4-3-3, 4-2-3-1, 4-4-2, 3-5-2 — use the CHASSIS & SPACING PLAYBOOK above for roles, spacing, and motif arrows.',
+    '- The CURRENT BOARD format is authoritative. Never emit format 11V11 or 4-3-3/4-4-2 on a 7v7/9v9 board. Never say “11v11” in reply unless the board is 11v11.',
     '',
     'DIAGRAM RULES:',
-    '- Return a FULL diagram object every time you apply changes (not a patch).',
-    '- When apply=false, still return the CURRENT diagram unchanged.',
-    '- Keep pitch.orientation = "HORIZONTAL".',
-    '- players: team ATT|DEF only (avoid NEUTRAL). ids like att-9 / def-6. Never create duplicate shirts (one #5 ATT max).',
-    '- Traditional numbers when possible: 1 GK, 2 RB, 3 LB, 4 RCB, 5 LCB, 6 CDM/holding, 7 RW/RM, 8/10 CM, 9 ST, 11 LW/LM.',
-    '- Choose shapes, pressing arrows, support angles, and captions that express the club play model stages above.',
-    '- Match diagram density and caption vocabulary to the COACH / PLAYER LANGUAGE LOCK.',
-    '- ARROWS (required when coach asks for passes/runs/switches/press):',
-    '  - from/to MUST be objects: {"playerId":"<exact id from PLAYER INDEX>"} OR {"x":n,"y":n}',
-    '  - NEVER leave from/to empty. NEVER use role names alone as playerId unless that exact id exists.',
-    '  - type: pass|run|press|cover|transition; style: solid|dashed|dotted; weight: normal|bold',
-    '  - For a switch of play / pass, use type "pass", style "solid", arrowhead true.',
-    '  - Example: {"from":{"playerId":"att-3"},"to":{"playerId":"att-7"},"type":"pass","style":"solid","weight":"normal","arrowhead":true}',
-    '- Prefer linking arrows to playerIds from the PLAYER INDEX below (or ids you create in players).',
-    '- areas: optional zones with shape rect|circle|spotlight.',
-    '- labels: explanatory coaching captions that say WHAT the drawing shows (≤200 chars, finish the sentence).',
-    '  Write action language with shirt numbers — not vague titles like “Counterpress Window”.',
-    '  Good: “#3 presses the space; #6 gets on the 6’s back; nearest 2 hunt the ball.”',
-    '  Good: “ATT #8 jumps the bounce; #4 covers inside; #9 locks the front.”',
-    '  Bad: “Press”, “Transition”, “Counterpress Window”.',
-    '  Prefer 1–2 short sentences that narrate the arrows/players on the pitch.',
-    '  Place OUTSIDE highlights — never center text inside an area or on the player cluster.',
-    '  Put captions on the OPPOSITE side of the emphasis along the pitch (goal→goal):',
-    '  · Emphasis in LEFT / final third (low y) → labels in RIGHT half (y ≈ 72–88).',
-    '  · Emphasis in RIGHT / build-up (high y) → labels in LEFT half (y ≈ 10–28).',
-    '  · Also park off the active channel on x (opposite flank) so text isn’t on shirts.',
-    '  Bad: x ≈ area.x + area.width next to the yellow box on top of players.',
-    '  Always include at least one label when you draw presses/runs/passes so the picture is readable.',
-    '- balls: 0–1 centre ball unless asked otherwise.',
-    '- Max PER FRAME: 30 players, 40 arrows, 20 areas, 20 labels.',
-    '',
-    'SEQUENCE / MULTI-STEP (critical when teaching a play over time):',
-    '- Create diagram.sequence when the coach asks for a sequence, steps, progression, “then…”, phases over time, frame-by-frame, variants, or to show how the play develops.',
-    '- Also create a sequence when a single static picture would hide the order of actions (trigger → reaction → cover).',
-    '- 2–5 teaching frames after the start; absolute max 8 total.',
-    '- FRAME 1 MUST BE THE CURRENT BOARD UNCHANGED — same player x/y, ball, areas, labels, arrows as CURRENT DIAGRAM JSON (the saved starting photo).',
-    '- Frames 2+ ADD the teaching play (new passes/runs/press, moved ball, advanced shapes). Do not overwrite Frame 1 positions.',
-    '- Each frame is a FULL independent snapshot: its own players, balls, arrows, areas, AND labels.',
-    '- Do NOT reuse one shared annotation layer — every teaching frame must carry the notations that belong to THAT moment only.',
-    '  Example: Frame 1 = board as-is; Frame 2 = first pass pattern; Frame 3 = second variant / next beat.',
-    '- Keep player ids STABLE across frames (same att-9 / def-6) and move x/y so playback can tween.',
-    '- Root players/arrows/areas/labels/balls MUST equal the active frame (usually Frame 2 — first teaching beat).',
-    '- sequence.activeFrameId = id of the first teaching frame (Frame 2) when creating a new sequence, so Frame 1 stays the saved start.',
-    '- Frame fields: id (unique), title (short step name at coachLevel language), optional note, optional durationMs (1200–2000).',
-    '- Density limits and language lock apply PER FRAME (not summed across the whole sequence).',
-    '- Single-snapshot requests: omit sequence OR keep one frame that mirrors the root.',
-    '- If editing an existing sequence, preserve frame ids when updating those steps; add/remove frames only as needed.',
-    '',
-    ...((input.lockedReading?.freezePlayers ?? wantsFrozenPlayers(input.message))
+    input.symbolicDsl && !input.importReview
       ? [
-          'PLAYER FREEZE (mandatory this turn — coach forbade moving shirts):',
-          '- Copy CURRENT DIAGRAM players[] onto EVERY frame with the SAME id, x, y, team, role, number.',
-          '- Do NOT add an “Initial Shape” / reshape / setup frame.',
-          '- Teaching frames may change ONLY arrows, labels, optional ball, optional highlight — never shirt coordinates.',
-          '- If they asked for N combination plays: Frame 1 = saved board; Frames 2..N+1 = one combination each (pass + support-run arrows on the named side).',
-          '- Right side on this board = low diagram x (bottom of screen).',
+          '- Do NOT emit x, y, or a diagram object. Geometry is solved in code from your dsl.',
+          '- players ids like att-9 / def-6. Never duplicate shirts.',
+          '- Traditional numbers: 1 GK, 2 RB, 3 LB, 4/5 CB, 6 holding, 7/11 wide, 8/10 CM, 9 ST.',
+          '- actions[].from_id / to_id must be those ids (att-6, def-9).',
+          '- equipment[] for mini-goal, cone, mannequin, pole — never fake kit as players.',
+        ].join('\n')
+      : [
+          '- Return a FULL diagram object every time you apply changes (not a patch).',
+          '- When apply=false, still return the CURRENT diagram unchanged.',
+          '- Keep pitch.orientation = "HORIZONTAL".',
+          '- players: team ATT|DEF only (avoid NEUTRAL). ids like att-9 / def-6. Never create duplicate shirts (one #5 ATT max).',
+        ].join('\n'),
+    ...(input.symbolicDsl && !input.importReview
+      ? [
+          '- Traditional numbers: 1 GK, 2 RB, 3 LB, 4/5 CB, 6 holding, 7/11 wide, 8/10 CM, 9 ST.',
+          '- Match reply vocabulary to the COACH / PLAYER LANGUAGE LOCK and club play model.',
+          '- Passes/runs/press: actions[] with from_id/to_id (att-3, att-7). Never coordinates.',
+          '- If a 4-4-2 jumps the 6, bounce into att-8 — never pass into the jumped att-6.',
+          '- “the 9’s run” / “9s run in behind” → run from_id MUST be att-9 (not att-10).',
+          '- Never write seed/dsl internals, “seed set to current”, or doubled labels like (#6, #6).',
+          '- Us is always blue ATT. Opponent / OOP shape is “their 4-4-2” or “a 4-4-2 block”, not “our 4-4-2”, unless blue shirts are that shape.',
+          '- Equipment: equipment[] (mini-goal, cone, mannequin, pole). Never fake kit as players.',
+          '- Sequence / freeze: describe it in reply. Do not emit diagram.sequence or x/y. seed=current; freeze → empty moves[].',
+          '- Play-out / build-out: grid.intent box_att or half_att; moves for the pressers (press:att-*). Code may add frames.',
+          '- Both teams: include ATT and DEF entities (or seed=current so the live roster stays).',
           '',
         ]
-      : []),
-    'SEQUENCE CONTINUITY (mandatory):',
-    '- Frame 1 locks the coach’s board photo (formations, channel, player ids/positions) — never invent a different start.',
-    '- The PLAY MUST ADVANCE across frames 2+ (do not freeze the highlight on Frame 1’s third).',
-    '  Typical build-out: Frame 1 saved board → Frame 2 midfield pocket / half-space → Frame 3 wide progression / final third.',
-    '- Move the ball + highlight with the phase on teaching frames. Structure players shift gradually (≤ ~18 units from Frame 1) unless they are in the action.',
-    '- Frames 2–N need MORE detail than Frame 1: involve 6–10 players in the picture (CBs, #6/#8, fullbacks/wing-backs, wingers, pressers).',
-    '- Frame 2 is the first teaching beat — NEVER a thinner copy of Frame 1.',
-    '  Density target: 6–8 arrows (pass + support runs + DEF press/cover), 2 captions, 1–2 zones.',
-    '  Involve shirts from BOTH teams: e.g. ATT #4/#6/#8/#2/#3/#7 plus DEF #9/#10/#8/#6 in/around the pocket.',
-    '  Captions must name the teaching action (pocket receive, third-man, press jump) — do not reuse a generic Frame 1 sentence.',
-    '- Never stack players. Keep ≥5 units between shirt centers.',
-    '- Labels narrate THAT frame’s action (complete sentences), parked outside the highlight.',
-    '',
-    'BOTH TEAMS ON EVERY SLIDE (critical — positions must fit the moment):',
-    '- READ ATT and DEF positions before you draw. Never invent a slide from one team only.',
-    '- Every frame’s players[] MUST include the full ATT roster AND the full DEF roster (same ids as Frame 1).',
-    '- For each frame, place BOTH teams relative to THAT slide’s action:',
-    '  · Who has the ball? Who is pressing / covering / dropping / supporting on the OTHER team?',
-    '  · Presser vs ball-carrier should be nearby (duel). Cover sits behind the press. Rest defence holds the opposite side.',
-    '  · If ATT advances, DEF compresses toward the ball; if DEF wins/clears, ATT’s counter shape appears — still both teams on the board.',
-    '- Arrows and captions should involve shirts from the team(s) actually acting on that slide; still keep the other team’s shape visible and relevant.',
-    '- Do not leave a team parked in a meaningless block far from the focus while the slide is about a duel in the highlight.',
-    '- Use the BOTH-TEAMS INDEX / FRAME POSITIONS below as spatial ground truth when editing.',
-    '',
-    'PHASE ↔ WHERE BOTH TEAMS STAND (mandatory):',
-    '- ATT build-up / first line in our half (highlight near RIGHT goal, y≈70–98): DEF’s front press (ST + high mids/wingers) MUST be next to that highlight — typically 3–4 DEF within ~20 of the ball. Never leave all of DEF deep on the LEFT while ATT builds on the RIGHT.',
-    '- DEFAULT play-out = goal kick: GK starts with the ball. DEF’s WHOLE outfield block is HIGH — as high as the ATT box.',
-    '  Press on the box edge; cover ~8–12 behind; back line still in ATT half (outfield DEF floor roughly y≥58–65). Only DEF GK stays deep.',
-    '  Do NOT draw a conservative mid/low block unless the coach asks for mid-block or low-block.',
-    '- Against a play-out / 442 press: DEF’s front two + nearest CMs stand ON the edge of the yellow build-up box; midfield + back four step up compact behind them.',
-    '- Caption mentioning “front three” / “press” / “4v2” / “first line” requires those opponents physically in or on the edge of the yellow box.',
-    '- Midfield progression / “pocket”: DEF midfield + back line must step up — no defenders left on their own box while the ball is central.',
-    '- High press / counterpress in their defensive third (LEFT, y≈0–33): cluster BOTH teams there; do not park ATT back at y≈90.',
-    '- Captions: complete short sentences (≤200 chars). Prefer 1–2 lines that fit fully — do not trail off mid-phrase.',
-    '',
+      : [
+          '- Traditional numbers when possible: 1 GK, 2 RB, 3 LB, 4 RCB, 5 LCB, 6 CDM/holding, 7 RW/RM, 8/10 CM, 9 ST, 11 LW/LM.',
+          '- Choose shapes, pressing arrows, support angles, and captions that express the club play model stages above.',
+          '- Match diagram density and caption vocabulary to the COACH / PLAYER LANGUAGE LOCK.',
+          '- ARROWS (required when coach asks for passes/runs/switches/press):',
+          '  - from/to MUST be objects: {"playerId":"<exact id from PLAYER INDEX>"} OR {"x":n,"y":n}',
+          '  - NEVER leave from/to empty. NEVER use role names alone as playerId unless that exact id exists.',
+          '  - type: pass|run|press|cover|transition; style: solid|dashed|dotted; weight: normal|bold',
+          '  - For a switch of play / pass, use type "pass", style "solid", arrowhead true.',
+          '  - Example: {"from":{"playerId":"att-3"},"to":{"playerId":"att-7"},"type":"pass","style":"solid","weight":"normal","arrowhead":true}',
+          '- Prefer linking arrows to playerIds from the PLAYER INDEX below (or ids you create in players).',
+          '- areas: optional zones with shape rect|circle|spotlight.',
+          '- labels: explanatory coaching captions that say WHAT the drawing shows (≤200 chars, finish the sentence).',
+          '  Write action language with shirt numbers — not vague titles like “Counterpress Window”.',
+          '  Good: “#3 presses the space; #6 gets on the 6’s back; nearest 2 hunt the ball.”',
+          '  Good: “ATT #8 jumps the bounce; #4 covers inside; #9 locks the front.”',
+          '  Bad: “Press”, “Transition”, “Counterpress Window”.',
+          '  Prefer 1–2 short sentences that narrate the arrows/players on the pitch.',
+          '  Place OUTSIDE highlights — never center text inside an area or on the player cluster.',
+          '  Put captions on the OPPOSITE side of the emphasis along the pitch (goal→goal):',
+          '  · Emphasis in LEFT / final third (low y) → labels in RIGHT half (y ≈ 72–88).',
+          '  · Emphasis in RIGHT / build-up (high y) → labels in LEFT half (y ≈ 10–28).',
+          '  · Also park off the active channel on x (opposite flank) so text isn’t on shirts.',
+          '  Bad: x ≈ area.x + area.width next to the yellow box on top of players.',
+          '  Always include at least one label when you draw presses/runs/passes so the picture is readable.',
+          '- balls: 0–1 centre ball unless asked otherwise.',
+          '- elements: practice kit. kind mini-goal | cone | mannequin | pole. x/y 0–100. Mini-goal rotation 0 = mouth faces +y (RIGHT / our goal).',
+          '- Put every visible mini-goal, cone, pole, and mannequin in elements[]. Do not fake them as players or omit them.',
+          '- Max PER FRAME: 30 players, 40 arrows, 20 areas, 20 labels, 40 elements.',
+          '',
+          'SEQUENCE / MULTI-STEP (critical when teaching a play over time):',
+          '- Create diagram.sequence when the coach asks for a sequence, steps, progression, “then…”, phases over time, frame-by-frame, variants, or to show how the play develops.',
+          '- Also create a sequence when a single static picture would hide the order of actions (trigger → reaction → cover).',
+          '- 2–5 teaching frames after the start; absolute max 8 total.',
+          '- FRAME 1 MUST BE THE CURRENT BOARD UNCHANGED — same player x/y, ball, areas, labels, arrows as CURRENT DIAGRAM JSON (the saved starting photo).',
+          '- Frames 2+ ADD the teaching play (new passes/runs/press, moved ball, advanced shapes). Do not overwrite Frame 1 positions.',
+          '- Each frame is a FULL independent snapshot: its own players, balls, arrows, areas, AND labels.',
+          '- Do NOT reuse one shared annotation layer — every teaching frame must carry the notations that belong to THAT moment only.',
+          '  Example: Frame 1 = board as-is; Frame 2 = first pass pattern; Frame 3 = second variant / next beat.',
+          '- Keep player ids STABLE across frames (same att-9 / def-6) and move x/y so playback can tween.',
+          '- Root players/arrows/areas/labels/balls MUST equal the active frame (usually Frame 2 — first teaching beat).',
+          '- sequence.activeFrameId = id of the first teaching frame (Frame 2) when creating a new sequence, so Frame 1 stays the saved start.',
+          '- Frame fields: id (unique), title (short step name at coachLevel language), optional note, optional durationMs (1200–2000).',
+          '- Density limits and language lock apply PER FRAME (not summed across the whole sequence).',
+          '- Single-snapshot requests: omit sequence OR keep one frame that mirrors the root.',
+          '- If editing an existing sequence, preserve frame ids when updating those steps; add/remove frames only as needed.',
+          '',
+          ...((input.lockedReading?.freezePlayers ?? wantsFrozenPlayers(input.message))
+            ? [
+                'PLAYER FREEZE (mandatory this turn — coach forbade moving shirts):',
+                '- Copy CURRENT DIAGRAM players[] onto EVERY frame with the SAME id, x, y, team, role, number.',
+                '- Exception: if they named one shirt to drop/tuck (“drop the 8 without moving anyone else”), freeze everyone else and move THAT ATT shirt toward our goal (higher y).',
+                '- Do NOT add an “Initial Shape” / reshape / setup frame.',
+                '- Teaching frames may change ONLY arrows, labels, optional ball, optional highlight — never shirt coordinates.',
+                '- If they asked for N combination plays: Frame 1 = saved board; Frames 2..N+1 = one combination each (pass + support-run arrows on the named side).',
+                '- Right side on this board = low diagram x (bottom of screen).',
+                '',
+              ]
+            : []),
+          'SEQUENCE CONTINUITY (mandatory):',
+          '- Frame 1 locks the coach’s board photo (formations, channel, player ids/positions) — never invent a different start.',
+          '- The PLAY MUST ADVANCE across frames 2+ (do not freeze the highlight on Frame 1’s third).',
+          '  Typical build-out: Frame 1 saved board → Frame 2 midfield pocket / half-space → Frame 3 wide progression / final third.',
+          '- Move the ball + highlight with the phase on teaching frames. Structure players shift gradually (≤ ~18 units from Frame 1) unless they are in the action.',
+          '- Frames 2–N need MORE detail than Frame 1: involve 6–10 players in the picture (CBs, #6/#8, fullbacks/wing-backs, wingers, pressers).',
+          '- Frame 2 is the first teaching beat — NEVER a thinner copy of Frame 1.',
+          '  Density target: 6–8 arrows (pass + support runs + DEF press/cover), 2 captions, 1–2 zones.',
+          '  Involve shirts from BOTH teams: e.g. ATT #4/#6/#8/#2/#3/#7 plus DEF #9/#10/#8/#6 in/around the pocket.',
+          '  Captions must name the teaching action (pocket receive, third-man, press jump) — do not reuse a generic Frame 1 sentence.',
+          '- Never stack players — including opposite colours (ATT vs DEF). Shirt centers must stay ≥8 units apart so no shirt hides another.',
+          '- Labels narrate THAT frame’s action (complete sentences), parked outside the highlight.',
+          '',
+          'BOTH TEAMS ON EVERY SLIDE (critical — positions must fit the moment):',
+          '- READ ATT and DEF positions before you draw. Never invent a slide from one team only.',
+          '- Every frame’s players[] MUST include the full ATT roster AND the full DEF roster (same ids as Frame 1).',
+          '- For each frame, place BOTH teams relative to THAT slide’s action:',
+          '  · Who has the ball? Who is pressing / covering / dropping / supporting on the OTHER team?',
+          '  · Presser vs ball-carrier should be nearby (duel). Cover sits behind the press. Rest defence holds the opposite side.',
+          '  · If ATT advances, DEF compresses toward the ball; if DEF wins/clears, ATT’s counter shape appears — still both teams on the board.',
+          '- Arrows and captions should involve shirts from the team(s) actually acting on that slide; still keep the other team’s shape visible and relevant.',
+          '- Do not leave a team parked in a meaningless block far from the focus while the slide is about a duel in the highlight.',
+          '- Use the BOTH-TEAMS INDEX / FRAME POSITIONS below as spatial ground truth when editing.',
+          '',
+          'PHASE ↔ WHERE BOTH TEAMS STAND (mandatory):',
+          '- ATT build-up / first line in our half (highlight near RIGHT goal, y≈70–98): DEF’s front press (ST + high mids/wingers) MUST be next to that highlight — typically 3–4 DEF within ~20 of the ball. Never leave all of DEF deep on the LEFT while ATT builds on the RIGHT.',
+          '- DEFAULT play-out = goal kick: GK starts with the ball. DEF’s WHOLE outfield block is HIGH — as high as the ATT box.',
+          '  Press on the box edge; cover ~8–12 behind; back line still in ATT half (outfield DEF floor roughly y≥58–65). Only DEF GK stays deep.',
+          '  Do NOT draw a conservative mid/low block unless the coach asks for mid-block or low-block.',
+          '- Against a play-out / 442 press: DEF’s front two + nearest CMs stand ON the edge of the yellow build-up box; midfield + back four step up compact behind them.',
+          '- Caption mentioning “front three” / “press” / “4v2” / “first line” requires those opponents physically in or on the edge of the yellow box.',
+          '- Midfield progression / “pocket”: DEF midfield + back line must step up — no defenders left on their own box while the ball is central.',
+          '- High press / counterpress in their defensive third (LEFT, y≈0–33): cluster BOTH teams there; do not park ATT back at y≈90.',
+          '- Captions: complete short sentences (≤200 chars). Prefer 1–2 lines that fit fully — do not trail off mid-phrase.',
+          '',
+        ]),
     'OUTPUT: ONLY a JSON object (no markdown prose outside JSON):',
-    '{',
-    '  "reply": "FULL coach-facing briefing (write this FIRST, complete before diagram): Slide 1/2/3 — who moves, which shirts, what advantage. 4–8 short sentences. Never truncate mid-thought.",',
-    '  "apply": true|false,',
-    '  "diagram": { ...full WebDiagramV1, optionally with sequence.frames[...]... }',
-    '}',
+    input.symbolicDsl && !input.importReview
+      ? [
+          '{',
+          '  "reply": "What I saw\\n- ...\\n\\nOn the board\\n- ...\\n\\nCoaching points\\n- ...",',
+          '  "apply": true|false,',
+          '  "dsl": {',
+          '    "activity": "rondo"|"match_scenario"|"technical_exercise"|"scrimmage",',
+          '    "seed": "current"|"formation"|"blank",',
+          '    "grid": { "intent": "...", "format": "7V7"|"9V9"|"11V11", "attFormation": "4-3-3"|..., "defFormation": "..." },',
+          '    "entities": [{ "id":"att-6", "team":"ATT", "number":6, "relative_position":"own_6"|"perimeter"|"inside"|"own_gk"|"own_line"|"grid_c"|... }],',
+          '    "equipment": [{ "kind":"mini-goal"|"cone"|"mannequin"|"pole", "placement":"grid_e", "quantity":1 }],',
+          '    "actions": [{ "type":"pass"|"run"|"press"|"cover"|"transition", "from_id":"att-6", "to_id":"att-10" }],',
+          '    "moves": [{ "id":"def-9", "to":"press:att-6"|"keep"|"toward_ball"|"inside" }]',
+          '  }',
+          '}',
+          '',
+          'SYMBOLIC DSL (mandatory — the solver places shirts):',
+          '- NEVER include "diagram", x, or y. If you emit coordinates the apply is rejected.',
+          '- grid.intent: full_pitch | half_att | half_def | third_left | third_middle | third_right | box_att | box_def | rondo | ssg_grid',
+          '- 7v7 formations: 2-3-1, 3-2-1. 9v9: 3-2-3, 2-3-2-1, 3-3-2. 11v11: 4-3-3, 4-2-3-1, 4-4-2, 3-5-2.',
+          '- seed=current when the board already has shirts and this is a continuation / “from this” / freeze (empty moves).',
+          '- seed=formation for a new 11v11 / Q3 B. seed=blank for rondo, SSG, function, import-as-written.',
+          '- Do not pad a rondo/function to 22 shirts. activity rondo|technical_exercise + seed blank + entities only.',
+          '- third_left = their defensive / our attacking third. third_right = our defensive third.',
+          '- Us = ATT blue, own goal RIGHT. Use own_gk / own_line — never a touchline GK.',
+        ].join('\n')
+      : [
+          '{',
+          '  "reply": "What I saw\\n- ...\\n\\nOn the board\\n- ...\\n\\nCoaching points\\n- ...",',
+          '  "apply": true|false,',
+          '  "diagram": { ...full WebDiagramV1, optionally with sequence.frames[...]... }',
+          '}',
+        ].join('\n'),
+    '',
+    'REPLY FORMAT (mandatory — put real newline characters inside the JSON string):',
+    '- Do NOT write one dense paragraph.',
+    '- Use short labelled sections, then bullets. Headings on their own line. Bullets start with "- ".',
+    '- Default sections (skip a section if it has nothing useful):',
+    '  What I saw',
+    '  On the board',
+    '  Coaching points',
+    '- Photo/PDF: What I saw = what the file showed; On the board = how you redrew it (shirts, zone, arrows); Coaching points = 3–5 teachable cues.',
+    '- Sequences: under On the board, one bullet per slide (Slide 1 / 2 / 3 — who moves, which shirts).',
+    '- Shirt numbers once: write #6, never (#6, #6). Never mention seed, dsl, freeze flags, or “set to current”.',
+    '- Us is always blue ATT. Call the opponent’s shape “their 4-4-2” / “a 4-4-2 block”, not “our 4-4-2”, unless the blue shirts are actually that shape.',
+    '- 6–12 bullets total. One idea per bullet. Never truncate mid-thought.',
+    '- Photo/PDF first turn: What I saw only (no guessing). Do not include On the board, Coaching points, or questions.',
+    '- Photo/PDF after answers: What I saw / On the board / Coaching points.',
     '',
     `Age group context: ${input.ageGroup || 'unknown'}`,
     `Game model id: ${input.gameModelId || 'unknown'}`,
@@ -2882,7 +4074,54 @@ function buildPrompt(input: {
     historyBlock,
     '',
     'CURRENT DIAGRAM JSON:',
-    JSON.stringify(compactDiagram(input.diagram)),
+    input.symbolicDsl && !input.importReview
+      ? JSON.stringify(compactRosterForDsl(input.diagram))
+      : JSON.stringify(compactDiagram(input.diagram)),
+    '',
+    input.hasImage
+      ? input.importReview
+        ? [
+            'IMPORT REVIEW (mandatory this turn — DO NOT DRAW):',
+            '- apply=false. Return the CURRENT diagram unchanged.',
+            '- Review the file. What I saw = only what is visible (title, area, numbers, diagrams). If something is unclear, say unclear — do not invent 11v11, floaters, or a chassis.',
+            '- Count how many separate pitch diagrams are in the file.',
+            '- First bullet of What I saw MUST be Organisation: NvM + GK/neutrals — count every numbered shirt on the first diagram (7v6+GK is 7+6+keeper, not a 4v4 inside it). Waiting defenders outside a grid still count (5 inside vs 1 hunter + 4 waiters = 5v5, not 5v1+4 floaters).',
+            '- Reply is What I saw only. Do NOT include On the board, Coaching points, or any questions — questions are appended for you.',
+            '- Do not pick A/B/C. Do not offer 1/2/3 readings.',
+          ].join('\n')
+        : [
+            'UPLOADED TACTICAL FILE (mandatory this turn — photo or PDF):',
+            input.importAnswers ? formatImportLocks(input.importAnswers) : null,
+            '- DECODE the source: area size, player numbers, mini-goals, floaters, overload, arrows, captions.',
+            input.importAnswers?.draw === 'eleven'
+              ? '- The coach chose 11v11: scale the same idea onto a full match board. Still do not invent a different session.'
+              : '- DRAW THE PRACTICE AS WRITTEN. Do NOT translate a function / SSG / rondo / 6v3 into a full 11v11 match picture.',
+            '- Replace the current board with the source practice. Do not keep leftover shirts from the live board unless they match the source.',
+            '- Keep the organisation from the file: boxed area, named numbers, mini-goals, floaters, overload. Only draw 11v11 if the source is 11v11 OR the coach chose Q3 B.',
+            '- Count every numbered shirt. 7v6 means 7 + 6 (plus a GK if the file shows one), never 7+4. Same numbers keep their source colour: if 4 and 8 are on the attacking kit, they stay DEF (red) when we are the defending unit.',
+            input.importAnswers?.us === 'attackers'
+              ? '- Us = ATT (blue), own goal RIGHT = the attacking side in the session. Them = DEF (red) facing us.'
+              : input.importAnswers?.us === 'labelled'
+                ? '- Keep source labels, but still map the coached team’s own goal to RIGHT if they are the defending unit, or LEFT if they are attacking a full goal on the left.'
+                : '- Us = ATT (blue), own goal RIGHT. If this is a defending function, we are STILL blue — we stand in OUR defensive third (RIGHT, y≈70–95) in a defending shape. Opposition attackers are DEF (red) in front of us (lower y), attacking toward our goal (toward RIGHT). NEVER paint the coached back line as red on the right.',
+            '- Paper “own goal / defending end / back 3 protecting the box” → RIGHT (y high). Paper “attacking end / mini-goal they score into after regain” → away from our goal (lower y), mouth facing the coached team (rotation 0 unless the source faces the other way).',
+            '- Emit elements[] for every mini-goal, cone, pole, and mannequin in the file. Cones mark the boxed area corners. Mini-goals are elements kind "mini-goal", not players. Four mini-goals (one per side) → equipment grid_n / grid_e / grid_s / grid_w.',
+            '- Club game-model language belongs in Coaching points only unless they chose 11v11.',
+            '- Translate onto this HORIZONTAL board (goals LEFT/RIGHT). Do not copy photo/PDF pixel axes.',
+            '- ORIENTATION LOCK: a back 3 protecting a goal is a line PARALLEL TO THE GOAL (vertical on screen — varied x, similar y). GK at the RIGHT goal = y≈92, x≈50. NEVER put the GK on the top/bottom touchline (that is x≈5 or x≈95). Paper “up the page” becomes RIGHT on this board when we are defending our third.',
+            input.sourceDiagramMode === 'all'
+              ? '- Draw EVERY source diagram. One sequence frame per diagram. Title frames from the source. Do NOT prepend a “Start (board)” 11v11 slide.'
+              : input.sourceDiagramMode === 'named'
+                ? `- Draw ONLY this picture: ${input.importAnswers?.namedHint || 'the one the coach named'}.`
+                : '- Draw ONLY the first tactical diagram in the file.',
+            input.symbolicDsl
+              ? '- apply=true. Return dsl (no diagram x/y) that matches the source + locked answers. seed=blank unless they chose 11v11 (then seed=formation).'
+              : '- apply=true. Return a FULL diagram that matches the source + locked answers.',
+            '- If the typed request conflicts with the file, obey the typed request.',
+          ]
+            .filter(Boolean)
+            .join('\n')
+      : '',
     '',
     'COACH REQUEST:',
     input.message,
@@ -2952,6 +4191,7 @@ export async function runBoardAiChat(input: {
   clubId?: string | null;
   coachLevel?: string | null;
   userId?: string | null;
+  image?: BoardChatImage | null;
 }): Promise<BoardAiChatResult> {
   const audience = resolveBoardAudience({
     coachLevel: input.coachLevel,
@@ -2962,11 +4202,17 @@ export async function runBoardAiChat(input: {
     playerLevel: audience.playerLevel,
   };
 
-  const message = String(input.message || '').trim();
+  const hasImage = Boolean(input.image?.data);
+  const message = String(input.message || '').trim()
+    || (hasImage
+      ? isBoardChatPdf(input.image?.mimeType)
+        ? 'Recreate this tactical PDF on the board.'
+        : 'Recreate this tactical picture on the board.'
+      : '');
   if (!message) {
     return {
       ...resultBase,
-      reply: 'Tell me what scenario you want on the board.',
+      reply: 'Tell me what scenario you want on the board, or attach a photo or PDF of a tactical picture.',
       applied: false,
       diagram: input.diagram,
     };
@@ -2987,7 +4233,8 @@ export async function runBoardAiChat(input: {
   const gaps = assessScenarioGaps(message, history, input.diagram);
   const improveAsk = isSessionImproveRequest(message);
   // Training/vault asks don't need a fresh draw — use what's already on the board.
-  const clarifyRequired = improveAsk
+  // An uploaded picture supplies formations/phase — don't re-ask, and skip numbered readings.
+  const clarifyRequired = improveAsk || hasImage
     ? false
     : needsBoardClarification(message, history, input.diagram);
   const playModel = await resolveBoardPlayModelContext({
@@ -2997,7 +4244,7 @@ export async function runBoardAiChat(input: {
   const playModelGuidance = buildBoardPlayModelGuidance(playModel);
   const languageGuidance = buildBoardLanguageGuidance(audience);
 
-  if (improveAsk) {
+  if (improveAsk && !hasImage) {
     const bridge = await runBoardSessionBridge({
       message,
       history,
@@ -3038,8 +4285,51 @@ export async function runBoardAiChat(input: {
   }
 
   const offeredReadings = assistantOfferedAskReadings(history);
+  const offeredSourceDiagrams = assistantOfferedSourceDiagrams(history);
+  const offeredImportReview = assistantOfferedImportReview(history);
+  const importAnswersRaw = parseImportReviewAnswers(message);
+  const importAnswers =
+    importAnswersRaw && (hasImage || offeredImportReview) ? importAnswersRaw : null;
+  const drawAllSourceDiagrams = wantsAllSourceDiagrams(message, history);
+  const importReview =
+    Boolean(hasImage && !isImportJustDraw(message) && !importAnswers);
+  const sourceDiagramMode: 'first' | 'all' | 'named' | null = !hasImage
+    ? null
+    : importAnswers?.pictures === 'all' || drawAllSourceDiagrams
+      ? 'all'
+      : importAnswers?.pictures === 'named'
+        ? 'named'
+        : 'first';
+
+  if (offeredImportReview && !importAnswers && !isImportJustDraw(message) && !hasImage) {
+    return {
+      ...resultBase,
+      reply: 'I won’t guess. Reply **A A A** (pictures · us · draw), or **just draw it**.',
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
+  if (importAnswers && !hasImage) {
+    return {
+      ...resultBase,
+      reply: 'Attach the PDF or photo again with those answers and I’ll draw it.',
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
+  if (drawAllSourceDiagrams && offeredSourceDiagrams && !hasImage) {
+    return {
+      ...resultBase,
+      reply: 'Attach the PDF or photo again and say **all** — I’ll put each diagram on its own frame.',
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
   const pickedIndex = parsePickedReadingIndex(message);
-  if (!offeredReadings && pickedIndex) {
+  if (!hasImage && !offeredReadings && pickedIndex && !offeredSourceDiagrams) {
     return {
       ...resultBase,
       reply: 'Tell me the scenario first — then I’ll offer 1 / 2 / 3 ways to draw it.',
@@ -3051,7 +4341,9 @@ export async function runBoardAiChat(input: {
   const originalAsk = collectCoachAsk(message, history);
   const readings = buildAskReadings(originalAsk, input.diagram);
   if (
+    !hasImage &&
     !improveAsk &&
+    !offeredImportReview &&
     needsAskReadings({ message, history, diagram: input.diagram })
   ) {
     return {
@@ -3087,23 +4379,44 @@ export async function runBoardAiChat(input: {
     clarifyRequired: false,
     gaps,
     lockedReading,
+    hasImage,
+    sourceDiagramMode,
+    importReview,
+    importAnswers,
+    symbolicDsl: boardSymbolicDslEnabled() && !importReview,
   });
 
   setMetricsContext({
-    operationType: 'board_ai_chat',
+    operationType: hasImage ? 'board_ai_image' : 'board_ai_chat',
     ageGroup: input.ageGroup || undefined,
     gameModelId: playModel.gameModelId || input.gameModelId || undefined,
   });
 
+  const boardModel = process.env.GEMINI_BOARD_AI_MODEL || process.env.GEMINI_FAST_MODEL;
+  const symbolicDsl = boardSymbolicDslEnabled() && !importReview;
+  const jsonMime = symbolicDsl ? 'application/json' : undefined;
   let text = '';
   try {
-    text = await generateText(prompt, {
-      timeout: 90000,
-      retries: 1,
-      model: process.env.GEMINI_BOARD_AI_MODEL || process.env.GEMINI_FAST_MODEL,
-      // Multi-frame boards + full reply need headroom; default Gemini cap truncates mid-JSON.
-      maxOutputTokens: 16384,
-    });
+    text = hasImage && input.image
+      ? await generateMultimodalText(
+          [
+            { text: prompt },
+            { inlineData: { mimeType: input.image.mimeType, data: input.image.data } },
+          ],
+          {
+            timeout: 90000,
+            model: boardModel,
+            maxOutputTokens: 16384,
+            responseMimeType: jsonMime,
+          }
+        )
+      : await generateText(prompt, {
+          timeout: 90000,
+          retries: 1,
+          model: boardModel,
+          maxOutputTokens: 16384,
+          responseMimeType: jsonMime,
+        });
   } finally {
     clearMetricsContext();
   }
@@ -3112,7 +4425,13 @@ export async function runBoardAiChat(input: {
   if (!parsed || typeof parsed !== 'object') {
     return {
       ...resultBase,
-      reply: "I couldn't format a board update. Try a clearer scenario (e.g. “7v7 ATT 2-3-1 vs DEF 3-2-1, central channel, Defensive Transition — press after loss in their defensive third”).",
+      reply: importReview
+        ? ensureImportReviewQuestions(
+            'I read the file but couldn’t format the review. Here’s what I still need before I draw:'
+          )
+        : hasImage
+          ? "I couldn't turn that file into a board. Try a clearer photo or PDF of the pitch, or add a short caption (e.g. “433 vs 442 press after loss”)."
+          : "I couldn't format a board update. Try a clearer scenario (e.g. “7v7 ATT 2-3-1 vs DEF 3-2-1, central channel, Defensive Transition — press after loss in their defensive third”).",
       applied: false,
       diagram: input.diagram,
     };
@@ -3124,10 +4443,20 @@ export async function runBoardAiChat(input: {
       : 'Updated the board.';
   const apply = parsed.apply !== false;
 
+  if (importReview) {
+    return {
+      ...resultBase,
+      reply: ensureImportReviewQuestions(reply),
+      applied: false,
+      diagram: input.diagram,
+    };
+  }
+
   // Safety: never apply if gaps reappear (e.g. new vague turn after history reset)
   if (
     apply &&
     !lockedReading &&
+    !hasImage &&
     needsBoardClarification(drawMessage, history, input.diagram)
   ) {
     return {
@@ -3143,12 +4472,90 @@ export async function runBoardAiChat(input: {
     };
   }
 
-  if (!apply || !parsed.diagram) {
+  if (!apply) {
     return { ...resultBase, reply, applied: false, diagram: input.diagram };
   }
 
-  const normalized = toWebDiagramV1(parsed.diagram);
-  if (!normalized) {
+  const freezePlayers = hasImage
+    ? false
+    : wantsKeepPriorFrame(drawMessage)
+      ? false
+      : lockedReading?.freezePlayers ?? wantsFrozenPlayers(drawMessage);
+  const wantsSeq = hasImage
+    ? sourceDiagramMode === 'all'
+    : lockedReading?.sequence ?? wantsSequenceFromMessage(drawMessage);
+
+  let validatedDiagram: WebDiagramV1 | null = null;
+  let lockedDsl: BoardSymbolicDsl | null = null;
+
+  if (symbolicDsl) {
+    const rawDsl = (parsed as { dsl?: unknown }).dsl;
+    if (rawDsl == null) {
+      console.warn('[board-ai] dsl missing; coordinate diagram ignored');
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I need a symbolic plan, not coordinates — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
+    const parsedDsl = parseBoardSymbolicDsl(rawDsl);
+    if (!parsedDsl.ok) {
+      console.warn('[board-ai] dsl rejected', parsedDsl.error);
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
+    lockedDsl = lockDslForTurn(parsedDsl.dsl, {
+      freeze: freezePlayers,
+      hasImage,
+      importDrawEleven: importAnswers?.draw === 'eleven' || wantsScaleToEleven(drawMessage),
+      fromCurrentBoard: wantsCurrentBoardSeed(drawMessage),
+      keepPriorFrame: wantsKeepPriorFrame(drawMessage),
+      reshape: Boolean(lockedReading?.reshape),
+      currentFormat: input.diagram.pitch?.format,
+      current: input.diagram,
+      message: drawMessage,
+      rosterHint: history.map((h) => h.content).join('\n'),
+    });
+    validatedDiagram = applyLockedDsl(lockedDsl, input.diagram, drawMessage);
+    if (!validatedDiagram) {
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I planned the picture in symbols but the solved board was invalid — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
+  } else {
+    if (!parsed.diagram) {
+      return { ...resultBase, reply, applied: false, diagram: input.diagram };
+    }
+    const normalized = toWebDiagramV1(parsed.diagram);
+    if (!normalized) {
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I drafted a change but the diagram was invalid — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
+    const validated = parseWebDiagramV1(normalized);
+    if (!validated.ok) {
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I drafted a change but validation failed — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
+    validatedDiagram = validated.diagram;
+  }
+
+  if (!validatedDiagram) {
     return {
       ...resultBase,
       reply: `${reply}\n\n(I drafted a change but the diagram was invalid — board left as-is.)`,
@@ -3157,27 +4564,42 @@ export async function runBoardAiChat(input: {
     };
   }
 
-  const validated = parseWebDiagramV1(normalized);
-  if (!validated.ok) {
-    return {
-      ...resultBase,
-      reply: `${reply}\n\n(I drafted a change but validation failed — board left as-is.)`,
-      applied: false,
-      diagram: input.diagram,
-    };
+  let repaired = symbolicDsl
+    ? validatedDiagram
+    : hasImage
+      ? repairBoardDiagramWithSequence(validatedDiagram, drawMessage)
+      : ensureSequenceStartsFromOriginal(
+          repairBoardDiagramWithSequence(validatedDiagram, drawMessage),
+          input.diagram,
+          drawMessage
+        );
+  if (symbolicDsl) {
+    repaired = repairBoardDiagramLabels(repairBoardDiagramArrows(repaired));
+    if (!hasImage && (input.diagram.players || []).length) {
+      repaired = ensureSequenceStartsFromOriginal(repaired, input.diagram, drawMessage);
+    }
   }
-
-  const freezePlayers =
-    lockedReading?.freezePlayers ?? wantsFrozenPlayers(drawMessage);
-  const wantsSeq =
-    lockedReading?.sequence ?? wantsSequenceFromMessage(drawMessage);
-  let repaired = ensureSequenceStartsFromOriginal(
-    repairBoardDiagramWithSequence(validated.diagram, drawMessage),
-    input.diagram,
-    drawMessage
-  );
   if (freezePlayers) {
     repaired = lockSequencePlayersToOriginal(repaired, input.diagram);
+  }
+  repaired = applyCoachShirtEdits(repaired, drawMessage);
+  repaired = unstackDiagramPlayers(repaired);
+  if (lockedDsl) {
+    repaired = enforceBoardInvariants(repaired, lockedDsl);
+    const inv = boardInvariantErrors(repaired, lockedDsl);
+    const overlap = inv.some((e) => e.startsWith('overlap'));
+    const upsample = inv.some((e) => e.startsWith('upsample'));
+    const repairedN = repaired.players?.length || 0;
+    const currentN = input.diagram.players?.length || 0;
+    if (overlap || (upsample && repairedN >= currentN)) {
+      console.warn('[board-ai] invariant failed', inv.join('; '));
+      return {
+        ...resultBase,
+        reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
+        applied: false,
+        diagram: input.diagram,
+      };
+    }
   }
   const frameArrowCount = repaired.sequence?.frames?.length
     ? repaired.sequence.frames.reduce((n, f) => n + (f.arrows?.length || 0), 0)
@@ -3192,8 +4614,16 @@ export async function runBoardAiChat(input: {
       : reply;
 
   const frameCount = repaired.sequence?.frames?.length || 0;
-  const playOutApplied = isPlayOutRequest(drawMessage) && frameCount >= 3;
-  const replyWithSequenceNote = playOutApplied
+  const playOutApplied = !hasImage && isPlayOutRequest(drawMessage) && frameCount >= 3;
+  const replyWithDiagramAsk =
+    hasImage && !importAnswers
+      ? ensureSourceDiagramFollowUp(replyWithArrowNote, sourceDiagramMode === 'all')
+      : replyWithArrowNote;
+  const replyWithSequenceNote = hasImage
+    ? sourceDiagramMode === 'all' && frameCount >= 2
+      ? `${replyWithDiagramAsk}\n\nSequence: ${frameCount} frames — one source diagram per frame. Use the filmstrip to switch pictures.`
+      : replyWithDiagramAsk
+    : playOutApplied
     ? `${replyWithArrowNote}\n\nSequence: ${frameCount} frames — 1) Start (your board)  2+) teaching steps. Chassis from the 11v11 playbook. Use Play / the filmstrip to scrub; Frame 1 keeps your original positions.`
     : wantsSeq && frameCount < 2
       ? `${replyWithArrowNote}\n\n(I drew a single snapshot — ask again for “3 frames / step-by-step” if you want a sequence.)`
@@ -3203,7 +4633,7 @@ export async function runBoardAiChat(input: {
 
   return {
     ...resultBase,
-    reply: replyWithSequenceNote,
+    reply: scrubCoachReply(replyWithSequenceNote, repaired),
     applied: true,
     diagram: repaired,
   };

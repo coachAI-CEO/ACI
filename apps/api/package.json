@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts",
+    "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts src/__tests__/board-ai-followup.test.ts src/__tests__/board-card-meta.test.ts",
     "test:all": "jest --runInBand",
     "dev": "nodemon --watch src -e ts,js,json --exec \"ts-node --project tsconfig.json src/index.ts\"",
     "build": "prisma migrate deploy && prisma generate && tsc -p tsconfig.json",
@@ -21,7 +21,9 @@
     "scenario:board": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-editor.ts",
     "scenario:board-drawing": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-drawing.ts",
     "scenario:board-lines": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-lines.ts",
-    "smoke:board": "ts-node --transpile-only --project tsconfig.json src/scripts/smoke-tactical-boards.ts"
+    "smoke:board": "ts-node --transpile-only --project tsconfig.json src/scripts/smoke-tactical-boards.ts",
+    "tester:board-dsl": "ts-node --transpile-only --project tsconfig.json src/scripts/tester-board-symbolic-dsl.ts",
+    "tester:board-dsl-chat": "ts-node --transpile-only --project tsconfig.json src/scripts/tester-board-dsl-chat.ts"
   },
   "keywords": [],
   "author": "",

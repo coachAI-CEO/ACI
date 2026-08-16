@@ -14,8 +14,9 @@ import {
 import { sessionVisibleToClub } from './club-session-visibility';
 import { BOARD_DIAGRAM_MAX_FRAMES, BOARD_TITLE_MAX_LEN, parseWebDiagramV1 } from './board-diagram-schema';
 import {
-  DEFAULT_MATCH_BOARD_DIAGRAM,
+  defaultMatchBoardDiagram,
   extractRawDiagramFromDrill,
+  formatFromAgeGroup,
   isDiagramThinForFork,
   remapSessionDiagramToBoard,
   toWebDiagramV1,
@@ -336,6 +337,7 @@ function slideFromDiagram(
     goals: web.goals,
     coach: web.coach,
     cones: web.cones,
+    elements: web.elements,
   };
 }
 
@@ -356,6 +358,36 @@ async function tryResolveForkDiagram(
   }
 }
 
+function pickBoardAgeGroup(ages: string[]): string | null {
+  if (!ages.length) return null;
+  const scored = ages
+    .map((a) => ({ a: String(a).slice(0, 32), n: Number(String(a).replace(/^U/i, '')) }))
+    .filter((x) => Number.isFinite(x.n) && x.n > 0);
+  if (!scored.length) return String(ages[0]).slice(0, 32);
+  scored.sort((a, b) => b.n - a.n);
+  return scored[0].a;
+}
+
+async function resolveBlankBoardAudience(
+  userId: string,
+  body: any
+): Promise<{ ageGroup: string | null; format: '7V7' | '9V9' | '11V11' }> {
+  const fromBody =
+    typeof body?.ageGroup === 'string' && body.ageGroup.trim()
+      ? body.ageGroup.trim().slice(0, 32)
+      : null;
+  if (fromBody) {
+    return { ageGroup: fromBody, format: formatFromAgeGroup(fromBody) || '11V11' };
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamAgeGroups: true },
+  });
+  const ages = Array.isArray(user?.teamAgeGroups) ? user.teamAgeGroups : [];
+  const pick = pickBoardAgeGroup(ages);
+  return { ageGroup: pick, format: formatFromAgeGroup(pick) || '11V11' };
+}
+
 export async function createBlankBoard(userId: string, body: any) {
   await assertCanCreateBoards(userId);
   const shareMode = parseShareMode(body?.shareMode);
@@ -364,8 +396,9 @@ export async function createBlankBoard(userId: string, body: any) {
     clientGameModelId: body?.gameModelId,
     shareMode,
   });
+  const { ageGroup, format } = await resolveBlankBoardAudience(userId, body);
 
-  const diagramCheck = parseWebDiagramV1(DEFAULT_MATCH_BOARD_DIAGRAM);
+  const diagramCheck = parseWebDiagramV1(defaultMatchBoardDiagram(format));
   if (!diagramCheck.ok) {
     throw new TacticalBoardError(500, 'BLANK_INVALID', diagramCheck.error);
   }
@@ -376,7 +409,7 @@ export async function createBlankBoard(userId: string, body: any) {
       clubId,
       title: normalizeTitle(body?.title),
       diagram: diagramCheck.diagram as unknown as Prisma.InputJsonValue,
-      ageGroup: typeof body?.ageGroup === 'string' ? body.ageGroup.slice(0, 32) : null,
+      ageGroup,
       gameModelId,
       shareMode,
     },
@@ -556,6 +589,7 @@ export async function createForkSessionBoard(userId: string, body: any, isSuperA
     goals: first.goals,
     coach: first.coach,
     cones: first.cones,
+    elements: first.elements,
     sequence: { activeFrameId: first.id, frames },
   };
 

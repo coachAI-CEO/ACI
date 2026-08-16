@@ -14,6 +14,8 @@ export interface DiagramPitch {
   /** Age-group field size; markings/zoom scale from this. */
   format?: "7V7" | "9V9" | "11V11";
   showZones?: boolean;
+  /** Dashed lines at 1/3 and 2/3 of pitch length (def / mid / att thirds). */
+  showThirds?: boolean;
   zones?: DiagramPitchZones;
 }
 
@@ -23,6 +25,19 @@ export interface DiagramGoal {
   y: number;
   width?: number;
   type?: "BIG" | "SMALL" | string;
+}
+
+export type DiagramElementKind = "mini-goal" | "cone" | "mannequin" | "pole";
+
+export interface DiagramElement {
+  id: string;
+  kind: DiagramElementKind;
+  x: number;
+  y: number;
+  /** Degrees; 0 = mouth/face toward +y (right on the board). */
+  rotation?: number;
+  color?: string;
+  width?: number;
 }
 
 export interface DiagramPlayer {
@@ -94,6 +109,7 @@ export type DiagramFrameLayers = {
   goals?: DiagramGoal[];
   coach?: DiagramCoach;
   cones?: Array<{ x: number; y: number; color?: string }>;
+  elements?: DiagramElement[];
 };
 
 export interface DiagramSequenceFrame extends DiagramFrameLayers {
@@ -116,6 +132,7 @@ export interface DiagramV1 {
   coach?: DiagramCoach;
   balls?: any[];
   cones?: any[];
+  elements?: DiagramElement[];
   arrows: DiagramArrow[];
   areas: DiagramArea[];
   labels: DiagramLabel[];

@@ -1882,6 +1882,7 @@ export function applyPlayOutSequenceToDiagram(
       goals: prev?.goals || diagram.goals,
       coach: prev?.coach || diagram.coach,
       cones: prev?.cones || diagram.cones,
+      elements: prev?.elements || diagram.elements,
     };
   });
 

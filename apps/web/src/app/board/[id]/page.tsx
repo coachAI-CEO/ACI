@@ -102,6 +102,7 @@ export default function BoardPage() {
     | null
   >(null);
   const skipNextPopRef = useRef(false);
+  const applyGenRef = useRef(0);
 
   const pageLoading = loading || flagOn === null;
   const pageProgress = useBoardLoadProgress(pageLoading);
@@ -344,9 +345,28 @@ export default function BoardPage() {
     coachLevel,
     onBusyChange: setAiBusy,
     onApplyDiagram: (next: DiagramV1) => {
+      const gen = ++applyGenRef.current;
       setDiagram(next);
       setDirty(true);
-      setStatus("AI updated board — save when ready");
+      if (!boardId || !board?.canEdit) {
+        setStatus("AI updated board — save when ready");
+        return;
+      }
+      setStatus("AI updated board — saving…");
+      void patchBoard(boardId, { title, diagram: next, shareMode })
+        .then((data) => {
+          if (gen !== applyGenRef.current) return;
+          if (!data.ok || !data.board) {
+            setStatus("AI updated board — save when ready");
+            return;
+          }
+          setDirty(false);
+          setStatus("Saved");
+        })
+        .catch(() => {
+          if (gen !== applyGenRef.current) return;
+          setStatus("AI updated board — save when ready");
+        });
     },
   };
 

@@ -1,5 +1,6 @@
 import type { DiagramPlayer, DiagramTeamCode, DiagramV1 } from "@/types/diagram";
 import type { PitchFormatId } from "@/lib/pitch-formats";
+import { unstackDiagramPlayers } from "@/lib/board-player-spacing";
 
 export type FormationId =
   | "2-3-1"
@@ -279,7 +280,7 @@ export function buildDefaultMatchDiagram(
   const awayId = awayFormation || defaults.away;
   const home = buildFormationPlayers(homeId, "ATT", "home", opts);
   const away = buildFormationPlayers(awayId, "DEF", "away", opts);
-  return {
+  return unstackDiagramPlayers({
     pitch: {
       variant: "FULL",
       orientation: "HORIZONTAL",
@@ -295,7 +296,7 @@ export function buildDefaultMatchDiagram(
     arrows: [],
     areas: [],
     labels: [],
-  };
+  });
 }
 
 export function applyFormationToTeam(
@@ -307,8 +308,8 @@ export function applyFormationToTeam(
 ): DiagramV1 {
   const others = (diagram.players || []).filter((p) => p.team !== team);
   const next = buildFormationPlayers(formation, team, side, opts);
-  return {
+  return unstackDiagramPlayers({
     ...diagram,
     players: [...others, ...next],
-  };
+  });
 }

@@ -18,7 +18,11 @@ export type BoardTool =
   | "shape-spotlight"
   | "label"
   | "ball"
-  | "eraser";
+  | "eraser"
+  | "element-mini-goal"
+  | "element-cone"
+  | "element-mannequin"
+  | "element-pole";
 
 export type LineGeometry = "straight" | "curve" | "freehand";
 
@@ -33,7 +37,7 @@ type Props = {
   variant?: "bar" | "rail";
 };
 
-type MenuId = "select" | "lines" | "shapes" | null;
+type MenuId = "select" | "lines" | "shapes" | "elements" | null;
 
 type MenuItem = {
   id: BoardTool;
@@ -178,6 +182,51 @@ const SHAPE_ITEMS: MenuItem[] = [
   },
 ];
 
+const ELEMENT_ITEMS: MenuItem[] = [
+  {
+    id: "element-mini-goal",
+    label: "Mini-goal",
+    shortcut: "M",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M6 7v10M6 7h10M6 17h10" />
+      </svg>
+    ),
+  },
+  {
+    id: "element-cone",
+    label: "Cone",
+    shortcut: "N",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+        <path d="M12 4l6 16H6L12 4z" />
+      </svg>
+    ),
+  },
+  {
+    id: "element-mannequin",
+    label: "Mannequin",
+    shortcut: "H",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="7" r="3" />
+        <path d="M8 21v-6a4 4 0 018 0v6" />
+      </svg>
+    ),
+  },
+  {
+    id: "element-pole",
+    label: "Pole",
+    shortcut: "J",
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <circle cx="12" cy="5" r="2" />
+        <path d="M12 7v14" />
+      </svg>
+    ),
+  },
+];
+
 function itemForTool(tool: BoardTool, items: MenuItem[], fallback: MenuItem) {
   return items.find((i) => i.id === tool) || fallback;
 }
@@ -286,11 +335,13 @@ export default function BoardToolbar({
   const [lastSelect, setLastSelect] = React.useState<BoardTool>("select");
   const [lastLine, setLastLine] = React.useState<BoardTool>("line-pass");
   const [lastShape, setLastShape] = React.useState<BoardTool>("shape-circle");
+  const [lastElement, setLastElement] = React.useState<BoardTool>("element-mini-goal");
 
   React.useEffect(() => {
     if (tool === "select" || tool === "add-player" || tool === "ball") setLastSelect(tool);
     if (tool.startsWith("line-")) setLastLine(tool);
     if (tool.startsWith("shape-")) setLastShape(tool);
+    if (tool.startsWith("element-")) setLastElement(tool);
   }, [tool]);
 
   React.useEffect(() => {
@@ -323,6 +374,10 @@ export default function BoardToolbar({
         i: "shape-spotlight",
         t: "label",
         e: "eraser",
+        m: "element-mini-goal",
+        n: "element-cone",
+        h: "element-mannequin",
+        j: "element-pole",
       };
       const next = map[key];
       if (!next) return;
@@ -339,10 +394,12 @@ export default function BoardToolbar({
   const selectActive = tool === "select" || tool === "add-player" || tool === "ball";
   const lineActive = tool.startsWith("line-");
   const shapeActive = tool.startsWith("shape-");
+  const elementActive = tool.startsWith("element-");
 
   const selectItem = itemForTool(lastSelect, SELECT_ITEMS, SELECT_ITEMS[0]);
   const lineItem = itemForTool(lastLine, LINE_ITEMS, LINE_ITEMS[0]);
   const shapeItem = itemForTool(lastShape, SHAPE_ITEMS, SHAPE_ITEMS[0]);
+  const elementItem = itemForTool(lastElement, ELEMENT_ITEMS, ELEMENT_ITEMS[0]);
 
   const pick = (id: BoardTool) => {
     if (disabled) return;
@@ -439,6 +496,30 @@ export default function BoardToolbar({
           <DropdownMenu
             open={openMenu === "shapes"}
             items={SHAPE_ITEMS}
+            activeTool={tool}
+            onPick={pick}
+            side={menuSide}
+          />
+        </div>
+
+        <div className="relative flex flex-col items-center">
+          <ToolButton
+            active={elementActive}
+            chevron
+            title="Practice kit — mini-goal, cone, mannequin, pole"
+            onClick={() => {
+              onToolChange(elementItem.id);
+              toggle("elements");
+            }}
+          >
+            {ELEMENT_ITEMS[1].icon}
+          </ToolButton>
+          <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-wide text-slate-500">
+            Kit
+          </span>
+          <DropdownMenu
+            open={openMenu === "elements"}
+            items={ELEMENT_ITEMS}
             activeTool={tool}
             onPick={pick}
             side={menuSide}
@@ -555,6 +636,32 @@ export default function BoardToolbar({
           />
         </div>
 
+        <div className="relative">
+          <GroupLabel>Elements</GroupLabel>
+          <ToolButton
+            active={elementActive}
+            chevron
+            title={`${elementItem.label} (${elementItem.shortcut})`}
+            onClick={() => {
+              onToolChange(elementItem.id);
+              toggle("elements");
+            }}
+          >
+            {elementItem.icon}
+            {elementItem.shortcut ? (
+              <span className="absolute bottom-0.5 right-1 text-[8px] font-bold text-slate-400">
+                {elementItem.shortcut}
+              </span>
+            ) : null}
+          </ToolButton>
+          <DropdownMenu
+            open={openMenu === "elements"}
+            items={ELEMENT_ITEMS}
+            activeTool={tool}
+            onPick={pick}
+          />
+        </div>
+
         <div>
           <GroupLabel>Annotate</GroupLabel>
           <div className="flex items-center gap-1.5">
@@ -608,11 +715,29 @@ function toolHint(tool: BoardTool): string {
       return "Drag to place a soft spotlight on an area of the pitch.";
     case "label":
       return "Click the pitch to add a text label.";
+    case "element-mini-goal":
+      return "Click to place a mini-goal. Drag slightly to aim the mouth. R rotates the selection.";
+    case "element-cone":
+      return "Click the pitch to place a cone. Stay on this tool to drop several.";
+    case "element-mannequin":
+      return "Click the pitch to place a mannequin.";
+    case "element-pole":
+      return "Click the pitch to place a pole.";
     case "eraser":
-      return "Click a line, shape, label, ball, or player to remove it.";
+      return "Click a line, shape, label, ball, player, or element to remove it.";
     default:
       return "";
   }
+}
+
+export function elementToolKind(
+  tool: BoardTool
+): "mini-goal" | "cone" | "mannequin" | "pole" | null {
+  if (tool === "element-mini-goal") return "mini-goal";
+  if (tool === "element-cone") return "cone";
+  if (tool === "element-mannequin") return "mannequin";
+  if (tool === "element-pole") return "pole";
+  return null;
 }
 
 export function lineToolToArrow(tool: BoardTool): {
