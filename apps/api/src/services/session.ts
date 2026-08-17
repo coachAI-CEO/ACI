@@ -11,7 +11,7 @@ import { fixSessionDecision } from "./fixer";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
-import { generateDrillDiagramSvg } from "./drill-diagram-svg";
+import { generateDrillDiagramSvg, omitDiagramSvgFromDrill, persistDrillDiagramSvg } from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
 
@@ -1074,6 +1074,11 @@ export async function generateAndReviewSession(
               numbersMax: input.numbersMax,
             });
             drill.diagramSvg = diagramResult.svg;
+            try {
+              await persistDrillDiagramSvg(drill.refCode, diagramResult);
+            } catch (err: any) {
+              console.error(`[SESSION] Failed to persist diagramSvg for drill ${drill.refCode}:`, err?.message);
+            }
           } catch (err: any) {
             console.error(`[SESSION] Failed to draw diagram for drill ${drill.refCode}:`, err?.message);
           }
@@ -1083,18 +1088,10 @@ export async function generateAndReviewSession(
           await prisma.drill.update({
             where: { refCode: drill.refCode },
             data: {
-              json: drill,
+              json: omitDiagramSvgFromDrill(drill),
               coachLevel: input.coachLevel as any,
               goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
               goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
-              ...(diagramResult
-                ? {
-                    diagramSvg: diagramResult.svg,
-                    diagramSvgGeneratedAt: new Date(),
-                    diagramSvgModel: diagramResult.model,
-                    diagramSvgPromptVersion: diagramResult.promptVersion,
-                  }
-                : {}),
             },
           });
         } catch (err: any) {
@@ -1108,7 +1105,7 @@ export async function generateAndReviewSession(
   // JSON we persist to the DB
   const jsonForDb = {
     ...finalSession,
-    drills: drillsWithRefCodes,
+    drills: drillsWithRefCodes.map((drill: any) => omitDiagramSvgFromDrill(drill)),
     qa: finalQa,
   };
 

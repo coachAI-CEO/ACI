@@ -17,6 +17,7 @@ import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
+import { pickDrillDiagramSvg } from "@/lib/diagram-svg";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
@@ -3551,7 +3552,7 @@ function SessionDemoPageContent() {
                                 goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
-                                initialSvg={typeof drill.diagramSvg === "string" ? drill.diagramSvg : null}
+                                initialSvg={pickDrillDiagramSvg(drill)}
                                 debrief={drill.debrief ?? null}
                               />
                             </div>

@@ -9,10 +9,12 @@ export async function GET(
   try {
     const { drillId } = await params;
     const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
-    if (!authHeader) {
+    const cookieToken = request.cookies.get("accessToken")?.value;
+    const token = authHeader || (cookieToken ? `Bearer ${cookieToken}` : null);
+    if (!token) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
-    const headers: HeadersInit = { Authorization: authHeader };
+    const headers: HeadersInit = { Authorization: token };
 
     const res = await fetch(`${API_BASE}/api/diagram-svg/${encodeURIComponent(drillId)}`, {
       headers,

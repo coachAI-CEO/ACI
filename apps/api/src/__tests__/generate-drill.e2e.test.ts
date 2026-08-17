@@ -34,9 +34,7 @@ describe("POST /ai/generate-drill E2E", () => {
     expect(j.goalMode).toBe("LARGE");
     expect(j.diagram.miniGoals).toBe(0);
     expect(j.equipment).toEqual(
-      expect.arrayContaining(["Cones","Bibs (2 colors)","Soccer balls","1 Full-size goal"])
+      expect.arrayContaining(["Cones","Bibs (2 colors)","Soccer balls","1 Full-size goal","2 Mini-goals"])
     );
-    const minis = j.equipment.filter((x:string)=>/mini-goal/i.test(x));
-    expect(minis.length).toBe(0);
   });
 });

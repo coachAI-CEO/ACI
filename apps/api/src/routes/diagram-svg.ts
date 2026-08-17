@@ -3,20 +3,9 @@ import { prisma } from "../prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { getEnforcedClubVaultScope } from "../services/club-game-model-scope";
 import { drillDiagramVisible } from "../services/diagram-svg-access";
-import { drillToDrawerParams } from "../mappers/drill-to-drawer-params";
-import { buildDrawerPrompt, DRAWER_PROMPT_VERSION } from "../prompts/gemini-drawer-prompt";
-import { DEFAULT_GEMINI_DRAWER_MODEL, generateDiagramSVG } from "../services/gemini-drawer";
-import { renderDeterministicDiagramSVG } from "../services/deterministic-drawer-svg";
+import { generateDrillDiagramSvg, persistDrillDiagramSvg, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
+import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
-import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
-import { applyGoalOverlay } from "../services/goal-overlay";
-import type { DrawerGoal, DrawerParams } from "../types/drawer";
-
-function scaleFactorForParams(params: DrawerParams): number {
-  return scaleFactorFromTokenRadius(
-    computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length)
-  );
-}
 
 export const diagramSvgRouter = Router();
 
@@ -32,7 +21,7 @@ function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
 }
 
-function resolveGoalsAvailable(drill: any): number {
+function resolveGoalsAvailable(drill: any): number | null {
   const json = asRecord(drill?.json);
   const candidates = [
     drill?.requestGoalsAvailable,
@@ -49,7 +38,9 @@ function resolveGoalsAvailable(drill: any): number {
   const goalMode = String(drill?.goalMode || json.goalMode || "").toUpperCase();
   if (goalMode === "LARGE") return 1;
   if (goalMode === "MINI2") return 2;
-  return 0;
+  // Missing equipment flag is not "zero full goals" -- count keepers from
+  // whatever full-size goals the stored diagram already drew.
+  return null;
 }
 
 async function userMayAccessDrillDiagram(
@@ -104,26 +95,31 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   }
 
   const currentSvg = drill.diagramSvg;
-  const currentPromptVersion = drill.diagramSvgPromptVersion;
-  const needsRegen = force || !currentSvg || currentPromptVersion !== DRAWER_PROMPT_VERSION;
+  // Prompt-version bumps no longer force a blocking redraw. Reopen must
+  // return the stored SVG; coaches regenerate explicitly with force=true.
+  const needsRegen = storedDiagramNeedsRedraw(force, currentSvg);
 
   if (!needsRegen) {
     return res.json({ svg: currentSvg, cached: true });
   }
 
-  let prompt: string;
-  let drawerParams: DrawerParams | null = null;
-  let drawerGoals: DrawerGoal[] = [];
   try {
-    let drillForDrawer = drill;
+    let json = drill.json;
     const goalsAvailable = resolveGoalsAvailable({
       ...drill,
       requestGoalsAvailable: Number.isFinite(requestGoalsAvailable) ? requestGoalsAvailable : undefined,
     });
     if (drill.json && typeof drill.json === "object") {
       const normalizedJson = JSON.parse(JSON.stringify(drill.json));
-      enforceDiagramGoalAvailability(normalizedJson, { goalsAvailable });
-      drillForDrawer = { ...drill, json: normalizedJson };
+      if (goalsAvailable != null) normalizedJson.goalsAvailable = goalsAvailable;
+      if (drill.spaceConstraint) normalizedJson.spaceConstraint = drill.spaceConstraint;
+      enforceDiagramGoalAvailability(normalizedJson, {
+        goalsAvailable,
+        spaceConstraint: drill.spaceConstraint,
+        fieldFormat: (drill.json as any)?.fieldFormat,
+        drillType: drill.drillType,
+      });
+      json = normalizedJson;
       if (goalsAvailable === 1) {
         await prisma.drill.update({
           where: { id: drill.id },
@@ -135,9 +131,39 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
         });
       }
     }
-    drawerParams = drillToDrawerParams(drillForDrawer);
-    drawerGoals = drawerParams.goals;
-    prompt = buildDrawerPrompt(drawerParams);
+    const result = await generateDrillDiagramSvg({
+      title: drill.title,
+      json,
+      drillType: drill.drillType,
+      durationMin: drill.durationMin,
+      rpeMin: drill.rpeMin,
+      rpeMax: drill.rpeMax,
+      numbersMin: drill.numbersMin,
+      numbersMax: drill.numbersMax,
+      spaceConstraint: drill.spaceConstraint,
+      formationUsed: drill.formationUsed,
+      phase: drill.phase,
+      zone: drill.zone,
+    });
+    if (drill.refCode) {
+      await persistDrillDiagramSvg(drill.refCode, result);
+    } else {
+      await prisma.drill.update({
+        where: { id: drill.id },
+        data: {
+          diagramSvg: result.svg,
+          diagramSvgGeneratedAt: new Date(),
+          diagramSvgModel: result.model,
+          diagramSvgPromptVersion: result.promptVersion,
+        },
+      });
+    }
+    return res.json({
+      svg: result.svg,
+      cached: false,
+      model: result.model,
+      modelFallback: result.modelFallback,
+    });
   } catch (err) {
     console.error("drill_to_drawer_params_failed", { drillId, err });
     return res.json({
@@ -146,54 +172,41 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       reason: "mapper_error",
     });
   }
+});
 
-  const result = await generateDiagramSVG(prompt);
-  if (result.ok) {
-    const model = process.env.GEMINI_DRAWER_MODEL ?? DEFAULT_GEMINI_DRAWER_MODEL;
-    const svg = applyGoalOverlay(result.svg, drawerGoals, drawerParams ? scaleFactorForParams(drawerParams) : 1);
-    await prisma.drill.update({
-      where: { id: drill.id },
-      data: {
-        diagramSvg: svg,
-        diagramSvgGeneratedAt: new Date(),
-        diagramSvgModel: model,
-        diagramSvgPromptVersion: DRAWER_PROMPT_VERSION,
-      },
-    });
-    return res.json({ svg, cached: false });
+diagramSvgRouter.post("/lookup", authenticate, async (req: AuthRequest, res) => {
+  if (!req.user || !req.userId) {
+    return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.filter((id: unknown) => typeof id === "string" && id.trim()).slice(0, 40)
+    : [];
+  if (ids.length === 0) return res.json({ svgs: {} });
 
-  console.warn("diagram_svg_generation_failed", {
-    drillId,
-    reason: result.reason,
-    rawLength: result.raw?.length,
-    hadExistingSvg: !!currentSvg,
+  const drills = await prisma.drill.findMany({
+    where: { OR: [{ id: { in: ids } }, { refCode: { in: ids } }] },
+    select: {
+      id: true,
+      refCode: true,
+      diagramSvg: true,
+      generatedBy: true,
+      savedToVault: true,
+      gameModelId: true,
+    },
   });
 
-  if (drawerParams) {
-    const svg = applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerGoals, scaleFactorForParams(drawerParams));
-    await prisma.drill.update({
-      where: { id: drill.id },
-      data: {
-        diagramSvg: svg,
-        diagramSvgGeneratedAt: new Date(),
-        diagramSvgModel: "deterministic-fallback",
-        diagramSvgPromptVersion: DRAWER_PROMPT_VERSION,
-      },
-    });
-    return res.json({
-      svg,
-      cached: false,
-      modelFallback: true,
-      modelFailureReason: result.reason,
-    });
+  const svgs: Record<string, string> = {};
+  for (const drill of drills) {
+    if (!drill.diagramSvg) continue;
+    if (!(await userMayAccessDrillDiagram(req, drill))) continue;
+    const fitted = fitDiagramSvgViewBox(drill.diagramSvg);
+    svgs[drill.id] = fitted;
+    if (drill.refCode) svgs[drill.refCode] = fitted;
+    if (fitted !== drill.diagramSvg) {
+      await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: fitted } });
+    }
   }
-
-  return res.json({
-    svg: currentSvg ?? PLACEHOLDER_SVG,
-    generationFailed: true,
-    reason: result.reason,
-  });
+  return res.json({ svgs });
 });
 
 diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) => {
@@ -223,7 +236,10 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
     return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
   }
 
-  const svg = drill.diagramSvg;
+  const svg = drill.diagramSvg ? fitDiagramSvgViewBox(drill.diagramSvg) : drill.diagramSvg;
+  if (svg && drill.diagramSvg && svg !== drill.diagramSvg) {
+    await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
+  }
   return res.json({
     svg: svg ?? PLACEHOLDER_SVG,
     hasStoredSvg: !!svg,

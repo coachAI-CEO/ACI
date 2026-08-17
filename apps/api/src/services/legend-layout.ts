@@ -107,9 +107,12 @@ export function computeLegendLayout(
   fieldW: number,
   fieldH: number
 ): LegendLayout {
+  const gkCount = params.players.filter((p) => p.team === "gk").length;
   const teamChips: LegendChip[] = TEAM_LEGEND_ORDER.map(({ team, label }): LegendChip | null => {
     const count = params.players.filter((p) => p.team === team).length;
     if (count === 0) return null;
+    if (gkCount >= 2 && team !== "gk") return { kind: "dot", color: TEAM_COLORS[team], label };
+    if (gkCount >= 2 && team === "gk") return { kind: "dot", color: TEAM_COLORS[team], label: "GK" };
     return { kind: "dot", color: TEAM_COLORS[team], label: `${label} (${count})` };
   }).filter((c): c is LegendChip => c !== null);
 
