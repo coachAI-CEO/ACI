@@ -863,6 +863,9 @@ export function inferGridIntentFromMessage(
     if (/\b(our half|own half|defensive half)\b/.test(m)) return 'half_att';
     return 'third_middle';
   }
+  if (/\blow[- ]?block\b/.test(m) || /\brest defen[cs]e\b/.test(m)) {
+    return 'third_right';
+  }
   if (
     /\b(high press|how we could press|ways to press|press(?:ing)? in|press them|after we lose it)\b/.test(
       m

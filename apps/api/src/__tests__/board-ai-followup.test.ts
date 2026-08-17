@@ -9,6 +9,9 @@ import {
   readBoardSetup,
   wantsTacticalReadings,
   wantsKeepPriorFrame,
+  isFreezeOnlyRequest,
+  wantsKeepLiveShirts,
+  asksToRestackPicture,
   ensureSequenceStartsFromOriginal,
   lockDslForTurn,
   nudgeAttSixHigher,
@@ -258,6 +261,34 @@ describe('freeze this board', () => {
     expect(wantsKeepPriorFrame('Freeze this board and show a 4v4+2 rondo in the middle third')).toBe(
       true
     );
+    expect(asksToRestackPicture('Freeze this board and show a 4v4+2 rondo in the middle third')).toBe(
+      true
+    );
+    expect(isFreezeOnlyRequest('Freeze this board and show a 4v4+2 rondo in the middle third')).toBe(
+      false
+    );
+    expect(wantsFrozenPlayers('Freeze this board and show a 4v4+2 rondo in the middle third')).toBe(
+      false
+    );
+  });
+
+  test('freeze this board alone keeps shirts and clones Frame 2', () => {
+    expect(isFreezeOnlyRequest('Freeze this board.')).toBe(true);
+    expect(wantsKeepLiveShirts('Freeze this board.')).toBe(true);
+    expect(wantsFrozenPlayers('Freeze this board.')).toBe(true);
+    const compressed: WebDiagramV1 = {
+      ...eleven,
+      players: eleven.players.slice(0, 12).map((p) => ({ ...p, x: 50, y: 50 })),
+    };
+    const sequenced = ensureSequenceStartsFromOriginal(compressed, eleven, 'Freeze this board.');
+    expect(sequenced.sequence?.frames.length).toBe(2);
+    expect(sequenced.sequence?.frames[0].players.length).toBe(22);
+    expect(sequenced.sequence?.frames[1].players.length).toBe(22);
+    for (const orig of eleven.players) {
+      const play = sequenced.sequence?.frames[1].players.find((p) => p.id === orig.id);
+      expect(play?.x).toBe(orig.x);
+      expect(play?.y).toBe(orig.y);
+    }
   });
 
   test('rondo from a match keeps Frame 1 as the saved picture', () => {
@@ -2672,6 +2703,160 @@ describe('round-9 mixed talk defects', () => {
     const inv = boardInvariantErrors(after, locked);
     expect(inv.filter((e) => e.startsWith('upsample'))).toEqual([]);
     expect(after.arrows.length).toBeGreaterThan(0);
+  });
+});
+
+describe('still-to-drill locks', () => {
+  test('drop copy does not claim the tucked shirt was removed', () => {
+    const nine = defaultMatchBoardDiagram('9V9');
+    const reply = scrubCoachReply(
+      'Removed player #8 from the attacking formation. Remaining 8 blue attacking shirts. Slide 1 is the drop.',
+      {
+        ...nine,
+        sequence: {
+          activeFrameId: 'f-2',
+          frames: [
+            {
+              id: 'f-start',
+              title: '1. Start (board)',
+              note: 'Frozen board — keep this picture as Frame 1 for later teaching sequences.',
+              durationMs: 1600,
+              players: nine.players,
+              arrows: [],
+              areas: [],
+              labels: [],
+            },
+            {
+              id: 'f-2',
+              title: '2. Play',
+              durationMs: 1600,
+              players: nine.players,
+              arrows: [],
+              areas: [],
+              labels: [],
+            },
+          ],
+        },
+      }
+    );
+    expect(reply).not.toMatch(/Removed player/i);
+    expect(reply).toMatch(/Dropped #8 toward our goal/i);
+    expect(reply).toMatch(/9 blue shirts still on the pitch/i);
+    expect(reply).toMatch(/On the play frame/i);
+    expect(reply).not.toMatch(/\bSlide 1\b/i);
+  });
+
+  test('named 9/10/8 combo strips an extra #6 initiator', () => {
+    const msg = 'Show the combination between 9/10 and 8 as a sequence.';
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'current',
+        grid: { intent: 'full_pitch', format: '11V11', attFormation: '4-3-3', defFormation: '4-2-3-1' },
+        entities: [],
+        equipment: [],
+        actions: [
+          { type: 'pass', from_id: 'att-6', to_id: 'att-10' },
+          { type: 'pass', from_id: 'att-10', to_id: 'att-9' },
+          { type: 'pass', from_id: 'att-9', to_id: 'att-8' },
+        ],
+        moves: [],
+      },
+      {
+        freeze: wantsFrozenPlayers(msg),
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: true,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '11V11',
+        current: eleven,
+        message: msg,
+      }
+    );
+    expect(locked.actions.some((a) => a.from_id === 'att-6' || a.to_id === 'att-6')).toBe(false);
+    expect(locked.actions.some((a) => a.from_id === 'att-9' || a.to_id === 'att-9')).toBe(true);
+    expect(locked.actions.some((a) => a.from_id === 'att-8' || a.to_id === 'att-8')).toBe(true);
+  });
+
+  test('involve the 7 drops an unnamed #2 overlap', () => {
+    const msg = 'now involve the 7';
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'current',
+        grid: { intent: 'full_pitch', format: '11V11', attFormation: '4-3-3', defFormation: '4-2-3-1' },
+        entities: [],
+        equipment: [],
+        actions: [
+          { type: 'pass', from_id: 'att-9', to_id: 'att-10' },
+          { type: 'pass', from_id: 'att-7', to_id: 'att-9' },
+          { type: 'run', from_id: 'att-2', to_id: 'att-7' },
+        ],
+        moves: [],
+      },
+      {
+        freeze: wantsFrozenPlayers(msg),
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: true,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '11V11',
+        current: eleven,
+        message: msg,
+      }
+    );
+    expect(locked.actions.some((a) => a.from_id === 'att-2' || a.to_id === 'att-2')).toBe(false);
+    expect(locked.actions.some((a) => a.from_id === 'att-7')).toBe(true);
+    expect(locked.actions.some((a) => a.from_id === 'att-9')).toBe(true);
+  });
+
+  test('now the left keeps shirts and swaps 7→11', () => {
+    const msg = 'now the left';
+    expect(wantsKeepLiveShirts(msg)).toBe(true);
+    expect(asksToRestackPicture('switch to the left')).toBe(false);
+    expect(asksToRestackPicture('switch to 4-3-3')).toBe(true);
+    const seven = eleven.players.find((p) => p.team === 'ATT' && p.number === 7)!;
+    const elevenShirt = eleven.players.find((p) => p.team === 'ATT' && p.number === 11)!;
+    const nine = eleven.players.find((p) => p.team === 'ATT' && p.number === 9)!;
+    const after = applyCoachShirtEdits(
+      {
+        ...eleven,
+        arrows: [
+          {
+            from: { playerId: nine.id },
+            to: { playerId: seven.id },
+            type: 'pass',
+            style: 'solid',
+            weight: 'normal',
+          },
+        ],
+      },
+      msg
+    );
+    expect(after.arrows[0].from.playerId).toBe(nine.id);
+    expect(after.arrows[0].to.playerId).toBe(elevenShirt.id);
+    for (const orig of eleven.players) {
+      const live = after.players.find((p) => p.id === orig.id)!;
+      expect(live.x).toBe(orig.x);
+      expect(live.y).toBe(orig.y);
+    }
+  });
+
+  test('low block and rest defence sit in our defensive third', () => {
+    expect(inferGridIntentFromMessage('Show a low block')).toBe('third_right');
+    expect(inferGridIntentFromMessage('Rest defence behind the ball')).toBe('third_right');
+    expect(asksToRestackPicture('Show a low block')).toBe(true);
+  });
+
+  test('high-press copy does not keep an attacking-shape line', () => {
+    const out = scrubCoachReply(
+      'WHAT I SAW\nHigh press in their defensive third. We maintained 4-3-3 attacking shape and shifted our attacking shape.',
+      eleven
+    );
+    expect(out).not.toMatch(/attacking shape/i);
+    expect(out).toMatch(/pressing shape|shifted our press/i);
   });
 });
 

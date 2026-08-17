@@ -1056,6 +1056,19 @@ export function lockDslForTurn(
   );
 }
 
+function actionUsesOnlyNamedShirts(
+  action: { from_id: string; to_id: string },
+  namedIds: Set<string>,
+  namedNums: Set<number>
+): boolean {
+  const ok = (id: string) => {
+    if (namedIds.has(id)) return true;
+    const m = /^(?:att|def)-(\d+)$/i.exec(id);
+    return Boolean(m && namedNums.has(Number(m[1])));
+  };
+  return ok(action.from_id) && (!action.to_id || ok(action.to_id));
+}
+
 function shirtIdForCombo(
   current: WebDiagramV1 | undefined,
   n: number,
@@ -1088,13 +1101,16 @@ export function ensureComboActionsFromMessage(
   if (!message) return dsl;
   const wide = message.match(/\b(?:the )?(\d+)\s+plays wide to(?: the)? (\d+)\b/i);
   const delivers = message.match(/\b(?:the )?(\d+)\s+delivers\b/i);
-  const between =
+  const betweenThree =
     message.match(/\bbetween\s+#?(\d+)\s*[\/,]\s*#?(\d+)\s+and\s+#?(\d+)\b/i) ||
     message.match(/\b(?:#|the )?(\d+)\s*[\/,]\s*(?:#|the )?(\d+)\s+and\s+(?:#|the )?(\d+)\b/i);
+  const betweenTwo = !betweenThree
+    ? message.match(/\bbetween\s+#?(\d+)\s+and\s+#?(\d+)\b/i)
+    : null;
   const involve = message.match(
     /\b(?:now )?(?:involve|include|add|bring in)(?: the)?(?: our)? (?:att(?:acking)? )?(?:the )?#?(\d+)\b/i
   );
-  if (!wide && !delivers && !between && !involve) return dsl;
+  if (!wide && !delivers && !betweenThree && !betweenTwo && !involve) return dsl;
   const preferDef =
     liveLooksLikeDefendingFunction(current) ||
     (current?.areas || []).some((a) => /ssg/i.test(String(a.label || '')));
@@ -1115,18 +1131,35 @@ export function ensureComboActionsFromMessage(
       actions = [...actions, { type: 'run' as const, from_id, to_id: 'att-1' }];
     }
   }
-  if (between) {
-    const a = Number(between[1]);
-    const b = Number(between[2]);
-    const c = Number(between[3]);
+  if (betweenThree) {
+    const a = Number(betweenThree[1]);
+    const b = Number(betweenThree[2]);
+    const c = Number(betweenThree[3]);
     const from_id = shirtIdForCombo(current, a, preferDef);
     const to_id = shirtIdForCombo(current, b, preferDef);
     const run_id = shirtIdForCombo(current, c, preferDef);
+    const namedIds = new Set([from_id, to_id, run_id]);
+    const namedNums = new Set([a, b, c]);
+    actions = actions.filter((x) => actionUsesOnlyNamedShirts(x, namedIds, namedNums));
     if (!actions.some((x) => x.type === 'pass')) {
       actions = [...actions, { type: 'pass' as const, from_id, to_id }];
     }
     if (!actions.some((x) => x.type === 'run')) {
       actions = [...actions, { type: 'run' as const, from_id: run_id, to_id }];
+    }
+  } else if (betweenTwo) {
+    const a = Number(betweenTwo[1]);
+    const b = Number(betweenTwo[2]);
+    const from_id = shirtIdForCombo(current, a, preferDef);
+    const to_id = shirtIdForCombo(current, b, preferDef);
+    const namedIds = new Set([from_id, to_id]);
+    const namedNums = new Set([a, b]);
+    actions = actions.filter((x) => actionUsesOnlyNamedShirts(x, namedIds, namedNums));
+    if (!actions.some((x) => x.type === 'pass')) {
+      actions = [...actions, { type: 'pass' as const, from_id, to_id }];
+    }
+    if (!actions.some((x) => x.type === 'run')) {
+      actions = [...actions, { type: 'run' as const, from_id: to_id, to_id: from_id }];
     }
   }
   if (involve) {
@@ -1137,6 +1170,15 @@ export function ensureComboActionsFromMessage(
       (current?.players || []).some((p) => p.team === (preferDef ? 'DEF' : 'ATT') && p.number === t)
     );
     const to_id = toN != null ? shirtIdForCombo(current, toN, preferDef) : 'att-9';
+    const namedFlank = /\b(?:#|the |our )[23]\b/i.test(message);
+    if (!namedFlank) {
+      actions = actions.filter((x) => {
+        const fromN = /^(?:att|def)-(\d+)$/i.exec(x.from_id);
+        const toNum = /^(?:att|def)-(\d+)$/i.exec(x.to_id);
+        const extra = [fromN?.[1], toNum?.[1]].map((v) => Number(v));
+        return !extra.some((shirt) => shirt === 2 || shirt === 3);
+      });
+    }
     if (!actions.some((x) => x.type === 'pass' && x.from_id === from_id)) {
       actions = [...actions, { type: 'pass' as const, from_id, to_id }];
     }
@@ -1172,6 +1214,40 @@ function bouncePasserNumber(
     if (n) return n;
   }
   return [2, 3, 4, 5].find(has) || bounceN;
+}
+
+function channelSwitchSide(message: string): 'LEFT' | 'RIGHT' | null {
+  const m = String(message || '');
+  if (
+    /\b(?:now(?: the)?|switch to(?: the)?|same (?:combo|pattern|play) on(?: the)?)\s+left\b/i.test(m) ||
+    /\bnow the left\b/i.test(m)
+  ) {
+    return 'LEFT';
+  }
+  if (
+    /\b(?:now(?: the)?|switch to(?: the)?|same (?:combo|pattern|play) on(?: the)?)\s+right\b/i.test(m) ||
+    /\bnow the right\b/i.test(m)
+  ) {
+    return 'RIGHT';
+  }
+  return null;
+}
+
+function channelSwapNumber(n: number, side: 'LEFT' | 'RIGHT'): number {
+  if (side === 'LEFT') {
+    if (n === 2) return 3;
+    if (n === 7) return 11;
+    return n;
+  }
+  if (n === 3) return 2;
+  if (n === 11) return 7;
+  return n;
+}
+
+function remapChannelActionId(id: string, side: 'LEFT' | 'RIGHT'): string {
+  const m = /^(att)-(\d+)$/i.exec(id);
+  if (!m) return id;
+  return `att-${channelSwapNumber(Number(m[2]), side)}`;
 }
 
 function retargetDslActionsFromMessage(
@@ -1218,6 +1294,14 @@ function retargetDslActionsFromMessage(
     actions = hasRun
       ? actions.map((a) => (a.type === 'run' ? { ...a, from_id: id } : a))
       : [...actions, { type: 'run' as const, from_id: id, to_id: 'def-1' }];
+  }
+  const channel = channelSwitchSide(message);
+  if (channel) {
+    actions = actions.map((a) => ({
+      ...a,
+      from_id: remapChannelActionId(a.from_id, channel),
+      to_id: remapChannelActionId(a.to_id, channel),
+    }));
   }
   return { ...dsl, actions };
 }
@@ -1387,11 +1471,43 @@ export function retargetBouncePassArrows(diagram: WebDiagramV1, message: string)
   };
 }
 
+export function retargetChannelSwitchArrows(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  const side = channelSwitchSide(message);
+  if (!side) return diagram;
+  const idFor = (n: number) =>
+    (diagram.players || []).find((p) => p.team === 'ATT' && p.number === n)?.id;
+  const mapRef = (ref: { playerId?: string; x?: number; y?: number }) => {
+    const shirt = (diagram.players || []).find((p) => p.id === ref.playerId);
+    if (!shirt || shirt.team !== 'ATT' || shirt.number == null) return ref;
+    const nextN = channelSwapNumber(shirt.number, side);
+    if (nextN === shirt.number) return ref;
+    const nextId = idFor(nextN);
+    return nextId ? { ...ref, playerId: nextId } : ref;
+  };
+  const mapArrows = (arrows: WebDiagramV1['arrows'] | undefined) =>
+    (arrows || []).map((a) => ({ ...a, from: mapRef(a.from), to: mapRef(a.to) }));
+  return {
+    ...diagram,
+    arrows: mapArrows(diagram.arrows),
+    sequence: diagram.sequence
+      ? {
+          ...diagram.sequence,
+          frames: diagram.sequence.frames.map((f) =>
+            isFrozenStartFrame(f) || f.id === 'f-start' ? f : { ...f, arrows: mapArrows(f.arrows) }
+          ),
+        }
+      : diagram.sequence,
+  };
+}
+
 export function applyCoachShirtEdits(diagram: WebDiagramV1, message: string): WebDiagramV1 {
-  return retargetDeliveryTowardGoal(
-    retargetBouncePassArrows(
-      retargetNamedRunArrows(
-        dropNamedShirt(nudgeAttSixHigher(nudgeRondoCorrection(diagram, message), message), message),
+  return retargetChannelSwitchArrows(
+    retargetDeliveryTowardGoal(
+      retargetBouncePassArrows(
+        retargetNamedRunArrows(
+          dropNamedShirt(nudgeAttSixHigher(nudgeRondoCorrection(diagram, message), message), message),
+          message
+        ),
         message
       ),
       message
@@ -1523,21 +1639,26 @@ function wantsSequenceFromMessage(message: string): boolean {
   );
 }
 
+/** Restack into a new picture (press, rondo, play-out, named formation). */
+export function asksToRestackPicture(message: string): boolean {
+  const m = String(message || '');
+  if (wantsScaleToEleven(m) || isPlayOutRequest(m)) return true;
+  if (inferGridIntentFromMessage(m)) return true;
+  if (/\b(forget the|reshape|restack|compact(?:ness)?)\b/i.test(m)) return true;
+  if (/\bchange (?:to|the) (?:shape|formation)\b/i.test(m)) return true;
+  if (/\bswitch to\b/i.test(m) && !/\bswitch to (?:the )?(?:left|right)\b/i.test(m)) return true;
+  const formations = inferFormationsFromMessage(m);
+  return Boolean(formations.att || formations.def);
+}
+
 /** Coach did not ask for a new picture — keep live shirts, arrows only. */
 export function wantsKeepLiveShirts(message: string): boolean {
-  const m = String(message || '');
-  if (wantsKeepPriorFrame(m) || wantsScaleToEleven(m) || isPlayOutRequest(m)) return false;
-  if (inferGridIntentFromMessage(m)) return false;
-  if (
-    /\b(forget the|reshape|restack|compact(?:ness)?|switch to|change (?:to|the) (?:shape|formation))\b/i.test(
-      m
-    )
-  ) {
-    return false;
-  }
-  const formations = inferFormationsFromMessage(m);
-  if (formations.att || formations.def) return false;
-  return true;
+  return !asksToRestackPicture(message);
+}
+
+/** “Freeze this board.” with no rondo/press/combo — snapshot only. */
+export function isFreezeOnlyRequest(message: string): boolean {
+  return wantsKeepPriorFrame(message) && wantsKeepLiveShirts(message) && !wantsNamedShirtCombo(message);
 }
 
 /** Named-shirt combo/pattern on the live picture — arrows only, do not restack. */
@@ -1816,6 +1937,7 @@ export function ensureSequenceStartsFromOriginal(
   const freezePlayers = wantsFrozenPlayers(message);
   const liveLayers = snapshotBoardLayers(original);
   const freezeThisTurn = wantsKeepPriorFrame(message);
+  const freezeOnly = isFreezeOnlyRequest(message);
   const keepFrozenStart =
     isFrozenStartFrame(priorStart) ||
     (Boolean(priorStart) && priorN >= need - 2 && liveN < priorN && liveN < need);
@@ -1833,7 +1955,16 @@ export function ensureSequenceStartsFromOriginal(
   };
 
   let teaching: SeqFrame[];
-  if (aiFrames.length === 0) {
+  if (freezeOnly) {
+    teaching = [
+      {
+        id: 'f-2',
+        title: '2. Play',
+        durationMs: 1600,
+        ...startLayers,
+      },
+    ];
+  } else if (aiFrames.length === 0) {
     teaching = [
       {
         id: 'f-2',
@@ -3583,6 +3714,11 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
     }
   }
   const nFrames = diagram?.sequence?.frames?.length || 0;
+  const startFrame = diagram?.sequence?.frames?.[0];
+  const frozenStart =
+    Boolean(startFrame) &&
+    (isFrozenStartFrame(startFrame) || startFrame?.id === 'f-start') &&
+    nFrames >= 2;
   if (nFrames >= 1) {
     t = t
       .replace(/\bSlide (\d+)\b/gi, (_m, n) =>
@@ -3592,6 +3728,34 @@ export function scrubCoachReply(text: string, diagram?: WebDiagramV1): string {
       .replace(/\b\d+-slide\b/gi, `${nFrames}-frame`)
       .replace(/\b(?:four|4)[- ]frames?\b/gi, nFrames === 1 ? '1-frame' : `${nFrames}-frame`)
       .replace(/\b(?:four|4) slides?\b/gi, nFrames === 1 ? '1 frame' : `${nFrames} frames`);
+  }
+  if (frozenStart) {
+    t = t
+      .replace(/\bSlide 1\b/gi, 'On the play frame')
+      .replace(/\bSlide 2\b/gi, 'Then')
+      .replace(/\bSlide 3\b/gi, 'Then');
+  }
+  const dropMatch = t.match(/\bRemoved player #?(\d+)\b/i);
+  if (dropMatch) {
+    const n = Number(dropMatch[1]);
+    const still = (diagram?.players || []).some((p) => p.team === 'ATT' && p.number === n);
+    if (still) {
+      t = t
+        .replace(/\bRemoved player #?(\d+)[^.]*\.?/gi, 'Dropped #$1 toward our goal.')
+        .replace(/\bremaining \d+ blue attacking shirts\b/gi, `${att} blue shirts still on the pitch`)
+        .replace(
+          /\bremove(?:d)? the (?:right |left )?(?:midfielder|winger|player)\b/gi,
+          'drop that shirt toward our goal'
+        );
+    }
+  }
+  if (/\bhigh press\b/i.test(t) || /\btheir defensive third\b/i.test(t)) {
+    t = t
+      .replace(/\b(?:maintained |shifted )?(?:our )?\d-\d(?:-\d)? attacking shape\b/gi, (m) =>
+        m.replace(/attacking shape/i, 'pressing shape')
+      )
+      .replace(/\bshifted our attacking shape\b/gi, 'shifted our press')
+      .replace(/\bour attacking shape\b/gi, 'our pressing shape');
   }
   const shirts = diagram?.players || [];
   const neu = shirts.filter((p) => p.team === 'NEUTRAL').length;
@@ -4281,7 +4445,9 @@ function buildPrompt(input: {
             ? [
                 'PLAYER FREEZE (mandatory this turn — coach forbade moving shirts):',
                 '- Copy CURRENT DIAGRAM players[] onto EVERY frame with the SAME id, x, y, team, role, number.',
-                '- Exception: if they named one shirt to drop/tuck (“drop the 8 without moving anyone else”), freeze everyone else and move THAT ATT shirt toward our goal (higher y).',
+                '- Exception: if they named one shirt to drop/tuck (“drop the 8 without moving anyone else”), freeze everyone else and move THAT ATT shirt toward our goal (higher y). Do not write “removed” — the shirt stays on the roster.',
+                '- If they only said freeze this board (no rondo / press / play-out / combo): Frame 2 is an exact copy of Frame 1. No extra arrows, no restack.',
+                '- Named combination / involve / bounce: arrows on the shirts they named only. Do not add an extra initiator (#6) or overlapping fullback (#2) they did not name.',
                 '- Do NOT add an “Initial Shape” / reshape / setup frame.',
                 '- Teaching frames may change ONLY arrows, labels, optional ball, optional highlight — never shirt coordinates.',
                 '- If they asked for N combination plays: Frame 1 = saved board; Frames 2..N+1 = one combination each (pass + support-run arrows on the named side).',
@@ -4347,7 +4513,7 @@ function buildPrompt(input: {
           '- grid.intent: full_pitch | half_att | half_def | third_left | third_middle | third_right | box_att | box_def | rondo | ssg_grid',
           '- 7v7 formations: 2-3-1, 3-2-1. 9v9: 3-2-3, 2-3-2-1, 3-3-2. 11v11: 4-3-3, 4-2-3-1, 4-4-2, 3-5-2.',
           '- seed=current when the board already has shirts and this is a continuation / “from this” / freeze (empty moves).',
-          '- Combination / pattern between named shirts (#9/#10/#8): seed=current, grid.intent=full_pitch, empty moves[]. Only pass/run actions. Do not pull either team into a third.',
+          '- Combination / pattern between named shirts (#9/#10/#8): seed=current, grid.intent=full_pitch, empty moves[]. Only pass/run among those shirts. Do not add #6 or a fullback overlap the coach did not name. Do not pull either team into a third.',
           '- seed=formation for a new 11v11 / Q3 B. seed=blank for rondo, SSG, function, import-as-written.',
           '- Do not pad a rondo/function to 22 shirts. activity rondo|technical_exercise + seed blank + entities only.',
           '- third_left = their defensive / our attacking third. third_right = our defensive third.',
@@ -4369,7 +4535,8 @@ function buildPrompt(input: {
     '  On the board',
     '  Coaching points',
     '- Photo/PDF: What I saw = what the file showed; On the board = how you redrew it (shirts, zone, arrows); Coaching points = 3–5 teachable cues.',
-    '- Sequences: under On the board, one bullet per slide (Slide 1 / 2 / 3 — who moves, which shirts).',
+    '- Sequences: under On the board, one bullet per filmstrip frame (Frame 1 = freeze / saved board; Frame 2 = Play). If Frame 1 is a freeze, describe the play on Frame 2 — do not call freeze beats “Slide 1”.',
+    '- Drop the N = tuck that ATT shirt toward our goal. Never write “removed player” or “remaining N blue shirts” — the shirt stays on the pitch.',
     '- Shirt numbers once: write #6, never (#6, #6). Never mention seed, dsl, freeze flags, or “set to current”.',
     '- Us is always blue ATT. Call the opponent’s shape “their 4-4-2” / “a 4-4-2 block”, not “our 4-4-2”, unless the blue shirts are actually that shape.',
     '- 6–12 bullets total. One idea per bullet. Never truncate mid-thought.',
@@ -4800,7 +4967,7 @@ export async function runBoardAiChat(input: {
 
   const freezePlayers = hasImage
     ? false
-    : wantsKeepPriorFrame(drawMessage)
+    : wantsKeepPriorFrame(drawMessage) && asksToRestackPicture(drawMessage)
       ? false
       : lockedReading?.freezePlayers ?? wantsFrozenPlayers(drawMessage);
   const wantsSeq = hasImage
