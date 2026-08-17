@@ -56,7 +56,8 @@ function orientGoal(goal: DrawerGoal, geometry: SvgGeometry): DrawerGoal {
  * the box staying a fixed size while everything else around it scales.
  */
 function renderPenaltyBoxes(goals: DrawerGoal[], geometry: SvgGeometry, scaleFactor: number): string {
-  const penaltyW = 92 * scaleFactor;
+  // Never let the 18-yard overlay eat a short third (22yd 7v7 THIRD).
+  const penaltyW = Math.min(92 * scaleFactor, geometry.fieldW * 0.38);
   const penaltyH = 156 * scaleFactor;
   // Real FIFA proportions: goal area (6-yard box) is 6yd deep x 20yd wide,
   // vs a penalty area's 18yd deep x 44yd wide -- scale the goal area off
@@ -87,10 +88,10 @@ export function renderGoalOverlay(goals: DrawerGoal[], scaleFactor: number = 1):
     const goal = orientGoal(rawGoal, geometry);
     const x = svgX(goal.x, geometry);
     const y = svgY(goal.y, geometry);
-    const nearLeft = goal.x <= 15;
-    const nearRight = goal.x >= 85;
     const nearTop = goal.y <= 15;
     const nearBottom = goal.y >= 85;
+    const onLeftEnd = goal.x <= 22;
+    const onRightEnd = goal.x >= 78;
     const isLeft = goal.x < 50;
     const isFull = goal.type === "full";
 
@@ -106,6 +107,20 @@ export function renderGoalOverlay(goals: DrawerGoal[], scaleFactor: number = 1):
     const strokeWidth = isFull ? 3 : 2;
     const stroke = isFull ? "#f8fafc" : "#f97316";
 
+    // Endline minis that the crop stretched onto a corner used to hit
+    // nearTop/nearBottom first and draw as a top/bottom bracket — two
+    // puggs on the right end became L-shapes on the corners. If the
+    // token sits on a left/right end, stay on that endline.
+    const yMin = geometry.fieldY + halfWidth + 4;
+    const yMax = geometry.fieldY + geometry.fieldH - halfWidth - 4;
+    const yClamped = Math.max(yMin, Math.min(yMax, y));
+    if (onLeftEnd) {
+      return `<path d="M ${geometry.fieldX} ${yClamped - halfWidth} L ${geometry.fieldX - depth} ${yClamped - halfWidth} L ${geometry.fieldX - depth} ${yClamped + halfWidth} L ${geometry.fieldX} ${yClamped + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
+    }
+    if (onRightEnd) {
+      const fieldRight = geometry.fieldX + geometry.fieldW;
+      return `<path d="M ${fieldRight} ${yClamped - halfWidth} L ${fieldRight + depth} ${yClamped - halfWidth} L ${fieldRight + depth} ${yClamped + halfWidth} L ${fieldRight} ${yClamped + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
+    }
     if (nearTop) {
       return `<path d="M ${x - halfWidth} ${geometry.fieldY} L ${x - halfWidth} ${geometry.fieldY - depth} L ${x + halfWidth} ${geometry.fieldY - depth} L ${x + halfWidth} ${geometry.fieldY}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
     }
@@ -113,11 +128,8 @@ export function renderGoalOverlay(goals: DrawerGoal[], scaleFactor: number = 1):
       const fieldBottom = geometry.fieldY + geometry.fieldH;
       return `<path d="M ${x - halfWidth} ${fieldBottom} L ${x - halfWidth} ${fieldBottom + depth} L ${x + halfWidth} ${fieldBottom + depth} L ${x + halfWidth} ${fieldBottom}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
     }
-    if (nearLeft || isLeft) {
-      return `<path d="M ${geometry.fieldX} ${y - halfWidth} L ${geometry.fieldX - depth} ${y - halfWidth} L ${geometry.fieldX - depth} ${y + halfWidth} L ${geometry.fieldX} ${y + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
-    }
     const fieldRight = geometry.fieldX + geometry.fieldW;
-    return `<path d="M ${fieldRight} ${y - halfWidth} L ${fieldRight + depth} ${y - halfWidth} L ${fieldRight + depth} ${y + halfWidth} L ${fieldRight} ${y + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
+    return `<path d="M ${fieldRight} ${yClamped - halfWidth} L ${fieldRight + depth} ${yClamped - halfWidth} L ${fieldRight + depth} ${yClamped + halfWidth} L ${fieldRight} ${yClamped + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
   });
 
   return `<g id="api-goal-overlay" pointer-events="none">${penaltyBoxes}${paths.join("")}</g>`;

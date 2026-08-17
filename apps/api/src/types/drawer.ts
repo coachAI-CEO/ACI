@@ -26,6 +26,9 @@ export interface DrawerParams {
   coachingPoints: string[];
   primaryCoachingPicture: string;
   coach: DrawerCoach | null;
+  /** One-goal attacking/defending third stretched to fill the field box.
+   * Skip match halfway line / center circle -- those describe a full pitch. */
+  hideMatchPitchMarkings?: boolean;
 }
 
 export interface DrawerCoach {

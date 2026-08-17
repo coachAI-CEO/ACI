@@ -23,13 +23,11 @@ test("MINI2 mode enforces 2 minis, no GK, canonical equipment", () => {
   expect(drill.json.equipment).toContain("Cones");
 });
 
-test("LARGE mode enforces 1 large goal, GK present, no minis", () => {
+test("LARGE mode enforces 1 large goal, opposite minis, and a GK", () => {
   const drill: any = makeDrill({ goalsAvailable: 1 });
   postProcessDrill(drill, { goalsAvailable: 1 });
   expect(drill.json.goalMode).toBe("LARGE");
-  expect(drill.json.diagram.miniGoals).toBe(0);
   expect((drill.json.diagram.teams || []).some((t:any)=> (t.label||"").toLowerCase()==="gk")).toBe(true);
   expect(drill.json.equipment).toContain("1 Full-size goal");
-  const minis = drill.json.equipment.filter((x:string)=>/mini-goal/i.test(x));
-  expect(minis.length).toBe(0);
+  expect(drill.json.equipment).toContain("2 Mini-goals");
 });

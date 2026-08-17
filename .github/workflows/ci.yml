@@ -22,8 +22,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -37,9 +35,13 @@ jobs:
       - name: Install deps
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: pnpm prisma generate
+
       - name: Run tests (FAST_E2E)
         env:
           FAST_E2E: '1'
           LOG_POSTPROC: '0'
           CI: 'true'
+          GEMINI_API_KEY: 'ci-test-key'
         run: pnpm jest --runInBand --detectOpenHandles --testTimeout=30000

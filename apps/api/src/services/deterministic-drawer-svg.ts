@@ -79,7 +79,9 @@ function getGeometry(params: DrawerParams): Geometry {
 
   // Explicit from generation input when available -- see DrillPromptInput.fieldFormat
   // -- rather than guessed from player count on the fly.
-  const zoomOut = shouldZoomOut(params.widthYards, params.lengthYards, params.fieldFormat);
+  const zoomOut =
+    shouldZoomOut(params.widthYards, params.lengthYards, params.fieldFormat) ||
+    Boolean(params.hideMatchPitchMarkings);
 
   const tokenRadius = computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length);
 
@@ -360,18 +362,19 @@ function normalizePositionLabel(player: DrawerPlayer): string {
   if (player.team === "gk") return "GK";
   if (player.team === "neutral") return "NT";
   const normalized = (player.role || player.label || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (!normalized) return player.team === "away" ? "DF" : "AT";
-  if (normalized.includes("KEEPER") || normalized === "GK") return "GK";
-  if (normalized.includes("CENTERBACK") || normalized.includes("CENTREBACK")) return "CB";
-  if (normalized.includes("FULLBACK")) return "FB";
-  if (normalized.includes("DEF")) return "CB";
-  if (normalized.includes("MID")) return "CM";
-  if (normalized.includes("WING")) return normalized.startsWith("L") ? "LW" : normalized.startsWith("R") ? "RW" : "FW";
-  if (normalized.includes("FORWARD") || normalized.includes("STRIKER")) return "ST";
-  if (normalized === "LF" || normalized === "RF") return "ST"; // "Left/Right Forward" -- nonstandard but seen in the wild
-  const coreCode = CORE_POSITION_CODES.find((code) => normalized.includes(code));
+  const base = normalized.replace(/(ATT|DEF)$/, "") || normalized;
+  if (!base) return player.team === "away" ? "DF" : "AT";
+  if (base.includes("KEEPER") || base === "GK") return "GK";
+  if (base.includes("CENTERBACK") || base.includes("CENTREBACK")) return "CB";
+  if (base.includes("FULLBACK")) return "FB";
+  if (base === "DEF" || base === "DF" || base === "D") return "CB";
+  if (base.includes("MID") || base === "M") return "CM";
+  if (base.includes("WING")) return base.startsWith("L") ? "LW" : base.startsWith("R") ? "RW" : "FW";
+  if (base.includes("FORWARD") || base.includes("STRIKER")) return "ST";
+  if (base === "LF" || base === "RF") return "ST"; // "Left/Right Forward" -- nonstandard but seen in the wild
+  const coreCode = CORE_POSITION_CODES.find((code) => base.includes(code));
   if (coreCode) return coreCode;
-  return normalized.slice(0, 2).padEnd(2, player.team === "away" ? "F" : "T");
+  return base.slice(0, 2).padEnd(2, player.team === "away" ? "F" : "T");
 }
 
 function toSvgPoint(point: Point, geometry: Geometry): Point {

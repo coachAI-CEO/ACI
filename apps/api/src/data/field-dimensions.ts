@@ -36,11 +36,92 @@ export function resolveFieldFormat(totalPlayersOnField: number): FieldFormat {
 }
 
 /**
- * What fraction of the real full-size pitch (for the resolved format) the
- * drill's declared practice area covers. 1.0 = the drill uses the whole
- * pitch; small values mean the practice area is a small slice of a much
- * bigger real field.
+ * Practice area for a match-format slice. HALF/THIRD/QUARTER cut length only;
+ * width stays the format's goal line. 11v11 THIRD is 40×80, not 40×35.
  */
+export function practiceSpaceYards(
+  format: FieldFormat,
+  spaceConstraint: string
+): { lengthYards: number; widthYards: number } {
+  const spec = FIELD_SPECS[format];
+  const key = String(spaceConstraint || "FULL").toUpperCase();
+  if (key === "HALF") return { lengthYards: Math.round(spec.lengthYards / 2), widthYards: spec.widthYards };
+  if (key === "THIRD") return { lengthYards: Math.round(spec.lengthYards / 3), widthYards: spec.widthYards };
+  if (key === "QUARTER") return { lengthYards: Math.round(spec.lengthYards / 4), widthYards: spec.widthYards };
+  return { lengthYards: spec.lengthYards, widthYards: spec.widthYards };
+}
+
+/** Match-format slices (tactical 11v11 third, 7v7 half) keep full pitch width.
+ *  Warmup/technical boxes with no full goal may stay small. */
+export function shouldLockPracticeArea(args: { drillType?: string; goalsAvailable?: number | null }): boolean {
+  const type = String(args.drillType || "").toUpperCase();
+  if (type === "WARMUP" || type === "TECHNICAL") return Number(args.goalsAvailable) >= 1;
+  return type.length > 0;
+}
+
+/** Outfield tokens per side for a match-format picture (GK counted separately). */
+export function formatOutfieldPerSide(format: FieldFormat): number {
+  if (format === "7V7") return 6;
+  if (format === "9V9") return 8;
+  return 10;
+}
+
+/** Session-setup defaults when a drill JSON omits formations. */
+export function defaultFormationsForFormat(format: FieldFormat): { attacking: string; defending: string } {
+  if (format === "7V7") return { attacking: "2-3-1", defending: "3-2-1" };
+  if (format === "11V11") return { attacking: "4-3-3", defending: "4-2-3-1" };
+  return { attacking: "3-2-3", defending: "3-3-2" };
+}
+
+/** e.g. "3-2-3" → [3, 2, 3]. Null if the string is not a formation. */
+export function parseFormationNums(formation: string): number[] | null {
+  const match = String(formation || "").match(/(\d+(?:-\d+)+)/);
+  if (!match) return null;
+  const nums = match[1].split("-").map(Number).filter((n) => n > 0);
+  return nums.length >= 2 ? nums : null;
+}
+
+function padRoles(roles: string[], n: number, fill: string): string[] {
+  const next = roles.slice(0, n);
+  while (next.length < n) next.push(fill);
+  return next;
+}
+
+/** CB / LCB / RCB / CCB, with optional _ATT/_DEF suffix. Not LB/RB. */
+export function isCenterBackRole(role: string): boolean {
+  const raw = String(role || "")
+    .toUpperCase()
+    .replace(/[_-]?(ATT|DEF)$/, "");
+  return /^(?:[LR]|C)?CB$/.test(raw);
+}
+
+export function expectedOutfieldRoles(formation: string): string[] | null {
+  const nums = parseFormationNums(formation);
+  if (!nums) return null;
+  const back = (n: number) =>
+    n <= 1 ? ["CB"] : n === 2 ? ["CB", "CB"] : n === 3 ? ["LB", "CB", "RB"] : padRoles(["LB", "CB", "CB", "RB"], n, "CB");
+  const mid = (n: number) =>
+    n <= 1 ? ["CM"] : n === 2 ? ["CM", "CM"] : n === 3 ? ["LM", "CM", "RM"] : padRoles(["LM", "CM", "CM", "RM"], n, "CM");
+  const front = (n: number) =>
+    n <= 1 ? ["ST"] : n === 2 ? ["ST", "ST"] : n === 3 ? ["LW", "ST", "RW"] : padRoles(["LW", "ST", "ST", "RW"], n, "ST");
+  return nums.flatMap((n, i) => {
+    if (i === 0) return back(n);
+    if (i === nums.length - 1) return front(n);
+    return mid(n);
+  });
+}
+
+/** 6 outfield + GK vs 6 outfield + GK is 7v7, not 6v6+2GK. */
+export function matchupWithKeepers(attOut: number, defOut: number, gk: number, neutrals = 0): string {
+  if (neutrals > 0) {
+    const field = `${attOut}v${defOut}+${neutrals}`;
+    return gk > 0 ? `${field}+${gk}GK` : field;
+  }
+  if (gk >= 2) return `${attOut + 1}v${defOut + 1}`;
+  if (gk === 1) return `${attOut}v${defOut}+GK`;
+  return `${attOut}v${defOut}`;
+}
+
 export function coverageRatio(drillWidthYards: number, drillLengthYards: number, format: FieldFormat): number {
   const spec = FIELD_SPECS[format];
   const drillArea = Math.max(0, drillWidthYards) * Math.max(0, drillLengthYards);
@@ -172,4 +253,86 @@ function clampWindowToBounds(min: number, max: number): [number, number] {
 export function remapToWindow(value: number, min: number, max: number): number {
   const span = Math.max(1e-6, max - min);
   return Math.max(0, Math.min(100, ((value - min) / span) * 100));
+}
+
+/**
+ * One full-size goal with all the action packed on that end (attacking /
+ * defensive third). The field rect is still a full pitch, so the unused
+ * third reads as a "shifted" diagram. Reframe on X only.
+ */
+export function shouldReframeOneSidedPitch(
+  players: Array<{ x: number }>,
+  fullGoalCount: number
+): boolean {
+  if (fullGoalCount !== 1 || players.length < 4) return false;
+  const minX = Math.min(...players.map((player) => player.x));
+  const maxX = Math.max(...players.map((player) => player.x));
+  return minX > 18 || maxX < 82;
+}
+
+export function shouldReframeAxis(values: number[]): boolean {
+  if (values.length === 0) return false;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min > 18 || max < 82;
+}
+
+/**
+ * Session JSON sometimes emits touchline coords in yards (0–widthYards)
+ * instead of 0–100 percent. A 9v9 55yd-wide pitch with y=8..48 then draws
+ * every token in the top half of the grass — the field looks shifted
+ * relative to the players. True when the cluster midpoint is the yard
+ * midline, not percent-50.
+ */
+export function looksLikeYardAxis(values: number[], yards: number): boolean {
+  if (values.length < 3 || !Number.isFinite(yards) || yards < 20) return false;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min < -2 || max > yards + 2) return false;
+  // Percent space reaches ~94–100. 9v9 length is 80yd, so an endline goal
+  // at 80 is yards; a 0–100 crop at 94 is not.
+  if (yards <= 100 && max >= 92) return false;
+  const mid = (min + max) / 2;
+  const closerToYardMid = Math.abs(mid - yards / 2) <= Math.abs(mid - 50) + 2;
+  if (yards < 75) return max < 72 && closerToYardMid;
+  return closerToYardMid;
+}
+
+export function yardsToPercent(value: number, yards: number): number {
+  const span = Math.max(1e-6, yards);
+  return Math.max(0, Math.min(100, (value / span) * 100));
+}
+
+/** Outfield cluster should sit on the pitch center, not a sideline band. */
+export function playerClusterCentered(
+  players: Array<{ x: number; y: number; team?: string }>,
+  axis: "x" | "y"
+): { ok: boolean; mid: number } {
+  const pts = players.filter((player) => player.team !== "gk");
+  const use = pts.length >= 4 ? pts : players;
+  if (use.length < 2) return { ok: true, mid: 50 };
+  const values = use.map((player) => player[axis]);
+  const mid = (Math.min(...values) + Math.max(...values)) / 2;
+  return { ok: Math.abs(mid - 50) <= 14, mid };
+}
+
+/** Tighter than the zoom-out pad -- 10% leftover on the open end is why
+ * one-goal thirds still looked shoved after the first X-only remap. */
+const ONE_SIDED_PADDING_PERCENT = 4;
+
+export function computeOneSidedAxisWindow(values: number[]): { min: number; max: number } {
+  if (values.length === 0) return { min: 0, max: 100 };
+  let min = Math.min(...values) - ONE_SIDED_PADDING_PERCENT;
+  let max = Math.max(...values) + ONE_SIDED_PADDING_PERCENT;
+  min = Math.max(0, min);
+  max = Math.min(100, max);
+  [min, max] = ensureMinSpan(min, max, CONTENT_WINDOW_MIN_SPAN_PERCENT);
+  min = Math.max(0, min);
+  max = Math.min(100, max);
+  return { min, max };
+}
+
+export function computeHorizontalContentWindow(xs: number[]): { minX: number; maxX: number } {
+  const window = computeOneSidedAxisWindow(xs);
+  return { minX: window.min, maxX: window.max };
 }

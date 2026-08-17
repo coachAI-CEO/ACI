@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import StoredDrillSvg from "@/components/StoredDrillSvg";
+import { collectDrillSvgIds, fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
 import { getUserHeaders } from "@/lib/user";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
@@ -67,6 +68,7 @@ type VaultDrill = {
   progressions?: string[];
   coachingPoints?: string[];
   diagram?: any;
+  diagramSvg?: string | null;
   json?: any;
   goalsAvailable?: number;
   // Parent session info
@@ -156,6 +158,7 @@ export default function VaultPage() {
     fetchUserFeatures().then(setUserFeatures).catch(() => setUserFeatures(null));
   }, []);
   const [selectedSession, setSelectedSession] = useState<VaultSession | null>(null);
+  const [diagramsHydrated, setDiagramsHydrated] = useState(true);
   const [selectedDrill, setSelectedDrill] = useState<VaultDrill | null>(null);
   const [skillFocus, setSkillFocus] = useState<any | null>(null);
   const [generatingSkillFocus, setGeneratingSkillFocus] = useState(false);
@@ -318,6 +321,8 @@ export default function VaultPage() {
       progressions: drill.progressions,
       coachingPoints: drill.coachingPoints,
       diagram: drill.diagram || drill.diagramV1,
+      diagramSvg: pickDrillDiagramSvg(drill),
+      json: drill,
       sessionId: session.id,
       sessionRefCode: session.refCode, // Parent session reference code
       sessionTitle: session.title,
@@ -514,6 +519,29 @@ export default function VaultPage() {
       setLoading(false);
     }
   }, [filters.gameModelId, filters.ageGroup, filters.phase, filters.zone]);
+
+  const openSessionPreview = useCallback(async (session: VaultSession) => {
+    setSelectedDrill(null);
+    setDiagramsHydrated(false);
+    setSelectedSession(session);
+    if (sessionDrillsHaveStoredSvgs(session)) {
+      setDiagramsHydrated(true);
+      return;
+    }
+    try {
+      const ids = collectDrillSvgIds(session.json?.drills);
+      const svgs = await fetchStoredDiagramSvgs(ids);
+      const merged = mergeSessionDrillSvgs(session, svgs);
+      setSelectedSession(merged);
+      setSessions((prev) =>
+        prev.map((item) => (item.id === merged.id ? { ...item, json: merged.json } : item))
+      );
+    } catch {
+      // Keep the list copy; diagrams stay on the stored lookup path.
+    } finally {
+      setDiagramsHydrated(true);
+    }
+  }, []);
 
   useEffect(() => {
     loadVaultData();
@@ -1312,7 +1340,7 @@ export default function VaultPage() {
                   filteredSessions.map((session) => (
                     <div
                       key={session.id}
-                      onClick={() => setSelectedSession(session)}
+                      onClick={() => openSessionPreview(session)}
                       className={`rounded-2xl border p-3 cursor-pointer transition-all ${
                         selectedSession?.id === session.id
                           ? "border-emerald-500/50 bg-emerald-500/10"
@@ -1351,7 +1379,7 @@ export default function VaultPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedSession(session);
+                              openSessionPreview(session);
                             }}
                             className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30 transition-colors"
                             title="View Session"
@@ -1819,7 +1847,7 @@ export default function VaultPage() {
                         {s.sessions.map((session, idx) => (
                           <div
                             key={session.id}
-                            onClick={() => setSelectedSession(session)}
+                            onClick={() => openSessionPreview(session)}
                             className="text-[10px] py-1 px-2 rounded bg-slate-800/50 cursor-pointer hover:bg-slate-800 transition-colors border border-slate-700/50"
                           >
                             <div className="flex items-center gap-2">
@@ -2061,7 +2089,9 @@ export default function VaultPage() {
                       const diagram = drill.diagram ?? drill.json?.diagram ?? drill.json?.diagramV1;
                       const description = drill.description ?? drill.json?.description;
                       const organization = drill.organization ?? drill.json?.organization;
-                      const svgDrillId = drill.id ?? drill.refCode ?? drill.json?.refCode;
+                      const svgDrillId = pickDrillSvgId(drill);
+                      const storedSvg = pickDrillDiagramSvg(drill);
+                      const canDraw = Boolean(storedSvg) || diagramsHydrated;
 
                       return (
                       <div key={i} className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
@@ -2084,13 +2114,21 @@ export default function VaultPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: Diagram */}
                           {diagram && (
-                            <div className="flex items-center justify-center">
+                            <div className="flex items-center justify-center overflow-hidden">
+                              {canDraw ? (
                               <StoredDrillSvg
                                 drillId={svgDrillId}
                                 goalsAvailable={drill.goalsAvailable ?? drill.json?.goalsAvailable ?? selectedSession.goalsAvailable ?? selectedSession.json?.goalsAvailable}
                                 size="small"
                                 showRegenerate={false}
+                                drillType={drill.drillType}
+                                initialSvg={storedSvg}
                               />
+                              ) : (
+                                <div className="flex min-h-[180px] w-full items-center justify-center rounded-2xl border border-slate-800/70 bg-[#08111f] text-xs text-slate-500">
+                                  Loading diagram...
+                                </div>
+                              )}
                             </div>
                           )}
                           
@@ -2336,17 +2374,19 @@ export default function VaultPage() {
                   const diagram = selectedDrill.diagram ?? selectedDrill.json?.diagram ?? selectedDrill.json?.diagramV1;
                   const description = selectedDrill.description ?? selectedDrill.json?.description;
                   const organization = selectedDrill.organization ?? selectedDrill.json?.organization;
-                  const svgDrillId = selectedDrill.id ?? selectedDrill.refCode ?? selectedDrill.json?.refCode;
+                  const svgDrillId = pickDrillSvgId(selectedDrill);
 
                   return (
                 diagram && (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
-                    <div className="flex items-center justify-center">
+                    <div className="flex items-center justify-center overflow-hidden">
                       <StoredDrillSvg
                         drillId={svgDrillId}
                         goalsAvailable={selectedDrill.goalsAvailable ?? selectedDrill.json?.goalsAvailable}
                         size="small"
+                        showRegenerate={false}
+                        initialSvg={pickDrillDiagramSvg(selectedDrill)}
                       />
                     </div>
                   </div>
@@ -2452,7 +2492,7 @@ export default function VaultPage() {
                     const session = sessions.find(s => s.id === selectedDrill.sessionId);
                     if (session) {
                       setSelectedDrill(null);
-                      setSelectedSession(session);
+                      void openSessionPreview(session);
                     }
                   }}
                   className="inline-flex items-center rounded-full border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"

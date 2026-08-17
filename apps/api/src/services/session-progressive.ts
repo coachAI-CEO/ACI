@@ -8,7 +8,7 @@ import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
-import { generateDrillDiagramSvg } from "./drill-diagram-svg";
+import { generateDrillDiagramSvg, omitDiagramSvgFromDrill } from "./drill-diagram-svg";
 import { resolveSessionClubId } from "./club-philosophy";
 import {
   normalizeGoalkeeperPositions,
@@ -535,8 +535,7 @@ export async function generateProgressiveSessionSeries(
             principleIds: drill.principleIds || result.session.principleIds || [],
             psychThemeIds: drill.psychThemeIds || result.session.psychThemeIds || [],
 
-            // Store full drill JSON
-            json: drill,
+            json: omitDiagramSvgFromDrill(drill),
             savedToVault: true,
             ...(diagramResult
               ? {
@@ -568,7 +567,7 @@ export async function generateProgressiveSessionSeries(
     // Persist to database
     const jsonForDb = {
       ...result.session,
-      drills: drillsWithRefCodes,
+      drills: drillsWithRefCodes.map((drill: any) => omitDiagramSvgFromDrill(drill)),
       qa: result.qa,
     };
 
