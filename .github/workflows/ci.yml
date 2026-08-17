@@ -43,4 +43,5 @@ jobs:
           FAST_E2E: '1'
           LOG_POSTPROC: '0'
           CI: 'true'
+          GEMINI_API_KEY: 'ci-test-key'
         run: pnpm jest --runInBand --detectOpenHandles --testTimeout=30000
