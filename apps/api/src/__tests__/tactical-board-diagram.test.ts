@@ -109,7 +109,7 @@ describe('parseWebDiagramV1', () => {
   });
 
   test('rejects oversized JSON payload', () => {
-    const hugeLabel = 'x'.repeat(70_000);
+    const hugeLabel = 'x'.repeat(200_000);
     const result = parseWebDiagramV1({
       pitch: { variant: 'HALF', orientation: 'HORIZONTAL' },
       players: [{ id: 'p1', team: 'ATT', x: 1, y: 1 }],

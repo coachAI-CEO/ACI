@@ -530,12 +530,12 @@ test("attacking LB/LM sit on their GK's left, not the right", () => {
     numbersMax: 18,
     spaceConstraint: "FULL",
   } as any);
-  const attLb = params.players.find((player) => player.id === "A-LB");
-  const attRb = params.players.find((player) => player.id === "A-RB");
-  const attLm = params.players.find((player) => player.id === "A-LM");
-  const defLb = params.players.find((player) => player.id === "D-LB");
+  const attLb = params.players.find((player) => player.team === "home" && /^LB$/i.test(player.role));
+  const attRb = params.players.find((player) => player.team === "home" && /^RB$/i.test(player.role));
+  const attLw = params.players.find((player) => player.team === "home" && /^LW$/i.test(player.role));
+  const defLb = params.players.find((player) => player.team === "away" && /^LB$/i.test(player.role));
   expect(attLb?.y).toBeLessThan(50);
   expect(attRb?.y).toBeGreaterThan(50);
-  expect(attLm?.y).toBeLessThan(50);
+  expect(attLw?.y).toBeLessThan(50);
   expect(defLb?.y).toBeGreaterThan(50);
 });

@@ -1,4 +1,3 @@
-import type { Drill } from "@prisma/client";
 import { randomUUID } from "crypto";
 import {
   computeContentWindow,
@@ -29,10 +28,15 @@ import type {
   DrawerZone,
 } from "../types/drawer";
 
-type DrillLike = Pick<
-  Drill,
-  "title" | "json" | "drillType" | "durationMin" | "rpeMin" | "rpeMax" | "numbersMin" | "numbersMax"
-> & {
+type DrillLike = {
+  title?: string | null;
+  json?: unknown;
+  drillType?: string | null;
+  durationMin?: number | null;
+  rpeMin?: number | null;
+  rpeMax?: number | null;
+  numbersMin?: number | null;
+  numbersMax?: number | null;
   spaceConstraint?: string | null;
   formationUsed?: string | null;
   phase?: string | null;
