@@ -15,6 +15,7 @@
     "sandbox:first-pass": "ts-node --project tsconfig.json src/scripts/first-pass-diagrams/run.ts",
     "sandbox:pattern-hunt": "ts-node --project tsconfig.json src/scripts/pattern-hunt/run.ts",
     "sandbox:pattern-hunt:pass2": "ts-node --project tsconfig.json src/scripts/pattern-hunt/pass2.ts",
+    "vault:redraw-diagrams": "ts-node --project tsconfig.json src/scripts/redraw-vault-diagrams.ts",
     "sandbox:first-pass:until": "ts-node --project tsconfig.json src/scripts/first-pass-diagrams/run.ts -- --visual --until-confidence 75 --max-rounds 3",
     "sandbox:session-quality": "ts-node --project tsconfig.json src/scripts/session-quality-sandbox.ts",
     "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",

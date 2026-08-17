@@ -45,8 +45,8 @@ function compileDeterministicSvg(
 
 export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<DrillDiagramSvgResult> {
   const drawerParams = drillToDrawerParams(drillLike);
-  const engine = String(process.env.DIAGRAM_SVG_ENGINE || "gemini").toLowerCase();
-  if (engine === "deterministic") {
+  const engine = String(process.env.DIAGRAM_SVG_ENGINE || "deterministic").toLowerCase();
+  if (engine === "deterministic" || engine === "compiler") {
     return compileDeterministicSvg(drawerParams);
   }
 
