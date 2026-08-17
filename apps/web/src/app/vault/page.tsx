@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import StoredDrillSvg from "@/components/StoredDrillSvg";
-import { fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
+import { collectDrillSvgIds, fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
 import { getUserHeaders } from "@/lib/user";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
@@ -529,8 +529,7 @@ export default function VaultPage() {
       return;
     }
     try {
-      const drills = Array.isArray(session.json?.drills) ? session.json.drills : [];
-      const ids = drills.map((drill: unknown) => pickDrillSvgId(drill)).filter((id): id is string => Boolean(id));
+      const ids = collectDrillSvgIds(session.json?.drills);
       const svgs = await fetchStoredDiagramSvgs(ids);
       const merged = mergeSessionDrillSvgs(session, svgs);
       setSelectedSession(merged);
