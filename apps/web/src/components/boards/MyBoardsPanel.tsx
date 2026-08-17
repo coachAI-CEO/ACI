@@ -10,6 +10,7 @@ import {
   patchBoard,
   type TacticalBoardSummary,
 } from "@/lib/boards";
+import { fetchAuthMe } from "@/lib/auth-me";
 import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 
 type Props = {
