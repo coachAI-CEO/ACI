@@ -226,6 +226,16 @@ export function pickDrillSvgId(source: unknown): string | null {
   return null;
 }
 
+export function collectDrillSvgIds(drills: unknown): string[] {
+  if (!Array.isArray(drills)) return [];
+  const ids: string[] = [];
+  for (const drill of drills) {
+    const id = pickDrillSvgId(drill);
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
 export function sessionDrillsHaveStoredSvgs(session: unknown): boolean {
   if (!session || typeof session !== "object") return false;
   const json = (session as Record<string, unknown>).json;
