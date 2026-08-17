@@ -658,12 +658,13 @@ function caseRondoMiniGoals(): CaseResult {
     'Freeze this board and show a 4v4+2 rondo in the middle third with mini-goals'
   );
   const after = solveBoardLayout(dsl);
-  const goals = after.elements.filter((e) => e.kind === 'mini-goal');
+  const elements = after.elements ?? [];
+  const goals = elements.filter((e) => e.kind === 'mini-goal');
   return {
     name: 'rondo-minigoals',
     claim: 'Asked mini-goals land on the rondo grid even if the DSL omitted kit',
     ok: goals.length === 2,
-    lines: [`mini-goals=${goals.length} kit=${after.elements.length}`],
+    lines: [`mini-goals=${goals.length} kit=${elements.length}`],
   };
 }
 
