@@ -216,37 +216,27 @@ export function sanitizeDrillOutput(drill: any): { drill: any; warnings: string[
     }
     normalizeGoalkeeperPositions();
 
-    // Force each L/R-prefixed role (LB/LM/LW/LCB/LCM/LWB vs their R-
-    // prefixed counterparts) onto the correct half of the pitch width,
-    // per drill-optimized-v2.ts's POSITION SIDE LOCK: ATT faces right, so
-    // ATT's Left-prefixed roles belong at low y (top half) and Right-
-    // prefixed at high y (bottom half); DEF faces the opposite way
-    // (toward the incoming ATT), so DEF is mirrored -- DEF's Left-prefixed
-    // roles belong at high y (bottom half), Right-prefixed at low y (top
-    // half). This is exactly the kind of side-relative spatial reasoning
-    // the model gets right most of the time but not reliably (the sandbox's
-    // roleSide scorer exists because of that) -- like orientation and goal
-    // direction above, don't leave it purely to the prompt: mirror any
-    // player that landed on the wrong half instead of trusting the model's
-    // y value as-is.
+    // Keep the placed shape; rename L/R-prefixed roles onto the correct
+    // half. ATT faces right, so Left = top (low y) and Right = bottom.
+    // DEF faces left, so Left = bottom and Right = top. Moving Y here
+    // punches holes in 4+4 banks when LB and RB sit on different X lines.
     for (const p of safePlayers) {
       const team = String((p as any)?.team || "").toUpperCase();
       if (team !== "ATT" && team !== "DEF") continue;
-      const role = String((p as any)?.role || "").toUpperCase();
-      const match = role.match(/^([LR])[A-Z]/);
+      const role = String((p as any)?.role || "");
+      const match = role.toUpperCase().match(/^([LR])([A-Z].*)$/);
       if (!match) continue;
       const y = Number((p as any).y);
-      if (!Number.isFinite(y) || (y >= 40 && y <= 60)) continue; // too central to judge reliably
+      if (!Number.isFinite(y) || (y >= 40 && y <= 60)) continue;
 
       const isLeftRole = match[1] === "L";
-      // ATT: left->top (y<50), right->bottom (y>50). DEF: mirrored.
       const wantsTopHalf = team === "ATT" ? isLeftRole : !isLeftRole;
-      const isTopHalf = y < 50;
-      if (isTopHalf !== wantsTopHalf) {
-        (p as any).y = 100 - y;
+      if (y < 50 !== wantsTopHalf) {
+        const next = `${isLeftRole ? "R" : "L"}${match[2]}`;
         warnings.push(
-          `${prefix}Mirrored ${team} role="${(p as any).role}" from y=${y} to y=${100 - y} (POSITION SIDE LOCK: wrong half for that team/side)`
+          `${prefix}Relabeled ${team} role="${role}" to "${next}" at y=${y} (POSITION SIDE LOCK: wrong half for that team/side)`
         );
+        (p as any).role = next;
       }
     }
 

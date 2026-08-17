@@ -1,11 +1,22 @@
+import { practiceSpaceYards, shouldLockPracticeArea, type FieldFormat } from "../data/field-dimensions";
+
 type GoalAvailabilityInput = {
   goalsAvailable?: number | null;
+  fieldFormat?: string | null;
+  spaceConstraint?: string | null;
+  drillType?: string | null;
 };
 
 function isGoalkeeper(player: any): boolean {
   const role = String(player?.role || "").toUpperCase();
   const team = String(player?.team || "").toUpperCase();
   return team === "GK" || player?.number === 1 || role === "GK" || role.includes("GOALKEEPER");
+}
+
+function isActiveGoalkeeper(player: any): boolean {
+  const role = String(player?.role || "").toUpperCase();
+  const team = String(player?.team || "").toUpperCase();
+  return team === "GK" || role === "GK" || role.includes("GOALKEEPER");
 }
 
 export function isFullSizeGoal(goal: any): boolean {
@@ -33,6 +44,58 @@ export function demoteDiagramGoalkeepers(diagram: any) {
       (t: any) => String(t?.label || "").toUpperCase() !== "GK"
     );
   }
+  discardPhantomKeepers(diagram, null);
+}
+
+/** Drop demoted keeper tokens that still sit on a net / endline (id att_gk, etc.). */
+export function discardPhantomKeepers(diagram: any, keptGk: any = null) {
+  if (!diagram || !Array.isArray(diagram.players)) return;
+  const keptList = Array.isArray(keptGk) ? keptGk : keptGk ? [keptGk] : diagram.players.filter((player: any) => isActiveGoalkeeper(player));
+  const keptGks = new Set(keptList);
+  const bigs = (Array.isArray(diagram.goals) ? diagram.goals : []).filter(isBigGoal);
+  const kept = diagram.players.filter((player: any) => {
+    if (keptGks.has(player)) return true;
+    const id = String(player?.id || "");
+    if (/gk|goalkeeper/i.test(id)) return false;
+    if (!isActiveGoalkeeper(player)) {
+      for (const goal of bigs) {
+        if (distanceToGoal(player, goal) < 12) return false;
+      }
+    }
+    return true;
+  });
+  diagram.players.splice(0, diagram.players.length, ...kept);
+}
+
+const DEFAULT_OPPOSITE_MINIS = [
+  { id: "MG-LEFT", type: "MINI", width: 5, x: 6, y: 50, facingAngle: 90, teamAttacks: "DEF" },
+  { id: "MG-RIGHT", type: "MINI", width: 5, x: 94, y: 50, facingAngle: 270, teamAttacks: "ATT" },
+];
+
+function isMiniOrGate(goal: any): boolean {
+  const t = String(goal?.type || "").toUpperCase();
+  return t === "MINI" || t === "SMALL" || t === "GATE" || t === "PUGG";
+}
+
+/** 0 full goals still means the picture has something to score on. */
+export function ensureOppositeMiniGoals(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  if (!Array.isArray(diagram.goals)) diagram.goals = [];
+  if (diagram.goals.some(isMiniOrGate)) return;
+  diagram.goals.push(
+    { ...DEFAULT_OPPOSITE_MINIS[0] },
+    { ...DEFAULT_OPPOSITE_MINIS[1] }
+  );
+}
+
+export function ensureMinisOppositeFullGoal(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  if (!Array.isArray(diagram.goals)) diagram.goals = [];
+  if (diagram.goals.some(isMiniOrGate)) return;
+  const big = diagram.goals.find(isBigGoal);
+  if (!big) return;
+  const normalized = { ...big, teamAttacks: Number(big.x ?? 50) >= 50 ? "ATT" : "DEF" };
+  diagram.goals.push(...miniGoalsOpposite(normalized));
 }
 
 function normalizeBigGoal(goal: any, fallback: any) {
@@ -75,16 +138,18 @@ function normalizeSingleGoalPlayers(diagram: any, bigGoal: any) {
   const players = Array.isArray(diagram.players) ? diagram.players : [];
   if (!players.length) return;
 
+  if (!Array.isArray(diagram.goals)) diagram.goals = [];
+  const existingMinis = diagram.goals.filter(isMiniOrGate);
+  const minis = existingMinis.length ? existingMinis : [];
+  const miniAnchor = {
+    x: minis.length ? minis.reduce((sum: number, goal: any) => sum + Number(goal.x ?? 6), 0) / minis.length : Number(bigGoal.x ?? 50) >= 50 ? 6 : 94,
+    y: 50,
+  };
+
   const gks = players.filter(isGoalkeeper);
-  // If the model never labeled ANY player as a goalkeeper for this drill,
-  // there was nothing here to reposition -- the loop below only relabels
-  // an EXISTING gk-marked player, so a roster with zero of them left the
-  // real goal drawn on the field with nobody defending it. Fall back to
-  // promoting whichever player is already closest to the goal, same
-  // selection logic as when a GK candidate does exist, so a real goal
-  // never ships without a keeper.
   const candidates = gks.length > 0 ? gks : players;
   const defendingTeam = String(bigGoal.teamAttacks || "").toUpperCase() === "ATT" ? "DEF" : "ATT";
+  const attackingTeam = defendingTeam === "DEF" ? "ATT" : "DEF";
   const keep =
     candidates.length > 0
       ? [...candidates].sort((a, b) => {
@@ -96,21 +161,23 @@ function normalizeSingleGoalPlayers(diagram: any, bigGoal: any) {
         })[0]
       : null;
 
+  const pugGk = minis.length >= 2 ? pickPugGoalkeeper(players, keep, bigGoal, miniAnchor, attackingTeam) : null;
+
   for (const player of players) {
     if (player === keep) {
       player.role = "GK";
       player.number = 1;
-      // Previously this repositioned the GK next to the real goal but left
-      // player.team unchanged -- normalizeGoalkeeperPositions (the very
-      // next step in the pipeline) derives "which goal is this GK's own"
-      // from player.team, so a stale team value made it recompute the
-      // WRONG own-goal and drag the correctly-placed GK right back to the
-      // mini-goal end that explicitly isn't supposed to have one. Setting
-      // team here keeps the two functions agreeing on which side this
-      // player is actually defending.
       player.team = defendingTeam;
       player.x = Number(bigGoal.x ?? 50) < 50 ? Math.max(6, Number(bigGoal.x ?? 6) + 3) : Math.min(94, Number(bigGoal.x ?? 94) - 3);
       player.y = Number.isFinite(bigGoal.y) ? bigGoal.y : 50;
+      continue;
+    }
+    if (player === pugGk) {
+      player.role = "GK";
+      player.number = 1;
+      player.team = attackingTeam;
+      player.x = Number(miniAnchor.x) < 50 ? 12 : 88;
+      player.y = 50;
       continue;
     }
 
@@ -121,10 +188,37 @@ function normalizeSingleGoalPlayers(diagram: any, bigGoal: any) {
       if (String(player.team || "").toUpperCase() === "GK") player.team = "DEF";
       if (Number(bigGoal.x ?? 50) < 20 && Number(player.x ?? 50) > 88) player.x = 82;
       if (Number(bigGoal.x ?? 50) > 80 && Number(player.x ?? 50) < 12) player.x = 18;
-      if (Number(bigGoal.y ?? 50) < 20 && Number(player.y ?? 50) > 88) player.y = 82;
-      if (Number(bigGoal.y ?? 50) > 80 && Number(player.y ?? 50) < 12) player.y = 18;
+      if (distanceToGoal(player, bigGoal) < 16) {
+        player.x = Number(bigGoal.x ?? 50) >= 50 ? 22 : 78;
+        player.y = Number.isFinite(Number(player.y)) ? Number(player.y) : 50;
+      }
     }
   }
+  discardPhantomKeepers(diagram, pugGk ? [keep, pugGk] : keep);
+}
+
+function pickPugGoalkeeper(
+  players: any[],
+  fullGk: any,
+  bigGoal: any,
+  miniAnchor: { x: number; y: number },
+  attackingTeam: string
+) {
+  const others = players.filter((player) => player !== fullGk);
+  if (!others.length) return null;
+  const labeled = others.filter(
+    (player) => isGoalkeeper(player) || /gk|goalkeeper/i.test(String(player?.id || ""))
+  );
+  const onNet = others.filter((player) => distanceToGoal(player, bigGoal) < 12);
+  const pool = labeled.length
+    ? labeled
+    : onNet.length
+      ? onNet.filter((player) => String(player.team || "").toUpperCase() === attackingTeam).length
+        ? onNet.filter((player) => String(player.team || "").toUpperCase() === attackingTeam)
+        : onNet
+      : others.filter((player) => String(player.team || "").toUpperCase() === attackingTeam);
+  if (!pool.length) return null;
+  return [...pool].sort((a, b) => distanceToGoal(a, miniAnchor) - distanceToGoal(b, miniAnchor))[0];
 }
 
 function rewriteGoalText(value: any): any {
@@ -133,9 +227,9 @@ function rewriteGoalText(value: any): any {
       .replace(/\btwo full[-\s]?size goals\b/gi, "one full-size goal and two mini-goals")
       .replace(/\bfull[-\s]?size goals\b/gi, "one full-size goal and two mini-goals")
       .replace(/\b2 full[-\s]?size goals\b/gi, "one full-size goal and two mini-goals")
-      .replace(/\bwith GKs\b/gi, "with one GK in the full-size goal")
-      .replace(/\bthrough GKs\b/gi, "through the GK or mini-goal restarts")
-      .replace(/\bthrough GK[s]?\b/gi, "through the GK or mini-goal restarts");
+      .replace(/\bwith GKs\b/gi, "with one GK in the full-size goal and one GK on the mini-goal end")
+      .replace(/\bthrough GKs\b/gi, "through the GKs or mini-goal restarts")
+      .replace(/\bthrough GK[s]?\b/gi, "through the GKs or mini-goal restarts");
   }
   if (Array.isArray(value)) return value.map(rewriteGoalText);
   if (value && typeof value === "object") {
@@ -146,8 +240,9 @@ function rewriteGoalText(value: any): any {
 
 /**
  * Keepers follow drawn full-size goals, not the equipment flag.
- * 0 full goals → no GKs. 1 full goal → one GK on that goal, extras become CB.
- * 2+ full goals → leave keepers alone.
+ * 0 full goals → no GKs. 1 full goal + opposite minis → GK on the full
+ * goal and GK on the pug end (11v11 to one net still has a restart keeper).
+ * 2+ full goals → one GK per full goal.
  */
 export function limitKeepersToDrawnFullGoals(diagram: any) {
   if (!diagram || typeof diagram !== "object") return;
@@ -161,7 +256,98 @@ export function limitKeepersToDrawnFullGoals(diagram: any) {
     const bigGoal = { ...bigs[0] };
     bigGoal.teamAttacks = Number(bigGoal.x ?? 50) >= 50 ? "ATT" : "DEF";
     normalizeSingleGoalPlayers(diagram, bigGoal);
+    return;
   }
+  normalizeTwoGoalPlayers(diagram, bigs);
+}
+
+function replaceArray(target: any[], next: any[]) {
+  target.splice(0, target.length, ...next);
+}
+
+function oppositeFullGoal(existing: any) {
+  const x = Number(existing?.x ?? 94);
+  const right = x >= 50;
+  return {
+    id: right ? "G-LEFT" : "G-RIGHT",
+    type: "BIG",
+    width: Number.isFinite(Number(existing?.width)) ? Number(existing.width) : 8,
+    x: right ? 6 : 94,
+    y: 50,
+    facingAngle: right ? 90 : 270,
+    teamAttacks: right ? "DEF" : "ATT",
+  };
+}
+
+function pickTwoOpposite(bigs: any[]): any[] {
+  const sorted = [...bigs].sort((a, b) => Number(a?.x ?? 50) - Number(b?.x ?? 50));
+  const left = normalizeBigGoal(sorted[0], { id: "G-LEFT", x: 6, y: 50, facingAngle: 90, teamAttacks: "DEF" });
+  const right = normalizeBigGoal(sorted[sorted.length - 1], { id: "G-RIGHT", x: 94, y: 50, facingAngle: 270, teamAttacks: "ATT" });
+  left.x = Math.min(Number(left.x ?? 6), 20);
+  left.teamAttacks = "DEF";
+  right.x = Math.max(Number(right.x ?? 94), 80);
+  right.teamAttacks = "ATT";
+  if (left.id === right.id) right.id = "G-RIGHT";
+  return [left, right];
+}
+
+/** goalsAvailable=2 means two full-size goals with a GK each, not two puggs. */
+export function ensureTwoFullGoalsAndKeepers(diagram: any) {
+  if (!diagram || typeof diagram !== "object") return;
+  if (!Array.isArray(diagram.goals)) diagram.goals = [];
+  if (!Array.isArray(diagram.players)) diagram.players = [];
+  const minis = diagram.goals.filter((g: any) => !isBigGoal(g));
+  const bigs = diagram.goals.filter(isBigGoal);
+  const pair =
+    bigs.length >= 2
+      ? pickTwoOpposite(bigs)
+      : bigs.length === 1
+        ? [normalizeBigGoal(bigs[0], { id: "G1", x: 94, y: 50, facingAngle: 270, teamAttacks: "ATT" }), oppositeFullGoal(bigs[0])]
+        : [
+            { id: "G-LEFT", type: "BIG", width: 8, x: 6, y: 50, facingAngle: 90, teamAttacks: "DEF" },
+            { id: "G-RIGHT", type: "BIG", width: 8, x: 94, y: 50, facingAngle: 270, teamAttacks: "ATT" },
+          ];
+  pair[0].teamAttacks = Number(pair[0].x ?? 6) >= 50 ? "ATT" : "DEF";
+  pair[1].teamAttacks = Number(pair[1].x ?? 94) >= 50 ? "ATT" : "DEF";
+  replaceArray(diagram.goals, [...pair, ...minis]);
+  normalizeTwoGoalPlayers(diagram, pair);
+}
+
+function normalizeTwoGoalPlayers(diagram: any, bigs: any[]) {
+  const players = Array.isArray(diagram.players) ? diagram.players : [];
+  if (!players.length || bigs.length < 2) return;
+  const left = [...bigs].sort((a, b) => Number(a?.x ?? 50) - Number(b?.x ?? 50))[0];
+  const right = [...bigs].sort((a, b) => Number(b?.x ?? 50) - Number(a?.x ?? 50))[0];
+  const used = new Set<any>();
+  for (const goal of [left, right]) {
+    const defendingTeam = String(goal.teamAttacks || "").toUpperCase() === "ATT" ? "DEF" : "ATT";
+    const candidates = players.filter((p: any) => !used.has(p));
+    const gks = candidates.filter(isGoalkeeper);
+    const pool = gks.length > 0 ? gks : candidates;
+    const keep =
+      [...pool].sort((a, b) => {
+        const byDistance = distanceToGoal(a, goal) - distanceToGoal(b, goal);
+        if (byDistance !== 0) return byDistance;
+        const aDef = String(a.team || "").toUpperCase() === defendingTeam ? 0 : 1;
+        const bDef = String(b.team || "").toUpperCase() === defendingTeam ? 0 : 1;
+        return aDef - bDef;
+      })[0] || null;
+    if (!keep) continue;
+    used.add(keep);
+    keep.role = "GK";
+    keep.number = 1;
+    keep.team = defendingTeam;
+    keep.x = Number(goal.x ?? 50) < 50 ? Math.max(6, Number(goal.x ?? 6) + 3) : Math.min(94, Number(goal.x ?? 94) - 3);
+    keep.y = Number.isFinite(Number(goal.y)) ? Number(goal.y) : 50;
+  }
+  for (const player of players) {
+    if (used.has(player) || !isGoalkeeper(player)) continue;
+    const role = String(player.role || "").toUpperCase();
+    player.role = role === "GK" || role.includes("GOALKEEPER") ? "CB" : player.role;
+    if (String(player.team || "").toUpperCase() === "GK") player.team = "DEF";
+    player.number = typeof player.number === "number" && player.number !== 1 ? player.number : undefined;
+  }
+  discardPhantomKeepers(diagram, [...used]);
 }
 
 function parseGoalsAvailable(value: unknown): number | null {
@@ -170,10 +356,35 @@ function parseGoalsAvailable(value: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabilityInput) {
-  if (!drill || !drill.diagram) return;
+export function enforcePracticeArea(drill: any, input: GoalAvailabilityInput) {
+  if (!drill || typeof drill !== "object") return;
+  const format = String(input.fieldFormat || drill.fieldFormat || "").toUpperCase() as FieldFormat;
+  const space = String(input.spaceConstraint || drill.spaceConstraint || drill.diagram?.pitch?.variant || "");
+  const drillType = String(input.drillType || drill.drillType || "");
   const goalsAvailable =
-    parseGoalsAvailable(drill?.goalsAvailable) ?? parseGoalsAvailable(input.goalsAvailable);
+    parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable);
+  if (format !== "7V7" && format !== "9V9" && format !== "11V11") return;
+  if (!space) return;
+  if (!shouldLockPracticeArea({ drillType, goalsAvailable })) return;
+  const cap = practiceSpaceYards(format, space);
+  if (!drill.organization || typeof drill.organization !== "object") drill.organization = {};
+  const area =
+    drill.organization.area && typeof drill.organization.area === "object" ? drill.organization.area : {};
+  area.lengthYards = cap.lengthYards;
+  area.widthYards = cap.widthYards;
+  drill.organization.area = area;
+  drill.spaceConstraint = String(space).toUpperCase();
+  drill.fieldFormat = format;
+}
+
+export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabilityInput) {
+  if (!drill) return;
+  enforcePracticeArea(drill, input);
+  if (!drill.diagram) return;
+  // Request/session equipment wins. The model often emits goalsAvailable: 1
+  // on a no-goal warmup, which used to force a full-size goal + GK.
+  const goalsAvailable =
+    parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable);
 
   // goalsAvailable counts FULL-SIZE goals with a GK specifically -- it does
   // NOT mean "no goals at all." goalsAvailable=0 still allows mini-goals
@@ -186,18 +397,24 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   // drew mini-only goals (no BIG to strip).
   if (goalsAvailable === 0) {
     const goals = Array.isArray(drill.diagram.goals) ? drill.diagram.goals : [];
-    drill.diagram.goals = goals.filter((g: any) => !isBigGoal(g));
+    drill.diagram.goals = goals.filter((g: any) => {
+      const t = String(g?.type || "").toUpperCase();
+      return t === "MINI" || t === "SMALL" || t === "GATE" || t === "PUGG";
+    });
+    ensureOppositeMiniGoals(drill.diagram);
     demoteDiagramGoalkeepers(drill.diagram);
     return;
   }
 
+  if (goalsAvailable === 2) {
+    ensureTwoFullGoalsAndKeepers(drill.diagram);
+    drill.goalsAvailable = 2;
+    return;
+  }
+
   if (goalsAvailable !== 1) {
-    // Trust the goals the model actually drew. A 9v9 attacking-third
-    // drill is often generated with goalsAvailable=2 but only one BIG
-    // goal on the far line -- the extra GK then has nowhere to stand
-    // and lands in the same net. A missing equipment flag (null) is the
-    // same situation: do not treat it as 0 and strip a drawn full goal.
-    // Count keepers from drawn full goals, not from the equipment flag.
+    // Missing equipment flag: count keepers from drawn full goals, do not
+    // invent a second net. Explicit 2 is handled above.
     limitKeepersToDrawnFullGoals(drill.diagram);
     return;
   }
@@ -230,7 +447,7 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   // forms too ("goal", "GK") -- not just the plural phrases.
   drill.organization = drill.organization && typeof drill.organization === "object" ? drill.organization : {};
   const setupSteps = Array.isArray(drill.organization.setupSteps) ? drill.organization.setupSteps : [];
-  const normalizedGoalStep = "Use one full-size goal with one GK and two mini-goals on the opposite end; no GK defends the mini-goal side.";
+  const normalizedGoalStep = "Use one full-size goal with a GK and two mini-goals on the opposite end with a GK for restarts.";
   drill.organization.setupSteps = [
     normalizedGoalStep,
     ...setupSteps.filter((step: any) => !/\bgoals?\b|\bgks?\b|goalkeeper/i.test(String(step))),

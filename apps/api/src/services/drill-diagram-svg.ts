@@ -30,8 +30,26 @@ function scaleFactorForParams(params: DrawerParams): number {
  * instead of the client having to fetch it separately after the session
  * already rendered. Does not touch the DB; callers persist the result.
  */
+function compileDeterministicSvg(
+  drawerParams: DrawerParams,
+  asFallback = false
+): DrillDiagramSvgResult {
+  const scale = scaleFactorForParams(drawerParams);
+  return {
+    svg: fitDiagramSvgViewBox(applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerParams.goals, scale)),
+    model: asFallback ? "deterministic-fallback" : "deterministic",
+    modelFallback: asFallback,
+    promptVersion: DRAWER_PROMPT_VERSION,
+  };
+}
+
 export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<DrillDiagramSvgResult> {
   const drawerParams = drillToDrawerParams(drillLike);
+  const engine = String(process.env.DIAGRAM_SVG_ENGINE || "gemini").toLowerCase();
+  if (engine === "deterministic") {
+    return compileDeterministicSvg(drawerParams);
+  }
+
   const prompt = buildDrawerPrompt(drawerParams);
   const scale = scaleFactorForParams(drawerParams);
   const result = await generateDiagramSVG(prompt);
@@ -46,12 +64,7 @@ export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<Dri
     };
   }
 
-  return {
-    svg: fitDiagramSvgViewBox(applyGoalOverlay(renderDeterministicDiagramSVG(drawerParams), drawerParams.goals, scale)),
-    model: "deterministic-fallback",
-    modelFallback: true,
-    promptVersion: DRAWER_PROMPT_VERSION,
-  };
+  return compileDeterministicSvg(drawerParams, true);
 }
 
 export function omitDiagramSvgFromDrill<T extends Record<string, any>>(drill: T): T {

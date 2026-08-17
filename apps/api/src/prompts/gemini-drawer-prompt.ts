@@ -220,28 +220,29 @@ function getDirectionAwarePositionLabel(
 
 function normalizePositionLabel(role: string, team: DrawerParams["players"][number]["team"]): string {
   const normalized = role.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const base = normalized.replace(/(ATT|DEF)$/, "") || normalized;
   if (team === "neutral") return "NT";
-  if (team === "gk" || normalized === "GK" || normalized.includes("GOAL")) return "GK";
+  if (team === "gk" || base === "GK" || base.includes("GOAL")) return "GK";
 
   const direct = new Set([
     "CB", "LB", "RB", "DM", "CM", "AM", "LM", "RM", "LW", "RW", "ST", "CF",
     "GK", "FB", "WB", "MF", "FW",
   ]);
-  if (direct.has(normalized)) return normalized.slice(0, 2);
-  if (normalized.includes("KEEPER")) return "GK";
-  if (normalized.includes("CENTERBACK") || normalized.includes("CENTREBACK")) return "CB";
-  if (normalized.includes("FULLBACK")) return "FB";
-  if (normalized.includes("DEF") || normalized === "D") return "CB";
-  if (normalized.includes("MID") || normalized === "M") return "CM";
-  if (normalized.includes("WING")) return normalized.startsWith("L") ? "LW" : normalized.startsWith("R") ? "RW" : "FW";
-  if (normalized.includes("FORWARD") || normalized.includes("STRIKER") || normalized === "F") return "ST";
-  if (normalized === "LF" || normalized === "RF") return "ST"; // "Left/Right Forward" -- nonstandard but seen in the wild
+  if (direct.has(base)) return base.slice(0, 2);
+  if (base.includes("KEEPER")) return "GK";
+  if (base.includes("CENTERBACK") || base.includes("CENTREBACK")) return "CB";
+  if (base.includes("FULLBACK")) return "FB";
+  if (base === "DEF" || base === "DF" || base === "D") return "CB";
+  if (base.includes("MID") || base === "M") return "CM";
+  if (base.includes("WING")) return base.startsWith("L") ? "LW" : base.startsWith("R") ? "RW" : "FW";
+  if (base.includes("FORWARD") || base.includes("STRIKER") || base === "F") return "ST";
+  if (base === "LF" || base === "RF") return "ST"; // "Left/Right Forward" -- nonstandard but seen in the wild
   // Compound codes like "LCB"/"RCB" (left/right center-back) or "LCM"/"RCM"
   // must collapse to their base position ("CB"/"CM"), not truncate to their
   // first two letters ("LC"/"RC" isn't a real position).
-  const coreCode = [...direct].find((code) => normalized.includes(code));
+  const coreCode = [...direct].find((code) => base.includes(code));
   if (coreCode) return coreCode;
-  if (normalized.length >= 2) return normalized.slice(0, 2);
+  if (base.length >= 2) return base.slice(0, 2);
   return team === "away" ? "DF" : "AT";
 }
 
@@ -325,7 +326,7 @@ Left/right position labels are relative to the team's attacking direction, not t
 If a team attacks left, the team's right side is toward the top of the SVG and the team's left side is toward the bottom of the SVG.
 If a team attacks right, the team's right side is toward the bottom of the SVG and the team's left side is toward the top of the SVG.
 In game formats like 7v7, 9v9, or 11v11 with two full goals, each team should have a goalkeeper. If DRILL DATA already lists pos=GK player lines, those are the only keepers -- draw them green, and never relabel a blue or red outfield player as GK. If a team has no explicit GK role and both goals are full goals, the deepest player nearest that team's own goal is labelled GK.
-Mini goals and gates never have a goalkeeper. If every goal is mini or gate, no player is a GK: do not use the green GK token, do not label anyone GK, and do not put GK in the legend. Relabel any leftover GK roles as CB. Only players explicitly listed as pos=GK should be labelled GK in one-full-goal + mini-goal layouts, and only on the full-goal side.
+Mini-only layouts never have a goalkeeper. If every goal is mini or gate, no player is a GK: do not use the green GK token, do not label anyone GK, and do not put GK in the legend. Relabel any leftover GK roles as CB. One full-size goal plus mini-goals on the opposite end has TWO keepers: one green GK in the full-size goal, and one green GK on the mini-goal end for restarts. Never stand both GKs in the same full-size net.
 
 DEFS: Do NOT write a <defs> block yourself -- omit it entirely from your output, right after the opening <svg> tag. The API injects it automatically after generation, with these ids already available for you to reference elsewhere in your output: filter id="ps" (drop shadow, use as filter="url(#ps)" on player tokens), and markers id="mPass"/"mRun"/"mPress"/"mCounter"/"mDeliver"/"mFinish" (arrowheads, colored per arrow type -- use as marker-end="url(#mPass)" etc. per the ARROWS section below). Reference these ids freely; do not redefine them.
 
@@ -396,7 +397,10 @@ finish:    stroke="#fbbf24" stroke-width="2.5"                       marker-end=
 Draw a numbered sequence badge at each arrow midpoint.
 
 ZONES
-For each zone convert x/y/width/height from percentages to SVG pixels.
+Skip any zone that covers most of the practice area (the green field rect is already the match area). Do not draw a "Match Area" overlay the size of the pitch -- that reads as a second field.
+For each remaining zone convert x/y/width/height from percentages to SVG pixels. Write the computed number only. Never put a formula in an attribute.
+Wrong: x="117.92 + (50/100)*564.16"
+Right: x="399.99"
 Render the zone as a translucent rectangle with a dashed border: fill="#10f0a0" opacity="0.11" stroke="#10f0a0" stroke-width="1.5" stroke-dasharray="7,5". Draw this rect in the ZONE BACKGROUNDS step of DRAW ORDER (early, with the field), NOT with the label.
 If a zone has a label, the label text is mandatory but is drawn SEPARATELY, in the ZONE LABELS step of DRAW ORDER (near the very end, after players and coach). A zoomed-in drill packs bigger players into a small area, and a zone's tactical center is exactly where a player is most likely to be standing -- drawing the label late, on top of everything, is how it stays legible instead of getting buried under a token. Position: horizontally centered in the zone, but near the zone's TOP edge (18px below the zone's top, or the zone's vertical center if the zone is shorter than 36px tall) rather than dead-center -- less overlap to begin with. Structure (X,Y = the computed label position, W = zone width in px, L = the label text):
 <g>
@@ -420,6 +424,7 @@ Do not draw a right-side annotation rail.
 Do not draw a coaching picture sentence.
 Do not put a black sidebar next to the field.
 Do not draw a second labeled player to show where a run or pass ends. That is the arrow's job.
+Do not draw a mint overlay the size of the pitch. That is a second field.
 
 DRAW ORDER:
 1. background 2. defs 3. field fill 4. field border (all four of these are injected by the API, not drawn by you -- see CANVAS AND CARD / FIELD / DEFS above) 5. field lines

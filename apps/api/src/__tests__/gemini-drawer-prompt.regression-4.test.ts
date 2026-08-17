@@ -46,6 +46,9 @@ function nineVNine() {
           { type: "pass", from: { x: 25, y: 27 }, to: { x: 45, y: 20 } },
           { type: "pass", from: { x: 45, y: 20 }, to: { x: 65, y: 12 } },
         ],
+        safeZones: [
+          { id: "sz1", label: "Match Area", x: 50, y: 27, width: 80, height: 55 },
+        ],
       },
     },
   };
@@ -80,6 +83,16 @@ test("stored 9v9 roles are kept instead of collapsing into duplicate LB/LM label
   const prompt = buildDrawerPrompt(drillToDrawerParams(nineVNine() as any));
   const lines = playerLines(prompt);
   const home = lines.filter((line) => line.startsWith("home "));
-  const labels = home.map((line) => line.match(/pos=([A-Z]{2})/)?.[1]);
-  expect(labels).toEqual(["CB", "LB", "RB", "CM", "CM", "LW", "ST", "RW"]);
+  const labels = home.map((line) => line.match(/pos=([A-Z]{2})/)?.[1]).filter(Boolean).sort();
+  expect(labels).toEqual(["CB", "CM", "CM", "LB", "LW", "RB", "RW", "ST"]);
+  expect(labels.filter((role) => role === "LB")).toHaveLength(1);
+  expect(labels.filter((role) => role === "LM")).toHaveLength(0);
+});
+
+test("full-pitch Match Area zones are not sent to the drawer", () => {
+  const prompt = buildDrawerPrompt(drillToDrawerParams(nineVNine() as any));
+  const zonesBlock = prompt.split("Zones:")[1]?.split("Field annotations:")[0] ?? "";
+  expect(zonesBlock).not.toMatch(/Match Area/);
+  expect(zonesBlock.trim()).toBe("");
+  expect(prompt).toMatch(/Skip any zone that covers most of the practice area/);
 });

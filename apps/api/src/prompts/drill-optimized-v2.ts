@@ -1,4 +1,4 @@
-import { resolveFieldFormat, type FieldFormat } from "../data/field-dimensions";
+import { FIELD_SPECS, practiceSpaceYards, resolveFieldFormat, type FieldFormat } from "../data/field-dimensions";
 
 export interface DrillPromptInput {
   gameModelId: string;
@@ -342,6 +342,17 @@ function getPhaseGuidance(phase: string, zone: string): string {
   ].join("\n");
 }
 
+function areaLockLine(input: DrillPromptInput): string {
+  const format = input.fieldFormat || resolveFieldFormat(input.numbersMax);
+  const area = practiceSpaceYards(format, input.spaceConstraint);
+  const spec = FIELD_SPECS[format];
+  return [
+    `     ✅ CORRECT for this session: {lengthYards: ${area.lengthYards}, widthYards: ${area.widthYards}} (${format} ${input.spaceConstraint}).`,
+    `     ${input.spaceConstraint} of a ${spec.lengthYards}×${spec.widthYards} pitch keeps FULL width (${spec.widthYards}yd). Only length is sliced.`,
+    `     ❌ NEVER copy 35×25 / 25×20 / 40×35 for 9v9 or 11v11 — those are 7v7 boxes, not an ${format} ${input.spaceConstraint}.`,
+  ].join("\n");
+}
+
 /**
  * Optimized generator prompt - conservative 35% reduction while maintaining quality
  */
@@ -439,8 +450,7 @@ export function buildDrillPrompt(input: DrillPromptInput): string {
     "   - area: MUST be object {lengthYards: number, widthYards: number, notes?: string}.",
     "     ⚠️ CRITICAL FOR CLARITY: lengthYards and widthYards MUST be NUMBERS (not strings, not null, not undefined).",
     "     ❌ WRONG (causes clarity=2): {lengthYards: \"35\", widthYards: \"25\"} or {lengthYards: null}",
-    "     ✅ CORRECT: {lengthYards: 35, widthYards: 25} (both are numbers)",
-    "     Use realistic dimensions for " + input.spaceConstraint + " (HALF≈35x25, THIRD≈25x20, QUARTER≈20x15).",
+    areaLockLine(input),
     "   - rotation: MUST be explicit who rotates when (e.g., 'After 2 goals: attackers become defenders, defenders rest, resting players rotate in').",
     "   - restarts: MUST state exactly how ball restarts (e.g., 'Coach passes to attacking midfielder after goal or out of bounds').",
     "   - scoring: MUST have clear scoring rules (e.g., '+1 per goal in mini-goals, +2 for goal in large goal').",

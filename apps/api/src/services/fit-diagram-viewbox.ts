@@ -4,7 +4,7 @@
  * right-shift. Crop to the actual pitch rect instead. */
 
 const PITCH_FILL = "#1c5134";
-const GOAL_STUB = 4;
+const GOAL_STUB = 12;
 const TOP_PAD = 40;
 const BOTTOM_PAD = 140;
 let clipSeq = 0;
@@ -65,6 +65,16 @@ function shiftLegendIntoView(svg: string, fieldBottom: number, viewMinX: number)
   return `${svg.slice(0, firstIdx)}<g id="diagram-legend-fit" transform="translate(${dx},0)">${svg.slice(firstIdx, end)}</g>${svg.slice(end)}`;
 }
 
+function parseViewBox(svgOrBox: string): { minX: number; minY: number; width: number; height: number } | null {
+  const raw = /viewBox="([^"]+)"/.test(svgOrBox)
+    ? svgOrBox.match(/viewBox="([^"]+)"/)?.[1]
+    : svgOrBox;
+  if (!raw) return null;
+  const [minX, minY, width, height] = raw.split(/\s+/).map(Number);
+  if (![minX, minY, width, height].every(Number.isFinite)) return null;
+  return { minX, minY, width, height };
+}
+
 function applySvgOpenTag(svg: string, viewBox: string): string {
   return svg.replace(/<svg\b[^>]*>/i, (openTag) => {
     let tag = /viewBox\s*=/.test(openTag)
@@ -75,6 +85,9 @@ function applySvgOpenTag(svg: string, viewBox: string): string {
     } else {
       tag = tag.replace(/\boverflow\s*=\s*["'][^"']*["']/i, `overflow="hidden"`);
     }
+    if (!/preserveAspectRatio\s*=/i.test(tag)) {
+      tag = tag.replace(/<svg\b/i, `<svg preserveAspectRatio="xMidYMid meet"`);
+    }
     return tag;
   });
 }
@@ -83,38 +96,116 @@ function alreadyClipped(svg: string): boolean {
   return /id="diagram-fit-clip-\d+"/.test(svg) && /clip-path="url\(#diagram-fit-clip-\d+\)"/.test(svg);
 }
 
+/**
+ * A viewBox that does not start at 0,0 looks right-shifted in the card:
+ * Safari/Chrome map overflow:hidden + clip-path in viewport space, so the
+ * green pitch slides right while cones and the 80yd bar stay put. Rebase
+ * the crop window to the origin and translate the drawing instead.
+ */
+function rebaseCropToOrigin(svg: string): string {
+  const crop = parseViewBox(svg);
+  if (!crop || (crop.minX === 0 && crop.minY === 0)) return svg;
+  if (svg.includes('id="diagram-origin-fit"')) return svg;
+  const width = round(crop.width);
+  const height = round(crop.height);
+  const dx = round(-crop.minX);
+  const dy = round(-crop.minY);
+  let next = applySvgOpenTag(svg, `0 0 ${width} ${height}`);
+  next = next.replace(
+    /(<clipPath id="diagram-fit-clip-\d+"><rect )x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+"/,
+    `$1x="0" y="0" width="${width}" height="${height}"`
+  );
+  next = next.replace(
+    new RegExp(
+      `<rect x="${crop.minX}" y="${crop.minY}" width="${crop.width}" height="${crop.height}" fill="#08111f"`
+    ),
+    `<rect x="0" y="0" width="${width}" height="${height}" fill="#08111f"`
+  );
+  next = next.replace(
+    /(<g clip-path="url\(#diagram-fit-clip-\d+\)">)/,
+    `$1<g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
+  );
+  if (!next.includes('id="diagram-origin-fit"')) return next;
+  return next.replace(/<\/svg>\s*$/i, "</g></svg>");
+}
+
 /** The 800-wide canvas still paints past the cropped viewBox unless clipped.
  * That leftover pitch/goal outline is the strip to the right of the green. */
-function clipToViewBox(svg: string, viewBox: string): string {
-  if (alreadyClipped(svg)) return svg;
-  const [x, y, width, height] = viewBox.split(" ").map(Number);
-  if (![x, y, width, height].every(Number.isFinite)) return svg;
+function clipToViewBox(svg: string, sourceViewBox: string): string {
+  const crop = parseViewBox(sourceViewBox);
+  if (!crop) return svg;
+  if (alreadyClipped(svg)) return rebaseCropToOrigin(svg);
   clipSeq += 1;
   const id = `diagram-fit-clip-${clipSeq}`;
-  const clip = `<clipPath id="${id}"><rect x="${x}" y="${y}" width="${width}" height="${height}"/></clipPath>`;
-  let next = svg.replace(/<rect\b[^>]*\bx="0"[^>]*\by="0"[^>]*width="800"[^>]*height="595"/i, (tag) =>
-    tag
-      .replace(/\bx="0"/, `x="${x}"`)
-      .replace(/\by="0"/, `y="${y}"`)
-      .replace(/width="800"/, `width="${width}"`)
-      .replace(/height="595"/, `height="${height}"`)
+  const width = round(crop.width);
+  const height = round(crop.height);
+  const clip = `<clipPath id="${id}"><rect x="0" y="0" width="${width}" height="${height}"/></clipPath>`;
+  let next = applySvgOpenTag(svg, `0 0 ${width} ${height}`);
+  next = next.replace(/<rect\b[^>]*\bx="0"[^>]*\by="0"[^>]*width="800"[^>]*height="595"/i, (tag) =>
+    tag.replace(/width="800"/, `width="${width}"`).replace(/height="595"/, `height="${height}"`)
   );
   if (/<defs[\s>]/i.test(next)) {
     next = next.replace(/<defs\b[^>]*>/i, (defs) => `${defs}${clip}`);
   } else {
     next = next.replace(/<svg\b[^>]*>/i, (openTag) => `${openTag}<defs>${clip}</defs>`);
   }
-  next = next.replace(/<\/defs>/i, `</defs><g clip-path="url(#${id})">`);
-  return next.replace(/<\/svg>\s*$/i, "</g></svg>");
+  const dx = round(-crop.minX);
+  const dy = round(-crop.minY);
+  next = next.replace(
+    /<\/defs>/i,
+    `</defs><g clip-path="url(#${id})"><g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
+  );
+  return next.replace(/<\/svg>\s*$/i, "</g></g></svg>");
+}
+
+function evalSvgMath(expr: string): number | null {
+  const trimmed = expr.trim();
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (!/^[0-9+\-*/().\s]+$/.test(trimmed) || !/[+\-*/]/.test(trimmed.replace(/^-/, ""))) return null;
+  try {
+    const value = Function(`"use strict"; return (${trimmed})`)();
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSvgMathAttributes(svg: string): string {
+  return svg.replace(
+    /(\s(?:x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|width|height|dx|dy)=")([^"]+)(")/gi,
+    (full, prefix, value, suffix) => {
+      const resolved = evalSvgMath(value);
+      return resolved == null ? full : `${prefix}${round(resolved)}${suffix}`;
+    }
+  );
+}
+
+function stripOversizedZoneOverlays(svg: string): string {
+  const pitch = pitchRectFromSvg(svg);
+  const maxW = pitch ? pitch.w * 0.35 : 200;
+  const maxH = pitch ? pitch.h * 0.45 : 140;
+  let next = svg.replace(/<rect\b[^>]*fill="#10f0a0"[^>]*\/?>/gi, (tag) => {
+    const width = attr(tag, "width") ?? 0;
+    const height = attr(tag, "height") ?? 0;
+    if (/[+\-*\/]/.test(tag) || width >= maxW || height >= maxH) return "";
+    return tag;
+  });
+  // Full-pitch "Match Area" is the practice field itself. Gemini still draws
+  // a leftover pill above the touchline after the overlay rect is removed.
+  next = next.replace(
+    /<g>\s*<rect\b[^>]*\/?>\s*<text\b[^>]*>\s*Match Area\s*<\/text>\s*<\/g>/gi,
+    ""
+  );
+  return next;
 }
 
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
-  if (alreadyClipped(svg)) return svg;
-  const viewBox = diagramFittedViewBox(svg);
-  if (!viewBox) return svg;
-  const pitch = pitchRectFromSvg(svg);
-  let next = applySvgOpenTag(svg, viewBox);
+  let next = stripOversizedZoneOverlays(resolveSvgMathAttributes(svg));
+  if (alreadyClipped(next)) return rebaseCropToOrigin(next);
+  const viewBox = diagramFittedViewBox(next);
+  if (!viewBox) return next;
+  const pitch = pitchRectFromSvg(next);
   if (pitch) {
     const minX = Number(viewBox.split(" ")[0]);
     next = shiftLegendIntoView(next, pitch.y + pitch.h, minX);

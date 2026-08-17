@@ -59,6 +59,34 @@ function alreadyClipped(svg: string): boolean {
   return /id="diagram-fit-clip-\d+"/.test(svg) && /clip-path="url\(#diagram-fit-clip-\d+\)"/.test(svg);
 }
 
+function rebaseCropToOrigin(svg: string): string {
+  const match = svg.match(/viewBox="([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)"/);
+  if (!match) return svg;
+  const minX = Number(match[1]);
+  const minY = Number(match[2]);
+  const width = Number(match[3]);
+  const height = Number(match[4]);
+  if (!Number.isFinite(minX) || (minX === 0 && minY === 0)) return svg;
+  if (svg.includes('id="diagram-origin-fit"')) return svg;
+  const dx = round(-minX);
+  const dy = round(-minY);
+  let next = svg.replace(/viewBox="[\d.]+ [\d.]+ [\d.]+ [\d.]+"/, `viewBox="0 0 ${round(width)} ${round(height)}"`);
+  next = next.replace(
+    /(<clipPath id="diagram-fit-clip-\d+"><rect )x="[\d.]+" y="[\d.]+" width="[\d.]+" height="[\d.]+"/,
+    `$1x="0" y="0" width="${round(width)}" height="${round(height)}"`
+  );
+  next = next.replace(
+    new RegExp(`<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="#08111f"`),
+    `<rect x="0" y="0" width="${round(width)}" height="${round(height)}" fill="#08111f"`
+  );
+  next = next.replace(
+    /(<g clip-path="url\(#diagram-fit-clip-\d+\)">)/,
+    `$1<g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
+  );
+  if (!next.includes('id="diagram-origin-fit"')) return next;
+  return next.replace(/<\/svg>\s*$/i, "</g></svg>");
+}
+
 function clipToViewBox(svg: string, viewBox: string): string {
   if (alreadyClipped(svg)) return svg;
   const [x, y, width, height] = viewBox.split(" ").map(Number);
@@ -83,15 +111,55 @@ function clipToViewBox(svg: string, viewBox: string): string {
   return next.replace(/<\/svg>\s*$/i, "</g></svg>");
 }
 
+function evalSvgMath(expr: string): number | null {
+  const trimmed = expr.trim();
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (!/^[0-9+\-*/().\s]+$/.test(trimmed) || !/[+\-*/]/.test(trimmed.replace(/^-/, ""))) return null;
+  try {
+    const value = Function(`"use strict"; return (${trimmed})`)();
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSvgMathAttributes(svg: string): string {
+  return svg.replace(
+    /(\s(?:x|y|x1|x2|y1|y2|cx|cy|r|rx|ry|width|height|dx|dy)=")([^"]+)(")/gi,
+    (full, prefix, value, suffix) => {
+      const resolved = evalSvgMath(value);
+      return resolved == null ? full : `${prefix}${round(resolved)}${suffix}`;
+    }
+  );
+}
+
+function stripOversizedZoneOverlays(svg: string): string {
+  const pitch = pitchRectFromSvg(svg);
+  const maxW = pitch ? pitch.w * 0.35 : 200;
+  const maxH = pitch ? pitch.h * 0.45 : 140;
+  let next = svg.replace(/<rect\b[^>]*fill="#10f0a0"[^>]*\/?>/gi, (tag) => {
+    const width = attr(tag, "width") ?? 0;
+    const height = attr(tag, "height") ?? 0;
+    if (/[+\-*\/]/.test(tag) || width >= maxW || height >= maxH) return "";
+    return tag;
+  });
+  next = next.replace(
+    /<g>\s*<rect\b[^>]*\/?>\s*<text\b[^>]*>\s*Match Area\s*<\/text>\s*<\/g>/gi,
+    ""
+  );
+  return next;
+}
+
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
-  if (alreadyClipped(svg)) return svg;
-  const pitch = pitchRectFromSvg(svg);
+  let next = stripOversizedZoneOverlays(resolveSvgMathAttributes(svg));
+  if (alreadyClipped(next)) return rebaseCropToOrigin(next);
+  const pitch = pitchRectFromSvg(next);
   const viewBox = pitch
     ? `${round(Math.max(0, pitch.x - GOAL_STUB))} ${round(Math.max(0, pitch.y - TOP_PAD))} ${round(pitch.w + GOAL_STUB * 2)} ${round(pitch.h + TOP_PAD + BOTTOM_PAD)}`
     : null;
 
-  let next = svg.replace(/<svg\b[^>]*>/i, (openTag) => {
+  next = next.replace(/<svg\b[^>]*>/i, (openTag) => {
     let tag = openTag;
     if (viewBox) {
       tag = /viewBox\s*=/.test(tag)
@@ -120,7 +188,7 @@ export function fitDiagramSvgViewBox(svg: string): string {
     next = shiftLegendIntoView(next, pitch.y + pitch.h, minX);
     next = clipToViewBox(next, viewBox);
   }
-  return next;
+  return rebaseCropToOrigin(next);
 }
 
 /** Pick a stored Gemini/deterministic SVG off a drill or session-json drill. */
