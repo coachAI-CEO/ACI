@@ -20,6 +20,7 @@ import {
   scrubCoachReply,
   scrubImportOrganisation,
   wantsFrozenPlayers,
+  wantsNamedShirtCombo,
   wantsScaleToEleven,
   retargetDeliveryTowardGoal,
   nudgeRondoCorrection,
@@ -28,7 +29,7 @@ import { inferFormationsFromMessage } from '../services/formation-principles';
 import { buildBoardSessionParams, vaultRecommendationFitsPicture } from '../services/board-session-bridge';
 import { defaultMatchBoardDiagram, build11v11FormationPlayers } from '../services/web-diagram-v1';
 import { ensureDslEquipmentFromMessage, ensureRondoRosterFromMessage, inferGridIntentFromMessage, lockDslFormat, lockDslSeed, parseBoardSymbolicDsl } from '../services/board-symbolic-dsl';
-import { solveBoardLayout } from '../services/board-layout-solver';
+import { solveBoardLayout, boardInvariantErrors } from '../services/board-layout-solver';
 import type { WebDiagramV1 } from '../services/web-diagram-v1';
 
 const eleven = defaultMatchBoardDiagram('11V11');
@@ -2554,6 +2555,123 @@ describe('round-9 mixed talk defects', () => {
   test('census copy does not stutter neutrals', () => {
     const out = scrubCoachReply('WHAT I SAW\n4 ATT + 2 DEF + 2 neutrals.', rondoDiagram());
     expect(out.match(/neutrals/gi)?.length).toBe(1);
+  });
+
+  test('named-shirt combination keeps the live match shape and only adds arrows', () => {
+    const msg = 'create a combination pattern using attacking team between 9/10 and 8';
+    expect(wantsNamedShirtCombo(msg)).toBe(true);
+    expect(wantsFrozenPlayers(msg)).toBe(true);
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'formation',
+        grid: { intent: 'third_left', format: '11V11', attFormation: '4-3-3', defFormation: '4-2-3-1' },
+        entities: [],
+        equipment: [],
+        actions: [],
+        moves: [{ id: 'def-9', to: 'inside' }],
+      },
+      {
+        freeze: wantsFrozenPlayers(msg),
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: false,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '11V11',
+        current: eleven,
+        message: msg,
+      }
+    );
+    expect(locked.seed).toBe('current');
+    expect(locked.moves).toEqual([]);
+    expect(locked.grid.intent).toBe('full_pitch');
+    expect(locked.actions.some((a) => a.type === 'pass')).toBe(true);
+    expect(locked.actions.some((a) => a.type === 'run')).toBe(true);
+    const after = solveBoardLayout(locked, eleven);
+    expect(after.players.length).toBe(22);
+    for (const orig of eleven.players) {
+      const live = after.players.find((p) => p.id === orig.id);
+      expect(live).toBeTruthy();
+      expect(Math.hypot((live!.x - orig.x) || 0, (live!.y - orig.y) || 0)).toBeLessThan(8);
+    }
+    expect(after.arrows.length).toBeGreaterThan(0);
+    const outfield = after.players.filter((p) => p.number !== 1);
+    const left = outfield.filter((p) => p.y < 33).length;
+    expect(left).toBeLessThan(outfield.length / 2);
+  });
+
+  test('now involve the 7 keeps live shirts and adds a 7 arrow', () => {
+    const msg = 'now involve the 7';
+    expect(wantsFrozenPlayers(msg)).toBe(true);
+    expect(wantsFrozenPlayers('High press in their third.')).toBe(false);
+    const locked = lockDslForTurn(
+      {
+        activity: 'match_scenario',
+        seed: 'formation',
+        grid: { intent: 'third_left', format: '11V11', attFormation: '4-3-3', defFormation: '4-2-3-1' },
+        entities: [],
+        equipment: [],
+        actions: [{ type: 'pass', from_id: 'att-10', to_id: 'att-9' }],
+        moves: [{ id: 'def-4', to: 'inside' }],
+      },
+      {
+        freeze: wantsFrozenPlayers(msg),
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: false,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '11V11',
+        current: eleven,
+        message: msg,
+      }
+    );
+    expect(locked.seed).toBe('current');
+    expect(locked.moves).toEqual([]);
+    expect(locked.grid.intent).toBe('full_pitch');
+    expect(locked.actions.some((a) => a.from_id === 'att-7' || a.from_id.includes('7'))).toBe(true);
+    const after = solveBoardLayout(locked, eleven);
+    const seven = eleven.players.find((p) => p.team === 'ATT' && p.number === 7)!;
+    const live7 = after.players.find((p) => p.id === seven.id)!;
+    expect(Math.hypot(live7.x - seven.x, live7.y - seven.y)).toBeLessThan(8);
+    const attGk = after.players.find((p) => p.team === 'ATT' && p.number === 1)!;
+    expect(attGk.y).toBeGreaterThan(80);
+  });
+
+  test('9v9 live combo tagged technical_exercise still applies 18 shirts', () => {
+    const nine = defaultMatchBoardDiagram('9V9');
+    const msg = 'create a combination pattern using attacking team between 9/8 and 7';
+    const locked = lockDslForTurn(
+      {
+        activity: 'technical_exercise',
+        seed: 'blank',
+        grid: { intent: 'ssg_grid', format: '11V11' },
+        entities: [],
+        equipment: [],
+        actions: [{ type: 'pass', from_id: 'att-8', to_id: 'att-9' }],
+        moves: [],
+      },
+      {
+        freeze: wantsFrozenPlayers(msg),
+        hasImage: false,
+        importDrawEleven: false,
+        fromCurrentBoard: false,
+        keepPriorFrame: false,
+        reshape: false,
+        currentFormat: '9V9',
+        current: nine,
+        message: msg,
+      }
+    );
+    expect(locked.seed).toBe('current');
+    expect(locked.activity).toBe('match_scenario');
+    expect(locked.grid.intent).toBe('full_pitch');
+    const after = solveBoardLayout(locked, nine);
+    expect(after.players.length).toBe(18);
+    const inv = boardInvariantErrors(after, locked);
+    expect(inv.filter((e) => e.startsWith('upsample'))).toEqual([]);
+    expect(after.arrows.length).toBeGreaterThan(0);
   });
 });
 

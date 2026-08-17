@@ -568,6 +568,19 @@ function resolvePitchFormat(dsl: BoardSymbolicDsl, current?: WebDiagramV1): '7V7
 }
 
 function shirtCap(dsl: BoardSymbolicDsl): number | undefined {
+  // Freeze / seed=current on a match grid must not use the function cap
+  // (Gemini often tags a 9v9 combo as technical_exercise → 18>16 abort).
+  if (
+    dsl.seed === 'current' &&
+    dsl.grid.intent !== 'rondo' &&
+    dsl.grid.intent !== 'ssg_grid' &&
+    dsl.activity !== 'rondo'
+  ) {
+    const format = resolvePitchFormat(dsl);
+    if (format === '7V7') return 16;
+    if (format === '9V9') return 20;
+    return undefined;
+  }
   if (dsl.activity === 'rondo') return 12;
   if (dsl.activity === 'technical_exercise') return 16;
   if (dsl.grid.intent === 'ssg_grid') return 18;

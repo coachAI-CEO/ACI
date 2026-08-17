@@ -937,11 +937,13 @@ export function lockDslForTurn(
     const liveIntent = String(opts.current?.areas?.[0]?.label || '');
     const pinned = (BOARD_GRID_INTENTS as readonly string[]).includes(liveIntent)
       ? (liveIntent as BoardSymbolicDsl['grid']['intent'])
-      : next.grid.intent;
+      : 'full_pitch';
+    const liveMatch = Boolean(opts.current && !looksLikeFunctionPractice(opts.current));
     next = {
       ...next,
       seed: 'current',
       moves: [],
+      activity: liveMatch ? 'match_scenario' : next.activity,
       grid: { ...next.grid, intent: pinned },
     };
   }
@@ -1086,7 +1088,13 @@ export function ensureComboActionsFromMessage(
   if (!message) return dsl;
   const wide = message.match(/\b(?:the )?(\d+)\s+plays wide to(?: the)? (\d+)\b/i);
   const delivers = message.match(/\b(?:the )?(\d+)\s+delivers\b/i);
-  if (!wide && !delivers) return dsl;
+  const between =
+    message.match(/\bbetween\s+#?(\d+)\s*[\/,]\s*#?(\d+)\s+and\s+#?(\d+)\b/i) ||
+    message.match(/\b(?:#|the )?(\d+)\s*[\/,]\s*(?:#|the )?(\d+)\s+and\s+(?:#|the )?(\d+)\b/i);
+  const involve = message.match(
+    /\b(?:now )?(?:involve|include|add|bring in)(?: the)?(?: our)? (?:att(?:acking)? )?(?:the )?#?(\d+)\b/i
+  );
+  if (!wide && !delivers && !between && !involve) return dsl;
   const preferDef =
     liveLooksLikeDefendingFunction(current) ||
     (current?.areas || []).some((a) => /ssg/i.test(String(a.label || '')));
@@ -1105,6 +1113,35 @@ export function ensureComboActionsFromMessage(
     const from_id = shirtIdForCombo(current, n, preferDef);
     if (!actions.some((a) => (a.type === 'run' || a.type === 'pass') && a.from_id === from_id)) {
       actions = [...actions, { type: 'run' as const, from_id, to_id: 'att-1' }];
+    }
+  }
+  if (between) {
+    const a = Number(between[1]);
+    const b = Number(between[2]);
+    const c = Number(between[3]);
+    const from_id = shirtIdForCombo(current, a, preferDef);
+    const to_id = shirtIdForCombo(current, b, preferDef);
+    const run_id = shirtIdForCombo(current, c, preferDef);
+    if (!actions.some((x) => x.type === 'pass')) {
+      actions = [...actions, { type: 'pass' as const, from_id, to_id }];
+    }
+    if (!actions.some((x) => x.type === 'run')) {
+      actions = [...actions, { type: 'run' as const, from_id: run_id, to_id }];
+    }
+  }
+  if (involve) {
+    const n = Number(involve[1]);
+    const from_id = shirtIdForCombo(current, n, preferDef);
+    const targets = [10, 8, 9, 6, 7, 11].filter((t) => t !== n);
+    const toN = targets.find((t) =>
+      (current?.players || []).some((p) => p.team === (preferDef ? 'DEF' : 'ATT') && p.number === t)
+    );
+    const to_id = toN != null ? shirtIdForCombo(current, toN, preferDef) : 'att-9';
+    if (!actions.some((x) => x.type === 'pass' && x.from_id === from_id)) {
+      actions = [...actions, { type: 'pass' as const, from_id, to_id }];
+    }
+    if (!actions.some((x) => x.type === 'run' && x.from_id === from_id)) {
+      actions = [...actions, { type: 'run' as const, from_id, to_id }];
     }
   }
   return { ...dsl, actions };
@@ -1467,8 +1504,11 @@ function unstackDiagramPlayers(diagram: WebDiagramV1): WebDiagramV1 {
 }
 
 function wantsCurrentBoardSeed(message: string): boolean {
-  return /\b(from this board|from there|from here|looking at the board|keep these players|keep (?:the )?(?:players?|shirts?)|keep us|don['\u2019]?t flip|do not flip|don['\u2019]?t restack|do not restack)\b/i.test(
-    message
+  return (
+    wantsKeepLiveShirts(message) ||
+    /\b(from this board|from there|from here|looking at the board|keep these players|keep (?:the )?(?:players?|shirts?)|keep us|don['\u2019]?t flip|do not flip|don['\u2019]?t restack|do not restack)\b/i.test(
+      message
+    )
   );
 }
 
@@ -1483,9 +1523,49 @@ function wantsSequenceFromMessage(message: string): boolean {
   );
 }
 
+/** Coach did not ask for a new picture — keep live shirts, arrows only. */
+export function wantsKeepLiveShirts(message: string): boolean {
+  const m = String(message || '');
+  if (wantsKeepPriorFrame(m) || wantsScaleToEleven(m) || isPlayOutRequest(m)) return false;
+  if (inferGridIntentFromMessage(m)) return false;
+  if (
+    /\b(forget the|reshape|restack|compact(?:ness)?|switch to|change (?:to|the) (?:shape|formation))\b/i.test(
+      m
+    )
+  ) {
+    return false;
+  }
+  const formations = inferFormationsFromMessage(m);
+  if (formations.att || formations.def) return false;
+  return true;
+}
+
+/** Named-shirt combo/pattern on the live picture — arrows only, do not restack. */
+export function wantsNamedShirtCombo(message: string): boolean {
+  const m = String(message || '');
+  if (
+    /\b(rondo|ssg|high press|mid[- ]?block|play(?:ing)? out|forget the|scale.{0,40}11\s*v\s*11)\b/i.test(
+      m
+    )
+  ) {
+    return false;
+  }
+  if (inferGridIntentFromMessage(m)) return false;
+  const combo =
+    /\b(combination|combo|wall[- ]?pass|third[- ]man|give[- ]and[- ]go|one[- ]two|triangle|pattern)\b/i.test(
+      m
+    );
+  if (!combo) return false;
+  return (
+    /\bbetween\s+#?\d+/i.test(m) ||
+    /\b(?:#|the )?[1-9]\d?(?:\s*\/\s*|\s*,\s*|\s+and\s+)(?:#|the )?[1-9]\d?/i.test(m)
+  );
+}
+
 /** Coach forbade moving shirts — arrows/captions only. */
 export function wantsFrozenPlayers(message: string): boolean {
   const m = String(message || '');
+  if (wantsKeepLiveShirts(m) || wantsNamedShirtCombo(m)) return true;
   if (
     /\b(without moving|don['\u2019]?t move|do not move|nobody else moves|don['\u2019]?t restack|do not restack|don['\u2019]?t flip|do not flip)\b/i.test(
       m
@@ -4267,6 +4347,7 @@ function buildPrompt(input: {
           '- grid.intent: full_pitch | half_att | half_def | third_left | third_middle | third_right | box_att | box_def | rondo | ssg_grid',
           '- 7v7 formations: 2-3-1, 3-2-1. 9v9: 3-2-3, 2-3-2-1, 3-3-2. 11v11: 4-3-3, 4-2-3-1, 4-4-2, 3-5-2.',
           '- seed=current when the board already has shirts and this is a continuation / “from this” / freeze (empty moves).',
+          '- Combination / pattern between named shirts (#9/#10/#8): seed=current, grid.intent=full_pitch, empty moves[]. Only pass/run actions. Do not pull either team into a third.',
           '- seed=formation for a new 11v11 / Q3 B. seed=blank for rondo, SSG, function, import-as-written.',
           '- Do not pad a rondo/function to 22 shirts. activity rondo|technical_exercise + seed blank + entities only.',
           '- third_left = their defensive / our attacking third. third_right = our defensive third.',
