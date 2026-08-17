@@ -7,7 +7,7 @@ import { renderDeterministicDiagramSVG } from "../../services/deterministic-draw
 import { applyGoalOverlay } from "../../services/goal-overlay";
 import { fitDiagramSvgViewBox } from "../../services/fit-diagram-viewbox";
 import { computeTokenRadius, matchupWithKeepers, scaleFactorFromTokenRadius } from "../../data/field-dimensions";
-import { fixturesForScene } from "./fixtures";
+import { fixturesForScene, type FirstPassFixture } from "./fixtures";
 import { PROMPT_PACK_NAMES, type PromptPackName } from "./prompt-packs";
 import { renderSvgPreview } from "./preview";
 import { frozenConfidence, judgeDiagramVisual, sceneConfidence, type VisualQaResult } from "./visual-qa";
