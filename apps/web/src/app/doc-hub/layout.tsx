@@ -10,6 +10,7 @@ import {
   Compass,
   ChevronRight,
   Shield,
+  Trophy,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
 
@@ -49,6 +50,7 @@ const NAV_BASE: NavItem[] = [
     items: [
       { label: "Attention", href: "/doc-hub/attention", icon: AlertTriangle },
       { label: "Coaches", href: "/doc-hub/coaches", icon: Users },
+      { label: "Teams", href: "/doc-hub/teams", icon: Trophy },
       { label: "Calendar", href: "/doc-hub/calendar", icon: CalendarDays },
     ],
   },
@@ -58,6 +60,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub": ["DOC Console", "Overview"],
   "/doc-hub/attention": ["DOC Console", "Attention"],
   "/doc-hub/coaches": ["DOC Console", "Coaches"],
+  "/doc-hub/teams": ["DOC Console", "Teams"],
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model"],
 };

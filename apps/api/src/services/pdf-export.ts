@@ -1922,3 +1922,110 @@ export async function generateWeeklySummaryPdf(summary: any): Promise<Buffer> {
     doc.end();
   });
 }
+
+export async function generateGameDayPdf(docData: {
+  teamName: string;
+  ageGroup: string;
+  gameModelLabel: string;
+  matchDate: Date;
+  opponent?: string | null;
+  venue?: string | null;
+  competition?: string | null;
+  kickoffTime?: string | null;
+  formation?: string | null;
+  keyFocus?: string | null;
+  attackingNotes?: string | null;
+  defendingNotes?: string | null;
+  setPieces?: string | null;
+}): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 45, size: "LETTER" });
+    const chunks: Buffer[] = [];
+    const margin = 45;
+    const pageW = () => doc.page.width - margin * 2;
+    const opponent = docData.opponent?.trim() || "Opponent";
+    const docTitle = `Game Day — vs ${opponent}`;
+    let pageNum = 1;
+    let drawingDecor = false;
+
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("error", reject);
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("pageAdded", () => {
+      if (drawingDecor) return;
+      pageNum++;
+      drawingDecor = true;
+      drawPageDecor(doc, docTitle, pageNum);
+      drawingDecor = false;
+      doc.x = margin;
+      doc.y = margin;
+    });
+
+    drawPageDecor(doc, docTitle, pageNum);
+
+    const matchLabel = docData.matchDate.toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    doc.fillColor(BRAND.navy).rect(0, 0, doc.page.width, 96).fill();
+    doc.fillColor(BRAND.blue).rect(0, 92, doc.page.width, 4).fill();
+    doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
+      .text("TACTICALEDGE  ·  GAME DAY", margin, 16, { lineBreak: false });
+    doc.fontSize(20).fillColor(BRAND.white).font("Helvetica-Bold")
+      .text(docTitle, margin, 30, { width: pageW() });
+    doc.fontSize(9).fillColor("#94a3b8").font("Helvetica")
+      .text(
+        `${docData.teamName}  ·  ${docData.ageGroup}  ·  ${docData.gameModelLabel}`,
+        margin,
+        62,
+        { width: pageW(), lineBreak: false }
+      );
+    doc.y = 118;
+    doc.x = margin;
+
+    const facts = [
+      { label: "Date", value: matchLabel },
+      { label: "Kickoff", value: docData.kickoffTime || "—" },
+      { label: "Venue", value: docData.venue || "—" },
+      { label: "Competition", value: docData.competition || "—" },
+      { label: "Formation", value: docData.formation || "—" },
+    ];
+    facts.forEach((fact) => {
+      doc.fontSize(8).fillColor(BRAND.muted).font("Helvetica")
+        .text(fact.label.toUpperCase(), margin, doc.y, { lineBreak: false });
+      doc.fontSize(11).fillColor(BRAND.navy).font("Helvetica-Bold")
+        .text(fact.value, margin + 110, doc.y - 1, { width: pageW() - 110 });
+      doc.moveDown(0.55);
+    });
+    doc.moveDown(0.6);
+
+    if (docData.keyFocus) {
+      drawSectionHeader(doc, "Match focus", margin);
+      doc.fontSize(10).fillColor(BRAND.black).font("Helvetica")
+        .text(docData.keyFocus, margin, doc.y, { width: pageW(), lineGap: 2 });
+      doc.moveDown(1);
+    }
+    if (docData.attackingNotes) {
+      drawSectionHeader(doc, "In possession", margin);
+      doc.fontSize(10).fillColor(BRAND.black).font("Helvetica")
+        .text(docData.attackingNotes, margin, doc.y, { width: pageW(), lineGap: 2 });
+      doc.moveDown(1);
+    }
+    if (docData.defendingNotes) {
+      drawSectionHeader(doc, "Out of possession", margin);
+      doc.fontSize(10).fillColor(BRAND.black).font("Helvetica")
+        .text(docData.defendingNotes, margin, doc.y, { width: pageW(), lineGap: 2 });
+      doc.moveDown(1);
+    }
+    if (docData.setPieces) {
+      drawSectionHeader(doc, "Set pieces", margin);
+      doc.fontSize(10).fillColor(BRAND.black).font("Helvetica")
+        .text(docData.setPieces, margin, doc.y, { width: pageW(), lineGap: 2 });
+    }
+
+    doc.end();
+  });
+}

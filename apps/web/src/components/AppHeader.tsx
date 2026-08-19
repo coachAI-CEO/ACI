@@ -19,6 +19,7 @@ type SidebarItem = {
 };
 
 const navItems: SidebarItem[] = [
+  { href: "/coach-center", label: "Coach Center", icon: CoachCenterIcon },
   { href: "/demo/session", label: "Session Builder", icon: SessionIcon },
   { href: "/vault", label: "Vault", icon: VaultIcon },
   { href: "/vault/favorites", label: "Favorites", icon: StarIcon },
@@ -44,7 +45,8 @@ export default function AppHeader() {
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/verify-email") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/doc-hub");
+    pathname.startsWith("/doc-hub") ||
+    pathname.startsWith("/coach-center");
   const [collapsed, setCollapsed] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -366,6 +368,16 @@ function VideoAnalysisIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="3.5" y="5" width="17" height="14" rx="2.5" />
       <path d="M10 9.5l5 2.5-5 2.5v-5z" />
+    </svg>
+  );
+}
+
+function CoachCenterIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3" />
     </svg>
   );
 }

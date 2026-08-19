@@ -1,5 +1,6 @@
 import { ClubRole } from '@prisma/client';
 import { prisma } from '../prisma';
+import { TEAM_ASSIGNABLE_ROLES } from './club-memberships';
 
 export type CoachUsageStatus = 'heavy' | 'active' | 'low' | 'inactive';
 
@@ -24,10 +25,13 @@ function displayName(user: { name: string | null; email: string | null }): strin
 }
 
 function roleLabelFor(row: {
+  clubRole: ClubRole;
   sectionName: string | null;
   teamAgeGroups: string[];
   coachLevel: string | null;
 }): string {
+  if (row.clubRole === ClubRole.DOC) return 'DOC';
+  if (row.clubRole === ClubRole.SECTION_DIRECTOR) return row.sectionName || 'Section Dir';
   if (row.sectionName) return row.sectionName;
   if (row.teamAgeGroups.length > 0) return row.teamAgeGroups[0];
   if (row.coachLevel) return row.coachLevel.replace(/_/g, ' ');
@@ -132,10 +136,15 @@ export async function listClubCoaches(input: {
   const memberships = await prisma.clubMembership.findMany({
     where: {
       clubId: input.clubId,
-      role: ClubRole.COACH,
-      ...(input.sectionId ? { sectionId: input.sectionId } : {}),
+      role: { in: TEAM_ASSIGNABLE_ROLES },
+      ...(input.sectionId
+        ? {
+            OR: [{ sectionId: input.sectionId }, { role: ClubRole.DOC }],
+          }
+        : {}),
     },
     select: {
+      role: true,
       sectionId: true,
       section: { select: { id: true, name: true } },
       user: {
@@ -160,7 +169,12 @@ export async function listClubCoaches(input: {
       userId: m.user.id,
       name: displayName(m.user),
       email: m.user.email,
-      roleLabel: roleLabelFor({ sectionName, teamAgeGroups, coachLevel }),
+      roleLabel: roleLabelFor({
+        clubRole: m.role,
+        sectionName,
+        teamAgeGroups,
+        coachLevel,
+      }),
       sectionId: m.sectionId,
       sectionName,
       teamAgeGroups,

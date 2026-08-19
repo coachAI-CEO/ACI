@@ -571,6 +571,8 @@ export default function AdminAccessPage() {
         "/admin/access-permissions"
       );
       setPermissions(data.permissions ?? []);
+    } catch (err) {
+      console.error("[admin/access] failed to load permissions", err);
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
   Building2,
   Plus,
@@ -18,6 +19,7 @@ import {
   AlertTriangle,
   X,
   Save,
+  LayoutGrid,
 } from "lucide-react";
 import { adminFetch, API_BASE, getAdminHeaders } from "../_lib/api";
 
@@ -757,6 +759,25 @@ export default function AdminClubsPage() {
           <Plus className="h-4 w-4" />
           New Club
         </button>
+      </div>
+
+      {/* Access rules callout */}
+      <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4 text-sm text-slate-300">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 font-semibold">
+            <LayoutGrid className="h-4 w-4 text-sky-400" />
+            Assign teams to coaches
+          </div>
+          <Link
+            href="/admin/teams"
+            className="shrink-0 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-500"
+          >
+            Open Teams
+          </Link>
+        </div>
+        <p className="mt-1.5 text-xs text-slate-400">
+          Club membership is not a team. After a coach is in the club, assign their side in Teams so it shows up in Coach Center.
+        </p>
       </div>
 
       {/* Access rules callout */}
