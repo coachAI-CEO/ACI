@@ -30,7 +30,7 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 export function isPlayOutRequest(message: string): boolean {
-  return /\b(play(?:ing)? out(?: the back)?|build(?:ing)? out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+  return /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
     message
   );
 }
@@ -47,6 +47,9 @@ export function inferDefBlockHeight(message: string): DefBlockHeight {
 
 export function inferChannelX(message: string): number {
   const m = String(message || '').toLowerCase();
+  if (/\b(central(?:ly)?|centre|center|through the middle|down the middle)\b/.test(m)) {
+    return 50;
+  }
   if (/\b(left)\s+(channel|side|wing|flank|half)\b/.test(m) || /\bon the left\b/.test(m)) {
     return 28;
   }

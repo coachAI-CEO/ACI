@@ -81,6 +81,8 @@ export interface DiagramArrow {
   control?: { x: number; y: number };
   /** Freehand polyline in pitch coords; from/to remain endpoints. */
   path?: Array<{ x: number; y: number }>;
+  /** 1-based pass/run order for combination filmstrips. */
+  order?: number;
 }
 
 export interface DiagramArea {

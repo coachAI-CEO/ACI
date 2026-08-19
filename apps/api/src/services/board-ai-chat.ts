@@ -38,6 +38,11 @@ import {
 } from './formation-principles';
 import { summarizeBoardCardMeta } from './board-card-meta';
 import {
+  applyAttackingComboComposer,
+  buildComboGrammarGuidance,
+  shouldComposeAttackingCombo,
+} from './board-combo-composer';
+import {
   isSessionImproveRequest,
   runBoardSessionBridge,
   type BoardSessionParams,
@@ -148,7 +153,7 @@ function buildBoardLanguageGuidance(audience: BoardAudience): string {
     lines.push(
       'USSF_B_PLUS vocabulary: fluent systemic language — rest defence, cover shadow, phase interactions (build-up shaping the press).',
       'If a B+ caption could be mistaken for C, add a layered concept.',
-      'Diagram density: richest — about 7–10 arrows, 3–5 captions, 2–3 zones.'
+      'Diagram density: richest — about 7–10 arrows, 3–5 captions, 2–3 zones — EXCEPT a named passing combination, which uses the combo filmstrip (one path, numbered passes, curved arrival) instead of dumping extra press/cover arrows.'
     );
   }
 
@@ -221,6 +226,7 @@ function compactDiagram(diagram: WebDiagramV1): WebDiagramV1 {
       ...(typeof a.arrowhead === 'boolean' ? { arrowhead: a.arrowhead } : {}),
       ...(a.control ? { control: a.control } : {}),
       ...(a.path && a.path.length >= 2 ? { path: a.path.slice(0, 40) } : {}),
+      ...(typeof a.order === 'number' ? { order: a.order } : {}),
     })),
     areas: d.areas || [],
     labels: d.labels || [],
@@ -500,16 +506,18 @@ export function repairBoardSequenceCoherence(
         focusPoint
       );
 
-      const denser = enrichLaterFrameDensity({
-        idx,
-        players,
-        arrows,
-        areas,
-        labels,
-        balls,
-        base,
-        focusPoint,
-      });
+      const denser = shouldComposeAttackingCombo(message)
+        ? { players, arrows, areas, labels, balls }
+        : enrichLaterFrameDensity({
+            idx,
+            players,
+            arrows,
+            areas,
+            labels,
+            balls,
+            base,
+            focusPoint,
+          });
       players = denser.players;
       arrows = denser.arrows;
       areas = denser.areas;
@@ -1676,6 +1684,7 @@ export function isFreezeOnlyRequest(message: string): boolean {
 /** Named-shirt combo/pattern on the live picture — arrows only, do not restack. */
 export function wantsNamedShirtCombo(message: string): boolean {
   const m = String(message || '');
+  if (shouldComposeAttackingCombo(m)) return true;
   if (
     /\b(rondo|ssg|high press|mid[- ]?block|play(?:ing)? out|forget the|scale.{0,40}11\s*v\s*11)\b/i.test(
       m
@@ -4418,8 +4427,10 @@ function buildPrompt(input: {
           '  - from/to MUST be objects: {"playerId":"<exact id from PLAYER INDEX>"} OR {"x":n,"y":n}',
           '  - NEVER leave from/to empty. NEVER use role names alone as playerId unless that exact id exists.',
           '  - type: pass|run|press|cover|transition; style: solid|dashed|dotted; weight: normal|bold',
-          '  - For a switch of play / pass, use type "pass", style "solid", arrowhead true.',
-          '  - Example: {"from":{"playerId":"att-3"},"to":{"playerId":"att-7"},"type":"pass","style":"solid","weight":"normal","arrowhead":true}',
+          '  - Optional order (1,2,3…) on the on-ball path so the filmstrip can badge the sequence.',
+          '  - Runs that arrive into space: to is a free {x,y} plus control {x,y} for a curve. Do not run onto another shirt unless that is a bounce.',
+          '  - For a switch of play / pass, use type "pass", style "solid", weight "bold", arrowhead true.',
+          '  - Example: {"from":{"playerId":"att-3"},"to":{"playerId":"att-7"},"type":"pass","style":"solid","weight":"bold","arrowhead":true,"order":1}',
           '- Prefer linking arrows to playerIds from the PLAYER INDEX below (or ids you create in players).',
           '- areas: optional zones with shape rect|circle|spotlight.',
           '- labels: explanatory coaching captions that say WHAT the drawing shows (≤200 chars, finish the sentence).',
@@ -4478,7 +4489,8 @@ function buildPrompt(input: {
           '- Move the ball + highlight with the phase on teaching frames. Structure players shift gradually (≤ ~18 units from Frame 1) unless they are in the action.',
           '- Frames 2–N need MORE detail than Frame 1: involve 6–10 players in the picture (CBs, #6/#8, fullbacks/wing-backs, wingers, pressers).',
           '- Frame 2 is the first teaching beat — NEVER a thinner copy of Frame 1.',
-          '  Density target: 6–8 arrows (pass + support runs + DEF press/cover), 2 captions, 1–2 zones.',
+          '  Density target (NOT for a named passing sequence): 6–8 arrows (pass + support runs + DEF press/cover), 2 captions, 1–2 zones.',
+          '  Named passing combination: follow NAMED PASSING COMBINATION — one path, freeze shirts, code filmstrips the beats.',
           '  Involve shirts from BOTH teams: e.g. ATT #4/#6/#8/#2/#3/#7 plus DEF #9/#10/#8/#6 in/around the pocket.',
           '  Captions must name the teaching action (pocket receive, third-man, press jump) — do not reuse a generic Frame 1 sentence.',
           '- Never stack players — including opposite colours (ATT vs DEF). Shirt centers must stay ≥8 units apart so no shirt hides another.',
@@ -4530,6 +4542,7 @@ function buildPrompt(input: {
           '- 7v7 formations: 2-3-1, 3-2-1. 9v9: 3-2-3, 2-3-2-1, 3-3-2. 11v11: 4-3-3, 4-2-3-1, 4-4-2, 3-5-2.',
           '- seed=current when the board already has shirts and this is a continuation / “from this” / freeze (empty moves).',
           '- Combination / pattern between named shirts (#9/#10/#8): seed=current, grid.intent=full_pitch, empty moves[]. Only pass/run among those shirts. Do not add #6 or a fullback overlap the coach did not name. Do not pull either team into a third.',
+          '- Named passing sequence (6 to 8/10 to 9 to 11): same seed=current + empty moves[]. actions[] in path order with optional order 1,2,3. Code builds the filmstrip — do not restack or invent extra shirts.',
           '- seed=formation for a new 11v11 / Q3 B. seed=blank for rondo, SSG, function, import-as-written.',
           '- Do not pad a rondo/function to 22 shirts. activity rondo|technical_exercise + seed blank + entities only.',
           '- third_left = their defensive / our attacking third. third_right = our defensive third.',
@@ -4746,7 +4759,12 @@ export async function runBoardAiChat(input: {
     clubId: input.clubId,
   });
   const playModelGuidance = buildBoardPlayModelGuidance(playModel);
-  const languageGuidance = buildBoardLanguageGuidance(audience);
+  const languageGuidance = [
+    buildBoardLanguageGuidance(audience),
+    buildComboGrammarGuidance(message, audience.coachLevel),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   if (improveAsk && !hasImage) {
     const bridge = await runBoardSessionBridge({
@@ -4995,45 +5013,63 @@ export async function runBoardAiChat(input: {
 
   if (symbolicDsl) {
     const rawDsl = (parsed as { dsl?: unknown }).dsl;
+    const comboOnLive = shouldComposeAttackingCombo(drawMessage)
+      ? applyAttackingComboComposer(input.diagram, drawMessage, audience.coachLevel)
+      : null;
     if (rawDsl == null) {
-      console.warn('[board-ai] dsl missing; coordinate diagram ignored');
-      return {
-        ...resultBase,
-        reply: `${reply}\n\n(I need a symbolic plan, not coordinates — board left as-is.)`,
-        applied: false,
-        diagram: input.diagram,
-      };
-    }
-    const parsedDsl = parseBoardSymbolicDsl(rawDsl);
-    if (!parsedDsl.ok) {
-      console.warn('[board-ai] dsl rejected', parsedDsl.error);
-      return {
-        ...resultBase,
-        reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
-        applied: false,
-        diagram: input.diagram,
-      };
-    }
-    lockedDsl = lockDslForTurn(parsedDsl.dsl, {
-      freeze: freezePlayers,
-      hasImage,
-      importDrawEleven: importAnswers?.draw === 'eleven' || wantsScaleToEleven(drawMessage),
-      fromCurrentBoard: wantsCurrentBoardSeed(drawMessage),
-      keepPriorFrame: wantsKeepPriorFrame(drawMessage),
-      reshape: Boolean(lockedReading?.reshape),
-      currentFormat: input.diagram.pitch?.format,
-      current: input.diagram,
-      message: drawMessage,
-      rosterHint: history.map((h) => h.content).join('\n'),
-    });
-    validatedDiagram = applyLockedDsl(lockedDsl, input.diagram, drawMessage);
-    if (!validatedDiagram) {
-      return {
-        ...resultBase,
-        reply: `${reply}\n\n(I planned the picture in symbols but the solved board was invalid — board left as-is.)`,
-        applied: false,
-        diagram: input.diagram,
-      };
+      if (comboOnLive) {
+        validatedDiagram = input.diagram;
+      } else {
+        console.warn('[board-ai] dsl missing; coordinate diagram ignored');
+        return {
+          ...resultBase,
+          reply: `${reply}\n\n(I need a symbolic plan, not coordinates — board left as-is.)`,
+          applied: false,
+          diagram: input.diagram,
+        };
+      }
+    } else {
+      const parsedDsl = parseBoardSymbolicDsl(rawDsl);
+      if (!parsedDsl.ok) {
+        if (comboOnLive) {
+          validatedDiagram = input.diagram;
+        } else {
+          console.warn('[board-ai] dsl rejected', parsedDsl.error);
+          return {
+            ...resultBase,
+            reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
+            applied: false,
+            diagram: input.diagram,
+          };
+        }
+      } else {
+        lockedDsl = lockDslForTurn(parsedDsl.dsl, {
+          freeze: freezePlayers,
+          hasImage,
+          importDrawEleven: importAnswers?.draw === 'eleven' || wantsScaleToEleven(drawMessage),
+          fromCurrentBoard: wantsCurrentBoardSeed(drawMessage),
+          keepPriorFrame: wantsKeepPriorFrame(drawMessage),
+          reshape: Boolean(lockedReading?.reshape),
+          currentFormat: input.diagram.pitch?.format,
+          current: input.diagram,
+          message: drawMessage,
+          rosterHint: history.map((h) => h.content).join('\n'),
+        });
+        validatedDiagram = applyLockedDsl(lockedDsl, input.diagram, drawMessage);
+        if (!validatedDiagram) {
+          if (comboOnLive) {
+            validatedDiagram = input.diagram;
+            lockedDsl = null;
+          } else {
+            return {
+              ...resultBase,
+              reply: `${reply}\n\n(I planned the picture in symbols but the solved board was invalid — board left as-is.)`,
+              applied: false,
+              diagram: input.diagram,
+            };
+          }
+        }
+      }
     }
   } else {
     if (!parsed.diagram) {
@@ -5073,14 +5109,16 @@ export async function runBoardAiChat(input: {
     ? validatedDiagram
     : hasImage
       ? repairBoardDiagramWithSequence(validatedDiagram, drawMessage)
-      : ensureSequenceStartsFromOriginal(
-          repairBoardDiagramWithSequence(validatedDiagram, drawMessage),
-          input.diagram,
-          drawMessage
-        );
+      : isPlayOutRequest(drawMessage)
+        ? validatedDiagram
+        : ensureSequenceStartsFromOriginal(
+            repairBoardDiagramWithSequence(validatedDiagram, drawMessage),
+            input.diagram,
+            drawMessage
+          );
   if (symbolicDsl) {
     repaired = repairBoardDiagramLabels(repairBoardDiagramArrows(repaired));
-    if (!hasImage && (input.diagram.players || []).length) {
+    if (!hasImage && (input.diagram.players || []).length && !isPlayOutRequest(drawMessage)) {
       repaired = ensureSequenceStartsFromOriginal(repaired, input.diagram, drawMessage);
     }
   }
@@ -5097,14 +5135,34 @@ export async function runBoardAiChat(input: {
     const repairedN = repaired.players?.length || 0;
     const currentN = input.diagram.players?.length || 0;
     if (overlap || (upsample && repairedN >= currentN)) {
-      console.warn('[board-ai] invariant failed', inv.join('; '));
-      return {
-        ...resultBase,
-        reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
-        applied: false,
-        diagram: input.diagram,
-      };
+      const comboRescue = applyAttackingComboComposer(
+        input.diagram,
+        drawMessage,
+        audience.coachLevel
+      );
+      if (comboRescue) {
+        repaired = comboRescue;
+        lockedDsl = null;
+      } else {
+        console.warn('[board-ai] invariant failed', inv.join('; '));
+        return {
+          ...resultBase,
+          reply: `${reply}\n\n(I planned the picture in symbols but placement failed — board left as-is.)`,
+          applied: false,
+          diagram: input.diagram,
+        };
+      }
     }
+  }
+  const composedCombo = applyAttackingComboComposer(
+    input.diagram,
+    drawMessage,
+    audience.coachLevel
+  );
+  if (composedCombo) {
+    repaired = composedCombo;
+  } else if (!hasImage && isPlayOutRequest(drawMessage)) {
+    repaired = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
   }
   const frameArrowCount = repaired.sequence?.frames?.length
     ? repaired.sequence.frames.reduce((n, f) => n + (f.arrows?.length || 0), 0)

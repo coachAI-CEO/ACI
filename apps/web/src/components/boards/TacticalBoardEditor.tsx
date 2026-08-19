@@ -119,6 +119,12 @@ type Props = {
   onNewBoard?: () => void;
   creatingBoard?: boolean;
   statusMessage?: string | null;
+  onEmphasisChange?: (next: {
+    phase: BoardSetupPhaseOrNone;
+    zone: BoardSetupZoneOrNone;
+    channel: BoardSetupChannelOrNone;
+    attFormation: FormationId;
+  }) => void;
 };
 
 type Selection =
@@ -482,6 +488,7 @@ export default function TacticalBoardEditor({
   onNewBoard,
   creatingBoard,
   statusMessage,
+  onEmphasisChange,
 }: Props) {
   const [diagram, setDiagram] = React.useState(() => ensureArrays(cloneDiagram(diagramProp)));
   const diagramRef = React.useRef(diagram);
@@ -500,6 +507,15 @@ export default function TacticalBoardEditor({
   const [setupZone, setSetupZone] = React.useState<BoardSetupZoneOrNone>("");
   const [setupChannel, setSetupChannel] = React.useState<BoardSetupChannelOrNone>("");
   const [showAtt, setShowAtt] = React.useState(true);
+
+  React.useEffect(() => {
+    onEmphasisChange?.({
+      phase: setupPhase,
+      zone: setupZone,
+      channel: setupChannel,
+      attFormation: homeFormation,
+    });
+  }, [setupPhase, setupZone, setupChannel, homeFormation, onEmphasisChange]);
   const [showDef, setShowDef] = React.useState(true);
   const setupAppliedRef = React.useRef(false);
   const unstackPassRef = React.useRef(0);
@@ -2344,6 +2360,29 @@ export default function TacticalBoardEditor({
                   markerEnd={marker}
                   className="pointer-events-none"
                 />
+                {typeof a.order === "number" ? (
+                  <g className="pointer-events-none">
+                    <circle
+                      cx={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      cy={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      r={8}
+                      fill="#0f172a"
+                      stroke={isSelected ? "#fde68a" : "#fbbf24"}
+                      strokeWidth={1.25}
+                    />
+                    <text
+                      x={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      y={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#fde68a"
+                      fontSize={10}
+                      fontWeight={700}
+                    >
+                      {a.order}
+                    </text>
+                  </g>
+                ) : null}
                 {isSelected && canEdit && tool === "select" ? (
                   <>
                     <circle
