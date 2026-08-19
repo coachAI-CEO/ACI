@@ -6,6 +6,7 @@ import { drillDiagramVisible } from "../services/diagram-svg-access";
 import { generateDrillDiagramSvg, persistDrillDiagramSvg, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
 import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
+import { isWarmupPicture, svgPictureIsOvercrowded } from "../data/field-dimensions";
 
 export const diagramSvgRouter = Router();
 
@@ -19,6 +20,22 @@ const PLACEHOLDER_SVG = `<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/200
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
+function warmupSvgStillHasMatchKit(drillType: string | null | undefined, svg: string | null | undefined): boolean {
+  if (!isWarmupPicture(drillType) || !svg) return false;
+  const gkLabels = (svg.match(/>GK</g) || []).length;
+  return gkLabels >= 1 || /id="api-goal-overlay"/.test(svg);
+}
+
+/** Numbers on shirts were a bad assign (GK as 2, duplicate 10s). Roles belong there. */
+function svgHasShirtNumbers(svg: string | null | undefined): boolean {
+  if (!svg) return false;
+  return /fill="#ffffff">\d+</.test(svg);
+}
+
+function storedSvgIsStale(drillType: string | null | undefined, svg: string | null | undefined): boolean {
+  return warmupSvgStillHasMatchKit(drillType, svg) || svgHasShirtNumbers(svg) || svgPictureIsOvercrowded(drillType, svg);
 }
 
 function resolveGoalsAvailable(drill: any): number | null {
@@ -97,7 +114,9 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   const currentSvg = drill.diagramSvg;
   // Prompt-version bumps no longer force a blocking redraw. Reopen must
   // return the stored SVG; coaches regenerate explicitly with force=true.
-  const needsRegen = storedDiagramNeedsRedraw(force, currentSvg);
+  const needsRegen =
+    storedDiagramNeedsRedraw(force, currentSvg) ||
+    storedSvgIsStale(drill.drillType, currentSvg);
 
   if (!needsRegen) {
     return res.json({ svg: currentSvg, cached: true });
@@ -144,6 +163,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       formationUsed: drill.formationUsed,
       phase: drill.phase,
       zone: drill.zone,
+      coachLevel: drill.coachLevel,
     });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
@@ -221,13 +241,6 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
         { refCode: drillId },
       ],
     },
-    select: {
-      id: true,
-      diagramSvg: true,
-      generatedBy: true,
-      savedToVault: true,
-      gameModelId: true,
-    },
   });
 
   if (!drill) return res.status(404).json({ error: "drill not found" });
@@ -236,12 +249,59 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
     return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
   }
 
-  const svg = drill.diagramSvg ? fitDiagramSvgViewBox(drill.diagramSvg) : drill.diagramSvg;
-  if (svg && drill.diagramSvg && svg !== drill.diagramSvg) {
-    await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
+  if (String(drill.drillType || "").toUpperCase() === "COOLDOWN") {
+    return res.json({ svg: null, cooldown: true, hasStoredSvg: false });
   }
-  return res.json({
-    svg: svg ?? PLACEHOLDER_SVG,
-    hasStoredSvg: !!svg,
-  });
+
+  if (drill.diagramSvg && !storedSvgIsStale(drill.drillType, drill.diagramSvg)) {
+    const svg = fitDiagramSvgViewBox(drill.diagramSvg);
+    if (svg !== drill.diagramSvg) {
+      await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
+    }
+    return res.json({ svg, hasStoredSvg: true, cached: true });
+  }
+
+  try {
+    const result = await generateDrillDiagramSvg({
+      title: drill.title,
+      json: drill.json,
+      drillType: drill.drillType,
+      durationMin: drill.durationMin,
+      rpeMin: drill.rpeMin,
+      rpeMax: drill.rpeMax,
+      numbersMin: drill.numbersMin,
+      numbersMax: drill.numbersMax,
+      spaceConstraint: drill.spaceConstraint,
+      formationUsed: drill.formationUsed,
+      phase: drill.phase,
+      zone: drill.zone,
+      coachLevel: drill.coachLevel,
+    });
+    if (drill.refCode) {
+      await persistDrillDiagramSvg(drill.refCode, result);
+    } else {
+      await prisma.drill.update({
+        where: { id: drill.id },
+        data: {
+          diagramSvg: result.svg,
+          diagramSvgGeneratedAt: new Date(),
+          diagramSvgModel: result.model,
+          diagramSvgPromptVersion: result.promptVersion,
+        },
+      });
+    }
+    return res.json({
+      svg: result.svg,
+      hasStoredSvg: true,
+      cached: false,
+      model: result.model,
+    });
+  } catch (err) {
+    console.error("diagram_svg_fetch_compile_failed", { drillId, err });
+    return res.json({
+      svg: PLACEHOLDER_SVG,
+      hasStoredSvg: false,
+      generationFailed: true,
+    });
+  }
 });

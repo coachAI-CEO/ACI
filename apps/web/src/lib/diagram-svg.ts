@@ -4,8 +4,8 @@
  * right-shift. Crop to the actual pitch rect instead. */
 
 const PITCH_FILL = "#1c5134";
-const GOAL_STUB = 4;
-const TOP_PAD = 40;
+const SIDE_PAD = 56;
+const TOP_PAD = 42;
 const BOTTOM_PAD = 140;
 let clipSeq = 0;
 
@@ -152,11 +152,14 @@ function stripOversizedZoneOverlays(svg: string): string {
 
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
+  // API already cropped and rebased. Recropping from the untransformed
+  // pitch rect (x≈118) with a 4px stub clipped the left goal and labels.
+  if (svg.includes('id="diagram-origin-fit"')) return svg;
   let next = stripOversizedZoneOverlays(resolveSvgMathAttributes(svg));
   if (alreadyClipped(next)) return rebaseCropToOrigin(next);
   const pitch = pitchRectFromSvg(next);
   const viewBox = pitch
-    ? `${round(Math.max(0, pitch.x - GOAL_STUB))} ${round(Math.max(0, pitch.y - TOP_PAD))} ${round(pitch.w + GOAL_STUB * 2)} ${round(pitch.h + TOP_PAD + BOTTOM_PAD)}`
+    ? `${round(Math.max(0, pitch.x - SIDE_PAD))} ${round(Math.max(0, pitch.y - TOP_PAD))} ${round(pitch.w + SIDE_PAD * 2)} ${round(pitch.h + TOP_PAD + BOTTOM_PAD)}`
     : null;
 
   next = next.replace(/<svg\b[^>]*>/i, (openTag) => {

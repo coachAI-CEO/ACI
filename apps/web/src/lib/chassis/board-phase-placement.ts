@@ -1,8 +1,6 @@
 /**
- * Phase placement for tactical boards.
- * Formation = relative slots; phase = where the block sits vs the focus.
- * Default play-out = goal kick with DEF high to the ATT box.
- * Chassis overlays from formation-principles-v2 (Chassis & Spacing).
+ * Browser copy of apps/api/src/services/board-phase-placement.ts
+ * so Setup phase/zone/channel does not wait on a Next/API round-trip.
  *
  * See docs/tactical-board-phase-positioning.md
  */

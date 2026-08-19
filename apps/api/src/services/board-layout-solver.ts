@@ -7,7 +7,8 @@ import {
 } from './board-symbolic-dsl';
 import { build11v11FormationPlayers, type WebDiagramV1 } from './web-diagram-v1';
 
-export const SOLVER_MIN_PLAYER_GAP = 8;
+export const SOLVER_MIN_PLAYER_GAP = 3.5;
+export const SOLVER_OPPOSITE_TEAM_GAP = 2;
 
 type Box = { x: number; y: number; width: number; height: number };
 type Placement = (typeof BOARD_PLACEMENTS)[number];
@@ -306,51 +307,56 @@ function demoteRondoKeepers(players: WebDiagramV1['players']): WebDiagramV1['pla
 
 export function separateOverlappingPlayers<
   T extends { x: number; y: number; number?: number; role?: string; team?: string },
->(players: T[], minGap = SOLVER_MIN_PLAYER_GAP): T[] {
+>(players: T[], minGap = SOLVER_MIN_PLAYER_GAP, opts?: { preserveY?: boolean }): T[] {
   const next = players.map((p) => ({ ...p }));
   const n = next.length;
-  const target = minGap + 0.05;
+  const preserveY = opts?.preserveY ?? n >= 18;
   for (let pass = 0; pass < 24; pass++) {
     let moved = false;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = next[i];
         const b = next[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let d = Math.hypot(dx, dy);
+        const opposite =
+          Boolean(a.team && b.team && a.team !== b.team && a.team !== 'NEUTRAL' && b.team !== 'NEUTRAL');
+        const target = (opposite ? SOLVER_OPPOSITE_TEAM_GAP : minGap) + 0.05;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
         if (d >= target) continue;
-        if (d < 0.08) {
-          const ang = (((i * 13 + j * 17) % 360) * Math.PI) / 180;
-          const opposite =
-            a.team &&
-            b.team &&
-            a.team !== b.team &&
-            a.team !== 'NEUTRAL' &&
-            b.team !== 'NEUTRAL';
-          if (opposite) {
-            dx = Math.cos(ang) >= 0 ? 1 : -1;
-            dy = 0;
-          } else {
-            dx = Math.cos(ang);
-            dy = Math.sin(ang);
-          }
-          d = 0.08;
-        }
-        const ux = dx / d;
-        const uy = dy / d;
-        const need = target - d;
-        let aPush = need / 2;
-        let bPush = need / 2;
+        let aPush = 0.5;
+        let bPush = 0.5;
         if (isGk(a) && !isGk(b)) {
           aPush = 0;
-          bPush = need;
+          bPush = 1;
         } else if (isGk(b) && !isGk(a)) {
-          aPush = need;
+          aPush = 1;
           bPush = 0;
         }
-        next[i] = { ...a, x: clamp(a.x - ux * aPush), y: clamp(a.y - uy * aPush) };
-        next[j] = { ...b, x: clamp(b.x + ux * bPush), y: clamp(b.y + uy * bPush) };
+        if (preserveY) {
+          const neededAbsDx = Math.sqrt(Math.max(0, target * target - dy * dy));
+          const extra = neededAbsDx - Math.abs(dx) + 0.05;
+          const dir = dx > 0.04 ? 1 : dx < -0.04 ? 1 : i % 2 === 0 ? 1 : -1;
+          const sign = dx >= 0 ? 1 : -1;
+          const pushDir = Math.abs(dx) < 0.04 ? dir : sign;
+          next[i] = { ...a, x: clamp(a.x - pushDir * extra * aPush) };
+          next[j] = { ...b, x: clamp(b.x + pushDir * extra * bPush) };
+        } else {
+          let ux = dx;
+          let uy = dy;
+          let mag = d;
+          if (mag < 0.08) {
+            const ang = (((i * 13 + j * 17) % 360) * Math.PI) / 180;
+            ux = opposite ? (Math.cos(ang) >= 0 ? 1 : -1) : Math.cos(ang);
+            uy = opposite ? 0 : Math.sin(ang);
+            mag = 0.08;
+          }
+          const nx = ux / mag;
+          const ny = uy / mag;
+          const need = target - mag;
+          next[i] = { ...a, x: clamp(a.x - nx * need * aPush), y: clamp(a.y - ny * need * aPush) };
+          next[j] = { ...b, x: clamp(b.x + nx * need * bPush), y: clamp(b.y + ny * need * bPush) };
+        }
         moved = true;
       }
     }
@@ -366,13 +372,18 @@ export function overlappingPairs(
   const pairs: Array<{ a: string; b: string; dist: number }> = [];
   for (let i = 0; i < players.length; i++) {
     for (let j = i + 1; j < players.length; j++) {
-      const dist = Math.hypot(players[j].x - players[i].x, players[j].y - players[i].y);
-      if (dist < minGap) {
+      const a = players[i];
+      const b = players[j];
+      const opposite =
+        Boolean(a.team && b.team && a.team !== b.team && a.team !== 'NEUTRAL' && b.team !== 'NEUTRAL');
+      const gap = opposite ? SOLVER_OPPOSITE_TEAM_GAP : minGap;
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (dist < gap) {
         const label = (p: (typeof players)[number]) => {
           const n = p.number ?? p.id ?? '?';
           return `${p.team || '?'}${n}`;
         };
-        pairs.push({ a: label(players[i]), b: label(players[j]), dist });
+        pairs.push({ a: label(a), b: label(b), dist });
       }
     }
   }
@@ -709,6 +720,7 @@ export function solveBoardLayout(
   } else if (
     (dsl.grid.intent === 'ssg_grid' || dsl.activity === 'technical_exercise') &&
     players.length <= 16 &&
+    dsl.activity !== 'match_scenario' &&
     dsl.seed !== 'current'
   ) {
     players = looksLikePressureGrid(players, dsl)

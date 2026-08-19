@@ -1,7 +1,8 @@
 import type { DiagramPlayer, DiagramSequenceFrame, DiagramV1 } from "@/types/diagram";
 
-/** Pitch units between shirt centers — tokens are ~3 units across. */
-export const MIN_PLAYER_GAP = 8;
+/** Same-team token gap. Compact 11v11 press cannot use 8% of the pitch. */
+export const MIN_PLAYER_GAP = 3.5;
+export const OPPOSITE_TEAM_GAP = 2;
 
 type PlayerLike = Pick<DiagramPlayer, "x" | "y" | "team"> & {
   number?: number;
@@ -16,6 +17,12 @@ function isGkPlayer(p: PlayerLike) {
   return p.number === 1 || String(p.role || "").toUpperCase() === "GK";
 }
 
+function pairGap(a: PlayerLike, b: PlayerLike, minGap: number) {
+  const opposite =
+    Boolean(a.team && b.team && a.team !== b.team && a.team !== "NEUTRAL" && b.team !== "NEUTRAL");
+  return opposite ? OPPOSITE_TEAM_GAP : minGap;
+}
+
 export function playersNeedSpacing(
   players: PlayerLike[] | undefined,
   minGap = MIN_PLAYER_GAP
@@ -23,7 +30,8 @@ export function playersNeedSpacing(
   const list = players || [];
   for (let i = 0; i < list.length; i++) {
     for (let j = i + 1; j < list.length; j++) {
-      if (Math.hypot(list[j].x - list[i].x, list[j].y - list[i].y) < minGap) {
+      const gap = pairGap(list[i], list[j], minGap);
+      if (Math.hypot(list[j].x - list[i].x, list[j].y - list[i].y) < gap) {
         return true;
       }
     }
@@ -50,61 +58,63 @@ export function diagramPlayerCoordsEqual(a: DiagramV1, b: DiagramV1): boolean {
 
 export function separateOverlappingPlayers<T extends PlayerLike>(
   players: T[],
-  minGap = MIN_PLAYER_GAP
+  minGap = MIN_PLAYER_GAP,
+  opts?: { preserveY?: boolean }
 ): T[] {
   const next = players.map((p) => ({ ...p }));
   const n = next.length;
-  for (let pass = 0; pass < 10; pass++) {
+  const preserveY = opts?.preserveY ?? n >= 18;
+  for (let pass = 0; pass < 24; pass++) {
     let moved = false;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = next[i];
         const b = next[j];
-        let dx = b.x - a.x;
-        let dy = b.y - a.y;
-        let d = Math.hypot(dx, dy);
-        if (d >= minGap) continue;
-        if (d < 0.08) {
-          const ang = (((i * 13 + j * 17) % 360) * Math.PI) / 180;
-          const opposite =
-            a.team &&
-            b.team &&
-            a.team !== b.team &&
-            a.team !== "NEUTRAL" &&
-            b.team !== "NEUTRAL";
-          if (opposite) {
-            dx = Math.cos(ang) >= 0 ? 1 : -1;
-            dy = 0;
-          } else {
-            dx = Math.cos(ang);
-            dy = Math.sin(ang);
-          }
-          d = 0.08;
-        }
-        const ux = dx / d;
-        const uy = dy / d;
-        const need = minGap - d;
-        const aGk = isGkPlayer(a);
-        const bGk = isGkPlayer(b);
-        let aPush = need / 2;
-        let bPush = need / 2;
-        if (aGk && !bGk) {
+        const target = pairGap(a, b, minGap) + 0.05;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= target) continue;
+        let aPush = 0.5;
+        let bPush = 0.5;
+        if (isGkPlayer(a) && !isGkPlayer(b)) {
           aPush = 0;
-          bPush = need;
-        } else if (bGk && !aGk) {
-          aPush = need;
+          bPush = 1;
+        } else if (isGkPlayer(b) && !isGkPlayer(a)) {
+          aPush = 1;
           bPush = 0;
         }
-        next[i] = {
-          ...a,
-          x: clamp01to100(a.x - ux * aPush),
-          y: clamp01to100(a.y - uy * aPush),
-        };
-        next[j] = {
-          ...b,
-          x: clamp01to100(b.x + ux * bPush),
-          y: clamp01to100(b.y + uy * bPush),
-        };
+        if (preserveY) {
+          const neededAbsDx = Math.sqrt(Math.max(0, target * target - dy * dy));
+          const extra = neededAbsDx - Math.abs(dx) + 0.05;
+          const dir = Math.abs(dx) < 0.04 ? (i % 2 === 0 ? 1 : -1) : dx >= 0 ? 1 : -1;
+          next[i] = { ...a, x: clamp01to100(a.x - dir * extra * aPush) };
+          next[j] = { ...b, x: clamp01to100(b.x + dir * extra * bPush) };
+        } else {
+          let ux = dx;
+          let uy = dy;
+          let mag = d;
+          if (mag < 0.08) {
+            const ang = (((i * 13 + j * 17) % 360) * Math.PI) / 180;
+            const opposite = pairGap(a, b, minGap) === OPPOSITE_TEAM_GAP;
+            ux = opposite ? (Math.cos(ang) >= 0 ? 1 : -1) : Math.cos(ang);
+            uy = opposite ? 0 : Math.sin(ang);
+            mag = 0.08;
+          }
+          const nx = ux / mag;
+          const ny = uy / mag;
+          const need = target - mag;
+          next[i] = {
+            ...a,
+            x: clamp01to100(a.x - nx * need * aPush),
+            y: clamp01to100(a.y - ny * need * aPush),
+          };
+          next[j] = {
+            ...b,
+            x: clamp01to100(b.x + nx * need * bPush),
+            y: clamp01to100(b.y + ny * need * bPush),
+          };
+        }
         moved = true;
       }
     }

@@ -1,4 +1,4 @@
-import { practiceSpaceYards, shouldLockPracticeArea, type FieldFormat } from "../data/field-dimensions";
+import { isWarmupPicture, practiceSpaceYards, shouldLockPracticeArea, type FieldFormat } from "../data/field-dimensions";
 
 type GoalAvailabilityInput = {
   goalsAvailable?: number | null;
@@ -383,8 +383,10 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
   if (!drill.diagram) return;
   // Request/session equipment wins. The model often emits goalsAvailable: 1
   // on a no-goal warmup, which used to force a full-size goal + GK.
-  const goalsAvailable =
-    parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable);
+  const warmup = isWarmupPicture(input.drillType || drill?.drillType);
+  const goalsAvailable = warmup
+    ? 0
+    : parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable);
 
   // goalsAvailable counts FULL-SIZE goals with a GK specifically -- it does
   // NOT mean "no goals at all." goalsAvailable=0 still allows mini-goals

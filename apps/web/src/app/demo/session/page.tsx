@@ -915,6 +915,7 @@ function SessionDemoPageContent() {
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
   const [forkingDrillKey, setForkingDrillKey] = useState<string | null>(null);
+  const [activeDrillIndex, setActiveDrillIndex] = useState(0);
   const [forkingSession, setForkingSession] = useState(false);
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
@@ -1735,6 +1736,40 @@ function SessionDemoPageContent() {
   }, [hasGeneratedSession]);
 
   const session = currentSessionData?.session;
+  const sessionDrills = session?.drills ?? [];
+  const drillStartMins = sessionDrills.reduce<number[]>((acc, _drill, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + (sessionDrills[i - 1].durationMin || 0));
+    return acc;
+  }, []);
+
+  useEffect(() => {
+    setActiveDrillIndex(0);
+  }, [session?.id, session?.refCode, selectedSeriesTab, sessionDrills.length]);
+
+  useEffect(() => {
+    if (sessionDrills.length === 0) return;
+    if (activeDrillIndex >= sessionDrills.length) setActiveDrillIndex(0);
+  }, [sessionDrills.length, activeDrillIndex]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (sessionDrills.length === 0) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActiveDrillIndex((i) => Math.max(0, i - 1));
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveDrillIndex((i) => Math.min(sessionDrills.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sessionDrills.length]);
+
   const qaScores = (currentSessionData?.qa?.scores || {}) as Record<string, number>;
   const qaPass = currentSessionData?.qa?.pass;
   const resolvedSessionId = (() => {
@@ -3305,30 +3340,11 @@ function SessionDemoPageContent() {
                 })()}
               </div>
 
-              {/* Session Plan Breakdown */}
-              {session.sessionPlan && (
-                <div className="mt-4 pt-4 border-t border-slate-700">
-                  <h3 className="text-sm font-semibold text-slate-200 mb-3">Session Plan</h3>
-                  {Array.isArray(session.sessionPlan.breakdown) ? (
-                    <div className="grid grid-cols-5 gap-2 text-xs">
-                      {session.sessionPlan.breakdown.map((item, i) => (
-                        <div key={i} className="text-center p-2 rounded-lg bg-slate-800/50">
-                          <div className="font-semibold text-slate-200">
-                            {drillTypeLabel[item.drillType] || item.drillType}
-                          </div>
-                          <div className="text-slate-400 mt-1">
-                            {(item.duration || item.durationMin || 0)} min
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-300">
-                      {typeof session.sessionPlan.breakdown === "string" 
-                        ? session.sessionPlan.breakdown 
-                        : `Total Duration: ${session.sessionPlan.totalDuration || session.durationMin || 90} minutes`}
-                    </div>
-                  )}
+              {session.sessionPlan && !Array.isArray(session.sessionPlan.breakdown) && (
+                <div className="mt-4 pt-4 border-t border-slate-700 text-sm text-slate-300">
+                  {typeof session.sessionPlan.breakdown === "string"
+                    ? session.sessionPlan.breakdown
+                    : `Total Duration: ${session.sessionPlan.totalDuration || session.durationMin || 90} minutes`}
                 </div>
               )}
 
@@ -3435,10 +3451,50 @@ function SessionDemoPageContent() {
               )}
             </section>
 
-            {/* All Drills in Session */}
-            <div className="space-y-6">
-              <h2 className="text-lg font-semibold">Session Drills</h2>
-              {session.drills.map((drill, index) => {
+            {/* One drill at a time — Stage view */}
+            <div className="space-y-4">
+              <div className="flex items-end justify-between gap-3">
+                <h2 className="text-lg font-semibold">Session</h2>
+                <p className="text-xs text-slate-500">← → to move through the hour</p>
+              </div>
+              {sessionDrills.length > 0 && (
+                <nav
+                  className="sticky top-0 z-20 -mx-1 overflow-x-auto bg-slate-950/95 px-1 py-3 backdrop-blur-sm"
+                  aria-label="Session blocks"
+                >
+                  <div
+                    className="grid min-w-[36rem] gap-2 sm:min-w-0"
+                    style={{ gridTemplateColumns: `repeat(${Math.max(sessionDrills.length, 1)}, minmax(0, 1fr))` }}
+                  >
+                  {sessionDrills.map((item, i) => {
+                    const start = drillStartMins[i] ?? 0;
+                    const mins = item.durationMin || 0;
+                    const current = i === activeDrillIndex;
+                    return (
+                      <button
+                        key={`${item.refCode || item.title}-${i}`}
+                        type="button"
+                        aria-current={current ? "true" : undefined}
+                        onClick={() => setActiveDrillIndex(i)}
+                        className={`min-h-14 rounded-xl border px-3 py-2 text-left transition-colors ${
+                          current
+                            ? "border-emerald-500 bg-emerald-500/15"
+                            : "border-slate-700/80 bg-slate-900/70 hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">{start}&apos;</div>
+                        <div className={`text-sm font-semibold ${current ? "text-emerald-200" : "text-slate-100"}`}>
+                          {drillTypeLabel[item.drillType] || item.drillType}
+                        </div>
+                        <div className="text-xs text-slate-400">{mins} min</div>
+                      </button>
+                    );
+                  })}
+                  </div>
+                </nav>
+              )}
+              {session.drills.slice(activeDrillIndex, activeDrillIndex + 1).map((drill, sliceIndex) => {
+                const index = activeDrillIndex + sliceIndex;
                 const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
                 const diagram = drill.refCode && diagramOverrides[drill.refCode]
                   ? diagramOverrides[drill.refCode]
@@ -3539,7 +3595,7 @@ function SessionDemoPageContent() {
                               : null;
 
                           return (
-                            <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
+                            <div className="w-full max-w-3xl lg:sticky lg:top-28" key={`diagram-${drill.title}-${index}`}>
                               <DrillDiagramCard
                                 title={drill.title}
                                 gameModelId={session.gameModelId}
@@ -3549,7 +3605,11 @@ function SessionDemoPageContent() {
                                 drillId={diagramDrillId}
                                 drillType={drill.drillType}
                                 sessionSummary={session.summary}
-                                goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
+                                goalsAvailable={
+                                  drill.drillType === "WARMUP"
+                                    ? 0
+                                    : session.goalsAvailable ?? config.goalsAvailable
+                                }
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
                                 initialSvg={pickDrillDiagramSvg(drill)}
@@ -3560,7 +3620,7 @@ function SessionDemoPageContent() {
                         })()
                       )}
 
-                      <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">
+                      <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
                         <h4 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
                           Drill Details
                         </h4>
@@ -3686,6 +3746,34 @@ function SessionDemoPageContent() {
                   </section>
                 );
               })}
+              {sessionDrills.length > 1 && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <button
+                    type="button"
+                    disabled={activeDrillIndex === 0}
+                    onClick={() => setActiveDrillIndex((i) => Math.max(0, i - 1))}
+                    className="min-h-11 rounded-xl border border-slate-700 bg-slate-900/70 px-4 text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    Previous
+                  </button>
+                  <div className="text-sm tabular-nums text-slate-400">
+                    {activeDrillIndex + 1} of {sessionDrills.length}
+                    {typeof drillStartMins[activeDrillIndex] === "number" && sessionDrills[activeDrillIndex]?.durationMin
+                      ? ` · ${drillStartMins[activeDrillIndex]}'–${
+                          drillStartMins[activeDrillIndex] + (sessionDrills[activeDrillIndex].durationMin || 0)
+                        }'`
+                      : ""}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={activeDrillIndex >= sessionDrills.length - 1}
+                    onClick={() => setActiveDrillIndex((i) => Math.min(sessionDrills.length - 1, i + 1))}
+                    className="min-h-11 rounded-xl border border-slate-700 bg-slate-900/70 px-4 text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

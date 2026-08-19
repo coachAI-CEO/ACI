@@ -1,0 +1,312 @@
+{
+  "source": "Inverting the Pyramid Tactical Series \u2014 Advanced Chassis & Spacing Playbook v2.0",
+  "documentVersion": "2.0",
+  "phases": [
+    "Build-out",
+    "Progression",
+    "Attack",
+    "Defensive Transition"
+  ],
+  "boardFrameMap": {
+    "Build-out": "Frame 1 \u2014 Goal-kick / first line (RIGHT third)",
+    "Progression": "Frame 2 \u2014 Midfield pocket (MIDDLE)",
+    "Attack": "Frame 3 \u2014 Final-third progression (LEFT)",
+    "Defensive Transition": "Optional Frame / rest-defence overlay after loss"
+  },
+  "corePrinciples": [
+    "Expand the pitch maximally in possession; compress it minimally out of possession",
+    "System efficiency > sum of individuals \u2014 coalitions and connections",
+    "Short-team compactness (classic 4-4-2: \u2264 ~25m deepest defender to striker)",
+    "Positional play spacing: avoid overcrowding the same line (playbook grid: \u22643 on a horizontal line, \u22642 vertically in the same channel)"
+  ],
+  "formations": {
+    "4-3-3": {
+      "label": "Total Football & Positional Play",
+      "pivotStyle": "Single pivot (#6 / #4 screen)",
+      "widthSource": "Advanced full-backs + inverted wingers",
+      "keyMotifs": [
+        "Sweeper-keeper",
+        "Split CBs",
+        "Dropping single pivot",
+        "Flank triangles",
+        "False nine",
+        "Inverted flanks",
+        "Gegenpress rest defense"
+      ],
+      "buildOut": {
+        "spacing": [
+          "GK steps out as sweeper-keeper into a triangle with split CBs",
+          "CBs split to edges of the 18-yard box to stretch the first press",
+          "Single pivot drops between CBs \u2192 temporary back-three / numerical edge vs 2-striker press",
+          "Full-backs push high on touchlines to drag opposition wingers deep"
+        ],
+        "patterns": [
+          "Horizontal sluice through dropped pivot",
+          "Short diagonals into midfield lanes opened by CB split"
+        ],
+        "boardCues": [
+          "Ball with GK/CBs in RIGHT third",
+          "ATT #6 between/ beside CBs",
+          "FBs high-wide; front three not cluttering first line",
+          "DEF press on box edge (default high)"
+        ]
+      },
+      "progression": {
+        "spacing": [
+          "Flank triangles: FB + #8 + winger rotate on each side",
+          "No more than 3 on same horizontal; no more than 2 stacked vertically in a channel",
+          "Single pivot as conductor \u2014 short sideways then diagonal switch"
+        ],
+        "patterns": [
+          "If FB advances, CM drops laterally, winger tucks to open touchline",
+          "Support angles always behind and in front of the ball-carrier"
+        ],
+        "boardCues": [
+          "Focus MIDDLE; show one active flank triangle",
+          "Pivot receives/shifts; opposite winger ready for switch",
+          "After high-press F1: bypassed STs recover; cover becomes jump"
+        ]
+      },
+      "attack": {
+        "spacing": [
+          "False nine drops between midfield and back line",
+          "Inverted wingers diagonal runs in behind",
+          "FBs overlap for cutbacks into POMO",
+          "#8/#10 late box runs"
+        ],
+        "patterns": [
+          "False nine drag \u2192 winger slice \u2192 FB cutback",
+          "Late midfield arrivals overload the box"
+        ],
+        "boardCues": [
+          "Focus LEFT third",
+          "#9 dropped or arriving late; wingers inside; FBs high-wide",
+          "DEF recovering to box"
+        ]
+      },
+      "defensiveTransition": {
+        "spacing": [
+          "Nearest 3 swarm ball within 3\u20135 seconds (Gegenpress)",
+          "High line + squeeze vertical space (rest defense)",
+          "If bypassed \u2192 compact zonal block"
+        ],
+        "boardCues": [
+          "Cluster 3 ATT pressers on ball",
+          "CBs stepped up; no huge gaps behind midfield"
+        ]
+      }
+    },
+    "4-4-2": {
+      "label": "Zonal Pressing & Balanced Lines",
+      "pivotStyle": "Flat midfield pair (double screen)",
+      "widthSource": "Asymmetrical: one wide mid stays wide / other tucks; opposite FB overlaps",
+      "keyMotifs": [
+        "Sliding back-four arc",
+        "Short-team \u226425m",
+        "Automatisms",
+        "Target + runner",
+        "Zonal hunt"
+      ],
+      "buildOut": {
+        "spacing": [
+          "Back four as coordinated sliding arc",
+          "Two CMs sit directly in front of CBs as deep double screen (not dropping into back line)",
+          "FBs relatively deep initially as sideways outlets"
+        ],
+        "patterns": [
+          "Patient CB \u2192 CM screen circulation",
+          "Minimize risk in own third"
+        ],
+        "boardCues": [
+          "Flat back four + two CMs screening",
+          "Front two higher; wide mids balanced",
+          "Vs high press: keep short distances"
+        ]
+      },
+      "progression": {
+        "spacing": [
+          "Whole team moves as one block \u226425m deepest to striker",
+          "Lateral slide with the ball",
+          "Asymmetry: one WM wide, opposite WM tucks to overload center"
+        ],
+        "patterns": [
+          "Short sideways/forward transfers until trigger",
+          "Feed forwards when block is set"
+        ],
+        "boardCues": [
+          "Show compact block mid-pitch",
+          "One tuck + one wide platform arrow",
+          "Highlight short-team distance"
+        ]
+      },
+      "attack": {
+        "spacing": [
+          "Target hold-up + agile runner partnership",
+          "Wide: one side crosses from touchline; other side tuck frees overlapping FB",
+          "CMs late to edge of box"
+        ],
+        "patterns": [
+          "Hold-up lay-off to runner/winger",
+          "Tuck + overlap channel"
+        ],
+        "boardCues": [
+          "Twin STs linked; asymmetric flanks",
+          "Cutback/cross channel marked"
+        ]
+      },
+      "defensiveTransition": {
+        "spacing": [
+          "Two lines of four drop to low/mid block instantly",
+          "Nearest mid+ST harass; rest slide laterally",
+          "Back four step for offside trap in unison"
+        ],
+        "boardCues": [
+          "Compact 4+4 block; no large vertical gaps",
+          "If coach asked low block \u2014 allow deeper DEF"
+        ]
+      }
+    },
+    "4-2-3-1": {
+      "label": "Doble Pivot & Spacing Symmetry",
+      "pivotStyle": "Double pivot (doble pivot)",
+      "widthSource": "High FBs + inverted wingers",
+      "keyMotifs": [
+        "Split CBs",
+        "Symmetrical pivots",
+        "Midfield square/#10 triangle",
+        "Enganche pocket",
+        "Inside channels"
+      ],
+      "buildOut": {
+        "spacing": [
+          "CBs split wide",
+          "Two holding mids sit symmetrically \u2014 if one pressed, other offers support angle",
+          "FBs liberated high-wide because pivots secure the center"
+        ],
+        "patterns": [
+          "Short into pivots \u2192 out to advanced FBs or into midfield"
+        ],
+        "boardCues": [
+          "Show #6+#8 platform in front of split CBs",
+          "FBs high; #10/#7/#11/#9 not collapsing on first line"
+        ]
+      },
+      "progression": {
+        "spacing": [
+          "Pivots + #10 form flexible triangle / midfield square",
+          "Wingers and #10 occupy vertical channels",
+          "If press narrow \u2192 swivel to overlapping FBs; if press wide \u2192 wingers tuck for central overload"
+        ],
+        "patterns": [
+          "Rapid lateral swivel",
+          "Progress into #10 hole"
+        ],
+        "boardCues": [
+          "Ball into #10 pocket highlight",
+          "One flank overlap OR central tuck overload \u2014 not both cluttered"
+        ]
+      },
+      "attack": {
+        "spacing": [
+          "#10 as enganche behind lone ST",
+          "Wingers cut inside channels",
+          "FBs overlap for width/cross",
+          "ST mobile target to unpin CBs \u2192 five-man wave"
+        ],
+        "patterns": [
+          "Enganche through-ball",
+          "Invert + overlap",
+          "Cutback / inside finish"
+        ],
+        "boardCues": [
+          "#10 between lines; ST pinning; wingers inside; FBs high"
+        ]
+      },
+      "defensiveTransition": {
+        "spacing": [
+          "Doble pivot rarely both join attack \u2014 permanent rest-defense screen",
+          "On loss: pivots close central channels",
+          "Wingers+#10 drop to 4-5-1 / 4-4-2 out-of-possession shape"
+        ],
+        "boardCues": [
+          "Two deep screens stay; front players drop on transition frame"
+        ]
+      }
+    },
+    "3-5-2": {
+      "label": "Wing-Back Overloads & Central Anchors",
+      "pivotStyle": "Libero + DM sluice + triple central midfield",
+      "widthSource": "Wing-backs (no traditional wingers)",
+      "keyMotifs": [
+        "Sweeper-libero",
+        "Central sluice gate",
+        "5-man midfield overload",
+        "Contra swaps",
+        "5-3-2 rest shape"
+      ],
+      "buildOut": {
+        "spacing": [
+          "GK short to back three",
+          "Middle CB as ball-playing libero carries into midfield",
+          "Side CBs split as outlets",
+          "DM drops as sluice gate in front of back three",
+          "Wing-backs push high to stretch the press"
+        ],
+        "patterns": [
+          "Libero carry + DM distribute",
+          "Triangles across back three and DM"
+        ],
+        "boardCues": [
+          "Back three visible; libero stepped; WBs midfield-high",
+          "Vs 2-ST press: 3 CBs advantage"
+        ]
+      },
+      "progression": {
+        "spacing": [
+          "Natural 5-man midfield overload",
+          "WBs high-wide drag opponents \u2192 open central channels",
+          "Contra swaps: CMs rotate with WBs; libero drives; DM covers"
+        ],
+        "patterns": [
+          "Lane swaps to break man-marks",
+          "Libero into midfield as extra"
+        ],
+        "boardCues": [
+          "Five midfield shirts in middle third",
+          "Show one contra/rotation arrow set"
+        ]
+      },
+      "attack": {
+        "spacing": [
+          "#10 free between lines (playmaker playground)",
+          "WBs to goal line for crosses / cut-ins",
+          "Twin STs central",
+          "CMs late box; libero recycles at midfield edge"
+        ],
+        "patterns": [
+          "WB cross overload",
+          "Playmaker into twin strikers"
+        ],
+        "boardCues": [
+          "Max width from WBs; #10 central; two STs in box"
+        ]
+      },
+      "defensiveTransition": {
+        "spacing": [
+          "WBs drop to form five-man back line (5-3-2)",
+          "Three CBs tight vs crosses",
+          "Three central mids shield; force play wide then isolate"
+        ],
+        "boardCues": [
+          "Transition frame shows 5 across back, 3 mid shield"
+        ]
+      }
+    }
+  },
+  "implementationPriority": [
+    "Keep shared phase geometry (F1 high press default / F2 rotate / F3 recover)",
+    "Add formation-specific spacing rules from boardCues per phase",
+    "Draw motif arrows: flank triangle (433), tuck+overlap (442), #10 pocket (4231), WB overload (352)",
+    "Add optional defensive-transition frame using rest-defense rules"
+  ]
+}

@@ -21,6 +21,33 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+function warmupSvgStillHasMatchKit(drillType: string | null | undefined, svg: string | null | undefined): boolean {
+  const type = String(drillType || "").toUpperCase().replace(/[-\s]/g, "");
+  if (!type.includes("WARMUP") || !svg) return false;
+  return />GK</.test(svg) || /id="api-goal-overlay"/.test(svg);
+}
+
+function svgHasShirtNumbers(svg: string | null | undefined): boolean {
+  if (!svg) return false;
+  return /fill="#ffffff">\d+</.test(svg);
+}
+
+function svgPictureIsOvercrowded(drillType: string | null | undefined, svg: string | null | undefined): boolean {
+  if (!svg) return false;
+  const n = (svg.match(/filter="url\(#ps\)"/g) || []).length;
+  const type = String(drillType || "").toUpperCase();
+  if (type.includes("WARMUP")) return n > 10;
+  if (type.includes("TECHNICAL")) return n > 10;
+  const home = (svg.match(/fill="#3b82f6" stroke="#020617"/g) || []).length;
+  const away = (svg.match(/fill="#ef4444" stroke="#020617"/g) || []).length;
+  if (home === 0 || away === 0) return n > 10;
+  return home > 10 || away > 10;
+}
+
+function storedSvgIsStale(drillType: string | null | undefined, svg: string | null | undefined): boolean {
+  return warmupSvgStillHasMatchKit(drillType, svg) || svgHasShirtNumbers(svg) || svgPictureIsOvercrowded(drillType, svg);
+}
+
 export default function StoredDrillSvg({
   drillId,
   goalsAvailable,
@@ -31,7 +58,8 @@ export default function StoredDrillSvg({
   initialSvg,
 }: StoredDrillSvgProps) {
   const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
-  const [svg, setSvg] = React.useState<string | null>(initialSvg || null);
+  const staleWarmup = storedSvgIsStale(drillType, initialSvg);
+  const [svg, setSvg] = React.useState<string | null>(staleWarmup ? null : initialSvg || null);
   const [loading, setLoading] = React.useState(false);
   const [drawing, setDrawing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -39,13 +67,13 @@ export default function StoredDrillSvg({
 
   React.useEffect(() => {
     setError(null);
-    if (initialSvg) {
-      setSvg(initialSvg);
-    }
-  }, [initialSvg]);
+    if (storedSvgIsStale(drillType, initialSvg)) return;
+    if (initialSvg) setSvg(initialSvg);
+  }, [initialSvg, drillType]);
 
   const fetchStored = React.useCallback(async () => {
-    if (!drillId || loadingRef.current || initialSvg) return;
+    if (!drillId || loadingRef.current) return;
+    if (initialSvg && !storedSvgIsStale(drillType, initialSvg)) return;
     loadingRef.current = true;
     setLoading(true);
     setError(null);
@@ -64,12 +92,13 @@ export default function StoredDrillSvg({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [drillId, initialSvg]);
+  }, [drillId, initialSvg, drillType]);
 
   React.useEffect(() => {
-    if (isCooldown || initialSvg || svg) return;
+    if (isCooldown || svg) return;
+    if (initialSvg && !staleWarmup) return;
     if (drillId) void fetchStored();
-  }, [drillId, isCooldown, initialSvg, svg, fetchStored]);
+  }, [drillId, isCooldown, initialSvg, staleWarmup, svg, fetchStored]);
 
   const regenerate = React.useCallback(async () => {
     if (!drillId || loadingRef.current) return;
@@ -81,7 +110,11 @@ export default function StoredDrillSvg({
         method: "POST",
         credentials: "include",
         headers: authHeaders(),
-        body: JSON.stringify({ drillId, force: true, goalsAvailable }),
+        body: JSON.stringify({
+          drillId,
+          force: true,
+          goalsAvailable: String(drillType || "").toUpperCase().includes("WARMUP") ? 0 : goalsAvailable,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.svg) {
@@ -94,7 +127,7 @@ export default function StoredDrillSvg({
       loadingRef.current = false;
       setDrawing(false);
     }
-  }, [drillId, goalsAvailable]);
+  }, [drillId, goalsAvailable, drillType]);
 
   const maxWidth = size === "small" ? "max-w-[420px]" : "max-w-[760px]";
   const padding = size === "small" ? "p-2" : "";
