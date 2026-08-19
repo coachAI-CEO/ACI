@@ -12,6 +12,7 @@ import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
 import { generateDrillDiagramSvg, omitDiagramSvgFromDrill, persistDrillDiagramSvg } from "./drill-diagram-svg";
+import { isWarmupPicture } from "../data/field-dimensions";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
 
@@ -84,7 +85,7 @@ function pickPlayerPairs(players: any[]) {
 
 function ensureRichCoachDiagramProfile(drill: any, coachLevel?: string) {
   const minimums = getCoachDiagramMinimums(coachLevel);
-  if (!minimums || !drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
+  if (!minimums || !drill || drill.drillType === "COOLDOWN" || /WARMUP|TECHNICAL/i.test(String(drill.drillType || "")) || !drill.diagram) return;
 
   const diagram = drill.diagram;
   diagram.pitch = diagram.pitch || {};
@@ -358,7 +359,15 @@ export function enforceConditionedGameFormatDiagram(
 }
 
 export function enforceDiagramPlayerLimit(drill: any, maxPlayers?: number) {
-  const max = Number(maxPlayers || 0);
+  const squadMax = Number(maxPlayers || 0);
+  const type = String(drill?.drillType || "").toUpperCase();
+  const warmup = /WARMUP/i.test(type);
+  const technical = /TECHNICAL/i.test(type);
+  const max = warmup
+    ? Math.min(10, squadMax || 10)
+    : technical
+      ? Math.min(10, squadMax || 10)
+      : squadMax;
   if (!max || !drill || drill.drillType === "COOLDOWN" || !drill.diagram) return;
   const players = Array.isArray(drill.diagram.players) ? drill.diagram.players : [];
   if (players.length <= max) return;
@@ -1004,7 +1013,7 @@ export async function generateAndReviewSession(
           // Map from input or drill JSON
           numbersMin: drill.numbersMin ?? input.numbersMin,
           numbersMax: drill.numbersMax ?? input.numbersMax,
-          goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
+          goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
           goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
           spaceConstraint: drill.spaceConstraint ?? input.spaceConstraint,
           formationUsed: drill.formationUsed ?? input.formationAttacking,
@@ -1065,13 +1074,20 @@ export async function generateAndReviewSession(
           try {
             diagramResult = await generateDrillDiagramSvg({
               title: drill.title || "Drill",
-              json: drill,
+              json: {
+                ...drill,
+                goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
+              },
               drillType: drill.drillType || "TECHNICAL",
               durationMin: drill.durationMin ?? input.durationMin ?? 25,
               rpeMin: drill.rpeMin ?? 5,
               rpeMax: drill.rpeMax ?? 7,
               numbersMin: input.numbersMin,
               numbersMax: input.numbersMax,
+              spaceConstraint: input.spaceConstraint ?? drill.spaceConstraint,
+              coachLevel: input.coachLevel,
+              phase: drill.phase ?? input.phase,
+              zone: drill.zone ?? input.zone,
             });
             drill.diagramSvg = diagramResult.svg;
             try {
@@ -1090,7 +1106,7 @@ export async function generateAndReviewSession(
             data: {
               json: omitDiagramSvgFromDrill(drill),
               coachLevel: input.coachLevel as any,
-              goalsAvailable: input.goalsAvailable ?? drill.goalsAvailable ?? 0,
+              goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
               goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
             },
           });

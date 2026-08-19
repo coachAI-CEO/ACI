@@ -57,8 +57,8 @@ function orientGoal(goal: DrawerGoal, geometry: SvgGeometry): DrawerGoal {
  */
 function renderPenaltyBoxes(goals: DrawerGoal[], geometry: SvgGeometry, scaleFactor: number): string {
   // Never let the 18-yard overlay eat a short third (22yd 7v7 THIRD).
-  const penaltyW = Math.min(92 * scaleFactor, geometry.fieldW * 0.38);
-  const penaltyH = 156 * scaleFactor;
+  const penaltyW = Math.min(92 * Math.min(scaleFactor, 1.15), geometry.fieldW * 0.22);
+  const penaltyH = Math.min(156 * Math.min(scaleFactor, 1.15), geometry.fieldH * 0.72);
   // Real FIFA proportions: goal area (6-yard box) is 6yd deep x 20yd wide,
   // vs a penalty area's 18yd deep x 44yd wide -- scale the goal area off
   // the (already-scaled) penalty box using those same ratios.
@@ -102,18 +102,17 @@ export function renderGoalOverlay(goals: DrawerGoal[], scaleFactor: number = 1):
     // Both also scale with scaleFactor, same "zoom" factor as player
     // tokens and the penalty/goal-area boxes -- a tight grid should show a
     // proportionally bigger goal, not a fixed-size one.
-    const halfWidth = (isFull ? 36 : 12) * scaleFactor;
-    const depth = (isFull ? 30 : 12) * scaleFactor;
+    const halfWidth = Math.min(
+      (isFull ? 36 : 12) * Math.min(scaleFactor, 1.15),
+      isFull ? geometry.fieldH * 0.12 : geometry.fieldH * 0.07
+    );
+    const depth = Math.min((isFull ? 22 : 10) * Math.min(scaleFactor, 1.15), 24);
     const strokeWidth = isFull ? 3 : 2;
     const stroke = isFull ? "#f8fafc" : "#f97316";
 
-    // Endline minis that the crop stretched onto a corner used to hit
-    // nearTop/nearBottom first and draw as a top/bottom bracket — two
-    // puggs on the right end became L-shapes on the corners. If the
-    // token sits on a left/right end, stay on that endline.
     const yMin = geometry.fieldY + halfWidth + 4;
     const yMax = geometry.fieldY + geometry.fieldH - halfWidth - 4;
-    const yClamped = Math.max(yMin, Math.min(yMax, y));
+    const yClamped = isFull ? y : Math.max(yMin, Math.min(yMax, y));
     if (onLeftEnd) {
       return `<path d="M ${geometry.fieldX} ${yClamped - halfWidth} L ${geometry.fieldX - depth} ${yClamped - halfWidth} L ${geometry.fieldX - depth} ${yClamped + halfWidth} L ${geometry.fieldX} ${yClamped + halfWidth}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="square" stroke-linejoin="miter"/>`;
     }

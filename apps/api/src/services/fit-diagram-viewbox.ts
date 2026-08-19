@@ -4,10 +4,9 @@
  * right-shift. Crop to the actual pitch rect instead. */
 
 const PITCH_FILL = "#1c5134";
-const GOAL_STUB = 12;
-const TOP_PAD = 40;
+const SIDE_PAD = 56;
+const TOP_PAD = 42;
 const BOTTOM_PAD = 140;
-let clipSeq = 0;
 
 function attr(tag: string, name: string): number | null {
   const match = tag.match(new RegExp(`\\b${name}="([\\d.]+)"`, "i"));
@@ -30,9 +29,9 @@ export function pitchRectFromSvg(svg: string): { x: number; y: number; w: number
 export function diagramFittedViewBox(svg: string): string | null {
   const pitch = pitchRectFromSvg(svg);
   if (!pitch) return null;
-  const minX = Math.max(0, pitch.x - GOAL_STUB);
+  const minX = Math.max(0, pitch.x - SIDE_PAD);
   const minY = Math.max(0, pitch.y - TOP_PAD);
-  const width = pitch.w + GOAL_STUB * 2;
+  const width = pitch.w + SIDE_PAD * 2;
   const height = pitch.h + TOP_PAD + BOTTOM_PAD;
   return `${round(minX)} ${round(minY)} ${round(width)} ${round(height)}`;
 }
@@ -129,33 +128,32 @@ function rebaseCropToOrigin(svg: string): string {
   return next.replace(/<\/svg>\s*$/i, "</g></svg>");
 }
 
-/** The 800-wide canvas still paints past the cropped viewBox unless clipped.
- * That leftover pitch/goal outline is the strip to the right of the green. */
+/** Crop by viewBox + overflow:hidden. clip-path in viewport space is what
+ * made the green pitch slide right while cones and the yard bar stayed put. */
 function clipToViewBox(svg: string, sourceViewBox: string): string {
   const crop = parseViewBox(sourceViewBox);
   if (!crop) return svg;
-  if (alreadyClipped(svg)) return rebaseCropToOrigin(svg);
-  clipSeq += 1;
-  const id = `diagram-fit-clip-${clipSeq}`;
+  if (alreadyClipped(svg) || svg.includes('id="diagram-origin-fit"')) return rebaseCropToOrigin(svg);
   const width = round(crop.width);
   const height = round(crop.height);
-  const clip = `<clipPath id="${id}"><rect x="0" y="0" width="${width}" height="${height}"/></clipPath>`;
   let next = applySvgOpenTag(svg, `0 0 ${width} ${height}`);
   next = next.replace(/<rect\b[^>]*\bx="0"[^>]*\by="0"[^>]*width="800"[^>]*height="595"/i, (tag) =>
     tag.replace(/width="800"/, `width="${width}"`).replace(/height="595"/, `height="${height}"`)
   );
-  if (/<defs[\s>]/i.test(next)) {
-    next = next.replace(/<defs\b[^>]*>/i, (defs) => `${defs}${clip}`);
-  } else {
-    next = next.replace(/<svg\b[^>]*>/i, (openTag) => `${openTag}<defs>${clip}</defs>`);
-  }
   const dx = round(-crop.minX);
   const dy = round(-crop.minY);
-  next = next.replace(
-    /<\/defs>/i,
-    `</defs><g clip-path="url(#${id})"><g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
-  );
-  return next.replace(/<\/svg>\s*$/i, "</g></g></svg>");
+  if (/<\/defs>/i.test(next)) {
+    next = next.replace(
+      /<\/defs>/i,
+      `</defs><g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
+    );
+  } else {
+    next = next.replace(
+      /<svg\b[^>]*>/i,
+      (openTag) => `${openTag}<g id="diagram-origin-fit" transform="translate(${dx}, ${dy})">`
+    );
+  }
+  return next.replace(/<\/svg>\s*$/i, "</g></svg>");
 }
 
 function evalSvgMath(expr: string): number | null {
@@ -187,7 +185,10 @@ function stripOversizedZoneOverlays(svg: string): string {
   let next = svg.replace(/<rect\b[^>]*fill="#10f0a0"[^>]*\/?>/gi, (tag) => {
     const width = attr(tag, "width") ?? 0;
     const height = attr(tag, "height") ?? 0;
-    if (/[+\-*\/]/.test(tag) || width >= maxW || height >= maxH) return "";
+    // Zone-reference pills are 44×12. Do not treat stroke-width's hyphen as math.
+    if (height > 0 && height <= 16) return tag;
+    if (width >= maxW || height >= maxH) return "";
+    if (/\b(?:x|y|width|height)="[^"]*[+*/][^"]*"/.test(tag)) return "";
     return tag;
   });
   // Full-pitch "Match Area" is the practice field itself. Gemini still draws
