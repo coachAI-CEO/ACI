@@ -1,8 +1,6 @@
 /**
- * Phase placement for tactical boards.
- * Formation = relative slots; phase = where the block sits vs the focus.
- * Default play-out = goal kick with DEF high to the ATT box.
- * Chassis overlays from formation-principles-v2 (Chassis & Spacing).
+ * Browser copy of apps/api/src/services/board-phase-placement.ts
+ * so Setup phase/zone/channel does not wait on a Next/API round-trip.
  *
  * See docs/tactical-board-phase-positioning.md
  */
@@ -35,19 +33,6 @@ export function isPlayOutRequest(message: string): boolean {
   return /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
     message
   );
-}
-
-/** Central play-out whose job is to find / pin / engage the 9 — not a flank triangle or false nine. */
-export function wantsCentralNinePlayOut(message: string): boolean {
-  const m = String(message || '').toLowerCase();
-  if (!isPlayOutRequest(m)) return false;
-  const central = /\b(central(?:ly)?|centre|center|through the middle|down the middle)\b/.test(m);
-  const nine =
-    /\b(?:#\s*)?9\b/.test(m) ||
-    /\b(the )?striker\b/.test(m) ||
-    /\bthe 9\b/.test(m);
-  const engage = /\b(engage|find|into|pin|show(?:ing)?|target|to the 9)\b/.test(m);
-  return nine && (central || engage);
 }
 
 export function inferDefBlockHeight(message: string): DefBlockHeight {
@@ -371,8 +356,7 @@ function arrow(
   fromId: string,
   toId: string,
   type: Arrow['type'],
-  style: Arrow['style'] = 'solid',
-  order?: number
+  style: Arrow['style'] = 'solid'
 ): Arrow {
   return {
     from: { playerId: fromId },
@@ -381,7 +365,6 @@ function arrow(
     style,
     weight: type === 'pass' ? 'bold' : 'normal',
     arrowhead: true,
-    ...(typeof order === 'number' ? { order } : {}),
   };
 }
 
@@ -390,22 +373,6 @@ type PhaseGeom = {
   area: { x: number; y: number; width: number; height: number; shape: 'rect'; label?: string };
   title: string;
 };
-
-function captionsForCentralNine(phase: PlayOutSubPhase, formation: FormationId11): string[] {
-  if (phase === 'goal_kick') {
-    return [
-      `Play out centrally in this ${formation}. GK into a centre-back, then the 6. The 9 stays a target — do not drop them into the first line.`,
-    ];
-  }
-  if (phase === 'pocket') {
-    return [
-      'Central: 6 into 8/10 between the lines, then the 9. Wings hold width so the first pass is not a crowd.',
-    ];
-  }
-  return [
-    'Engage the 9. 8/10 plays in. The 9 pins, receives to feet, or lays off — still a striker, not a fourth midfielder.',
-  ];
-}
 
 function geomForPhase(
   phase: PlayOutSubPhase,
@@ -988,8 +955,7 @@ function placeAttChassis(
   focus: { x: number; y: number },
   phase: PlayOutSubPhase,
   formation: FormationId11,
-  channelX: number,
-  engageNine = false
+  channelX: number
 ) {
   for (const p of att.gk) setT(targets, p, 50, 94);
   const { cbs, fbs, wbs } = splitBacks(att.back);
@@ -1166,8 +1132,8 @@ function placeAttChassis(
         setT(targets, six, 50, 56);
         setT(targets, eight, WIDTH.midR + 4, 50);
         setT(targets, ten, WIDTH.midL - 4, 50);
-        // #9 between lines as a target (not a fourth midfielder)
-        setT(targets, nine, 50, engageNine ? 36 : 40);
+        // #9 between lines (opp side of center); wings high-wide
+        setT(targets, nine, 50, 40);
         setT(targets, seven, WIDTH.touchR, 28);
         setT(targets, eleven, WIDTH.touchL, 32);
         return;
@@ -1273,17 +1239,11 @@ function placeAttChassis(
     // Late midfield arrivals toward the box
     setT(targets, eightP, WIDTH.midR, 28);
     setT(targets, tenP, WIDTH.midL, 28);
-    if (engageNine) {
-      // Stay a 9 — play-out into the target, not a false-nine drop
-      setT(targets, nineP, 50, 16);
-      setT(targets, sevenP, WIDTH.touchR - 2, 16);
-      setT(targets, elevenP, WIDTH.touchL + 2, 18);
-    } else {
-      // False nine drops between midfield and the back line
-      setT(targets, nineP, 50, 22);
-      setT(targets, sevenP, WIDTH.halfR, 14);
-      setT(targets, elevenP, WIDTH.halfL, 16);
-    }
+    // False nine drops between midfield and the back line
+    setT(targets, nineP, 50, 22);
+    // Inverted wingers in the half-spaces
+    setT(targets, sevenP, WIDTH.halfR, 14);
+    setT(targets, elevenP, WIDTH.halfL, 16);
     // FBs overlap high-wide for cutbacks
     setT(targets, rb, WIDTH.touchR, 14);
     setT(targets, lb, WIDTH.touchL, 18);
@@ -1404,8 +1364,7 @@ function motifArrows(
   formation: FormationId11,
   att: { gk: Player[]; back: Player[]; mid: Player[]; front: Player[]; all: Player[] },
   def: { front: Player[]; mid: Player[] },
-  channelX: number,
-  engageNine = false
+  channelX: number
 ): Arrow[] {
   const arrows: Arrow[] = [];
   const id = (p?: Player) => p?.id;
@@ -1452,14 +1411,6 @@ function motifArrows(
   if (phase === 'pocket') {
     const feeder = cbs[0] || rb || att.back[0];
     if (formation === '4-3-3') {
-      if (engageNine) {
-        const cm = eight || ten;
-        if (id(six) && id(cm)) arrows.push(arrow(id(six)!, id(cm)!, 'pass', 'solid', 1));
-        if (id(cm) && id(nine)) arrows.push(arrow(id(cm)!, id(nine)!, 'pass', 'solid', 2));
-        if (id(feeder) && id(six)) arrows.push(arrow(id(feeder)!, id(six)!, 'pass', 'dashed'));
-        if (id(cover) && id(six)) arrows.push(arrow(id(cover)!, id(six)!, 'press', 'dashed'));
-        return arrows;
-      }
       const wing = activeRight ? seven : eleven;
       const fb = activeRight ? rb : lb;
       const cm = activeRight ? eight || ten : ten || eight;
@@ -1481,12 +1432,6 @@ function motifArrows(
       return arrows;
     }
     if (formation === '4-2-3-1') {
-      if (engageNine) {
-        if (id(six) && id(ten)) arrows.push(arrow(id(six)!, id(ten)!, 'pass', 'solid', 1));
-        if (id(ten) && id(nine)) arrows.push(arrow(id(ten)!, id(nine)!, 'pass', 'solid', 2));
-        if (id(cover) && id(ten)) arrows.push(arrow(id(cover)!, id(ten)!, 'press', 'dashed'));
-        return arrows;
-      }
       if (id(six) && id(ten)) arrows.push(arrow(id(six)!, id(ten)!, 'pass', 'solid')); // into #10
       if (id(eight) && id(ten)) arrows.push(arrow(id(eight)!, id(ten)!, 'run', 'dashed'));
       const fb = activeRight ? rb : lb;
@@ -1505,13 +1450,6 @@ function motifArrows(
 
   // attack / final third
   if (formation === '4-3-3') {
-    if (engageNine) {
-      const cm = eight || ten;
-      if (id(cm) && id(nine)) arrows.push(arrow(id(cm)!, id(nine)!, 'pass', 'solid', 1));
-      if (id(six) && id(cm)) arrows.push(arrow(id(six)!, id(cm)!, 'pass', 'dashed'));
-      if (id(cover) && id(nine)) arrows.push(arrow(id(cover)!, id(nine)!, 'press', 'dashed'));
-      return arrows;
-    }
     if (id(six) && id(nine)) arrows.push(arrow(id(nine)!, id(six)!, 'run', 'dashed')); // false nine drop
     if (id(nine) && id(seven)) arrows.push(arrow(id(nine)!, id(seven)!, 'pass', 'solid'));
     if (id(rb) && id(nine)) arrows.push(arrow(id(rb)!, id(nine)!, 'pass', 'dashed')); // cutback
@@ -1527,12 +1465,6 @@ function motifArrows(
     return arrows;
   }
   if (formation === '4-2-3-1') {
-    if (engageNine) {
-      if (id(ten) && id(nine)) arrows.push(arrow(id(ten)!, id(nine)!, 'pass', 'solid', 1));
-      if (id(six) && id(ten)) arrows.push(arrow(id(six)!, id(ten)!, 'pass', 'dashed'));
-      if (id(cover) && id(nine)) arrows.push(arrow(id(cover)!, id(nine)!, 'press', 'dashed'));
-      return arrows;
-    }
     if (id(ten) && id(nine)) arrows.push(arrow(id(ten)!, id(nine)!, 'pass', 'solid'));
     if (id(seven) && id(ten)) arrows.push(arrow(id(seven)!, id(ten)!, 'run', 'dashed'));
     if (id(rb) && id(nine)) arrows.push(arrow(id(rb)!, id(nine)!, 'pass', 'dashed')); // FB cutback lane
@@ -1558,7 +1490,6 @@ export function placePhaseSnapshot(input: {
   defBlock?: DefBlockHeight;
   /** Motif pass/press arrows — on for AI play-out, off for Setup shape. */
   includeMotifArrows?: boolean;
-  engageNine?: boolean;
 }): {
   players: Player[];
   arrows: Arrow[];
@@ -1575,7 +1506,6 @@ export function placePhaseSnapshot(input: {
     channelX,
     defBlock = 'high',
     includeMotifArrows = true,
-    engageNine = false,
   } = input;
 
   const g = geomForPhase(phase, channelX, attFormation);
@@ -1596,7 +1526,7 @@ export function placePhaseSnapshot(input: {
   };
 
   const targets = new Map<string, { x: number; y: number }>();
-  placeAttChassis(targets, att, focus, phase, attFormation, channelX, engageNine);
+  placeAttChassis(targets, att, focus, phase, attFormation, channelX);
   placeDefBlock(targets, def, focus, phase, defBlock, defFormation);
 
   // Fallback: anyone without a target gets a generic band place
@@ -1625,30 +1555,16 @@ export function placePhaseSnapshot(input: {
     setT(targets, p, focus.x + xOff, y);
   }
 
-  const playersRaw = separate(applyTargets(roster, targets));
-  // Restore chassis after separation — keep locked playout / midfield shapes
-  let players = playersRaw.map((p) => {
-    const t = targets.get(p.id);
-    if (!t) return p;
-    if (
-      (phase === 'goal_kick' || phase === 'pocket' || phase === 'final_third') &&
-      (p.team === 'DEF' || p.team === 'ATT')
-    ) {
-      return { ...p, x: t.x, y: t.y };
-    }
-    return p;
-  });
-  // Hard rule: never leave shirts stacked (chassis restore can reintroduce overlaps)
-  players = enforceNoOverlap(players);
+  const playersRaw = applyTargets(roster, targets);
+  // Width-only overlap — never fight the chassis on y.
+  const players = enforceNoOverlap(playersRaw, 3.5);
 
   const arrows = includeMotifArrows
-    ? motifArrows(phase, attFormation, att, def, channelX, engageNine)
+    ? motifArrows(phase, attFormation, att, def, channelX)
     : [];
 
-  const captions = engageNine
-    ? captionsForCentralNine(phase, attFormation)
-    : playOutCaptions(attFormation, phase, defBlock);
-  if (phase === 'goal_kick' && !engageNine) {
+  const captions = playOutCaptions(attFormation, phase, defBlock);
+  if (phase === 'goal_kick') {
     const defCues = boardCuesFor(defFormation, phaseKeyForPlayOut(phase)).slice(0, 1);
     for (const c of defCues) captions.push(`DEF ${defFormation}: ${c}`.slice(0, 200));
   }
@@ -1662,16 +1578,9 @@ export function placePhaseSnapshot(input: {
 
   // Build-out ball: 4-2-3-1 sits with the pivot platform; other shapes with the ball-side CB
   // Middle-third Center: ball on the center spot
-  const nineLive = players.find((p) => p.team === 'ATT' && p.number === 9);
-  const eightLive =
-    players.find((p) => p.team === 'ATT' && (p.number === 8 || p.number === 10)) || null;
   const carrierY = phase === 'goal_kick' ? clamp(Math.max(focus.y + 2, 87)) : focus.y;
   const ballAt =
-    engageNine && phase === 'final_third' && nineLive
-      ? { x: nineLive.x, y: nineLive.y }
-      : engageNine && phase === 'pocket' && eightLive
-        ? { x: eightLive.x, y: eightLive.y }
-        : phase === 'pocket' && Math.abs(channelX - 50) <= 10
+    phase === 'pocket' && Math.abs(channelX - 50) <= 10
       ? { x: 50, y: 50 }
       : phase === 'final_third' &&
           (attFormation === '4-4-2' ||
@@ -1741,6 +1650,28 @@ export function placePhaseSnapshot(input: {
   };
 }
 
+export function inferFormationFromRoster(
+  roster: Player[],
+  team: 'ATT' | 'DEF'
+): FormationId11 | null {
+  const side = roster.filter((p) => p.team === team);
+  if (side.length < 8) return null;
+  const roles = side.map((p) => String(p.role || '').toUpperCase());
+  const count = (re: RegExp) => roles.filter((r) => re.test(r)).length;
+  const cbs = count(/^(CB|RCB|LCB)$/);
+  const cdms = count(/^(CDM|DM)$/);
+  const cams = count(/^(CAM|AM)$/);
+  const cms = count(/^(CM|RCM|LCM)$/);
+  const wideMids = count(/^(RM|LM)$/);
+  const wingers = count(/^(RW|LW|RAM|LAM)$/);
+  if (cbs >= 3) return '3-5-2';
+  if (cdms >= 2 && (cams >= 1 || wingers >= 2)) return '4-2-3-1';
+  if (wideMids >= 2) return '4-4-2';
+  if (cdms >= 1 && cms >= 2) return '4-3-3';
+  if (wingers >= 2 && cms >= 1) return '4-3-3';
+  return null;
+}
+
 /** Place ATT + DEF for one play-out sub-phase (infers formations/channel from message). */
 export function placePlayOutFrame(
   roster: Player[],
@@ -1758,12 +1689,11 @@ export function placePlayOutFrame(
   return placePhaseSnapshot({
     roster,
     subPhase: phase,
-    attFormation: inferred.att || '4-3-3',
-    defFormation: inferred.def || '4-4-2',
+    attFormation: inferred.att || inferFormationFromRoster(roster, 'ATT') || '4-3-3',
+    defFormation: inferred.def || inferFormationFromRoster(roster, 'DEF') || '4-2-3-1',
     channelX: inferChannelX(message),
     defBlock: inferDefBlockHeight(message),
     includeMotifArrows: true,
-    engageNine: wantsCentralNinePlayOut(message),
   });
 }
 
@@ -1973,9 +1903,8 @@ export function applyPlayOutSequenceToDiagram(
   }));
 
   const all = [...frames, ...extras];
-  const engageNine = wantsCentralNinePlayOut(message);
-  const active = engageNine ? all[2] || all[1] || all[0] : all[1] || all[0];
-  const activeFrameId = active.id;
+  const activeFrameId = all[0].id;
+  const active = all[0];
 
   return {
     ...diagram,

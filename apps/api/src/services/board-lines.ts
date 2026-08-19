@@ -18,6 +18,7 @@ export type LineArrow = {
   arrowhead?: boolean;
   control?: { x: number; y: number };
   path?: Array<{ x: number; y: number }>;
+  order?: number;
 };
 
 export type LinePlayer = { id: string; x: number; y: number };

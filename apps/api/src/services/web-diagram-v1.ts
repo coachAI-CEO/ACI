@@ -60,6 +60,8 @@ export type WebDiagramV1 = {
     arrowhead?: boolean;
     control?: { x: number; y: number };
     path?: Array<{ x: number; y: number }>;
+    /** 1-based pass/run order for combination filmstrips. */
+    order?: number;
   }>;
   areas: Array<{
     label?: string;
@@ -454,6 +456,9 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         arrowhead,
         ...(control ? { control } : {}),
         ...(path.length >= 2 ? { path } : {}),
+        ...(typeof a.order === 'number' && Number.isFinite(a.order)
+          ? { order: Math.max(1, Math.min(12, Math.round(a.order))) }
+          : {}),
       };
     })
     .filter(Boolean) as WebDiagramV1['arrows'];
