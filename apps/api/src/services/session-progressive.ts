@@ -9,6 +9,7 @@ import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { enforceDiagramGoalAvailability } from "./diagram-goals";
 import { generateDrillDiagramSvg, omitDiagramSvgFromDrill } from "./drill-diagram-svg";
+import { isWarmupPicture } from "../data/field-dimensions";
 import { resolveSessionClubId } from "./club-philosophy";
 import {
   normalizeGoalkeeperPositions,
@@ -499,13 +500,20 @@ export async function generateProgressiveSessionSeries(
           try {
             diagramResult = await generateDrillDiagramSvg({
               title: drill.title || "Drill",
-              json: drill,
+              json: {
+                ...drill,
+                goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (baseInput.goalsAvailable ?? drill.goalsAvailable ?? 0),
+              },
               drillType: drill.drillType || "TECHNICAL",
               durationMin: drill.durationMin ?? baseInput.durationMin ?? 25,
               rpeMin: drill.rpeMin ?? 5,
               rpeMax: drill.rpeMax ?? 7,
               numbersMin: baseInput.numbersMin,
               numbersMax: baseInput.numbersMax,
+              spaceConstraint: baseInput.spaceConstraint ?? drill.spaceConstraint,
+              coachLevel: baseInput.coachLevel,
+              phase: drill.phase ?? baseInput.phase,
+              zone: drill.zone ?? baseInput.zone,
             });
             drill.diagramSvg = diagramResult.svg;
           } catch (err: any) {

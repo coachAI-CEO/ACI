@@ -9,6 +9,19 @@ export const BOARD_DIAGRAM_MAX_FRAMES = 8;
 /** Raised to fit multi-frame sequences (still capped by frame count). */
 export const BOARD_DIAGRAM_MAX_BYTES = 192 * 1024;
 export const BOARD_TITLE_MAX_LEN = 120;
+export const BOARD_DIAGRAM_MAX_ELEMENTS = 40;
+
+const BoardElementSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    kind: z.enum(['mini-goal', 'cone', 'mannequin', 'pole']),
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+    rotation: z.number().min(0).max(360).optional(),
+    color: z.string().max(32).optional(),
+    width: z.number().optional(),
+  })
+  .strict();
 
 const PointRefSchema = z
   .object({
@@ -26,6 +39,7 @@ export const WebDiagramV1Schema = z
         orientation: z.enum(['HORIZONTAL', 'VERTICAL']),
         format: z.enum(['7V7', '9V9', '11V11']).optional(),
         showZones: z.boolean().optional(),
+        showThirds: z.boolean().optional(),
         zones: z
           .object({
             leftWide: z.boolean().optional(),
@@ -101,6 +115,7 @@ export const WebDiagramV1Schema = z
       )
       .max(40)
       .optional(),
+    elements: z.array(BoardElementSchema).max(BOARD_DIAGRAM_MAX_ELEMENTS).optional(),
     arrows: z
       .array(
         z
@@ -129,6 +144,7 @@ export const WebDiagramV1Schema = z
               )
               .max(100)
               .optional(),
+            order: z.number().int().min(1).max(12).optional(),
           })
           .strict()
       )
@@ -214,6 +230,7 @@ export const WebDiagramV1Schema = z
                           )
                           .max(100)
                           .optional(),
+                        order: z.number().int().min(1).max(12).optional(),
                       })
                       .strict()
                   )
@@ -289,6 +306,7 @@ export const WebDiagramV1Schema = z
                   )
                   .max(40)
                   .optional(),
+                elements: z.array(BoardElementSchema).max(BOARD_DIAGRAM_MAX_ELEMENTS).optional(),
               })
               .strict()
           )

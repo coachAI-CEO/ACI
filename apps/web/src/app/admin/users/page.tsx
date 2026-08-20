@@ -22,6 +22,7 @@ import {
   EyeOff,
   Building2,
   RefreshCw,
+  LayoutGrid,
 } from "lucide-react";
 import { adminFetch, API_BASE, getAdminHeaders } from "../_lib/api";
 
@@ -33,6 +34,27 @@ type ClubMembership = {
   clubName: string;
   sectionId: string | null;
   role: "DOC" | "SECTION_DIRECTOR" | "COACH";
+};
+
+type UserTeam = {
+  id: string;
+  name: string;
+  ageGroup: string;
+  clubId: string | null;
+  clubName: string | null;
+  format: string | null;
+  role: string;
+};
+
+type ClubOption = { id: string; name: string; code: string; active: boolean };
+
+type CatalogTeam = {
+  id: string;
+  name: string;
+  ageGroup: string;
+  clubId: string | null;
+  clubName: string | null;
+  notes: string | null;
 };
 
 type User = {
@@ -56,6 +78,7 @@ type User = {
   clubId?: string | null;
   club?: { id: string; name: string; code: string } | null;
   clubMemberships?: ClubMembership[];
+  teams?: UserTeam[];
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -550,18 +573,92 @@ function CoachLevelModal({
   onDone,
   onClose,
 }: {
-  user: { id: string; email: string; role: string; coachLevel: string | null; teamAgeGroups: string[] };
+  user: {
+    id: string;
+    email: string;
+    role: string;
+    coachLevel: string | null;
+    teamAgeGroups: string[];
+    clubMemberships?: ClubMembership[];
+    teams?: UserTeam[];
+  };
   onDone: () => void;
   onClose: () => void;
 }) {
   const [coachLevel, setCoachLevel] = useState(user.coachLevel ?? "");
   const [ageGroups, setAgeGroups] = useState<string[]>(user.teamAgeGroups ?? []);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>(
+    (user.teams ?? []).map((t) => t.id)
+  );
+  const [catalog, setCatalog] = useState<CatalogTeam[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const clubIds = (user.clubMemberships ?? []).map((m) => m.clubId);
+
+  useEffect(() => {
+    const load = async () => {
+      setCatalogLoading(true);
+      try {
+        const data = await adminFetch<{ ok: boolean; teams: CatalogTeam[] }>("/admin/teams");
+        setCatalog(data.teams ?? []);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to load teams");
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+    void load();
+  }, []);
+
+  const availableTeams = catalog
+    .filter((team) => {
+      if (clubIds.length === 0) return false;
+      return team.clubId ? clubIds.includes(team.clubId) : false;
+    })
+    .filter((team, index, list) => {
+      const key = `${team.clubId || ""}:${team.name.trim().toLowerCase()}`;
+      return list.findIndex((other) => `${other.clubId || ""}:${other.name.trim().toLowerCase()}` === key) === index;
+    });
+
+  function teamGroupLabel(team: CatalogTeam) {
+    const notes = (team.notes || "").trim();
+    if (/girls|boys/i.test(notes) && /7v7|9v9|11v11/i.test(notes)) return notes;
+    const gender = /girls/i.test(team.name) ? "Girls" : /boys/i.test(team.name) ? "Boys" : "";
+    const format = notes.match(/7v7|9v9|11v11/i)?.[0] || "";
+    return [gender, format].filter(Boolean).join(" ") || team.ageGroup || "Other";
+  }
+
+  const groupedTeams = availableTeams.reduce<Record<string, CatalogTeam[]>>((acc, team) => {
+    const key = teamGroupLabel(team);
+    acc[key] = acc[key] || [];
+    acc[key].push(team);
+    return acc;
+  }, {});
+  const formatOrder = [
+    "Girls 11v11",
+    "Girls 9v9",
+    "Girls 7v7",
+    "Boys 11v11",
+    "Boys 9v9",
+    "Boys 7v7",
+  ];
+  const groupedEntries = Object.entries(groupedTeams).sort(([a], [b]) => {
+    const ai = formatOrder.indexOf(a);
+    const bi = formatOrder.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
   function toggleAgeGroup(ag: string) {
-    setAgeGroups(prev =>
-      prev.includes(ag) ? prev.filter(x => x !== ag) : [...prev, ag]
+    setAgeGroups((prev) =>
+      prev.includes(ag) ? prev.filter((x) => x !== ag) : [...prev, ag]
+    );
+  }
+
+  function toggleTeam(teamId: string) {
+    setSelectedTeamIds((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
     );
   }
 
@@ -575,6 +672,7 @@ function CoachLevelModal({
         body: JSON.stringify({
           coachLevel: coachLevel || null,
           teamAgeGroups: ageGroups,
+          teamIds: selectedTeamIds,
           promoteToCoach: true,
         }),
       });
@@ -591,11 +689,11 @@ function CoachLevelModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-4">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Pencil className="h-4 w-4 text-amber-400" />
-            <h2 className="font-semibold text-slate-200">Coach Level</h2>
+            <h2 className="font-semibold text-slate-200">Coach Level & Team</h2>
             <span className="rounded px-1.5 py-px text-[9px] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">L3</span>
           </div>
           <button onClick={onClose} className="rounded-full p-1 text-slate-500 hover:text-slate-300">
@@ -642,6 +740,52 @@ function CoachLevelModal({
               </button>
             ))}
           </div>
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+            Assigned teams
+          </label>
+          {clubIds.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              Assign this user to a club first, then pick their team here.
+            </p>
+          ) : catalogLoading ? (
+            <p className="text-xs text-slate-500">Loading club teams…</p>
+          ) : availableTeams.length === 0 ? (
+            <p className="text-xs text-slate-500">No teams found for this club yet.</p>
+          ) : (
+            <div className="max-h-56 space-y-3 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+              {groupedEntries.map(([format, teams]) => (
+                <div key={format}>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    {format}
+                  </p>
+                  <div className="space-y-1">
+                    {teams.map((team) => {
+                      const checked = selectedTeamIds.includes(team.id);
+                      return (
+                        <label
+                          key={team.id}
+                          className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${
+                            checked ? "bg-amber-500/10 text-amber-200" : "text-slate-300 hover:bg-slate-800"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTeam(team.id)}
+                            className="rounded border-slate-600 bg-slate-800 text-amber-500"
+                          />
+                          <span className="flex-1">{team.name}</span>
+                          <span className="text-[10px] text-slate-500">{team.ageGroup}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex gap-3 pt-1 border-t border-slate-800">
           <button onClick={onClose} className="flex-1 rounded-xl border border-slate-700 py-2 text-sm text-slate-400 hover:text-slate-200">Cancel</button>
@@ -977,6 +1121,24 @@ function UserRow({
           )}
         </td>
 
+        {/* Team */}
+        <td className="px-3 py-3">
+          {user.teams && user.teams.length > 0 ? (
+            <div className="space-y-1">
+              {user.teams.map((team) => (
+                <div key={team.id} className="flex items-center gap-1.5">
+                  <LayoutGrid className="h-3 w-3 text-sky-400 shrink-0" />
+                  <span className="text-xs text-sky-200 font-medium truncate max-w-[140px]" title={team.name}>
+                    {team.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-slate-700">—</span>
+          )}
+        </td>
+
         {/* Email verified */}
         <td className="px-3 py-3">
           <StatusDot ok={user.emailVerified} />
@@ -996,7 +1158,7 @@ function UserRow({
               <Building2 className="h-3 w-3" />
             </ActionIcon>
             <ActionIcon
-              label="Edit coach level"
+              label="Edit coach level & team"
               onClick={() => setShowCoachLevel(true)}
               className="text-slate-600 hover:bg-slate-700 hover:text-amber-300"
             >
@@ -1049,6 +1211,7 @@ function UserRow({
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [clubs, setClubs] = useState<ClubOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -1058,9 +1221,16 @@ export default function AdminUsersPage() {
   const [searchInput, setSearchInput] = useState("");
   const [filterPlan, setFilterPlan] = useState("");
   const [filterRole, setFilterRole] = useState("");
+  const [filterClub, setFilterClub] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
-  const loadUsers = useCallback(async (p = 1, q = search, plan = filterPlan, role = filterRole) => {
+  const loadUsers = useCallback(async (
+    p = 1,
+    q = search,
+    plan = filterPlan,
+    role = filterRole,
+    clubId = filterClub,
+  ) => {
     setLoading(true);
     setLoadError(null);
     try {
@@ -1068,6 +1238,7 @@ export default function AdminUsersPage() {
       if (q) params.set("search", q);
       if (plan) params.set("subscriptionPlan", plan);
       if (role) params.set("role", role);
+      if (clubId) params.set("clubId", clubId);
       const data = await adminFetch<{
         ok: boolean;
         users: User[];
@@ -1085,14 +1256,19 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, filterPlan, filterRole]);
+  }, [search, filterPlan, filterRole, filterClub]);
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => {
+    loadUsers();
+    adminFetch<{ ok: boolean; clubs: ClubOption[] }>("/admin/clubs")
+      .then((data) => setClubs(data.clubs ?? []))
+      .catch(() => setClubs([]));
+  }, []);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setSearch(searchInput);
-    loadUsers(1, searchInput, filterPlan, filterRole);
+    loadUsers(1, searchInput, filterPlan, filterRole, filterClub);
   }
 
   return (
@@ -1112,7 +1288,7 @@ export default function AdminUsersPage() {
             <span className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase bg-blue-500/20 text-blue-300 border border-blue-500/30">L1 + L2</span>
           </div>
           <p className="mt-0.5 text-sm text-slate-500">
-            {total.toLocaleString()} total users — manage roles, plans, coach levels, and clubs
+            {total.toLocaleString()} total users — manage roles, plans, coach levels, clubs, and teams
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1158,7 +1334,7 @@ export default function AdminUsersPage() {
 
         <select
           value={filterPlan}
-          onChange={(e) => { setFilterPlan(e.target.value); loadUsers(1, search, e.target.value, filterRole); }}
+          onChange={(e) => { setFilterPlan(e.target.value); loadUsers(1, search, e.target.value, filterRole, filterClub); }}
           className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none"
         >
           <option value="">All plans</option>
@@ -1167,11 +1343,24 @@ export default function AdminUsersPage() {
 
         <select
           value={filterRole}
-          onChange={(e) => { setFilterRole(e.target.value); loadUsers(1, search, filterPlan, e.target.value); }}
+          onChange={(e) => { setFilterRole(e.target.value); loadUsers(1, search, filterPlan, e.target.value, filterClub); }}
           className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none"
         >
           <option value="">All roles</option>
           {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+        </select>
+
+        <select
+          value={filterClub}
+          onChange={(e) => { setFilterClub(e.target.value); loadUsers(1, search, filterPlan, filterRole, e.target.value); }}
+          className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300 focus:border-emerald-500 focus:outline-none"
+        >
+          <option value="">All clubs</option>
+          {clubs.map((club) => (
+            <option key={club.id} value={club.id}>
+              {club.name}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -1197,6 +1386,9 @@ export default function AdminUsersPage() {
                 <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Club <span className="text-emerald-400">(L5)</span>
                 </th>
+                <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Team
+                </th>
                 <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Email</th>
                 <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Joined</th>
                 <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Actions</th>
@@ -1206,7 +1398,7 @@ export default function AdminUsersPage() {
               {loading ? (
                 Array.from({ length: 10 }).map((_, i) => (
                   <tr key={i} className="border-b border-slate-800/40">
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-3 py-3">
                         <div className="h-4 animate-pulse rounded bg-slate-800/60" style={{ width: `${40 + (i * j) % 60}%` }} />
                       </td>
@@ -1215,7 +1407,7 @@ export default function AdminUsersPage() {
                 ))
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-sm text-slate-600">
+                  <td colSpan={10} className="py-12 text-center text-sm text-slate-600">
                     No users found
                   </td>
                 </tr>

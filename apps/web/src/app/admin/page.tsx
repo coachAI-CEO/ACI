@@ -19,6 +19,7 @@ import {
   RefreshCw,
   ArrowRight,
   Shield,
+  LayoutGrid,
 } from "lucide-react";
 import { API_BASE, getAdminHeaders, adminFetch } from "./_lib/api";
 
@@ -591,6 +592,14 @@ export default function AdminOverviewPage() {
             icon={Building2}
             title="Club Management"
             description="Create clubs with join codes that unlock exclusive game models for enrolled members."
+            layer="L5"
+            badge="NEW"
+          />
+          <SectionCard
+            href="/admin/teams"
+            icon={LayoutGrid}
+            title="Teams"
+            description="Assign a team to a coach. That team then appears in Coach Center."
             layer="L5"
             badge="NEW"
           />

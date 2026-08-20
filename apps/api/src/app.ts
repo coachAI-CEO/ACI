@@ -20,6 +20,7 @@ import organizationRoutes from "./routes-organization";
 import billingRoutes from "./routes-billing";
 import videoAnalysisRoutes from "./routes-video-analysis";
 import docHubRoutes from "./routes-doc-hub";
+import coachCenterRoutes from "./routes-coach-center";
 import boardsRoutes from "./routes-boards";
 import { diagramSvgRouter } from "./routes/diagram-svg";
 
@@ -76,6 +77,7 @@ app.use(calendarRoutes); // Calendar routes (BEFORE admin routes to avoid confli
 app.use(favoritesRoutes); // Favorites routes (BEFORE admin routes to avoid conflicts)
 app.use(billingRoutes); // Stripe checkout, portal, and webhook routes
 app.use(docHubRoutes); // DOC Hub before admin so club DOCs are never blocked by admin gate
+app.use(coachCenterRoutes); // Coach Center before admin
 app.use(boardsRoutes); // Tactical Board v1 (flag-gated)
 app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes

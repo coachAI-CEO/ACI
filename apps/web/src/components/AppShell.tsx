@@ -15,7 +15,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/verify-email") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/doc-hub");
+    pathname.startsWith("/doc-hub") ||
+    pathname.startsWith("/coach-center");
   const [collapsed, setCollapsed] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 

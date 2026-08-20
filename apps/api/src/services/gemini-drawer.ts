@@ -65,12 +65,12 @@ const STANDARD_CHROME = `<rect x="0" y="0" width="800" height="595" fill="#08111
 <filter id="ps" x="-30%" y="-30%" width="160%" height="180%">
 <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="rgba(0,0,0,0.4)"/>
 </filter>
-<marker id="mPass" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mRun" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mPress" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ef4444"/></marker>
-<marker id="mCounter" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#22c55e"/></marker>
-<marker id="mDeliver" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ffffff"/></marker>
-<marker id="mFinish" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#fbbf24"/></marker>
+<marker id="mPass" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#3b82f6" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/></marker>
+<marker id="mRun" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#3b82f6" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/></marker>
+<marker id="mPress" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#ef4444" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/></marker>
+<marker id="mCounter" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#22c55e" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/></marker>
+<marker id="mDeliver" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#ffffff" stroke="#0f172a" stroke-width="1.4" stroke-linejoin="round"/></marker>
+<marker id="mFinish" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="#fbbf24" stroke="#f8fafc" stroke-width="1.4" stroke-linejoin="round"/></marker>
 </defs><rect x="117.92" y="74.38" width="564.16" height="313.24" fill="#1c5134"/><rect x="117.92" y="74.38" width="564.16" height="313.24" rx="6" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2"/><path d="M 117.92 67.38 L 111.92 79.38 L 123.92 79.38 Z" fill="#f97316" stroke="#7c2d12" stroke-width="1"/><path d="M 682.08 67.38 L 676.08 79.38 L 688.08 79.38 Z" fill="#f97316" stroke="#7c2d12" stroke-width="1"/><path d="M 117.92 380.62 L 111.92 392.62 L 123.92 392.62 Z" fill="#f97316" stroke="#7c2d12" stroke-width="1"/><path d="M 682.08 380.62 L 676.08 392.62 L 688.08 392.62 Z" fill="#f97316" stroke="#7c2d12" stroke-width="1"/>`;
 
 function injectStandardDefs(svg: string): string {

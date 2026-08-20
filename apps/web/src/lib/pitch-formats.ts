@@ -113,6 +113,22 @@ export type PitchViewport = {
  * Zoom crops along the length from the left (away) goal so markings stay
  * yard-accurate. FULL = whole pitch; HALF / THIRD = that fraction of length.
  */
+export function pitchChromeLabel(
+  zoom: PitchZoom,
+  areaLabel?: string | null,
+  opts?: { playerCount?: number; hasMiniGoals?: boolean }
+): string {
+  const a = String(areaLabel || "").toLowerCase();
+  if (a.includes("rondo")) return "Rondo";
+  if (a.includes("ssg")) return "SSG";
+  if (opts?.hasMiniGoals && (opts.playerCount || 0) > 0 && (opts.playerCount || 0) <= 12) {
+    return "Rondo";
+  }
+  if (zoom === "HALF") return "Half";
+  if (zoom === "THIRD") return "Third";
+  return "Full";
+}
+
 export function viewportFor(format: PitchFormatId, zoom: PitchZoom): PitchViewport {
   const spec = PITCH_SPECS[format];
   const lengthYds =

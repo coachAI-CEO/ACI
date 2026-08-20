@@ -13,6 +13,7 @@ import {
   patchBoard,
 } from './services/tactical-boards';
 import { runBoardAiChat } from './services/board-ai-chat';
+import { BoardChatImageError, parseBoardChatImage } from './services/board-ai-image';
 import { applySetupPhaseToDiagram } from './services/board-phase-placement';
 import { parseWebDiagramV1 } from './services/board-diagram-schema';
 import { toWebDiagramV1 } from './services/web-diagram-v1';
@@ -130,9 +131,22 @@ r.post('/boards/:id/ai-chat', async (req: AuthRequest, res) => {
       return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
     }
 
+    let image = null;
+    try {
+      image = parseBoardChatImage(req.body?.image);
+    } catch (err) {
+      if (err instanceof BoardChatImageError) {
+        return res.status(400).json({ ok: false, error: 'INVALID_IMAGE', message: err.message });
+      }
+      throw err;
+    }
     const message = String(req.body?.message || '').trim();
-    if (!message) {
-      return res.status(400).json({ ok: false, error: 'MISSING_MESSAGE', message: 'message required' });
+    if (!message && !image) {
+      return res.status(400).json({
+        ok: false,
+        error: 'MISSING_MESSAGE',
+        message: 'message or image required',
+      });
     }
 
     const fromBody = req.body?.diagram ? toWebDiagramV1(req.body.diagram) : null;
@@ -168,6 +182,7 @@ r.post('/boards/:id/ai-chat', async (req: AuthRequest, res) => {
       clubId: board.clubId,
       coachLevel: user?.coachLevel || null,
       userId: req.userId,
+      image,
     });
 
     return res.json({
@@ -190,14 +205,16 @@ r.post('/boards/:id/phase-place', async (req: AuthRequest, res) => {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
-    const board = await getBoardForUser(req.params.id, req.userId);
-    if (!board.canEdit) {
-      return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
-    }
 
     const fromBody = req.body?.diagram ? toWebDiagramV1(req.body.diagram) : null;
-    const currentDiagram =
-      fromBody || toWebDiagramV1(board.diagram) || (board.diagram as any);
+    let currentDiagram = fromBody;
+    if (!currentDiagram) {
+      const board = await getBoardForUser(req.params.id, req.userId);
+      if (!board.canEdit) {
+        return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
+      }
+      currentDiagram = toWebDiagramV1(board.diagram) || (board.diagram as any);
+    }
     const parsedCurrent = parseWebDiagramV1(currentDiagram);
     if (!parsedCurrent.ok) {
       return res.status(400).json({

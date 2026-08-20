@@ -75,3 +75,28 @@ export async function attachStoredDiagramSvgsToSession<T extends { json?: unknow
 
   return { ...session, json: { ...json, drills: mergeStoredSvgsOntoDrills(drills, rows) } };
 }
+
+/** Same stored-SVG merge for a top-level drills array (PDF export payload). */
+export async function attachStoredDiagramSvgsToDrills<T>(drills: T[]): Promise<T[]> {
+  if (!Array.isArray(drills) || drills.length === 0) return drills;
+  const records = drills.filter(
+    (drill): drill is T & Record<string, unknown> => Boolean(drill) && typeof drill === "object"
+  );
+  const keys = Array.from(
+    new Set(
+      records.flatMap((drill) =>
+        [drill.refCode, drill.id].filter(
+          (key): key is string => typeof key === "string" && key.trim().length > 0
+        )
+      )
+    )
+  );
+  const rows =
+    keys.length === 0
+      ? []
+      : await prisma.drill.findMany({
+          where: { OR: [{ refCode: { in: keys } }, { id: { in: keys } }] },
+          select: { id: true, refCode: true, diagramSvg: true },
+        });
+  return mergeStoredSvgsOntoDrills(drills, rows) as T[];
+}

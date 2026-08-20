@@ -210,6 +210,27 @@ describe('createBlankBoard', () => {
     expect(board.clubId).toBe('club-1');
     expect(mockedPrisma.tacticalBoard.create).toHaveBeenCalled();
   });
+
+  test('7v7 coach blank board seeds 14 shirts and stamps U10', async () => {
+    mockedPrisma.user.findUnique.mockResolvedValue({
+      role: 'COACH',
+      adminRole: null,
+      teamAgeGroups: ['U8', 'U10'],
+    });
+    mockedPrisma.tacticalBoard.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) =>
+      boardRow({
+        diagram: data.diagram,
+        ageGroup: data.ageGroup,
+        gameModelId: GameModelId.ROCKLIN_FC,
+        clubId: 'club-1',
+      })
+    );
+
+    const board = await createBlankBoard('owner-1', { title: 'U10 board' });
+    expect(board.ageGroup).toBe('U10');
+    expect((board.diagram as { players: unknown[] }).players).toHaveLength(14);
+    expect((board.diagram as { pitch: { format: string } }).pitch.format).toBe('7V7');
+  });
 });
 
 describe('getBoardForUser / patchBoard', () => {

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { getUserId, getUserHeaders } from "@/lib/user";
 import StoredDrillSvg from "@/components/StoredDrillSvg";
-import { fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
+import { collectDrillSvgIds, fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
 import ScheduleSessionModal from "@/components/ScheduleSessionModal";
 import ScheduleSeriesModal from "@/components/ScheduleSeriesModal";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
@@ -276,8 +276,7 @@ export default function FavoritesPage() {
       return;
     }
     try {
-      const drills = Array.isArray(session.json?.drills) ? session.json.drills : [];
-      const ids = drills.map((drill: unknown) => pickDrillSvgId(drill)).filter((id): id is string => Boolean(id));
+      const ids = collectDrillSvgIds(session.json?.drills);
       const svgs = await fetchStoredDiagramSvgs(ids);
       const merged = mergeSessionDrillSvgs(session, svgs);
       setSelectedSession(merged);
@@ -758,7 +757,7 @@ export default function FavoritesPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: Diagram */}
                           {diagram && (
-                            <div className="flex items-center justify-center overflow-hidden">
+                            <div className="min-w-0 w-full">
                               {canDraw ? (
                               <StoredDrillSvg
                                 drillId={svgDrillId}
@@ -914,7 +913,7 @@ export default function FavoritesPage() {
                 {selectedDrill.json?.diagram && (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
-                    <div className="flex items-center justify-center overflow-hidden">
+                    <div className="min-w-0 w-full">
                       <StoredDrillSvg
                         drillId={pickDrillSvgId(selectedDrill)}
                         goalsAvailable={selectedDrill.goalsAvailable ?? selectedDrill.json?.goalsAvailable}

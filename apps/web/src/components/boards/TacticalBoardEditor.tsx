@@ -4,13 +4,15 @@ import * as React from "react";
 import type {
   DiagramArea,
   DiagramArrow,
+  DiagramElement,
+  DiagramElementKind,
   DiagramLabel,
   DiagramPlayer,
   DiagramTeamCode,
   DiagramV1,
 } from "@/types/diagram";
 import type { BoardShareMode } from "@/lib/boards";
-import { placeBoardPhase } from "@/lib/boards";
+import { placeSetupPhaseLocally } from "@/lib/apply-setup-phase";
 import {
   DEFAULT_FORMATIONS,
   FORMATIONS_BY_FORMAT,
@@ -52,6 +54,7 @@ import {
   ballRadiusPx,
   layoutPitch,
   tokenRadiusPx,
+  pitchChromeLabel,
   viewportFor,
   type PitchFormatId,
   type PitchLayout,
@@ -61,6 +64,7 @@ import {
 } from "@/lib/pitch-formats";
 import ScaledPitchMarkings from "@/components/boards/ScaledPitchMarkings";
 import BoardToolbar, {
+  elementToolKind,
   lineToolToArrow,
   type BoardTool,
 } from "@/components/boards/BoardToolbar";
@@ -80,6 +84,18 @@ import {
   shortenPolylineForTokens,
 } from "@/lib/board-lines";
 import type { LineGeometry } from "@/components/boards/BoardToolbar";
+import {
+  BOARD_ELEMENT_MAX,
+  conesFromElements,
+  facingRotation,
+  mergePracticeElements,
+} from "@/lib/board-elements";
+import {
+  diagramPlayerCoordsEqual,
+  diagramPlayersNeedUnstack,
+  separateOverlappingPlayers,
+  unstackDiagramPlayers,
+} from "@/lib/board-player-spacing";
 
 const WIDTH = 900;
 const HEIGHT = 560;
@@ -103,6 +119,12 @@ type Props = {
   onNewBoard?: () => void;
   creatingBoard?: boolean;
   statusMessage?: string | null;
+  onEmphasisChange?: (next: {
+    phase: BoardSetupPhaseOrNone;
+    zone: BoardSetupZoneOrNone;
+    channel: BoardSetupChannelOrNone;
+    attFormation: FormationId;
+  }) => void;
 };
 
 type Selection =
@@ -111,12 +133,14 @@ type Selection =
   | { kind: "arrow"; index: number }
   | { kind: "label"; index: number }
   | { kind: "area"; index: number }
+  | { kind: "element"; id: string }
   | null;
 
 type DragTarget =
   | { kind: "player"; id: string; pointerId: number }
   | { kind: "ball"; index: number; pointerId: number }
   | { kind: "label"; index: number; pointerId: number }
+  | { kind: "element"; id: string; pointerId: number }
   | {
       kind: "area";
       index: number;
@@ -157,6 +181,12 @@ type DrawDraft =
   | {
       mode: "shape";
       shape: "rect" | "circle" | "spotlight";
+      from: { x: number; y: number };
+      to: { x: number; y: number };
+    }
+  | {
+      mode: "element";
+      kind: DiagramElementKind;
       from: { x: number; y: number };
       to: { x: number; y: number };
     };
@@ -221,7 +251,64 @@ function fromScreen(
 function teamFill(team: DiagramTeamCode) {
   if (team === "ATT") return "#38bdf8"; // blue — us / home
   if (team === "DEF") return "#fb7185"; // red — them / away
-  return "#64748b"; // neutral slate (never near-white on green)
+  return "#f59e0b"; // amber floaters — distinct from ATT blue / DEF red
+}
+
+function elementHitRadius(kind: DiagramElementKind, tokenR: number) {
+  if (kind === "mini-goal") return Math.max(16, tokenR * 1.6);
+  if (kind === "mannequin") return Math.max(12, tokenR * 1.2);
+  return Math.max(10, tokenR);
+}
+
+function BoardElementMark({
+  el,
+  selected,
+  angle,
+}: {
+  el: DiagramElement;
+  selected: boolean;
+  angle: number;
+}) {
+  const stroke = selected ? "#fbbf24" : "#0f172a";
+  if (el.kind === "cone") {
+    const fill = el.color && /^#/.test(el.color) ? el.color : "#f59e0b";
+    return (
+      <g>
+        <polygon points="0,-9 7,8 -7,8" fill={fill} stroke={stroke} strokeWidth={selected ? 2 : 1.25} />
+        <rect x={-3.5} y={7} width={7} height={2} rx={0.5} fill="#b45309" />
+      </g>
+    );
+  }
+  if (el.kind === "pole") {
+    return (
+      <g>
+        <line x1={0} y1={-11} x2={0} y2={11} stroke={selected ? "#fbbf24" : "#e2e8f0"} strokeWidth={2.5} strokeLinecap="round" />
+        <circle cx={0} cy={-12} r={3.2} fill="#f8fafc" stroke={stroke} strokeWidth={1.25} />
+      </g>
+    );
+  }
+  if (el.kind === "mannequin") {
+    return (
+      <g>
+        <circle cx={0} cy={-8} r={4} fill="#94a3b8" stroke={stroke} strokeWidth={selected ? 2 : 1.25} />
+        <rect x={-4.5} y={-3} width={9} height={14} rx={3} fill="#64748b" stroke={stroke} strokeWidth={selected ? 2 : 1.25} />
+      </g>
+    );
+  }
+  // mini-goal: U opening to +x, rotated so 0° faces +y / right
+  return (
+    <g transform={`rotate(${angle})`}>
+      <path
+        d="M 10 -9 L -9 -9 L -9 9 L 10 9"
+        fill="none"
+        stroke={selected ? "#fbbf24" : "#4ade80"}
+        strokeWidth={2.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M -9 -9 h 4 M -9 9 h 4" stroke={selected ? "#fbbf24" : "#86efac"} strokeWidth={2} strokeLinecap="round" />
+    </g>
+  );
 }
 
 function arrowStroke(type: DiagramArrow["type"]) {
@@ -236,22 +323,29 @@ function cloneDiagram(d: DiagramV1): DiagramV1 {
 }
 
 function ensureArrays(d: DiagramV1): DiagramV1 {
-  return ensureSequence({
-    ...d,
-    pitch: {
-      variant: d.pitch?.variant || "FULL",
-      orientation: d.pitch?.orientation || "HORIZONTAL",
-      format: d.pitch?.format || "11V11",
-      showZones: d.pitch?.showZones,
-      zones: d.pitch?.zones,
-    },
-    players: Array.isArray(d.players) ? d.players : [],
-    arrows: Array.isArray(d.arrows) ? d.arrows : [],
-    areas: Array.isArray(d.areas) ? d.areas : [],
-    labels: Array.isArray(d.labels) ? d.labels : [],
-    balls: Array.isArray(d.balls) ? d.balls : [],
-    goals: Array.isArray(d.goals) ? d.goals : [],
-  });
+  const elements = mergePracticeElements(d);
+  const players = separateOverlappingPlayers(Array.isArray(d.players) ? d.players : []);
+  return unstackDiagramPlayers(
+    ensureSequence({
+      ...d,
+      pitch: {
+        variant: d.pitch?.variant || "FULL",
+        orientation: d.pitch?.orientation || "HORIZONTAL",
+        format: d.pitch?.format || "11V11",
+        showZones: d.pitch?.showZones,
+        showThirds: d.pitch?.showThirds,
+        zones: d.pitch?.zones,
+      },
+      players,
+      arrows: Array.isArray(d.arrows) ? d.arrows : [],
+      areas: Array.isArray(d.areas) ? d.areas : [],
+      labels: Array.isArray(d.labels) ? d.labels : [],
+      balls: Array.isArray(d.balls) ? d.balls : [],
+      goals: Array.isArray(d.goals) ? d.goals : [],
+      elements,
+      cones: conesFromElements(elements),
+    })
+  );
 }
 
 /** Caption chip sits just above the label anchor so text doesn't cover the zone. */
@@ -394,6 +488,7 @@ export default function TacticalBoardEditor({
   onNewBoard,
   creatingBoard,
   statusMessage,
+  onEmphasisChange,
 }: Props) {
   const [diagram, setDiagram] = React.useState(() => ensureArrays(cloneDiagram(diagramProp)));
   const diagramRef = React.useRef(diagram);
@@ -412,15 +507,24 @@ export default function TacticalBoardEditor({
   const [setupZone, setSetupZone] = React.useState<BoardSetupZoneOrNone>("");
   const [setupChannel, setSetupChannel] = React.useState<BoardSetupChannelOrNone>("");
   const [showAtt, setShowAtt] = React.useState(true);
+
+  React.useEffect(() => {
+    onEmphasisChange?.({
+      phase: setupPhase,
+      zone: setupZone,
+      channel: setupChannel,
+      attFormation: homeFormation,
+    });
+  }, [setupPhase, setupZone, setupChannel, homeFormation, onEmphasisChange]);
   const [showDef, setShowDef] = React.useState(true);
-  const [placingPhase, setPlacingPhase] = React.useState(false);
   const setupAppliedRef = React.useRef(false);
+  const unstackPassRef = React.useRef(0);
   const emptySeededForBoardRef = React.useRef<string | null>(null);
   const undoStack = React.useRef<DiagramV1[]>([]);
   const skipPropSync = React.useRef(false);
   const dragRef = React.useRef<DragTarget | null>(null);
   const pendingPos = React.useRef<{
-    kind: "player" | "ball" | "label";
+    kind: "player" | "ball" | "label" | "element";
     idOrIndex: string | number;
     x: number;
     y: number;
@@ -484,6 +588,28 @@ export default function TacticalBoardEditor({
     haltPlayback();
     setDiagram(ensureArrays(cloneDiagram(diagramProp)));
   }, [diagramProp, haltPlayback]);
+
+  // Never leave two shirts on the same spot (AI apply, load, or a drop onto another player).
+  // One pass only — compact 11v11 cannot satisfy a large gap; looping here froze Setup for seconds.
+  React.useEffect(() => {
+    if (playingRef.current) return;
+    if (dragRef.current) return;
+    if (!diagramPlayersNeedUnstack(diagram)) {
+      unstackPassRef.current = 0;
+      return;
+    }
+    if (unstackPassRef.current >= 1) return;
+    const next = unstackDiagramPlayers(diagram);
+    if (diagramPlayerCoordsEqual(diagram, next)) {
+      unstackPassRef.current = 0;
+      return;
+    }
+    unstackPassRef.current += 1;
+    skipPropSync.current = true;
+    setDiagram(next);
+    onDirtyChange(true);
+    onChange({ diagram: next, title, shareMode });
+  }, [diagram, onChange, onDirtyChange, shareMode, title]);
 
   // Older clear boards → place natural formations once per board open.
   React.useEffect(() => {
@@ -692,8 +818,26 @@ export default function TacticalBoardEditor({
             ...diagram,
             areas: (diagram.areas || []).filter((_, j) => j !== selection.index),
           });
+        } else if (selection.kind === "element") {
+          const elements = (diagram.elements || []).filter((el) => el.id !== selection.id);
+          commitDiagram({
+            ...diagram,
+            elements,
+            cones: conesFromElements(elements),
+          });
         }
         setSelection(null);
+      }
+      if (e.key.toLowerCase() === "r" && tool === "select" && selection?.kind === "element") {
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        e.preventDefault();
+        const elements = (diagram.elements || []).map((el) =>
+          el.id === selection.id
+            ? { ...el, rotation: (((el.rotation ?? 0) + 90) % 360 + 360) % 360 }
+            : el
+        );
+        commitDiagram({ ...diagram, elements, cones: conesFromElements(elements) });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -742,6 +886,12 @@ export default function TacticalBoardEditor({
       if (!labels[idx]) return;
       labels[idx] = { ...labels[idx], x: pending.x, y: pending.y };
       next = { ...prev, labels };
+    } else if (pending.kind === "element") {
+      const id = String(pending.idOrIndex);
+      const elements = (prev.elements || []).map((el) =>
+        el.id === id ? { ...el, x: pending.x, y: pending.y } : el
+      );
+      next = { ...prev, elements, cones: conesFromElements(elements) };
     } else {
       const balls = [...(prev.balls || [])];
       const idx = pending.idOrIndex as number;
@@ -835,6 +985,17 @@ export default function TacticalBoardEditor({
           labels: diagram.labels.filter((_, j) => j !== i),
         });
         if (selection?.kind === "label" && selection.index === i) setSelection(null);
+        return;
+      }
+    }
+    // practice elements
+    for (let i = (diagram.elements || []).length - 1; i >= 0; i--) {
+      const el = diagram.elements![i];
+      const s = toScreen(el, orientation, layout, viewport, spec);
+      if (dist(s, { sx, sy }) <= elementHitRadius(el.kind, hitR) * 1.35) {
+        const elements = (diagram.elements || []).filter((_, j) => j !== i);
+        commitDiagram({ ...diagram, elements, cones: conesFromElements(elements) });
+        if (selection?.kind === "element" && selection.id === el.id) setSelection(null);
         return;
       }
     }
@@ -968,6 +1129,23 @@ export default function TacticalBoardEditor({
     (e.target as Element).setPointerCapture?.(e.pointerId);
   };
 
+  const onElementPointerDown = (e: React.PointerEvent, id: string) => {
+    if (!canEdit) return;
+    e.stopPropagation();
+    e.preventDefault();
+    if (tool === "eraser") {
+      const elements = (diagram.elements || []).filter((el) => el.id !== id);
+      commitDiagram({ ...diagram, elements, cones: conesFromElements(elements) });
+      if (selection?.kind === "element" && selection.id === id) setSelection(null);
+      return;
+    }
+    if (tool !== "select") return;
+    setSelection({ kind: "element", id });
+    pushUndo(diagram);
+    dragRef.current = { kind: "element", id, pointerId: e.pointerId };
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+  };
+
   const onAreaPointerDown = (e: React.PointerEvent, index: number) => {
     if (!canEdit) return;
     e.stopPropagation();
@@ -1024,6 +1202,11 @@ export default function TacticalBoardEditor({
       }
       if (drag.kind === "label") {
         pendingPos.current = { kind: "label", idOrIndex: drag.index, x: pos.x, y: pos.y };
+        if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
+        return;
+      }
+      if (drag.kind === "element") {
+        pendingPos.current = { kind: "element", idOrIndex: drag.id, x: pos.x, y: pos.y };
         if (rafRef.current == null) rafRef.current = requestAnimationFrame(flushDrag);
         return;
       }
@@ -1212,6 +1395,21 @@ export default function TacticalBoardEditor({
       return;
     }
 
+    if (d.mode === "element") {
+      if ((current.elements || []).length >= BOARD_ELEMENT_MAX) return;
+      const el: DiagramElement = {
+        id: `el-${Date.now().toString(36)}`,
+        kind: d.kind,
+        x: d.from.x,
+        y: d.from.y,
+        rotation: d.kind === "mini-goal" ? facingRotation(d.from, d.to) : undefined,
+      };
+      const elements = [...(current.elements || []), el];
+      commitDiagram({ ...current, elements, cones: conesFromElements(elements) });
+      setSelection({ kind: "element", id: el.id });
+      return;
+    }
+
     const area = normalizeArea(d.from, d.to);
     if ((area.width ?? 0) < 1.5 && (area.height ?? 0) < 1.5) return;
     if ((current.areas || []).length >= 20) return;
@@ -1224,10 +1422,18 @@ export default function TacticalBoardEditor({
   const onSvgPointerUp = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (drag && drag.pointerId === e.pointerId) {
-      if (drag.kind === "player" || drag.kind === "ball" || drag.kind === "label") {
+      if (drag.kind === "player" || drag.kind === "ball" || drag.kind === "label" || drag.kind === "element") {
         if (rafRef.current != null) {
           cancelAnimationFrame(rafRef.current);
           flushDrag();
+        }
+        if (drag.kind === "player" && diagramPlayersNeedUnstack(diagramRef.current)) {
+          const next = unstackDiagramPlayers(diagramRef.current);
+          diagramRef.current = next;
+          skipPropSync.current = true;
+          setDiagram(next);
+          onDirtyChange(true);
+          onChange({ diagram: next, title, shareMode });
         }
       }
       dragRef.current = null;
@@ -1330,6 +1536,15 @@ export default function TacticalBoardEditor({
       return;
     }
 
+    const placeKind = elementToolKind(tool);
+    if (placeKind) {
+      const next: DrawDraft = { mode: "element", kind: placeKind, from: pos, to: pos };
+      draftRef.current = next;
+      setDraft(next);
+      svgRef.current?.setPointerCapture?.(e.pointerId);
+      return;
+    }
+
     const lineMeta = lineToolToArrow(tool);
     if (lineMeta) {
       const near = findNearestPlayer(
@@ -1374,6 +1589,16 @@ export default function TacticalBoardEditor({
           svgRef.current?.setPointerCapture?.(e.pointerId);
           return;
         }
+      }
+      for (let i = (diagram.elements || []).length - 1; i >= 0; i--) {
+        const el = diagram.elements![i];
+        const s = toScreen(el, orientation, layout, viewport, spec);
+        if (dist(s, { sx, sy }) > elementHitRadius(el.kind, hitR) * 1.35) continue;
+        setSelection({ kind: "element", id: el.id });
+        pushUndo(diagram);
+        dragRef.current = { kind: "element", id: el.id, pointerId: e.pointerId };
+        svgRef.current?.setPointerCapture?.(e.pointerId);
+        return;
       }
       for (let i = (diagram.areas || []).length - 1; i >= 0; i--) {
         const area = diagram.areas[i];
@@ -1476,7 +1701,6 @@ export default function TacticalBoardEditor({
     defVisible = showDef,
     formations?: { att?: FormationId; def?: FormationId }
   ) => {
-    if (!boardId || placingPhase) return;
     if (!hasFullSetup(phase, zone, channel)) {
       if (setupAppliedRef.current || (!phase && !zone && !channel)) {
         clearPhaseOverlay();
@@ -1487,39 +1711,16 @@ export default function TacticalBoardEditor({
     const opposition =
       subject === "DEF" ? attVisible : subject === "ATT" ? defVisible : attVisible && defVisible;
     const snapshot = diagramRef.current;
-    setPlacingPhase(true);
-    void placeBoardPhase(boardId, {
-      diagram: snapshot,
+    const placed = placeSetupPhaseLocally(snapshot, {
       phase,
-      zone,
-      channel,
+      zone: zone as BoardSetupZone,
+      channel: channel as BoardSetupChannel,
       attFormation: formations?.att ?? homeFormation,
       defFormation: formations?.def ?? awayFormation,
       showOpposition: opposition,
-    })
-      .then((res) => {
-        if (!res.ok || !res.diagram) {
-          console.warn("[setup] phase-place failed", res.error || res.message);
-          return;
-        }
-        setupAppliedRef.current = true;
-        commitDiagram({
-          ...res.diagram,
-          pitch: {
-            ...snapshot.pitch,
-            ...res.diagram.pitch,
-            format: snapshot.pitch.format,
-            variant: snapshot.pitch.variant,
-            orientation: snapshot.pitch.orientation,
-            showZones: snapshot.pitch.showZones,
-          },
-          goals: snapshot.goals?.length ? snapshot.goals : res.diagram.goals,
-        });
-      })
-      .catch((err) => {
-        console.warn("[setup] phase-place error", err);
-      })
-      .finally(() => setPlacingPhase(false));
+    });
+    setupAppliedRef.current = true;
+    commitDiagram(placed);
   };
 
   const selectedPlayer =
@@ -1634,7 +1835,11 @@ export default function TacticalBoardEditor({
           placeholder="Board title"
         />
         <span className="hidden h-9 items-center rounded-lg border border-white/10 bg-black/25 px-2.5 text-[11px] font-medium text-slate-400 sm:inline-flex">
-          {format} · {pitchVariant === "FULL" ? "Full" : pitchVariant === "HALF" ? "Half" : "Third"}
+          {format} ·{" "}
+          {pitchChromeLabel(pitchVariant, viewDiagram.areas?.[0]?.label, {
+            playerCount: viewDiagram.players?.length,
+            hasMiniGoals: (viewDiagram.elements || []).some((e) => e.kind === "mini-goal"),
+          })}
         </span>
         {canEdit ? (
           <button
@@ -1671,6 +1876,16 @@ export default function TacticalBoardEditor({
             className="h-9 rounded-lg border border-white/15 bg-black/30 px-3 text-[12px] font-medium text-slate-200 hover:bg-white/5 hover:text-white disabled:opacity-40"
           >
             {creatingBoard ? "Creating…" : "New"}
+          </button>
+        ) : null}
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={resetMatchSetup}
+            className="h-9 rounded-lg border border-white/15 bg-black/30 px-3 text-[12px] font-medium text-slate-200 hover:bg-white/5 hover:text-white"
+            title="Reset to a blank 11v11 match setup"
+          >
+            Reset
           </button>
         ) : null}
         {onCopyLink ? (
@@ -1760,7 +1975,6 @@ export default function TacticalBoardEditor({
                 type="button"
                 role="switch"
                 aria-checked={showDef}
-                disabled={placingPhase}
                 onClick={() => {
                   const next = !showDef;
                   setShowDef(next);
@@ -1804,7 +2018,6 @@ export default function TacticalBoardEditor({
                 type="button"
                 role="switch"
                 aria-checked={showAtt}
-                disabled={placingPhase}
                 onClick={() => {
                   const next = !showAtt;
                   setShowAtt(next);
@@ -1837,7 +2050,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupPhase}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupPhaseOrNone;
                   setSetupPhase(v);
@@ -1872,7 +2084,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupZone}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupZoneOrNone;
                   setSetupZone(v);
@@ -1896,7 +2107,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupChannel}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupChannelOrNone;
                   setSetupChannel(v);
@@ -1916,13 +2126,6 @@ export default function TacticalBoardEditor({
 
             <span className="hidden h-5 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
 
-            <button
-              type="button"
-              onClick={resetMatchSetup}
-              className="flex h-8 shrink-0 items-center rounded-md border border-white/10 bg-black/30 px-2 text-[11px] text-slate-300 hover:bg-white/5 hover:text-white"
-            >
-              Reset
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -1961,6 +2164,26 @@ export default function TacticalBoardEditor({
               }`}
             >
               Lanes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                commitDiagram({
+                  ...diagram,
+                  pitch: {
+                    ...diagram.pitch,
+                    showThirds: !diagram.pitch.showThirds,
+                  },
+                });
+              }}
+              title="Toggle defensive / middle / attacking third lines"
+              className={`flex h-8 shrink-0 items-center rounded-md border px-2 text-[11px] font-medium transition ${
+                diagram.pitch.showThirds
+                  ? "border-sky-400/50 bg-sky-500/20 text-sky-100"
+                  : "border-white/10 bg-black/30 text-slate-300 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              Thirds
             </button>
 
             <span className="ml-auto text-[10px] text-slate-500">
@@ -2007,6 +2230,7 @@ export default function TacticalBoardEditor({
             layout={layout}
             viewport={viewport}
             showLanes={!!diagram.pitch.showZones}
+            showThirds={!!diagram.pitch.showThirds}
           />
 
           <defs>
@@ -2022,6 +2246,31 @@ export default function TacticalBoardEditor({
           </defs>
 
           {(viewDiagram.areas || []).map((area, i) => renderArea(area, i))}
+
+          {(viewDiagram.elements || []).map((el) => {
+            const s = toScreen(el, orientation, layout, viewport, spec);
+            const rot = ((el.rotation ?? 0) * Math.PI) / 180;
+            const ahead = toScreen(
+              { x: el.x + Math.sin(rot) * 2, y: el.y + Math.cos(rot) * 2 },
+              orientation,
+              layout,
+              viewport,
+              spec
+            );
+            const angle = (Math.atan2(ahead.sy - s.sy, ahead.sx - s.sx) * 180) / Math.PI;
+            const selected = !playing && selection?.kind === "element" && selection.id === el.id;
+            const canHit = canEdit && !playing && (tool === "select" || tool === "eraser");
+            return (
+              <g
+                key={el.id}
+                transform={`translate(${s.sx},${s.sy})`}
+                onPointerDown={canHit ? (ev) => onElementPointerDown(ev, el.id) : undefined}
+                style={{ cursor: canHit ? (tool === "select" ? "grab" : "pointer") : "default" }}
+              >
+                <BoardElementMark el={el} selected={selected} angle={angle} />
+              </g>
+            );
+          })}
 
           {/* labels rendered later (after players) so chips stay readable */}
 
@@ -2111,6 +2360,29 @@ export default function TacticalBoardEditor({
                   markerEnd={marker}
                   className="pointer-events-none"
                 />
+                {typeof a.order === "number" ? (
+                  <g className="pointer-events-none">
+                    <circle
+                      cx={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      cy={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      r={8}
+                      fill="#0f172a"
+                      stroke={isSelected ? "#fde68a" : "#fbbf24"}
+                      strokeWidth={1.25}
+                    />
+                    <text
+                      x={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      y={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#fde68a"
+                      fontSize={10}
+                      fontWeight={700}
+                    >
+                      {a.order}
+                    </text>
+                  </g>
+                ) : null}
                 {isSelected && canEdit && tool === "select" ? (
                   <>
                     <circle
@@ -2200,6 +2472,41 @@ export default function TacticalBoardEditor({
                 -1,
                 true
               )
+            : null}
+
+          {draft?.mode === "element"
+            ? (() => {
+                const s = toScreen(draft.from, orientation, layout, viewport, spec);
+                const rot = facingRotation(draft.from, draft.to);
+                const rad = (rot * Math.PI) / 180;
+                const ahead = toScreen(
+                  { x: draft.from.x + Math.sin(rad) * 2, y: draft.from.y + Math.cos(rad) * 2 },
+                  orientation,
+                  layout,
+                  viewport,
+                  spec
+                );
+                const angle = (Math.atan2(ahead.sy - s.sy, ahead.sx - s.sx) * 180) / Math.PI;
+                return (
+                  <g
+                    transform={`translate(${s.sx},${s.sy})`}
+                    opacity={0.85}
+                    className="pointer-events-none"
+                  >
+                    <BoardElementMark
+                      el={{
+                        id: "draft",
+                        kind: draft.kind,
+                        x: draft.from.x,
+                        y: draft.from.y,
+                        rotation: rot,
+                      }}
+                      selected={false}
+                      angle={angle}
+                    />
+                  </g>
+                );
+              })()
             : null}
 
           {(viewDiagram.balls || []).map((b, i) => {

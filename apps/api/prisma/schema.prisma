@@ -68,6 +68,18 @@ enum ClubRole {
   COACH
 }
 
+enum TeamCoachRole {
+  HEAD
+  ASSISTANT
+}
+
+enum SeasonPhase {
+  PRESEASON
+  IN_SEASON
+  PLAYOFFS
+  OFFSEASON
+}
+
 enum BoardShareMode {
   PRIVATE
   CLUB
@@ -483,6 +495,10 @@ model User {
   clubMemberships        ClubMembership[]
   grantedAccessPermissions AccessPermission[] @relation("AccessPermissionGrantedBy")
   tacticalBoards         TacticalBoard[]
+  createdTeams           Team[] @relation("TeamCreatedBy")
+  teamAssignments        TeamCoach[]
+  coachCenterMessages    CoachCenterMessage[]
+  gameDayDocuments       GameDayDocument[]
 }
 
 // Favorites - allows users to save sessions, drills, or series
@@ -638,7 +654,9 @@ model CalendarEvent {
   // Additional context
   notes         String?  // Coach notes for this specific session
   location      String?  // Training location (field, facility, etc.)
-  teamName      String?  // Which team/group this is for
+  teamName      String?  // Which team/group this is for (legacy free-text)
+  teamId        String?  @map("team_id")
+  team          Team?    @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   // Status
   completed     Boolean  @default(false) // Mark as completed after session
@@ -664,6 +682,7 @@ model CalendarEvent {
   @@index([sessionId])
   @@index([scheduledDate])
   @@index([userId, scheduledDate])
+  @@index([teamId])
 }
 
 // Access permissions for sessions and vault based on age group, format, coach level, or specific user
@@ -749,6 +768,7 @@ model Club {
   accessPermissions   AccessPermission[]
   tacticalBoards      TacticalBoard[]
   sessions            Session[]
+  teams               Team[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.
@@ -771,6 +791,7 @@ model TacticalBoard {
   shareMode       BoardShareMode @default(PRIVATE) @map("share_mode")
   sourceSessionId String?        @map("source_session_id")
   sourceDrillKey  String?        @map("source_drill_key")
+  favorited       Boolean        @default(false)
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
@@ -812,6 +833,7 @@ model Section {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   memberships ClubMembership[]
+  teams       Team[]
 
   @@unique([clubId, name])
   @@index([clubId])
@@ -842,4 +864,120 @@ model ClubMembership {
   @@index([clubId])
   @@index([sectionId])
   @@index([userId])
+}
+
+// A coach's assigned side — first-class team for Coach Center (roster later).
+model Team {
+  id              String      @id @default(uuid())
+  name            String
+  ageGroup        String      @map("age_group")
+  clubId          String?     @map("club_id")
+  club            Club?       @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  sectionId       String?     @map("section_id")
+  section         Section?    @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  gameModelId     GameModelId @map("game_model_id")
+  seasonLabel     String?     @map("season_label")
+  notes           String?
+  playerLevel     String?     @map("player_level")
+  createdByUserId String      @map("created_by_user_id")
+  createdBy       User        @relation("TeamCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  coaches      TeamCoach[]
+  seasons      TeamSeason[]
+  chatMessages CoachCenterMessage[]
+  gameDays     GameDayDocument[]
+  calendarEvents CalendarEvent[]
+
+  @@index([createdByUserId])
+  @@index([clubId])
+  @@unique([clubId, name], map: "teams_club_id_name_unique")
+  @@map("teams")
+}
+
+model TeamCoach {
+  id        String        @id @default(uuid())
+  teamId    String        @map("team_id")
+  team      Team          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String        @map("user_id")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamCoachRole @default(HEAD)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_coaches")
+}
+
+model TeamSeason {
+  id        String      @id @default(uuid())
+  teamId    String      @map("team_id")
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name      String
+  startDate DateTime    @map("start_date")
+  endDate   DateTime    @map("end_date")
+  phase     SeasonPhase @default(IN_SEASON)
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  weeks CurriculumWeek[]
+
+  @@index([teamId, active])
+  @@map("team_seasons")
+}
+
+model CurriculumWeek {
+  id        String     @id @default(uuid())
+  seasonId  String     @map("season_id")
+  season    TeamSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  weekIndex Int        @map("week_index")
+  theme     String
+  moment    String
+  phase     String
+  zone      String?
+  focus     String?
+  notes     String?
+
+  @@unique([seasonId, weekIndex])
+  @@map("curriculum_weeks")
+}
+
+model CoachCenterMessage {
+  id        String   @id @default(uuid())
+  teamId    String   @map("team_id")
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([teamId, createdAt])
+  @@map("coach_center_messages")
+}
+
+model GameDayDocument {
+  id              String   @id @default(uuid())
+  teamId          String   @map("team_id")
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchDate       DateTime @map("match_date")
+  opponent        String?
+  venue           String?
+  competition     String?
+  kickoffTime     String?  @map("kickoff_time")
+  formation       String?
+  keyFocus        String?  @map("key_focus")
+  attackingNotes  String?  @map("attacking_notes") @db.Text
+  defendingNotes  String?  @map("defending_notes") @db.Text
+  setPieces       String?  @map("set_pieces") @db.Text
+  lineupJson      Json?    @map("lineup_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([teamId, matchDate])
+  @@map("game_day_documents")
 }

@@ -19,8 +19,12 @@ import {
   Instagram,
   Twitter,
 } from "lucide-react";
+import { trialsEnabled } from "@/lib/trials";
 
 export default function TacticalEdgeLanding() {
+  const trialsOpen = trialsEnabled();
+  const signupHref = trialsOpen ? "/register" : "/pricing";
+  const signupLabel = trialsOpen ? "Start Free" : "View Plans";
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const emblemUrl = "/images/logo.png";
@@ -99,7 +103,7 @@ export default function TacticalEdgeLanding() {
             <button onClick={() => scrollToSection("workflow")} className="text-gray-300 hover:text-[#ADFF2F]">Workflow</button>
             <Link href="/pricing" className="text-gray-300 hover:text-[#ADFF2F]">Plans</Link>
             <Link href="/login" className="text-gray-300 hover:text-[#ADFF2F]">Log In</Link>
-            <Link href="/register" className="rounded-sm bg-[#ADFF2F] px-6 py-2.5 text-xs font-bold uppercase text-black hover:bg-white">Start Free</Link>
+            <Link href={signupHref} className="rounded-sm bg-[#ADFF2F] px-6 py-2.5 text-xs font-bold uppercase text-black hover:bg-white">{signupLabel}</Link>
           </div>
 
           <button className="md:hidden" onClick={() => setMobileMenuOpen((v) => !v)}>
@@ -113,7 +117,7 @@ export default function TacticalEdgeLanding() {
             <button onClick={() => scrollToSection("workflow")} className="block text-gray-300">Workflow</button>
             <Link href="/pricing" className="block text-gray-300" onClick={() => setMobileMenuOpen(false)}>Plans</Link>
             <Link href="/login" className="block text-gray-300" onClick={() => setMobileMenuOpen(false)}>Log In</Link>
-            <Link href="/register" className="block w-full rounded-sm bg-[#ADFF2F] py-3 text-center text-sm font-bold uppercase text-black" onClick={() => setMobileMenuOpen(false)}>Start Free</Link>
+            <Link href={signupHref} className="block w-full rounded-sm bg-[#ADFF2F] py-3 text-center text-sm font-bold uppercase text-black" onClick={() => setMobileMenuOpen(false)}>{signupLabel}</Link>
           </div>
         )}
       </nav>
@@ -134,8 +138,8 @@ export default function TacticalEdgeLanding() {
             Generate drills, full sessions, and progressive series with tactical diagrams, all tailored to your age group, formation, and game model.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/register" className="flex h-14 items-center gap-3 rounded-sm bg-[#ADFF2F] px-10 text-xs font-black uppercase text-black transition-all hover:bg-white">
-              <span>Start Free</span>
+            <Link href={signupHref} className="flex h-14 items-center gap-3 rounded-sm bg-[#ADFF2F] px-10 text-xs font-black uppercase text-black transition-all hover:bg-white">
+              <span>{signupLabel}</span>
               <ArrowRight size={18} />
             </Link>
             <Link href="/app" className="h-14 rounded-sm border border-white/10 bg-white/5 px-10 text-xs font-black uppercase text-white hover:bg-white/10 inline-flex items-center">
@@ -229,10 +233,10 @@ export default function TacticalEdgeLanding() {
             </p>
             <div className="flex flex-wrap justify-center gap-4 sm:gap-5">
               <Link
-                href="/register"
+                href={signupHref}
                 className="min-w-[180px] rounded-md bg-[#ADFF2F] px-12 py-5 text-center text-sm font-black uppercase text-black transition-all hover:-translate-y-0.5 hover:bg-[#c6ff5f] hover:shadow-[0_8px_22px_rgba(173,255,47,0.25)]"
               >
-                Start Free
+                {signupLabel}
               </Link>
               <Link
                 href="/login"
@@ -260,7 +264,7 @@ export default function TacticalEdgeLanding() {
             <Link href="/app" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">App Home</Link>
             <Link href="/pricing" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Plans</Link>
             <Link href="/demo/session" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Session Generator</Link>
-            <Link href="/register" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Register</Link>
+            <Link href={signupHref} className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">{trialsOpen ? "Register" : "View Plans"}</Link>
             <Link href="/login" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Login</Link>
           </div>
           <div className="flex items-center gap-4">

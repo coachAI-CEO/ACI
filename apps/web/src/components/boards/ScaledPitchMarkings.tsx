@@ -16,6 +16,8 @@ type Props = {
   viewport: PitchViewport;
   /** Five-lane field segregation (wide / half-space / centre). */
   showLanes?: boolean;
+  /** Dashed lines dividing defensive / middle / attacking thirds. */
+  showThirds?: boolean;
 };
 
 /**
@@ -28,6 +30,7 @@ export default function ScaledPitchMarkings({
   layout,
   viewport,
   showLanes = false,
+  showThirds = false,
 }: Props) {
   const spec = PITCH_SPECS[format];
   const horizontal = orientation !== "VERTICAL";
@@ -272,6 +275,33 @@ export default function ScaledPitchMarkings({
     );
   };
 
+  const renderThirds = () => {
+    if (!showThirds) return null;
+    const w0 = 0;
+    const w1 = spec.widthYards;
+    return (
+      <g>
+        {[1 / 3, 2 / 3].map((frac) => {
+          const a = toScreen(spec.lengthYards * frac, w0);
+          const b = toScreen(spec.lengthYards * frac, w1);
+          if (!a || !b) return null;
+          return (
+            <line
+              key={`third-${frac}`}
+              x1={a.sx}
+              y1={a.sy}
+              x2={b.sx}
+              y2={b.sy}
+              stroke="rgba(253, 224, 71, 0.85)"
+              strokeWidth={1.5}
+              strokeDasharray="8 7"
+            />
+          );
+        })}
+      </g>
+    );
+  };
+
   return (
     <g className="pointer-events-none">
       <rect
@@ -286,6 +316,7 @@ export default function ScaledPitchMarkings({
       />
 
       {renderLanes()}
+      {renderThirds()}
 
       {midVisible && center ? (
         <>
@@ -332,7 +363,7 @@ export default function ScaledPitchMarkings({
           );
         })()}
 
-      {spec.buildOutLines ? (
+      {spec.buildOutLines && !showThirds ? (
         <>
           {buildOutAt(1 / 3)}
           {buildOutAt(2 / 3)}

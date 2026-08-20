@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { ClubRole } from '@prisma/client';
+import { ClubRole, TeamCoachRole } from '@prisma/client';
 import { requireClubRole, ClubAuthRequest } from './middleware/club-auth';
 import { DOC_HUB_ROLES, listClubMembershipsForUser } from './services/club-memberships';
 import {
@@ -23,6 +23,15 @@ import {
   reassignCalendarEvent,
 } from './services/club-calendar-assign';
 import { prisma } from './prisma';
+import {
+  CoachCenterError,
+  assignClubTeamCoach,
+  createClubTeamForCoach,
+  listClubTeams,
+  syncClubCoachTeams,
+  syncClubTeamCoaches,
+  unassignClubTeamCoach,
+} from './services/coach-center';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -505,6 +514,158 @@ r.post(
       return res.json({ ok: true, event });
     } catch (error) {
       return sendAssignError(res, error);
+    }
+  }
+);
+
+function sendTeamError(res: express.Response, error: unknown) {
+  if (error instanceof CoachCenterError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+r.get(
+  '/doc-hub/clubs/:clubId/teams',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const teams = await listClubTeams(clubId, sectionScopeFromRequest(req), req.userId);
+      return res.json({ ok: true, teams });
+    } catch (error) {
+      return sendTeamError(res, error);
+    }
+  }
+);
+
+r.post(
+  '/doc-hub/clubs/:clubId/teams',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) return res.status(401).json({ ok: false, error: 'Authentication required' });
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const schema = z.object({
+        name: z.string().min(1).max(80),
+        ageGroup: z.string().min(2).max(8),
+        coachUserId: z.string().uuid(),
+        seasonLabel: z.string().max(40).nullable().optional(),
+        role: z.enum(['HEAD', 'ASSISTANT']).optional(),
+      });
+      const body = schema.parse(req.body ?? {});
+      const team = await createClubTeamForCoach(
+        req.userId,
+        clubId,
+        sectionScopeFromRequest(req),
+        {
+          ...body,
+          role: body.role === 'ASSISTANT' ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD,
+        }
+      );
+      return res.json({ ok: true, team });
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'ZodError') {
+        return res.status(400).json({ ok: false, error: 'Invalid input' });
+      }
+      return sendTeamError(res, error);
+    }
+  }
+);
+
+r.patch(
+  '/doc-hub/clubs/:clubId/coaches/:userId/teams',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const schema = z.object({
+        teamIds: z.array(z.string().uuid()),
+        role: z.enum(['HEAD', 'ASSISTANT']).optional(),
+      });
+      const body = schema.parse(req.body ?? {});
+      const teams = await syncClubCoachTeams(
+        clubId,
+        sectionScopeFromRequest(req),
+        req.params.userId,
+        body.teamIds,
+        body.role === 'ASSISTANT' ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD
+      );
+      return res.json({ ok: true, teams });
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'ZodError') {
+        return res.status(400).json({ ok: false, error: 'Invalid team assignment' });
+      }
+      return sendTeamError(res, error);
+    }
+  }
+);
+
+r.patch(
+  '/doc-hub/clubs/:clubId/teams/:teamId/coaches',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const schema = z.object({
+        coachUserIds: z.array(z.string().uuid()),
+        role: z.enum(['HEAD', 'ASSISTANT']).optional(),
+      });
+      const body = schema.parse(req.body ?? {});
+      const team = await syncClubTeamCoaches(
+        clubId,
+        sectionScopeFromRequest(req),
+        req.params.teamId,
+        body.coachUserIds,
+        body.role === 'ASSISTANT' ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD
+      );
+      return res.json({ ok: true, team });
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'ZodError') {
+        return res.status(400).json({ ok: false, error: 'Invalid coach assignment' });
+      }
+      return sendTeamError(res, error);
+    }
+  }
+);
+
+r.post(
+  '/doc-hub/clubs/:clubId/teams/:teamId/coaches/:userId',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const roleRaw = (req.body as { role?: unknown } | undefined)?.role;
+      const team = await assignClubTeamCoach(
+        clubId,
+        sectionScopeFromRequest(req),
+        req.params.teamId,
+        req.params.userId,
+        roleRaw === 'ASSISTANT' ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD
+      );
+      return res.json({ ok: true, team });
+    } catch (error) {
+      return sendTeamError(res, error);
+    }
+  }
+);
+
+r.delete(
+  '/doc-hub/clubs/:clubId/teams/:teamId/coaches/:userId',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const team = await unassignClubTeamCoach(
+        clubId,
+        sectionScopeFromRequest(req),
+        req.params.teamId,
+        req.params.userId
+      );
+      return res.json({ ok: true, team });
+    } catch (error) {
+      return sendTeamError(res, error);
     }
   }
 );

@@ -17,6 +17,7 @@ import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures } from "@/lib/features";
 import { fetchAuthMe } from "@/lib/auth-me";
 import { useBoardLoadProgress } from "@/lib/use-board-load-progress";
+import type { BoardEmphasis } from "@/lib/board-emphasis";
 
 function BoardLoadingScreen({
   percent,
@@ -94,6 +95,23 @@ export default function BoardPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [flagOn, setFlagOn] = useState<boolean | null>(null);
   const [coachLevel, setCoachLevel] = useState<string | null>(null);
+  const [emphasis, setEmphasis] = useState<BoardEmphasis | null>(null);
+  const onEmphasisChange = useCallback(
+    (next: {
+      phase: string;
+      zone: string;
+      channel: string;
+      attFormation: string;
+    }) => {
+      setEmphasis({
+        phase: (next.phase || null) as BoardEmphasis["phase"],
+        zone: (next.zone || null) as BoardEmphasis["zone"],
+        channel: (next.channel || null) as BoardEmphasis["channel"],
+        attFormation: next.attFormation || null,
+      });
+    },
+    []
+  );
   const [pendingConfirm, setPendingConfirm] = useState<
     | { type: "leave"; href: string }
     | { type: "back" }
@@ -102,6 +120,7 @@ export default function BoardPage() {
     | null
   >(null);
   const skipNextPopRef = useRef(false);
+  const applyGenRef = useRef(0);
 
   const pageLoading = loading || flagOn === null;
   const pageProgress = useBoardLoadProgress(pageLoading);
@@ -342,11 +361,32 @@ export default function BoardPage() {
     gameModelId: board.gameModelId,
     ageGroup: board.ageGroup,
     coachLevel,
+    attFormation: board.attFormation,
+    emphasis,
     onBusyChange: setAiBusy,
     onApplyDiagram: (next: DiagramV1) => {
+      const gen = ++applyGenRef.current;
       setDiagram(next);
       setDirty(true);
-      setStatus("AI updated board — save when ready");
+      if (!boardId || !board?.canEdit) {
+        setStatus("AI updated board — save when ready");
+        return;
+      }
+      setStatus("AI updated board — saving…");
+      void patchBoard(boardId, { title, diagram: next, shareMode })
+        .then((data) => {
+          if (gen !== applyGenRef.current) return;
+          if (!data.ok || !data.board) {
+            setStatus("AI updated board — save when ready");
+            return;
+          }
+          setDirty(false);
+          setStatus("Saved");
+        })
+        .catch(() => {
+          if (gen !== applyGenRef.current) return;
+          setStatus("AI updated board — save when ready");
+        });
     },
   };
 
@@ -366,9 +406,9 @@ export default function BoardPage() {
           <button
             type="button"
             onClick={() => leaveTo("/boards")}
-            className="text-xs text-slate-400 hover:text-emerald-300"
+            className="text-xs font-medium text-emerald-300 hover:text-emerald-200"
           >
-            {sessionHref ? "My boards" : "← My boards"}
+            {sessionHref ? "My Boards" : "← My Boards"}
           </button>
         </div>
         <p className="text-[11px] text-slate-500">
@@ -407,6 +447,7 @@ export default function BoardPage() {
             onDelete={
               board.canEdit ? () => setPendingConfirm({ type: "delete" }) : undefined
             }
+            onEmphasisChange={onEmphasisChange}
             onChange={(next) => {
               setTitle(next.title);
               setDiagram(next.diagram);

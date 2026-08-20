@@ -65,6 +65,13 @@ const NAV_BASE: NavItem[] = [
         badge: "NEW",
       },
       {
+        label: "Teams",
+        href: "/admin/teams",
+        icon: LayoutGrid,
+        layer: "L5",
+        badge: "NEW",
+      },
+      {
         label: "Game Models",
         href: "/admin/game-models",
         icon: Compass,
@@ -266,6 +273,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/admin/users":     ["Admin", "Users"],
   "/admin/access":    ["Admin", "Access Control", "Permissions"],
   "/admin/clubs":     ["Admin", "Access Control", "Club Management"],
+  "/admin/teams":     ["Admin", "Access Control", "Teams"],
   "/admin/game-models": ["Admin", "Access Control", "Game Models"],
   "/admin/analytics": ["Admin", "Analytics"],
   "/admin/content":   ["Admin", "Content & QA"],

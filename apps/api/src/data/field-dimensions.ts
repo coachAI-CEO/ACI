@@ -51,11 +51,17 @@ export function practiceSpaceYards(
   return { lengthYards: spec.lengthYards, widthYards: spec.widthYards };
 }
 
+export function isWarmupPicture(drillType?: string | null): boolean {
+  const type = String(drillType || "").toUpperCase().replace(/[-\s]/g, "");
+  return type === "WARMUP" || type.includes("WARMUP");
+}
+
 /** Match-format slices (tactical 11v11 third, 7v7 half) keep full pitch width.
- *  Warmup/technical boxes with no full goal may stay small. */
+ *  Warmup is always the drill's own grid, never the session's two-goal half. */
 export function shouldLockPracticeArea(args: { drillType?: string; goalsAvailable?: number | null }): boolean {
   const type = String(args.drillType || "").toUpperCase();
-  if (type === "WARMUP" || type === "TECHNICAL") return Number(args.goalsAvailable) >= 1;
+  if (isWarmupPicture(type)) return false;
+  if (type === "TECHNICAL") return Number(args.goalsAvailable) >= 1;
   return type.length > 0;
 }
 
@@ -64,6 +70,46 @@ export function formatOutfieldPerSide(format: FieldFormat): number {
   if (format === "7V7") return 6;
   if (format === "9V9") return 8;
   return 10;
+}
+
+/**
+ * How many outfield shirts a picture can carry. numbersMin–Max is the squad
+ * at the session, not the count on every diagram.
+ */
+export function pictureOutfieldCap(args: {
+  drillType?: string | null;
+  format: FieldFormat;
+  fullGoals?: number;
+}): { home: number; away: number; total: number } {
+  const type = String(args.drillType || "").toUpperCase();
+  if (isWarmupPicture(type)) return { home: 8, away: 2, total: 8 };
+  if (type.includes("TECHNICAL")) {
+    if ((args.fullGoals || 0) >= 1) return { home: 8, away: 4, total: 10 };
+    return { home: 6, away: 2, total: 8 };
+  }
+  const side = formatOutfieldPerSide(args.format);
+  return { home: side, away: side, total: side * 2 + 2 };
+}
+
+export function svgOutfieldCount(svg: string | null | undefined): number {
+  if (!svg) return 0;
+  return (svg.match(/filter="url\(#ps\)"/g) || []).length;
+}
+
+/** Stored SVG still has a squad dump (one colour blob, or extras beyond 11v11). */
+export function svgPictureIsOvercrowded(
+  drillType: string | null | undefined,
+  svg: string | null | undefined
+): boolean {
+  if (!svg) return false;
+  const n = svgOutfieldCount(svg);
+  const type = String(drillType || "").toUpperCase();
+  if (isWarmupPicture(type)) return n > 10;
+  if (type.includes("TECHNICAL")) return n > 10;
+  const home = (svg.match(/fill="#3b82f6" stroke="#020617"/g) || []).length;
+  const away = (svg.match(/fill="#ef4444" stroke="#020617"/g) || []).length;
+  if (home === 0 || away === 0) return n > 10;
+  return home > 10 || away > 10;
 }
 
 /** Session-setup defaults when a drill JSON omits formations. */
@@ -98,6 +144,10 @@ export function isCenterBackRole(role: string): boolean {
 export function expectedOutfieldRoles(formation: string): string[] | null {
   const nums = parseFormationNums(formation);
   if (!nums) return null;
+  // 3-5-2 is not a 5-across mid line: CBs, three CMs, wing-backs, two STs.
+  if (nums.join("-") === "3-5-2") {
+    return ["LCB", "CB", "RCB", "LCM", "CDM", "RCM", "LWB", "RWB", "ST", "ST"];
+  }
   const back = (n: number) =>
     n <= 1 ? ["CB"] : n === 2 ? ["CB", "CB"] : n === 3 ? ["LB", "CB", "RB"] : padRoles(["LB", "CB", "CB", "RB"], n, "CB");
   const mid = (n: number) =>
