@@ -9,6 +9,7 @@ Soccer coaching platform. Web app in `apps/web`, API in `apps/api`. Brand is Tac
 - Marketing / decks: `TACTICALEDGE_UI_PRODUCT_REPORT.md`, `pitch-deck-*.html`
 - Board design: `docs/tactical-board-phase-positioning.md`
 - DOC Console history (Phases 1–3 shipped): `DOC_HUB_HANDOFF.md`
+- Video analysis (beta, original MVP spec): `SHORT_VIDEO_ANALYSIS_FEATURE_SPEC.md`
 
 ## Skill routing
 

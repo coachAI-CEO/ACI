@@ -94,7 +94,7 @@ Public marketing pages hide the app sidebar.
 
 ## Setup
 
-See [`RUN_SERVERS.md`](./RUN_SERVERS.md). This repo loads env from the **root** `.env` / `.env.local`, not only `apps/api/.env`. Do not commit secrets. `apps/api/.env.example` has historically contained live-format credentials — do not copy those values into docs or git.
+See [`RUN_SERVERS.md`](./RUN_SERVERS.md). The API loads **root `.env`** (and `apps/api/.env` if present), not `.env.local`. Do not commit secrets. `apps/api/.env.example` has historically contained live-format credentials — do not copy those values into docs or git.
 
 ```bash
 pnpm install
