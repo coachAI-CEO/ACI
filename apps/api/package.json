@@ -11,7 +11,7 @@
     "start": "node dist/index.js",
     "bulk:sessions": "ts-node --project tsconfig.json src/scripts/generate-bulk-sessions.ts",
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts",
-    "sandbox:diagram": "ts-node --project tsconfig.json src/scripts/diagram-sandbox.ts",
+    "preview:session-pdf": "ts-node --transpile-only --project tsconfig.json src/scripts/preview-session-pdf.ts",
     "sandbox:first-pass": "ts-node --project tsconfig.json src/scripts/first-pass-diagrams/run.ts",
     "sandbox:pattern-hunt": "ts-node --project tsconfig.json src/scripts/pattern-hunt/run.ts",
     "sandbox:pattern-hunt:pass2": "ts-node --project tsconfig.json src/scripts/pattern-hunt/pass2.ts",
@@ -37,6 +37,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",

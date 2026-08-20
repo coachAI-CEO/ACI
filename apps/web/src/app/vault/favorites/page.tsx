@@ -757,7 +757,7 @@ export default function FavoritesPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Left: Diagram */}
                           {diagram && (
-                            <div className="flex items-center justify-center overflow-hidden">
+                            <div className="min-w-0 w-full">
                               {canDraw ? (
                               <StoredDrillSvg
                                 drillId={svgDrillId}
@@ -913,7 +913,7 @@ export default function FavoritesPage() {
                 {selectedDrill.json?.diagram && (
                   <div>
                     <h3 className="text-sm font-semibold text-slate-300 mb-2">Diagram</h3>
-                    <div className="flex items-center justify-center overflow-hidden">
+                    <div className="min-w-0 w-full">
                       <StoredDrillSvg
                         drillId={pickDrillSvgId(selectedDrill)}
                         goalsAvailable={selectedDrill.goalsAvailable ?? selectedDrill.json?.goalsAvailable}

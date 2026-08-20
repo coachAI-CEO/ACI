@@ -4,9 +4,9 @@
  * right-shift. Crop to the actual pitch rect instead. */
 
 const PITCH_FILL = "#1c5134";
-const GOAL_STUB = 4;
-const TOP_PAD = 40;
-const BOTTOM_PAD = 140;
+const GOAL_STUB = 64;
+const TOP_PAD = 78;
+const BOTTOM_PAD = 160;
 let clipSeq = 0;
 
 function attr(tag: string, name: string): number | null {
@@ -57,6 +57,29 @@ function shiftLegendIntoView(svg: string, fieldBottom: number, viewMinX: number)
 
 function alreadyClipped(svg: string): boolean {
   return /id="diagram-fit-clip-\d+"/.test(svg) && /clip-path="url\(#diagram-fit-clip-\d+\)"/.test(svg);
+}
+
+function applyViewBoxTag(svg: string, viewBox: string): string {
+  return svg.replace(/<svg\b[^>]*>/i, (openTag) => {
+    const tag = /viewBox\s*=/.test(openTag)
+      ? openTag.replace(/viewBox\s*=\s*["'][^"']*["']/i, `viewBox="${viewBox}"`)
+      : openTag.replace(/<svg\b/i, `<svg viewBox="${viewBox}"`);
+    return tag;
+  });
+}
+
+/** Stored SVGs were fitted with older pads. Unwrap so current pads can apply. */
+function stripBrowserFit(svg: string): string {
+  if (!svg.includes("diagram-origin-fit") && !/diagram-fit-clip-\d+/.test(svg)) return svg;
+  let next = svg.replace(/<g clip-path="url\(#diagram-fit-clip-\d+\)">/g, "<g>");
+  next = next.replace(/<g id="diagram-origin-fit"[^>]*>/g, "<g>");
+  next = next.replace(/<clipPath id="diagram-fit-clip-\d+"><rect[^>]*\/><\/clipPath>/g, "");
+  next = applyViewBoxTag(next, "0 0 800 595");
+  next = next.replace(
+    /<rect x="0" y="0" width="[\d.]+" height="[\d.]+" fill="#08111f"/,
+    `<rect x="0" y="0" width="800" height="595" fill="#08111f"`
+  );
+  return next;
 }
 
 function rebaseCropToOrigin(svg: string): string {
@@ -152,7 +175,7 @@ function stripOversizedZoneOverlays(svg: string): string {
 
 export function fitDiagramSvgViewBox(svg: string): string {
   if (!/<svg[\s>]/i.test(svg)) return svg;
-  let next = stripOversizedZoneOverlays(resolveSvgMathAttributes(svg));
+  let next = stripBrowserFit(stripOversizedZoneOverlays(resolveSvgMathAttributes(svg)));
   if (alreadyClipped(next)) return rebaseCropToOrigin(next);
   const pitch = pitchRectFromSvg(next);
   const viewBox = pitch

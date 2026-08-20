@@ -1,4 +1,7 @@
 import PDFDocument from "pdfkit";
+import { attachStoredDiagramSvgsToDrills } from "./session-diagram-hydrate";
+import { pickDrillSvg, rasterizeDiagramSvg } from "./pdf-diagram-image";
+import { SESSION_PDF_REVISION } from "./pdf-export-revision";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +120,9 @@ function normalizeDrill(drill: any) {
     coachingPoints: drill.coachingPoints || json.coachingPoints || [],
     progressions:   drill.progressions   || json.progressions   || [],
     diagram:        drill.diagram || drill.diagramV1 || json.diagram || json.diagramV1 || null,
+    diagramSvg:     drill.diagramSvg || json.diagramSvg || null,
+    id:             drill.id || null,
+    refCode:        drill.refCode || json.refCode || null,
   };
 }
 
@@ -159,6 +165,66 @@ function buildOrgSections(org: any): { setupSteps: string[]; constraints: string
   return { setupSteps, constraints };
 }
 
+const PDF_BODY_FS = 10;
+const PDF_BODY_LG = 2.5;
+const PDF_LABEL_FS = 10;
+const PDF_META_FS = 9;
+const PDF_META_LG = 2;
+
+/** Rough height so a drill block starts on a fresh page instead of orphaning tail sections. */
+function estimateDrillBlockHeight(
+  doc: PDFKit.PDFDocument,
+  drill: ReturnType<typeof normalizeDrill>,
+  colW: number,
+  diagramH: number,
+  hasDiagram: boolean
+): number {
+  const line = (text: string, fs: number, lg: number) => {
+    doc.font("Helvetica").fontSize(fs);
+    return doc.heightOfString(text, { width: colW, lineGap: lg });
+  };
+  let h = 34; // header row
+  if (hasDiagram) h += diagramH + 8;
+
+  const { setupSteps, constraints } = buildOrgSections(drill.organization);
+  const hasOrg = setupSteps.length > 0 || constraints.length > 0 || Boolean(drill.description);
+  if (hasOrg) {
+    h += 16; // label
+    setupSteps.forEach((step, i) => { h += line(`${i + 1}.  ${step}`, PDF_BODY_FS, PDF_BODY_LG) + 2; });
+    constraints.forEach((c) => { h += line(c, PDF_META_FS, PDF_META_LG) + 2; });
+    h += 10;
+  }
+  if (Array.isArray(drill.coachingPoints)) {
+    h += 16;
+    drill.coachingPoints.forEach((pt: string, i: number) => {
+      h += line(`${i + 1}.  ${pt}`, PDF_BODY_FS, PDF_BODY_LG) + 2;
+    });
+    h += 10;
+  }
+  if (Array.isArray(drill.progressions)) {
+    h += 16;
+    drill.progressions.forEach((prog: string, i: number) => {
+      h += line(`${i + 1}.  ${cleanText(prog)}`, PDF_BODY_FS, PDF_BODY_LG) + 2;
+    });
+    h += 8;
+  }
+  return h + 12;
+}
+
+function drawConstraintMeta(
+  doc: PDFKit.PDFDocument,
+  constraints: string[],
+  x: number,
+  width: number
+): void {
+  if (constraints.length === 0) return;
+  doc.moveDown(0.35);
+  constraints.forEach((line) => {
+    doc.fontSize(PDF_META_FS).fillColor(BRAND.muted).font("Helvetica")
+      .text(line, x, doc.y, { width, lineGap: PDF_META_LG });
+  });
+}
+
 /**
  * Strips leading Unicode symbols / arrows / bullets that don't render correctly
  * in PDFKit's built-in Helvetica (WinAnsi encoding). Applies to AI-generated
@@ -174,6 +240,21 @@ function cleanText(text: string): string {
  * Draw a filled rounded-rectangle badge and return its width so the caller
  * can chain multiple badges horizontally.
  */
+function measureBadge(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  opts: { fontSize?: number; padX?: number; padY?: number }
+): { width: number; height: number } {
+  const fontSize = opts.fontSize ?? 7.5;
+  const padX = opts.padX ?? 7;
+  const padY = opts.padY ?? 3;
+  doc.font("Helvetica-Bold").fontSize(fontSize);
+  return {
+    width: doc.widthOfString(text) + padX * 2,
+    height: fontSize + padY * 2,
+  };
+}
+
 function drawBadge(
   doc: PDFKit.PDFDocument,
   text: string,
@@ -184,10 +265,7 @@ function drawBadge(
   const fontSize = opts.fontSize ?? 7.5;
   const padX = opts.padX ?? 7;
   const padY = opts.padY ?? 3;
-  doc.font("Helvetica-Bold").fontSize(fontSize);
-  const tw = doc.widthOfString(text);
-  const bw = tw + padX * 2;
-  const bh = fontSize + padY * 2;
+  const { width: bw, height: bh } = measureBadge(doc, text, { fontSize, padX, padY });
   doc.save();
   doc.roundedRect(x, y, bw, bh, 3).fill(opts.bgColor);
   if (opts.borderColor) {
@@ -198,6 +276,45 @@ function drawBadge(
   return bw;
 }
 
+/** Lay out pill badges left-to-right with row wrap; returns the Y below the last row. */
+function drawFlowBadges(
+  doc: PDFKit.PDFDocument,
+  labels: string[],
+  x: number,
+  startY: number,
+  maxWidth: number,
+  opts: {
+    bgColor: string;
+    textColor: string;
+    fontSize?: number;
+    padX?: number;
+    padY?: number;
+    gapX?: number;
+    gapY?: number;
+  }
+): number {
+  const gapX = opts.gapX ?? 8;
+  const gapY = opts.gapY ?? 8;
+  let curX = x;
+  let curY = startY;
+  let rowH = 0;
+  const maxX = x + maxWidth;
+
+  labels.forEach((label) => {
+    const { width: bw, height: bh } = measureBadge(doc, label, opts);
+    if (curX > x && curX + bw > maxX) {
+      curY += rowH + gapY;
+      curX = x;
+      rowH = 0;
+    }
+    drawBadge(doc, label, curX, curY, opts);
+    curX += bw + gapX;
+    rowH = Math.max(rowH, bh);
+  });
+
+  return curY + rowH;
+}
+
 /**
  * Footer: thin separator line + "TacticalEdge · <title>" left, "Page N" right.
  * Temporarily zeroes doc.page.margins.bottom so PDFKit does not auto-add a new
@@ -206,7 +323,8 @@ function drawBadge(
 function drawPageDecor(
   doc: PDFKit.PDFDocument,
   title: string,
-  pageNum: number
+  pageNum: number,
+  revision?: string
 ): void {
   const { width, height } = doc.page;
   const margin = 45;
@@ -224,7 +342,7 @@ function drawPageDecor(
     .moveTo(margin, footerY - 6).lineTo(width - margin, footerY - 6).stroke();
 
   doc.font("Helvetica").fontSize(7).fillColor("#94a3b8");
-  doc.text(`TacticalEdge  ·  ${title}`, margin, footerY, {
+  doc.text(revision ? `TacticalEdge  ·  ${title}  ·  ${revision}` : `TacticalEdge  ·  ${title}`, margin, footerY, {
     width: (width - margin * 2) * 0.65,
     align: "left",
     lineBreak: false,
@@ -507,6 +625,53 @@ function drawDiagram(
   }
 }
 
+function pngSize(png: Buffer): { width: number; height: number } {
+  if (png.length < 24) return { width: 1, height: 1 };
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+}
+
+function drawPngDiagram(
+  doc: PDFKit.PDFDocument,
+  png: Buffer,
+  options?: {
+    width?: number;
+    height?: number;
+    boxHeight?: number;
+    position?: "left" | "center";
+    startX?: number;
+    startY?: number;
+  }
+): { width: number; height: number; startX: number; startY: number } | null {
+  try {
+    const margin = 45;
+    const boxWidth = options?.width || 160;
+    let startX: number;
+    if (options?.startX !== undefined) startX = options.startX;
+    else if (options?.position === "center") startX = (doc.page.width - boxWidth) / 2;
+    else startX = margin;
+    const startY = options?.startY ?? doc.y;
+    const size = pngSize(png);
+    const naturalH = boxWidth * (size.height / size.width || 1.5);
+    const boxHeight = options?.boxHeight ?? options?.height ?? naturalH;
+
+    if (options?.boxHeight != null || options?.height != null) {
+      const scale = Math.min(boxWidth / size.width, boxHeight / size.height);
+      const renderW = size.width * scale;
+      const renderH = size.height * scale;
+      const imgX = startX + (boxWidth - renderW) / 2;
+      const imgY = startY + (boxHeight - renderH) / 2;
+      doc.image(png, imgX, imgY, { width: renderW, height: renderH });
+    } else {
+      doc.image(png, startX, startY, { width: boxWidth, height: naturalH });
+    }
+
+    return { width: boxWidth, height: boxHeight, startX, startY };
+  } catch (e) {
+    console.error("[PDF] Error embedding diagram image:", e);
+    return null;
+  }
+}
+
 // ─── Coaching Emphasis Section ────────────────────────────────────────────────
 
 /**
@@ -561,32 +726,23 @@ function drawCoachingEmphasis(
     doc.y = boxY + boxH + 10;
   }
 
-  // Key Skills — pill tags
+  // Key Skills — pill tags (flow layout with row wrap)
   const keySkills: string[] = Array.isArray(skillFocus.keySkills) ? skillFocus.keySkills : [];
   if (keySkills.length > 0) {
     doc.fontSize(9).fillColor(BRAND.navy).font("Helvetica-Bold")
       .text("Key Skills", margin, doc.y);
-    doc.moveDown(0.4);
+    doc.moveDown(0.6);
 
-    let pillX = margin;
-    const pillY = doc.y;
-    keySkills.forEach((skill: string) => {
-      const bw = drawBadge(doc, skill, pillX, pillY, {
-        bgColor: "#dbeafe",
-        textColor: "#1e40af",
-        fontSize: 8,
-        padX: 8,
-        padY: 3.5,
-      });
-      pillX += bw + 6;
-      // Wrap to next row if needed
-      if (pillX > doc.page.width - margin - 80) {
-        pillX = margin;
-        doc.y = pillY + 20;
-      }
-    });
-    doc.y = pillY + 20;
-    doc.moveDown(0.5);
+    const pillOpts = {
+      bgColor: "#dbeafe",
+      textColor: "#1e40af",
+      fontSize: 8,
+      padX: 8,
+      padY: 4,
+      gapX: 8,
+      gapY: 8,
+    };
+    doc.y = drawFlowBadges(doc, keySkills, margin, doc.y, pageW, pillOpts) + 10;
   }
 
   // Coaching Points
@@ -745,9 +901,20 @@ function drawCoachingEmphasis(
 // ─── generateSessionPdf ───────────────────────────────────────────────────────
 
 export async function generateSessionPdf(session: any): Promise<Buffer> {
-  console.log("[PDF] Generating session PDF:", {
+  const drills = await attachStoredDiagramSvgsToDrills(
+    Array.isArray(session.drills) ? session.drills : []
+  );
+  const diagramPngs = drills.map((drill) => {
+    const svg = pickDrillSvg(drill as { diagramSvg?: unknown; json?: unknown });
+    return svg ? rasterizeDiagramSvg(svg) : null;
+  });
+  session = { ...session, drills };
+
+    console.log("[PDF] Generating session PDF:", {
     title: session.title,
-    drillsCount: session.drills?.length,
+    drillsCount: drills.length,
+    drillsWithSvg: diagramPngs.filter(Boolean).length,
+    revision: SESSION_PDF_REVISION,
   });
 
   return new Promise((resolve, reject) => {
@@ -766,14 +933,14 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
       if (drawingDecor) return;
       pageNum++;
       drawingDecor = true;
-      drawPageDecor(doc, sessionTitle, pageNum);
+      drawPageDecor(doc, sessionTitle, pageNum, SESSION_PDF_REVISION);
       drawingDecor = false;
       doc.x = margin;
       doc.y = margin;
     });
 
     // Page 1 footer
-    drawPageDecor(doc, sessionTitle, pageNum);
+    drawPageDecor(doc, sessionTitle, pageNum, SESSION_PDF_REVISION);
 
     // ── Header block (dark navy, full-bleed) ────────────────────────────────
     {
@@ -787,7 +954,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
 
       // Brand label
       doc.fontSize(7.5).fillColor("#94a3b8").font("Helvetica")
-        .text("TACTICALEDGE", margin, 9, { lineBreak: false });
+        .text(`TACTICALEDGE  ·  PDF ${SESSION_PDF_REVISION}`, margin, 9, { lineBreak: false });
 
       // ── Row 1: Title + refCode badge + Language badge ──────────────────────
       const titleY = 21;
@@ -887,7 +1054,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
       const tableW   = doc.page.width - margin * 2;
       // col widths: # | name | type | duration
       const colW = [26, tableW - 26 - 130 - 65, 130, 65] as const;
-      const rowH = 18;
+      const rowH = 21;
       const headers = ["#", "Drill", "Type", "Duration"];
 
       // Header row
@@ -920,7 +1087,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
           .text(String(idx + 1), cx + 6, rowY + 5, { width: colW[0] - 8, lineBreak: false });
         cx += colW[0];
 
-        doc.fontSize(8).fillColor(BRAND.black).font("Helvetica")
+        doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
           .text(norm.title, cx + 4, rowY + 5, { width: colW[1] - 8, lineBreak: false });
         cx += colW[1];
 
@@ -945,10 +1112,10 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
     // ── About This Session ───────────────────────────────────────────────────
     if (session.summary) {
       drawSectionHeader(doc, "About This Session", margin);
-      doc.fontSize(9).fillColor(BRAND.muted).font("Helvetica")
+      doc.fontSize(10).fillColor(BRAND.muted).font("Helvetica")
         .text(session.summary, margin, doc.y, {
           width: doc.page.width - margin * 2,
-          lineGap: 2,
+          lineGap: 3.5,
         });
       doc.moveDown(1.2);
     }
@@ -962,7 +1129,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
       if (doc.y > doc.page.height - margin - 300) doc.addPage();
       drawSectionHeader(doc, "Drills", margin);
 
-      const diagramWidth = 200;
+      const diagramWidth = 224;
       const pageW        = doc.page.width - margin * 2;
       const textColW     = pageW - diagramWidth - 14;
       const textColX     = margin + diagramWidth + 14;
@@ -970,13 +1137,21 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
       session.drills.forEach((rawDrill: any, idx: number) => {
         const drill = normalizeDrill(rawDrill);
         const cfg   = getDrillConfig(drill.drillType);
+        const hasDiagram = Boolean(diagramPngs[idx] || drill.diagram);
 
         // Dynamic page-break threshold — vertical diagrams are 1.5× taller than horizontal
         const diagOrientation = drill.diagram?.pitch?.orientation || "HORIZONTAL";
-        const estimatedDiagH  = diagOrientation === "VERTICAL" ? diagramWidth * 1.5 : Math.round(diagramWidth / 1.5);
-        const pageBreakBuffer = estimatedDiagH + 80; // 80pt for header row + spacing
-        if (doc.y > doc.page.height - margin - pageBreakBuffer) doc.addPage();
-        if (idx > 0) doc.moveDown(0.6);
+        const estimatedDiagH = diagramPngs[idx]
+          ? diagramWidth * (pngSize(diagramPngs[idx]!).height / pngSize(diagramPngs[idx]!).width || 1.5)
+          : diagOrientation === "VERTICAL"
+            ? diagramWidth * 1.5
+            : Math.round(diagramWidth / 1.5);
+
+        const colW = hasDiagram ? textColW : pageW;
+        const colX = hasDiagram ? textColX : margin;
+        const blockEstimate = estimateDrillBlockHeight(doc, drill, colW, estimatedDiagH, hasDiagram);
+        if (doc.y + blockEstimate > doc.page.height - margin - 36) doc.addPage();
+        if (idx > 0) doc.moveDown(0.8);
 
         const drillBlockTopY = doc.y;
 
@@ -991,7 +1166,7 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
             .text(String(idx + 1), circX - 10, circY + 4, { width: 20, align: "center", lineBreak: false });
 
           // Title
-          doc.fontSize(11.5).fillColor(BRAND.black).font("Helvetica-Bold")
+          doc.fontSize(12).fillColor(BRAND.black).font("Helvetica-Bold")
             .text(drill.title, margin + 26, doc.y, { lineBreak: false });
 
           // Type badge + duration chip
@@ -1012,13 +1187,16 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
         let diagramEndY = contentStartY;
 
         // ── Diagram (left column) ──
-        if (drill.diagram) {
-          const di = drawDiagram(doc, drill.diagram, { width: diagramWidth, startX: margin });
+        if (hasDiagram && diagramPngs[idx]) {
+          const di = drawPngDiagram(doc, diagramPngs[idx]!, { width: diagramWidth, startX: margin + 6 });
+          if (di) diagramEndY = di.startY + di.height;
+        } else if (hasDiagram && drill.diagram) {
+          const di = drawDiagram(doc, drill.diagram, { width: diagramWidth, startX: margin + 6 });
           if (di) diagramEndY = di.startY + di.height;
         }
 
-        // ── Text (right column) ──
-        doc.x = textColX;
+        // ── Text (right column, or full width when no diagram) ──
+        doc.x = colX;
         doc.y = contentStartY;
 
         // Organisation — numbered setup steps + compact constraint line
@@ -1027,53 +1205,47 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
         const fallbackLines = !hasOrg && drill.description ? [drill.description] : [];
 
         if (hasOrg || fallbackLines.length > 0) {
-          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
-            .text("Organisation", textColX, doc.y);
-          doc.moveDown(0.25);
+          doc.fontSize(PDF_LABEL_FS).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Organisation", colX, doc.y);
+          doc.moveDown(0.4);
 
           if (fallbackLines.length > 0) {
             fallbackLines.forEach((line) => {
-              doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
-                .text(`·  ${line}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+              doc.fontSize(PDF_BODY_FS).fillColor(BRAND.black).font("Helvetica")
+                .text(`·  ${line}`, colX, doc.y, { width: colW, lineGap: PDF_BODY_LG });
             });
           } else {
-            // Numbered setup steps
             setupSteps.forEach((step, i) => {
-              doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
-                .text(`${i + 1}.  ${step}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+              doc.fontSize(PDF_BODY_FS).fillColor(BRAND.black).font("Helvetica")
+                .text(`${i + 1}.  ${step}`, colX, doc.y, { width: colW, lineGap: PDF_BODY_LG });
             });
-            // Constraints as compact muted info line (visually distinct from setup)
-            if (constraints.length > 0) {
-              if (setupSteps.length > 0) doc.moveDown(0.3);
-              doc.fontSize(7.5).fillColor(BRAND.muted).font("Helvetica")
-                .text(constraints.join("  ·  "), textColX, doc.y, { width: textColW });
-            }
+            drawConstraintMeta(doc, constraints, colX, colW);
           }
-          doc.moveDown(0.5);
+          doc.moveDown(0.85);
         }
 
         // Coaching Points
         if (Array.isArray(drill.coachingPoints) && drill.coachingPoints.length > 0) {
-          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
-            .text("Coaching Points", textColX, doc.y);
-          doc.moveDown(0.25);
+          doc.fontSize(PDF_LABEL_FS).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Coaching Points", colX, doc.y);
+          doc.moveDown(0.4);
           drill.coachingPoints.forEach((pt: string, i: number) => {
-            doc.fontSize(8.5).fillColor(BRAND.black).font("Helvetica")
-              .text(`${i + 1}.  ${pt}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
+            doc.fontSize(PDF_BODY_FS).fillColor(BRAND.black).font("Helvetica")
+              .text(`${i + 1}.  ${pt}`, colX, doc.y, { width: colW, lineGap: PDF_BODY_LG });
           });
-          doc.moveDown(0.5);
+          doc.moveDown(0.85);
         }
 
         // Progressions
         if (Array.isArray(drill.progressions) && drill.progressions.length > 0) {
-          doc.fontSize(8.5).fillColor(BRAND.navy).font("Helvetica-Bold")
-            .text("Progressions", textColX, doc.y);
-          doc.moveDown(0.25);
-          drill.progressions.forEach((prog: string, i: number) => {
-            doc.fontSize(8.5).fillColor(cfg.badgeText).font("Helvetica")
-              .text(`${i + 1}.  ${cleanText(prog)}`, textColX, doc.y, { width: textColW, lineGap: 0.5 });
-          });
+          doc.fontSize(PDF_LABEL_FS).fillColor(BRAND.navy).font("Helvetica-Bold")
+            .text("Progressions", colX, doc.y);
           doc.moveDown(0.4);
+          drill.progressions.forEach((prog: string, i: number) => {
+            doc.fontSize(PDF_BODY_FS).fillColor(cfg.badgeText).font("Helvetica")
+              .text(`${i + 1}.  ${cleanText(prog)}`, colX, doc.y, { width: colW, lineGap: PDF_BODY_LG });
+          });
+          doc.moveDown(0.55);
         }
 
         const textEndY  = doc.y;
@@ -1126,17 +1298,26 @@ export async function generateSessionPdf(session: any): Promise<Buffer> {
 // ├──────────┬──────────┬──────────┬──────────────────────────────────────────┤
 // │  Drill 1 │  Drill 2 │  Drill 3 │  Drill 4   (non-cooldown, max 4)        │
 // │  [type]  │  [type]  │  [type]  │  [type]    colored top bar              │
-// │  diagram │  diagram │  diagram │  diagram   fit column width             │
+// │  diagram │  diagram │  diagram │  diagram   aligned row + fixed box      │
 // │  org     │  org     │  org     │  org       6.5 pt muted                 │
 // │  points  │  points  │  points  │  points    7.5 pt numbered              │
-// ├──────────┴──────────┴──────────┴──────────────────────────────────────────┤
-// │  COOLDOWN strip — badge · title · coaching points inline           55 pt  │
-// └───────────────────────────────────────────────────────────────────────────┘
+// └──────────┴──────────┴──────────┴──────────────────────────────────────────┘
 
 export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
+  const drills = await attachStoredDiagramSvgsToDrills(
+    Array.isArray(session.drills) ? session.drills : []
+  );
+  const diagramPngs = drills.map((drill) => {
+    const svg = pickDrillSvg(drill as { diagramSvg?: unknown; json?: unknown });
+    return svg ? rasterizeDiagramSvg(svg) : null;
+  });
+  session = { ...session, drills };
+
   console.log("[PDF] Generating compact session PDF:", {
     title: session.title,
-    drillsCount: session.drills?.length,
+    drillsCount: drills.length,
+    drillsWithSvg: diagramPngs.filter(Boolean).length,
+    revision: SESSION_PDF_REVISION,
   });
 
   return new Promise((resolve, reject) => {
@@ -1154,9 +1335,8 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
     const pageH = doc.page.height;   // 595.28
     const contentW = pageW - margin * 2;
 
-    // Partition drills: up to 4 main columns + optional cooldown strip
+    // Partition drills: up to 4 main columns (cooldown omitted from coach's sheet)
     const allDrills: any[] = (Array.isArray(session.drills) ? session.drills : []).map(normalizeDrill);
-    const cooldownDrill = allDrills.find((d: any) => d.drillType === "COOLDOWN") ?? null;
     const mainDrills    = allDrills.filter((d: any) => d.drillType !== "COOLDOWN").slice(0, 4);
 
     // Suppress PDFKit auto-page-breaks while we draw in the lower zone
@@ -1169,7 +1349,7 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
     doc.fillColor(BRAND.blue).rect(0, headerH - 3, pageW, 3).fill();
 
     doc.fontSize(6).fillColor("#94a3b8").font("Helvetica")
-      .text("TACTICALEDGE  ·  COACH'S SHEET", margin, 8, { lineBreak: false });
+      .text(`TACTICALEDGE  ·  COACH'S SHEET  ·  PDF ${SESSION_PDF_REVISION}`, margin, 8, { lineBreak: false });
 
     // Title (left 60% of header)
     const maxTitleW = contentW * 0.62;
@@ -1200,62 +1380,34 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
       if (dur > 0) drawBadge(doc, `${dur} min`, cx, chipY, chipOpts);
     }
 
-    // ── Cooldown strip (bottom, 55 pt) ───────────────────────────────────────
-    const cooldownH = 55;
-    const cooldownY = pageH - margin - cooldownH;
-
-    if (cooldownDrill) {
-      const cdCfg = getDrillConfig(cooldownDrill.drillType);
-
-      // Background + top border in type color
-      doc.fillColor(cdCfg.bg).rect(margin, cooldownY, contentW, cooldownH).fill();
-      doc.fillColor(cdCfg.border).rect(margin, cooldownY, contentW, 3).fill();
-
-      // Badge + title + duration — single row
-      let cdX = margin + 8;
-      const cdBw = drawBadge(doc, cdCfg.label.toUpperCase(), cdX, cooldownY + 9, {
-        bgColor: cdCfg.badgeBg, textColor: cdCfg.badgeText, fontSize: 6.5,
-      });
-      cdX += cdBw + 6;
-
-      doc.fontSize(8.5).font("Helvetica-Bold").fillColor(BRAND.black);
-      const cdTitleW = doc.widthOfString(cooldownDrill.title);
-      doc.text(cooldownDrill.title, cdX, cooldownY + 8, { lineBreak: false });
-      cdX += cdTitleW + 6;
-
-      drawBadge(doc, `${cooldownDrill.duration} min`, cdX, cooldownY + 9, {
-        bgColor: BRAND.surface, textColor: BRAND.muted, fontSize: 6.5,
-      });
-
-      // Coaching points — first 3, inline as numbered list
-      const cdPts = (cooldownDrill.coachingPoints || []).slice(0, 3) as string[];
-      if (cdPts.length > 0) {
-        const ptsText = cdPts.map((p: string, i: number) => `${i + 1}.  ${p}`).join("     ");
-        doc.fontSize(7.5).fillColor(BRAND.black).font("Helvetica")
-          .text(ptsText, margin + 8, cooldownY + 26, { width: contentW - 16, lineBreak: false });
-      }
-
-      // Org summary
-      const { setupSteps, constraints } = buildOrgSections(cooldownDrill.organization);
-      const orgText = constraints[0] || setupSteps[0];
-      if (orgText) {
-        doc.fontSize(6.5).fillColor(BRAND.muted).font("Helvetica")
-          .text(orgText, margin + 8, cooldownY + 40, { width: contentW - 16, lineBreak: false });
-      }
-    }
-
     // ── 4 Main Drill Columns ──────────────────────────────────────────────────
     const nCols   = Math.max(mainDrills.length, 1);
     const colGap  = 7;
     const colW    = (contentW - colGap * (nCols - 1)) / nCols;
     const colTop  = headerH + 7;
-    const colBot  = cooldownY - 7;
+    const colBot  = pageH - margin;
     const colH    = colBot - colTop;
+    const innerW  = colW - 10;
+
+    const badgeY  = colTop + 8;
+    const titleY  = badgeY + 15;
+    const textReserve = 108;
+
+    doc.fontSize(7.5).font("Helvetica-Bold");
+    const maxTitleH = mainDrills.reduce((max: number, drill: any) => {
+      const h = doc.heightOfString(String(drill.title || ""), { width: innerW });
+      return Math.max(max, h);
+    }, 9);
+
+    const diagramY = titleY + maxTitleH + 4;
+    const diagramBoxH = Math.max(
+      118,
+      Math.min(Math.floor(innerW * 0.82), colBot - diagramY - textReserve)
+    );
 
     mainDrills.forEach((drill: any, idx: number) => {
       const colX   = margin + idx * (colW + colGap);
       const cfg    = getDrillConfig(drill.drillType);
-      const innerW = colW - 10;  // 5 pt padding each side
       const innerX = colX + 5;
 
       // Column background (very light drill-type tint)
@@ -1267,7 +1419,6 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
         .rect(colX, colTop, colW, colH).stroke();
 
       // ── Row 1: type badge + duration (right-aligned) ──────────────────────
-      const badgeY = colTop + 8;
       drawBadge(doc, cfg.label.toUpperCase(), innerX, badgeY, {
         bgColor: cfg.badgeBg, textColor: cfg.badgeText, fontSize: 6,
       });
@@ -1278,30 +1429,42 @@ export async function generateCompactSessionPdf(session: any): Promise<Buffer> {
       const durW   = doc.widthOfString(durStr);
       doc.text(durStr, colX + colW - 6 - durW, badgeY + 1, { lineBreak: false });
 
-      // ── Row 2: drill title ────────────────────────────────────────────────
-      const titleY = badgeY + 15;
+      // ── Row 2: drill title (fixed band so diagrams align across columns) ──
       doc.fontSize(7.5).fillColor(BRAND.black).font("Helvetica-Bold")
         .text(drill.title, innerX, titleY, { width: innerW, lineBreak: true });
-      let rowY = doc.y + 3;
+      let rowY = diagramY + diagramBoxH + 5;
 
-      // ── Diagram ───────────────────────────────────────────────────────────
-      if (drill.diagram) {
-        // Horizontal: full inner width. Vertical: cap height at 125 pt → width = 125/1.5 ≈ 83 pt
-        const orientation = drill.diagram?.pitch?.orientation || "HORIZONTAL";
-        const diagW = orientation === "VERTICAL"
-          ? Math.round(125 / 1.5)   // 83 pt wide → 125 pt tall
-          : innerW;                  // full width → innerW / 1.5 tall
-        // Center vertical (narrower) diagrams in the column
-        const diagStartX = orientation === "VERTICAL"
-          ? colX + (colW - diagW) / 2
-          : innerX;
-
-        doc.y = rowY;
-        const di = drawDiagram(doc, drill.diagram, {
-          width: diagW, startX: diagStartX,
-          playerScale: 0.5, arrowScale: 0.55,
-        });
-        rowY = di ? di.startY + di.height + 5 : rowY + 5;
+      // ── Diagram (shared Y + fixed box height) ─────────────────────────────
+      {
+        const srcIdx = drills.findIndex(
+          (d: any) =>
+            (drill.refCode && d.refCode === drill.refCode) ||
+            (drill.id && d.id === drill.id) ||
+            (d.title === drill.title && String(d.drillType || "") === String(drill.drillType || ""))
+        );
+        const png = srcIdx >= 0 ? diagramPngs[srcIdx] : null;
+        if (png) {
+          drawPngDiagram(doc, png, {
+            width: innerW,
+            startX: innerX,
+            startY: diagramY,
+            boxHeight: diagramBoxH,
+          });
+        } else if (drill.diagram) {
+          const orientation = drill.diagram?.pitch?.orientation || "HORIZONTAL";
+          const diagW = orientation === "VERTICAL" ? Math.round(125 / 1.5) : innerW;
+          const diagStartX = orientation === "VERTICAL" ? colX + (colW - diagW) / 2 : innerX;
+          doc.y = diagramY;
+          const di = drawDiagram(doc, drill.diagram, {
+            width: diagW, startX: diagStartX,
+            playerScale: 0.5, arrowScale: 0.55,
+          });
+          if (di && di.height < diagramBoxH) {
+            rowY = diagramY + diagramBoxH + 5;
+          } else if (di) {
+            rowY = di.startY + di.height + 5;
+          }
+        }
       }
 
       // Helper: small bold section label (e.g. "ORGANISATION")
