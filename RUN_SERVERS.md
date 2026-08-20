@@ -12,14 +12,14 @@ After both are up, log in and open **Coach Center** (`/coach-center`), not only 
 ## Prerequisites
 
 - Node.js and pnpm
-- Root env files (this repo): `.env` and/or `.env.local`
+- Root `.env` for the API (not `.env.local`). `apps/api/src/config/load-env.ts` also tries `apps/api/.env`.
 - PostgreSQL via `DATABASE_URL` (required for vault, Coach Center, auth)
 
 ---
 
 ## Environment
 
-Put secrets at the **repo root**, not only `apps/api/.env`. Prisma and several scripts load `../../.env`.
+Put secrets in the **repo root `.env`**. The API does not load `.env.local`.
 
 Minimum:
 
@@ -30,7 +30,7 @@ DATABASE_URL=postgresql://user:password@host:5432/dbname
 
 Auth, Stripe, and mail need additional vars in production. See `apps/api/ENVIRONMENT_VARS.md` for names (treat values as untrusted).
 
-Trials: production signup is off unless `NEXT_PUBLIC_TRIALS_ENABLED=true`.
+Trials: production signup is off unless **both** `TRIALS_ENABLED=true` (API register) and `NEXT_PUBLIC_TRIALS_ENABLED=true` (web CTA).
 
 ---
 

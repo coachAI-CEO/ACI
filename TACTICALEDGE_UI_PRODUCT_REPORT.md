@@ -24,7 +24,7 @@ Turn club philosophy + this week’s theme + the next match into field-ready ses
 - Directors of Coaching / section directors
 
 **Do not claim:**
-- A 7-day free trial on production. Signup is paused (`trialsEnabled()` is false in production unless `NEXT_PUBLIC_TRIALS_ENABLED=true`). Landing already says “View Plans.”
+- A 7-day free trial on production. Signup is paused unless `TRIALS_ENABLED=true` (API) and `NEXT_PUBLIC_TRIALS_ENABLED=true` (web). Landing already says “View Plans.”
 - “Player Focus & Wellbeing.” That copy exists only on the old landing feature grid. There is no product behind it.
 - A shipped mobile app. `docs/mobile/` is a plan, not a release.
 - Video analysis as the newest flagship. It is live as **beta**. Coach Center, Tactical Board, and DOC Console shipped after it.

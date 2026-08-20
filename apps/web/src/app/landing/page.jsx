@@ -36,7 +36,7 @@ export default function TacticalEdgeLanding() {
     { label: "Drills Generated", value: "1500+", icon: <Zap size={20} /> },
     { label: "Sessions Created", value: "250+", icon: <Calendar size={20} /> },
     { label: "Coaches Active", value: "50+", icon: <Users size={20} /> },
-    { label: "Training Phases", value: "6", icon: <Activity size={20} /> },
+    { label: "Training Phases", value: "5", icon: <Activity size={20} /> },
     { label: "Age Groups", value: "U8-U18", icon: <Trophy size={20} /> },
     { label: "Formations", value: "12+", icon: <Layout size={20} /> },
   ];
@@ -227,7 +227,7 @@ export default function TacticalEdgeLanding() {
           <h2 className="mb-6 text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
               Ready to level up?
             </h2>
-            <p className="mb-6 text-lg text-gray-200">Join hundreds of coaches using TacticalEdge.</p>
+            <p className="mb-6 text-lg text-gray-200">Join the coaches using TacticalEdge.</p>
             <p className="mb-10 text-2xl font-black uppercase tracking-tight text-[#ADFF2F] [text-shadow:0_2px_14px_rgba(0,0,0,0.75)] md:text-3xl">
               "One club. One philosophy. Every age group aligned. That&apos;s the edge."
             </p>

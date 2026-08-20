@@ -48,7 +48,7 @@ Mounted API routers (`apps/api/src/app.ts`): auth, drills, sessions, vault, favo
 
 | Area | Web route | Notes |
 |---|---|---|
-| Landing / pricing | `/`, `/landing`, `/pricing` | Production signup is paused unless `NEXT_PUBLIC_TRIALS_ENABLED=true` |
+| Landing / pricing | `/`, `/landing`, `/pricing` | Production signup is paused unless `TRIALS_ENABLED=true` (API) and `NEXT_PUBLIC_TRIALS_ENABLED=true` (web) |
 | Coach Center | `/coach-center` | Team, 16-week curriculum, calendar, chat, next sessions, game day + recap |
 | Session Builder | `/demo/session` | 60/90 min sessions; full PDF + Coach’s Sheet |
 | Drill Generator | `/demo/drill` | Single drill + diagram |
