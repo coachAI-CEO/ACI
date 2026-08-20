@@ -205,14 +205,16 @@ r.post('/boards/:id/phase-place', async (req: AuthRequest, res) => {
     if (!req.userId) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }
-    const board = await getBoardForUser(req.params.id, req.userId);
-    if (!board.canEdit) {
-      return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
-    }
 
     const fromBody = req.body?.diagram ? toWebDiagramV1(req.body.diagram) : null;
-    const currentDiagram =
-      fromBody || toWebDiagramV1(board.diagram) || (board.diagram as any);
+    let currentDiagram = fromBody;
+    if (!currentDiagram) {
+      const board = await getBoardForUser(req.params.id, req.userId);
+      if (!board.canEdit) {
+        return res.status(403).json({ ok: false, error: 'FORBIDDEN', message: 'View-only board' });
+      }
+      currentDiagram = toWebDiagramV1(board.diagram) || (board.diagram as any);
+    }
     const parsedCurrent = parseWebDiagramV1(currentDiagram);
     if (!parsedCurrent.ok) {
       return res.status(400).json({

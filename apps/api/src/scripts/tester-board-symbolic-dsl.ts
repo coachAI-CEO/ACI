@@ -12,7 +12,7 @@ import {
   gridBox,
   overlappingPairs,
   solveBoardLayout,
-  SOLVER_MIN_PLAYER_GAP,
+  SOLVER_OPPOSITE_TEAM_GAP,
 } from '../services/board-layout-solver';
 
 function samplesDir() {
@@ -84,7 +84,7 @@ function caseOverlap(): CaseResult {
   return {
     name: 'overlap',
     claim: 'Shirts never share space (red 9 / blue 6)',
-    ok: dNow < SOLVER_MIN_PLAYER_GAP && dAfter >= SOLVER_MIN_PLAYER_GAP && afterN === 0,
+    ok: dNow < SOLVER_OPPOSITE_TEAM_GAP && dAfter >= SOLVER_OPPOSITE_TEAM_GAP && afterN === 0,
     lines,
   };
 }
@@ -119,7 +119,7 @@ function caseHallucination(): CaseResult {
   return {
     name: 'hallucination',
     claim: 'Model cannot invent a pile-up at (50,50)',
-    ok: dNow < 0.1 && dAfter >= SOLVER_MIN_PLAYER_GAP,
+    ok: dNow < 0.1 && dAfter >= SOLVER_OPPOSITE_TEAM_GAP,
     lines,
   };
 }
@@ -278,7 +278,7 @@ function caseSeedCurrent(): CaseResult {
     ok:
       sameCount &&
       rbDrift < 6 &&
-      dPress >= SOLVER_MIN_PLAYER_GAP &&
+      dPress >= SOLVER_OPPOSITE_TEAM_GAP &&
       overlappingPairs(after.players).length === 0,
     lines,
   };
@@ -493,13 +493,13 @@ function caseRondoTwoInside(): CaseResult {
     ],
   });
   if (!parsed.ok) {
-    return { name: 'rondo-inside', claim: '5v2 inside stack still unstacks to gap 8', ok: false, lines: [parsed.error] };
+    return { name: 'rondo-inside', claim: '5v2 inside stack still unstacks', ok: false, lines: [parsed.error] };
   }
   const after = solveBoardLayout(parsed.dsl, DEFAULT_MATCH_BOARD_DIAGRAM);
   const ov = overlappingPairs(after.players).length;
   return {
     name: 'rondo-inside',
-    claim: '5v2 inside stack still unstacks to gap 8',
+    claim: '5v2 inside stack still unstacks',
     ok: after.players.length === 7 && ov === 0,
     lines: [`players=${after.players.length} overlaps=${ov}`],
   };

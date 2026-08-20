@@ -144,6 +144,7 @@ export const WebDiagramV1Schema = z
               )
               .max(100)
               .optional(),
+            order: z.number().int().min(1).max(12).optional(),
           })
           .strict()
       )
@@ -229,6 +230,7 @@ export const WebDiagramV1Schema = z
                           )
                           .max(100)
                           .optional(),
+                        order: z.number().int().min(1).max(12).optional(),
                       })
                       .strict()
                   )

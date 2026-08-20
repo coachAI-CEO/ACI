@@ -13,7 +13,7 @@ import { computeLegendLayout } from "../services/legend-layout";
 const FIELD_Y = 74.38;
 const FIELD_H = 313.24;
 
-export const DRAWER_PROMPT_VERSION = "v46-one-token";
+export const DRAWER_PROMPT_VERSION = "v48-arrow-lanes";
 
 export function buildDrawerPrompt(params: DrawerParams): string {
   return DRAWER_PROMPT_TEMPLATE.replace("{{DIAGRAM_DATA}}", serializeDrillData(params));
@@ -387,13 +387,14 @@ Do not invent full goals, mini goals, gates, goal nets, goal boxes, or triangula
 
 ARROWS - if an arrow's from or to is "COACH" (see the Arrows list above), that endpoint's pixel coordinate is the COACH section's computed X,Y (steps 1-3 there), NOT a normal coordinate-conversion of any x/y number. The coach marker renders outside the field boundary -- using a normal in-field coordinate for a coach-linked arrow would draw it disconnected from the marker.
 ARROWS - use <path> fill="none":
-pass:      stroke="#3b82f6" stroke-width="2"                         marker-end="url(#mPass)"
-run:       stroke="#3b82f6" stroke-width="2" stroke-dasharray="6,4"  marker-end="url(#mRun)"
-movement:  stroke="#3b82f6" stroke-width="2" stroke-dasharray="6,4"  marker-end="url(#mRun)"
-press:     stroke="#ef4444" stroke-width="2" stroke-dasharray="5,3"  marker-end="url(#mPress)"
+pass:      stroke="#3b82f6" stroke-width="2.5"                         marker-end="url(#mPass)"
+run:       stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="6,4"  marker-end="url(#mRun)"
+movement:  stroke="#3b82f6" stroke-width="2.5" stroke-dasharray="6,4"  marker-end="url(#mRun)"
+press:     stroke="#ef4444" stroke-width="2.5" stroke-dasharray="5,3"  marker-end="url(#mPress)"
 counter:   stroke="#22c55e" stroke-width="2.5"                       marker-end="url(#mCounter)"
-delivery:  stroke="#ffffff" stroke-width="2" stroke-dasharray="4,3"  marker-end="url(#mDeliver)"
+delivery:  stroke="#ffffff" stroke-width="2.5" stroke-dasharray="4,3"  marker-end="url(#mDeliver)"
 finish:    stroke="#fbbf24" stroke-width="2.5"                       marker-end="url(#mFinish)"
+Never draw a shaft through a player token. Convert from/to to pixels, then inset each endpoint that lands on a player by TokenRadius+4px along the arrow vector so the line stops at the shirt edge. If any OTHER player sits on the straight chord, do not draw through them -- use a quadratic \`Q cx cy x2 y2\` whose bulge goes around the shirt (control point perpendicular to the chord, on the side toward the nearer touchline or away from the cluster of blockers). Arrowheads sit in the grass, pointing at the receiver -- not inside the circle. Draw arrows AFTER player tokens so heads are never buried under a shirt. Finish arrows aim at a goal post, never through a center-back onto the GK.
 Draw a numbered sequence badge at each arrow midpoint.
 
 ZONES
@@ -429,12 +430,12 @@ Do not draw a mint overlay the size of the pitch. That is a second field.
 DRAW ORDER:
 1. background 2. defs 3. field fill 4. field border (all four of these are injected by the API, not drawn by you -- see CANVAS AND CARD / FIELD / DEFS above) 5. field lines
 (dimension labels + zone reference bar, both in the margin, never covered by anything)
-6. zone backgrounds (rect only, no label) 7. goals 8. arrows 9. players
-10. coach 11. zone labels (pill + text, drawn last of the field content so
+6. zone backgrounds (rect only, no label) 7. goals 8. players 9. coach 10. arrows
+11. zone labels (pill + text, drawn last of the field content so
 they're never hidden under a player) 12. legend
-Draw player token groups after arrows so token labels remain visible on top of all lines.
-Zone labels must be the LAST thing drawn on the field itself -- after players and the
-coach, before the legend.
+Inset arrow shafts to the token edge so the line never paints through a shirt; then draw arrows after players so the head stays visible in the grass.
+Zone labels must be the LAST thing drawn on the field itself -- after players, the
+coach, and arrows, before the legend.
 
 DRILL DATA:
 {{DIAGRAM_DATA}}

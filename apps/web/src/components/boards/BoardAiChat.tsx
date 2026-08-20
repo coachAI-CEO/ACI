@@ -6,6 +6,9 @@ import type { DiagramV1 } from "@/types/diagram";
 import { boardAiChat } from "@/lib/boards";
 import { useBoardLoadProgress } from "@/lib/use-board-load-progress";
 import { BoardAiReplyBody } from "@/components/boards/BoardAiReply";
+import BoardPrinciplesPanel from "@/components/boards/BoardPrinciplesPanel";
+import { isThinBoardAsk } from "@/lib/board-principle-topics";
+import type { BoardEmphasis } from "@/lib/board-emphasis";
 
 type SessionRec = {
   id: string;
@@ -46,6 +49,8 @@ type Props = {
   ageGroup?: string | null;
   coachLevel?: string | null;
   playerLevel?: string | null;
+  attFormation?: string | null;
+  emphasis?: BoardEmphasis | null;
   onApplyDiagram: (diagram: DiagramV1) => void;
   onBusyChange?: (busy: boolean) => void;
 };
@@ -318,6 +323,8 @@ export default function BoardAiChat({
   ageGroup,
   coachLevel,
   playerLevel,
+  attFormation,
+  emphasis,
   onApplyDiagram,
   onBusyChange,
 }: Props) {
@@ -329,6 +336,7 @@ export default function BoardAiChat({
   const [sending, setSending] = React.useState(false);
   const [progressKind, setProgressKind] = React.useState<"text" | "image" | "pdf">("text");
   const [error, setError] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<"board" | "principles">("board");
   const [audience, setAudience] = React.useState({
     coachLevel: coachLevel || null,
     playerLevel: playerLevel || derivePlayerLevel(coachLevel, ageGroup),
@@ -364,6 +372,16 @@ export default function BoardAiChat({
   React.useEffect(() => {
     persistChat(boardId, messages);
   }, [boardId, messages]);
+
+  const lastAsk = React.useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m.role !== "user" || m.id === "welcome") continue;
+      if (isThinBoardAsk(m.content)) continue;
+      return m.content;
+    }
+    return null;
+  }, [messages]);
 
   const attachFile = async (file: File | null | undefined) => {
     if (!file || sending || !canEdit) return;
@@ -504,6 +522,44 @@ export default function BoardAiChat({
         </div>
       </div>
 
+      <div className="flex gap-1 border-b border-white/10 px-3">
+        {(
+          [
+            ["board", "Board"],
+            ["principles", "Principles"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={`-mb-px border-b-2 px-2.5 py-2 text-[11px] font-semibold tracking-wide ${
+              tab === id
+                ? "border-emerald-400 text-emerald-200"
+                : "border-transparent text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "principles" ? (
+        <BoardPrinciplesPanel
+          coachLevel={audience.coachLevel}
+          ageGroup={ageGroup}
+          gameModelId={gameModelId}
+          attFormation={attFormation}
+          lastAsk={lastAsk}
+          emphasis={emphasis}
+          diagram={diagram}
+          onUsePrompt={(prompt) => {
+            setInput(prompt);
+            setTab("board");
+          }}
+        />
+      ) : (
+        <>
       <div ref={listRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {messages.map((m) => (
           <div
@@ -647,6 +703,8 @@ export default function BoardAiChat({
           </div>
         )}
       </div>
+        </>
+      )}
     </aside>
   );
 }

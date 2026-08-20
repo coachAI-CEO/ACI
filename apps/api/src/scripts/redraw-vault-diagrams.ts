@@ -90,6 +90,7 @@ async function redrawOne(drill: Drill): Promise<{ ok: boolean; model?: string; e
       formationUsed: drill.formationUsed,
       phase: drill.phase,
       zone: drill.zone,
+      coachLevel: drill.coachLevel,
     });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);

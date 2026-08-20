@@ -1,6 +1,7 @@
 import type { DrawerArrow, DrawerCoach, DrawerParams, DrawerPlayer, DrawerZone } from "../types/drawer";
 import { computeTokenRadius, shouldZoomOut } from "../data/field-dimensions";
 import { computeLegendLayout } from "./legend-layout";
+import { insetPoint, routeAroundTokens } from "./arrow-routing";
 
 type Point = { x: number; y: number };
 type Geometry = {
@@ -36,7 +37,7 @@ export function renderDeterministicDiagramSVG(params: DrawerParams): string {
   const field = renderField(params, geometry);
   const zoneBackgrounds = params.zones.map((zone) => renderZoneBackground(zone, geometry)).join("");
   const zoneLabels = params.zones.map((zone) => renderZoneLabel(zone, geometry)).join("");
-  const arrows = params.arrows.map((arrow) => renderArrow(arrow, geometry)).join("");
+  const arrows = params.arrows.map((arrow) => renderArrow(arrow, geometry, params)).join("");
   const players = params.players.map((player) => renderPlayer(player, geometry)).join("");
   const coach = renderCoach(params.coach, geometry);
   const legend = renderLegend(params, geometry);
@@ -47,9 +48,9 @@ export function renderDeterministicDiagramSVG(params: DrawerParams): string {
     renderDefs(),
     field,
     zoneBackgrounds,
-    arrows,
     players,
     coach,
+    arrows,
     zoneLabels,
     legend,
     `</svg>`,
@@ -116,15 +117,19 @@ function renderCornerCones(geometry: Geometry): string {
     .join("");
 }
 
+function arrowMarker(id: string, fill: string, stroke = "#f8fafc"): string {
+  return `<marker id="${id}" markerWidth="14" markerHeight="12" refX="12.5" refY="6" orient="auto" markerUnits="userSpaceOnUse" overflow="visible"><polygon points="0 1,14 6,0 11" fill="${fill}" stroke="${stroke}" stroke-width="1.4" stroke-linejoin="round"/></marker>`;
+}
+
 function renderDefs(): string {
   return `<defs>
 <filter id="ps" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="rgba(0,0,0,0.4)"/></filter>
-<marker id="mPass" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mRun" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#3b82f6"/></marker>
-<marker id="mPress" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ef4444"/></marker>
-<marker id="mCounter" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#22c55e"/></marker>
-<marker id="mDeliver" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#ffffff"/></marker>
-<marker id="mFinish" markerWidth="7" markerHeight="6" refX="5.5" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#fbbf24"/></marker>
+${arrowMarker("mPass", "#3b82f6")}
+${arrowMarker("mRun", "#3b82f6")}
+${arrowMarker("mPress", "#ef4444")}
+${arrowMarker("mCounter", "#22c55e")}
+${arrowMarker("mDeliver", "#ffffff", "#0f172a")}
+${arrowMarker("mFinish", "#fbbf24")}
 </defs>`;
 }
 
@@ -170,8 +175,8 @@ function renderZoneReference(params: DrawerParams, geometry: Geometry): string {
   const { fieldX, fieldY, fieldW } = geometry;
   const barW = 132;
   const barH = 12;
-  const barX = fieldX + fieldW - barW;
-  const barY = fieldY - 24;
+  const barX = fieldX + (fieldW - barW) / 2;
+  const barY = fieldY - 36;
   const segW = barW / 3;
 
   const segments = THIRDS.map((third, i) => {
@@ -268,31 +273,48 @@ function renderZoneLabel(zone: DrawerZone, geometry: Geometry): string {
 </g>`;
 }
 
-function renderArrow(arrow: DrawerArrow, geometry: Geometry): string {
+function renderArrow(arrow: DrawerArrow, geometry: Geometry, params: DrawerParams): string {
   // isCoach endpoints must resolve through the SAME projection the coach
   // marker itself uses -- the marker renders outside the field boundary,
   // so using the raw declared coordinate here would draw the arrow ending
   // at a point with no marker, visibly disconnected from the coach.
-  const from = arrow.from.isCoach ? resolveCoachPoint(arrow.from, geometry) : toSvgPoint(arrow.from, geometry);
-  const to = arrow.to.isCoach ? resolveCoachPoint(arrow.to, geometry) : toSvgPoint(arrow.to, geometry);
+  const rawFrom = arrow.from.isCoach ? resolveCoachPoint(arrow.from, geometry) : toSvgPoint(arrow.from, geometry);
+  const rawTo = arrow.to.isCoach ? resolveCoachPoint(arrow.to, geometry) : toSvgPoint(arrow.to, geometry);
+  const r = geometry.tokenRadius;
+  const blockers = params.players
+    .map((player) => toSvgPoint(player, geometry))
+    .filter((pt) => Math.hypot(pt.x - rawFrom.x, pt.y - rawFrom.y) > r + 8 && Math.hypot(pt.x - rawTo.x, pt.y - rawTo.y) > r + 8);
+  const routed = routeAroundTokens(rawFrom, rawTo, blockers, r, {
+    x: geometry.fieldX,
+    y: geometry.fieldY,
+    w: geometry.fieldW,
+    h: geometry.fieldH,
+  });
+  const towardStart = routed.control ?? rawTo;
+  const towardEnd = routed.control ?? rawFrom;
+  const start = insetPoint(rawFrom, towardStart, padAtEndpoint(rawFrom, geometry, params, arrow.from.isCoach, false));
+  const end = insetPoint(rawTo, towardEnd, padAtEndpoint(rawTo, geometry, params, arrow.to.isCoach, true));
+  if (Math.hypot(end.x - start.x, end.y - start.y) < 8) return "";
   const style = arrowStyle(arrow.type);
-  const d = `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+  const d = routed.control
+    ? `M ${round(start.x)} ${round(start.y)} Q ${round(routed.control.x)} ${round(routed.control.y)} ${round(end.x)} ${round(end.y)}`
+    : `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`;
   return `<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-linecap="round"${style.dash ? ` stroke-dasharray="${style.dash}"` : ""} marker-end="url(#${style.marker})"/>`;
 }
 
 function renderPlayer(player: DrawerPlayer, geometry: Geometry): string {
   const point = toSvgPoint(player, geometry);
   const palette = playerPalette(player.team);
-  const pos = normalizePositionLabel(player);
+  const label = normalizePositionLabel(player);
   const filter = player.team === "gk" ? "" : ` filter="url(#ps)"`;
   const opacity = player.team === "gk" ? "0.38" : "0.12";
   const r = geometry.tokenRadius;
   const glowR = round(r + 2);
-  const fontSize = round(Math.max(6, Math.min(10, r * 0.6)));
+  const fontSize = round(Math.max(8, Math.min(11, r * 0.68)));
   return `<g transform="translate(${point.x},${point.y})">
 <circle cx="0" cy="0" r="${glowR}" fill="${palette.fill}" opacity="${opacity}"/>
 <circle cx="0" cy="0" r="${round(r)}" fill="${palette.fill}" stroke="#020617" stroke-width="2"${filter}/>
-<text x="0" y="0" font-family="Arial" font-size="${fontSize}" font-weight="800" text-anchor="middle" dominant-baseline="central" fill="#ffffff">${pos}</text>
+<text x="0" y="0" font-family="Arial" font-size="${fontSize}" font-weight="800" text-anchor="middle" dominant-baseline="central" fill="#ffffff">${escapeXml(label)}</text>
 </g>`;
 }
 
@@ -337,12 +359,12 @@ ${items.join("\n")}
 }
 
 function arrowStyle(type: DrawerArrow["type"]): { stroke: string; width: string; dash?: string; marker: string } {
-  if (type === "press") return { stroke: "#ef4444", width: "2", dash: "5,3", marker: "mPress" };
+  if (type === "press") return { stroke: "#ef4444", width: "2.5", dash: "5,3", marker: "mPress" };
   if (type === "counter") return { stroke: "#22c55e", width: "2.5", marker: "mCounter" };
-  if (type === "delivery") return { stroke: "#ffffff", width: "2", dash: "4,3", marker: "mDeliver" };
+  if (type === "delivery") return { stroke: "#ffffff", width: "2.5", dash: "4,3", marker: "mDeliver" };
   if (type === "finish") return { stroke: "#fbbf24", width: "2.5", marker: "mFinish" };
-  if (type === "run" || type === "movement") return { stroke: "#3b82f6", width: "2", dash: "6,4", marker: "mRun" };
-  return { stroke: "#3b82f6", width: "2", marker: "mPass" };
+  if (type === "run" || type === "movement") return { stroke: "#3b82f6", width: "2.5", dash: "6,4", marker: "mRun" };
+  return { stroke: "#3b82f6", width: "2.5", marker: "mPass" };
 }
 
 function playerPalette(team: DrawerPlayer["team"]): { fill: string } {
@@ -371,15 +393,38 @@ function normalizePositionLabel(player: DrawerPlayer): string {
   if (base.includes("MID") || base === "M") return "CM";
   if (base.includes("WING")) return base.startsWith("L") ? "LW" : base.startsWith("R") ? "RW" : "FW";
   if (base.includes("FORWARD") || base.includes("STRIKER")) return "ST";
-  if (base === "LF" || base === "RF") return "ST"; // "Left/Right Forward" -- nonstandard but seen in the wild
+  if (base === "LF" || base === "RF") return "ST";
+  if (base.startsWith("SUP") || base === "SU" || base.includes("SUPPORT")) return "CM";
+  if (base.includes("TARGET") || base === "TG") return "ST";
+  if (base.includes("NEUT") || base === "NT" || base === "JK" || base.includes("JOKER")) return "NT";
   const coreCode = CORE_POSITION_CODES.find((code) => base.includes(code));
   if (coreCode) return coreCode;
-  return base.slice(0, 2).padEnd(2, player.team === "away" ? "F" : "T");
+  return player.team === "away" ? "DF" : "AT";
 }
 
 function toSvgPoint(point: Point, geometry: Geometry): Point {
   const oriented = orientPoint(point, geometry);
   return { x: svgX(oriented.x, geometry), y: svgY(oriented.y, geometry) };
+}
+
+/** Pull the shaft off token/coach centers so it stops at the shirt edge
+ * and the arrowhead sits in the grass instead of inside the circle. */
+function padAtEndpoint(
+  pt: Point,
+  geometry: Geometry,
+  params: DrawerParams,
+  isCoach: boolean | undefined,
+  isHead: boolean
+): number {
+  if (isCoach) return 13 + (isHead ? 6 : 0);
+  const r = geometry.tokenRadius;
+  for (const player of params.players) {
+    const q = toSvgPoint(player, geometry);
+    if (Math.hypot(q.x - pt.x, q.y - pt.y) < r + 8) {
+      return r + (isHead ? 6 : 3);
+    }
+  }
+  return isHead ? 2 : 0;
 }
 
 function orientPoint(point: Point, geometry: Geometry): Point {

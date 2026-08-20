@@ -12,7 +12,7 @@ import type {
   DiagramV1,
 } from "@/types/diagram";
 import type { BoardShareMode } from "@/lib/boards";
-import { placeBoardPhase } from "@/lib/boards";
+import { placeSetupPhaseLocally } from "@/lib/apply-setup-phase";
 import {
   DEFAULT_FORMATIONS,
   FORMATIONS_BY_FORMAT,
@@ -119,6 +119,12 @@ type Props = {
   onNewBoard?: () => void;
   creatingBoard?: boolean;
   statusMessage?: string | null;
+  onEmphasisChange?: (next: {
+    phase: BoardSetupPhaseOrNone;
+    zone: BoardSetupZoneOrNone;
+    channel: BoardSetupChannelOrNone;
+    attFormation: FormationId;
+  }) => void;
 };
 
 type Selection =
@@ -482,6 +488,7 @@ export default function TacticalBoardEditor({
   onNewBoard,
   creatingBoard,
   statusMessage,
+  onEmphasisChange,
 }: Props) {
   const [diagram, setDiagram] = React.useState(() => ensureArrays(cloneDiagram(diagramProp)));
   const diagramRef = React.useRef(diagram);
@@ -500,9 +507,18 @@ export default function TacticalBoardEditor({
   const [setupZone, setSetupZone] = React.useState<BoardSetupZoneOrNone>("");
   const [setupChannel, setSetupChannel] = React.useState<BoardSetupChannelOrNone>("");
   const [showAtt, setShowAtt] = React.useState(true);
+
+  React.useEffect(() => {
+    onEmphasisChange?.({
+      phase: setupPhase,
+      zone: setupZone,
+      channel: setupChannel,
+      attFormation: homeFormation,
+    });
+  }, [setupPhase, setupZone, setupChannel, homeFormation, onEmphasisChange]);
   const [showDef, setShowDef] = React.useState(true);
-  const [placingPhase, setPlacingPhase] = React.useState(false);
   const setupAppliedRef = React.useRef(false);
+  const unstackPassRef = React.useRef(0);
   const emptySeededForBoardRef = React.useRef<string | null>(null);
   const undoStack = React.useRef<DiagramV1[]>([]);
   const skipPropSync = React.useRef(false);
@@ -574,12 +590,21 @@ export default function TacticalBoardEditor({
   }, [diagramProp, haltPlayback]);
 
   // Never leave two shirts on the same spot (AI apply, load, or a drop onto another player).
+  // One pass only — compact 11v11 cannot satisfy a large gap; looping here froze Setup for seconds.
   React.useEffect(() => {
     if (playingRef.current) return;
     if (dragRef.current) return;
-    if (!diagramPlayersNeedUnstack(diagram)) return;
+    if (!diagramPlayersNeedUnstack(diagram)) {
+      unstackPassRef.current = 0;
+      return;
+    }
+    if (unstackPassRef.current >= 1) return;
     const next = unstackDiagramPlayers(diagram);
-    if (diagramPlayerCoordsEqual(diagram, next)) return;
+    if (diagramPlayerCoordsEqual(diagram, next)) {
+      unstackPassRef.current = 0;
+      return;
+    }
+    unstackPassRef.current += 1;
     skipPropSync.current = true;
     setDiagram(next);
     onDirtyChange(true);
@@ -1676,7 +1701,6 @@ export default function TacticalBoardEditor({
     defVisible = showDef,
     formations?: { att?: FormationId; def?: FormationId }
   ) => {
-    if (!boardId || placingPhase) return;
     if (!hasFullSetup(phase, zone, channel)) {
       if (setupAppliedRef.current || (!phase && !zone && !channel)) {
         clearPhaseOverlay();
@@ -1687,40 +1711,16 @@ export default function TacticalBoardEditor({
     const opposition =
       subject === "DEF" ? attVisible : subject === "ATT" ? defVisible : attVisible && defVisible;
     const snapshot = diagramRef.current;
-    setPlacingPhase(true);
-    void placeBoardPhase(boardId, {
-      diagram: snapshot,
+    const placed = placeSetupPhaseLocally(snapshot, {
       phase,
-      zone,
-      channel,
+      zone: zone as BoardSetupZone,
+      channel: channel as BoardSetupChannel,
       attFormation: formations?.att ?? homeFormation,
       defFormation: formations?.def ?? awayFormation,
       showOpposition: opposition,
-    })
-      .then((res) => {
-        if (!res.ok || !res.diagram) {
-          console.warn("[setup] phase-place failed", res.error || res.message);
-          return;
-        }
-        setupAppliedRef.current = true;
-        commitDiagram({
-          ...res.diagram,
-          pitch: {
-            ...snapshot.pitch,
-            ...res.diagram.pitch,
-            format: snapshot.pitch.format,
-            variant: snapshot.pitch.variant,
-            orientation: snapshot.pitch.orientation,
-            showZones: snapshot.pitch.showZones,
-            showThirds: snapshot.pitch.showThirds,
-          },
-          goals: snapshot.goals?.length ? snapshot.goals : res.diagram.goals,
-        });
-      })
-      .catch((err) => {
-        console.warn("[setup] phase-place error", err);
-      })
-      .finally(() => setPlacingPhase(false));
+    });
+    setupAppliedRef.current = true;
+    commitDiagram(placed);
   };
 
   const selectedPlayer =
@@ -1975,7 +1975,6 @@ export default function TacticalBoardEditor({
                 type="button"
                 role="switch"
                 aria-checked={showDef}
-                disabled={placingPhase}
                 onClick={() => {
                   const next = !showDef;
                   setShowDef(next);
@@ -2019,7 +2018,6 @@ export default function TacticalBoardEditor({
                 type="button"
                 role="switch"
                 aria-checked={showAtt}
-                disabled={placingPhase}
                 onClick={() => {
                   const next = !showAtt;
                   setShowAtt(next);
@@ -2052,7 +2050,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupPhase}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupPhaseOrNone;
                   setSetupPhase(v);
@@ -2087,7 +2084,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupZone}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupZoneOrNone;
                   setSetupZone(v);
@@ -2111,7 +2107,6 @@ export default function TacticalBoardEditor({
               </span>
               <select
                 value={setupChannel}
-                disabled={placingPhase}
                 onChange={(e) => {
                   const v = e.target.value as BoardSetupChannelOrNone;
                   setSetupChannel(v);
@@ -2365,6 +2360,29 @@ export default function TacticalBoardEditor({
                   markerEnd={marker}
                   className="pointer-events-none"
                 />
+                {typeof a.order === "number" ? (
+                  <g className="pointer-events-none">
+                    <circle
+                      cx={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      cy={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      r={8}
+                      fill="#0f172a"
+                      stroke={isSelected ? "#fde68a" : "#fbbf24"}
+                      strokeWidth={1.25}
+                    />
+                    <text
+                      x={trimmedPts[Math.floor(trimmedPts.length / 2)].x}
+                      y={trimmedPts[Math.floor(trimmedPts.length / 2)].y}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#fde68a"
+                      fontSize={10}
+                      fontWeight={700}
+                    >
+                      {a.order}
+                    </text>
+                  </g>
+                ) : null}
                 {isSelected && canEdit && tool === "select" ? (
                   <>
                     <circle
