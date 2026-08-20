@@ -2,6 +2,8 @@
 
 Soccer coaching platform. Web app in `apps/web`, API in `apps/api`. Brand is TacticalEdge.
 
+Marketing source of truth: `TACTICALEDGE_UI_PRODUCT_REPORT.md`. Pitch decks: `pitch-deck-*.html`.
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.
