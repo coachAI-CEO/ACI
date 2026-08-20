@@ -13,7 +13,6 @@ import {
   Brain,
   BarChart3,
   FileText,
-  Heart,
   Sparkles,
   ArrowRight,
   Instagram,
@@ -43,24 +42,25 @@ export default function TacticalEdgeLanding() {
   ];
 
   const features = [
+    { icon: <Trophy size={28} />, title: "Coach Center", desc: "Season workspace for one team: 16-week curriculum, calendar, chat, next sessions, game-day sheet and recap." },
+    { icon: <ClipboardList size={28} />, title: "Session Builder", desc: "Complete 60-90 minute sessions with our proven 5-phase structure. Export a full PDF or a one-page Coach’s Sheet." },
+    { icon: <Layout size={28} />, title: "Tactical Board", desc: "Live pitch, formation and phase chassis, principles library, and AI talk in your coaching language." },
     { icon: <Zap size={28} />, title: "Drill Generator", desc: "Individual drills with tactical context, diagrams, coaching points, and variations tailored to your squad." },
-    { icon: <ClipboardList size={28} />, title: "Session Builder", desc: "Complete 60-90 minute sessions with our proven 5-phase structure." },
     { icon: <Activity size={28} />, title: "Progressive Series", desc: "Multi-session plans with progression logic that builds on each session." },
     { icon: <Users size={28} />, title: "Player Sessions", desc: "Auto-generate individual player homework for development outside team training." },
-    { icon: <Heart size={28} />, title: "Player Focus & Wellbeing", desc: "Psychological and motivational support with confidence tracking." },
-    { icon: <Brain size={28} />, title: "AI Coach Assistant", desc: "Natural language input that learns from your feedback." },
-    { icon: <FileText size={28} />, title: "Content Vault", desc: "Save, organize, and search sessions with reference codes." },
-    { icon: <Calendar size={28} />, title: "Calendar Planning", desc: "Drag & drop scheduling with parent communication." },
-    { icon: <BarChart3 size={28} />, title: "Club Analytics", desc: "Admin dashboard with cross-coach visibility." },
+    { icon: <Brain size={28} />, title: "AI Coach Assistant", desc: "Natural language input that extracts parameters and builds the session." },
+    { icon: <FileText size={28} />, title: "Content Vault", desc: "Save, organize, and search sessions with reference codes. Club-scoped for club staff." },
+    { icon: <Calendar size={28} />, title: "Calendar Planning", desc: "Team week in Coach Center, personal calendar, and parent communication." },
+    { icon: <BarChart3 size={28} />, title: "DOC Console", desc: "Club philosophy, coach usage, empty weeks, and assign/reassign onto coach calendars." },
   ];
 
   const workflow = [
-    { step: 1, title: "Describe", desc: "Set age group, formation, and training phase" },
-    { step: 2, title: "Generate", desc: "AI builds complete structured session" },
-    { step: 3, title: "Review", desc: "Explore drill cards, tweak parameters" },
-    { step: 4, title: "Save & Schedule", desc: "Send to vault, calendar, notify parents" },
-    { step: 5, title: "Reflect", desc: "Post-training feedback loop" },
-    { step: 6, title: "Progress", desc: "AI builds next session based on outcomes" },
+    { step: 1, title: "Open Coach Center", desc: "Your assigned team, this week’s curriculum theme, next match" },
+    { step: 2, title: "Generate", desc: "Build or reuse a session for that theme" },
+    { step: 3, title: "Review", desc: "Drill cards, tactical diagrams, coaching points" },
+    { step: 4, title: "Print or teach", desc: "Session PDF, Coach’s Sheet, or Tactical Board" },
+    { step: 5, title: "Game day", desc: "Match sheet: focus, DNA, set pieces" },
+    { step: 6, title: "Recap", desc: "Record the match, then pick up next week’s theme" },
   ];
 
   const scrollToSection = (id) => {
@@ -135,7 +135,7 @@ export default function TacticalEdgeLanding() {
             </span>
           </h1>
           <p className="mx-auto mb-10 max-w-3xl text-lg font-semibold leading-relaxed text-gray-100 [text-shadow:0_3px_14px_rgba(0,0,0,0.85)] md:text-2xl">
-            Generate drills, full sessions, and progressive series with tactical diagrams, all tailored to your age group, formation, and game model.
+            Generate drills, full sessions, and a season workspace with tactical diagrams, all tailored to your age group, formation, and game model.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href={signupHref} className="flex h-14 items-center gap-3 rounded-sm bg-[#ADFF2F] px-10 text-xs font-black uppercase text-black transition-all hover:bg-white">

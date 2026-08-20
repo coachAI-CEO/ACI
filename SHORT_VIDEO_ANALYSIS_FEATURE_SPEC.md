@@ -1,5 +1,7 @@
 # Short Video Analysis Feature Spec
 
+> **Status (19 August 2026):** Shipped as **beta** at `/video-analysis`. It is not the newest flagship (Coach Center, Tactical Board, and DOC Console shipped after). Keep this spec as the original MVP contract.
+
 ## 1) Goal
 Enable coaches to upload a short player or team clip and receive a strict, high-signal coaching analysis that is adapted by:
 - Age group

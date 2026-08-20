@@ -2,7 +2,13 @@
 
 Soccer coaching platform. Web app in `apps/web`, API in `apps/api`. Brand is TacticalEdge.
 
-Marketing source of truth: `TACTICALEDGE_UI_PRODUCT_REPORT.md`. Pitch decks: `pitch-deck-*.html`.
+## Docs
+
+- Engineering map: `DOCUMENTATION.md`
+- How to run locally: `RUN_SERVERS.md`
+- Marketing / decks: `TACTICALEDGE_UI_PRODUCT_REPORT.md`, `pitch-deck-*.html`
+- Board design: `docs/tactical-board-phase-positioning.md`
+- DOC Console history (Phases 1–3 shipped): `DOC_HUB_HANDOFF.md`
 
 ## Skill routing
 

@@ -1,5 +1,7 @@
 # DOC Hub: Cursor Handoff
 
+> **Status (19 August 2026):** Phases 1–3 shipped as **DOC Console** at `/doc-hub` (philosophy, coach usage, Club Attention, teams, calendar assign / auto-populate / reassign). Nav is role-gated. The snapshot below is the 11 August Phase 0 handoff and is **historical**. Do not treat “static mock” as current. Phase 4 (director alerts, topic board, AI agent monitoring) is still deferred.
+
 > Snapshot date: 2026-08-11
 > Repository: `coachAI-CEO/ACI`
 > Working branch: `codex/diagram-v2`
