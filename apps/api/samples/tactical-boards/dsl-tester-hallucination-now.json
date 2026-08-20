@@ -1,0 +1,233 @@
+{
+  "pitch": {
+    "variant": "FULL",
+    "orientation": "HORIZONTAL",
+    "format": "11V11",
+    "showZones": false
+  },
+  "players": [
+    {
+      "id": "home-1-0",
+      "number": 1,
+      "team": "ATT",
+      "role": "GK",
+      "x": 50,
+      "y": 89.9,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-2-1",
+      "number": 2,
+      "team": "ATT",
+      "role": "RB",
+      "x": 90,
+      "y": 69.5,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-4-2",
+      "number": 4,
+      "team": "ATT",
+      "role": "CB",
+      "x": 66,
+      "y": 83.1,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-5-3",
+      "number": 5,
+      "team": "ATT",
+      "role": "CB",
+      "x": 34,
+      "y": 83.1,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-3-4",
+      "number": 3,
+      "team": "ATT",
+      "role": "LB",
+      "x": 10,
+      "y": 69.5,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-6-5",
+      "number": 6,
+      "team": "ATT",
+      "role": "CDM",
+      "x": 50,
+      "y": 50,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-8-6",
+      "number": 8,
+      "team": "ATT",
+      "role": "CM",
+      "x": 32,
+      "y": 61,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-10-7",
+      "number": 10,
+      "team": "ATT",
+      "role": "CM",
+      "x": 68,
+      "y": 61,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-7-8",
+      "number": 7,
+      "team": "ATT",
+      "role": "RW",
+      "x": 80,
+      "y": 44,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-9-9",
+      "number": 9,
+      "team": "ATT",
+      "role": "ST",
+      "x": 50,
+      "y": 38.9,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "home-11-10",
+      "number": 11,
+      "team": "ATT",
+      "role": "LW",
+      "x": 20,
+      "y": 44,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-1-0",
+      "number": 1,
+      "team": "DEF",
+      "role": "GK",
+      "x": 50,
+      "y": 10.1,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-2-1",
+      "number": 2,
+      "team": "DEF",
+      "role": "RB",
+      "x": 10,
+      "y": 30.5,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-4-2",
+      "number": 4,
+      "team": "DEF",
+      "role": "CB",
+      "x": 34,
+      "y": 16.9,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-5-3",
+      "number": 5,
+      "team": "DEF",
+      "role": "CB",
+      "x": 66,
+      "y": 16.9,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-3-4",
+      "number": 3,
+      "team": "DEF",
+      "role": "LB",
+      "x": 90,
+      "y": 30.5,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-6-5",
+      "number": 6,
+      "team": "DEF",
+      "role": "CDM",
+      "x": 62,
+      "y": 35.599999999999994,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-8-6",
+      "number": 8,
+      "team": "DEF",
+      "role": "CDM",
+      "x": 38,
+      "y": 35.599999999999994,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-7-7",
+      "number": 7,
+      "team": "DEF",
+      "role": "RAM",
+      "x": 22,
+      "y": 49.2,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-10-8",
+      "number": 10,
+      "team": "DEF",
+      "role": "CAM",
+      "x": 50,
+      "y": 50.900000000000006,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-11-9",
+      "number": 11,
+      "team": "DEF",
+      "role": "LAM",
+      "x": 78,
+      "y": 49.2,
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "away-9-10",
+      "number": 9,
+      "team": "DEF",
+      "role": "ST",
+      "x": 50,
+      "y": 50,
+      "labelStyle": "number-only"
+    }
+  ],
+  "balls": [
+    {
+      "x": 50,
+      "y": 50
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal-left",
+      "x": 50,
+      "y": 2,
+      "type": "BIG",
+      "width": 16
+    },
+    {
+      "id": "goal-right",
+      "x": 50,
+      "y": 98,
+      "type": "BIG",
+      "width": 16
+    }
+  ],
+  "arrows": [],
+  "areas": [],
+  "labels": []
+}

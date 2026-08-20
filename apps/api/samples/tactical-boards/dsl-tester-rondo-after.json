@@ -1,0 +1,117 @@
+{
+  "pitch": {
+    "variant": "FULL",
+    "orientation": "HORIZONTAL",
+    "format": "11V11",
+    "showZones": false
+  },
+  "players": [
+    {
+      "id": "att-4",
+      "number": 4,
+      "team": "ATT",
+      "x": 50,
+      "y": 39.254999999999995,
+      "relativePosition": "perimeter",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-5",
+      "number": 5,
+      "team": "ATT",
+      "x": 68.48,
+      "y": 50,
+      "relativePosition": "perimeter",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-6",
+      "number": 6,
+      "team": "ATT",
+      "x": 50,
+      "y": 59.120000000000005,
+      "relativePosition": "perimeter",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-8",
+      "number": 8,
+      "team": "ATT",
+      "x": 31.52,
+      "y": 50,
+      "relativePosition": "perimeter",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "def-9",
+      "number": 9,
+      "team": "DEF",
+      "x": 50,
+      "y": 47.305,
+      "relativePosition": "inside",
+      "labelStyle": "number-only"
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "att-4"
+      },
+      "to": {
+        "playerId": "att-6"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal"
+    }
+  ],
+  "areas": [
+    {
+      "label": "rondo",
+      "x": 28,
+      "y": 38,
+      "width": 44,
+      "height": 24,
+      "shape": "rect"
+    }
+  ],
+  "labels": [],
+  "balls": [
+    {
+      "x": 50,
+      "y": 50
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal-left",
+      "x": 50,
+      "y": 2,
+      "type": "BIG",
+      "width": 16
+    },
+    {
+      "id": "goal-right",
+      "x": 50,
+      "y": 98,
+      "type": "BIG",
+      "width": 16
+    }
+  ],
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 40.88,
+      "rotation": 180
+    },
+    {
+      "id": "el-mini-goal-2",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 59.120000000000005,
+      "rotation": 0
+    }
+  ]
+}

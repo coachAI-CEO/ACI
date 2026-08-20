@@ -1,0 +1,34 @@
+{
+  "name": "442-press-playout",
+  "applied": true,
+  "reply": "What I saw\n- You requested an 11v11 setup showing our ATT 4-3-3 building out against a DEF 4-4-2 high press.\n\nOn the board\n- Set pitch intent to our defensive third to highlight the initial play-out phase under pressure.\n- Placed ATT #1 (GK) and split CBs (#4, #5) wide to stretch the opponent's front two.\n- Dropped ATT #6 between the central defenders to create a numerical advantage against the press.\n- Added pass and movement arrows showing the single pivot receiving to connect play.\n\nCoaching points\n- Ball security comes first: circulate quickly to move the opponent's first line of pressure.\n- Scan early before receiving so you know your escape lane on the half-turn.\n- Provide clear support angles by keeping distances short and avoiding crowded vertical lines.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-1-0"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

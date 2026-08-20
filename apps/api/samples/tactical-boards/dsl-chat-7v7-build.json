@@ -1,0 +1,22 @@
+{
+  "name": "7v7-build",
+  "applied": true,
+  "reply": "What I saw\n- You requested a transition down to a 7v7 format (2-3-1 vs 3-2-1) focusing on attacking build-up from our defensive half.\n- Previous 11v11 setup is replaced by a compact 7v7 match scenario.\n\nOn the board\n- Set up our ATT 2-3-1 formation in our defensive half, using our goalkeeper and split defenders to create depth and width.\n- Positioned the central midfielder (#6) as a support option to receive under pressure.\n- Placed the opposing DEF 3-2-1 block in a mid-block posture to press our first line.\n- Added a support passing arrow from our goalkeeper to the wide defender.\n\nCoaching points\n- Emphasize ball security by encouraging our goalkeeper to circulate safely before we look to penetrate.\n- Create clear support angles so the ball-carrier always has a safe passing option nearby.\n- Scan early before receiving so players know where the line-breaking pass is located.\n\nSequence: 2 frames — Frame 1 is your saved board; later frames add the play. Use Play on the board to scrub.",
+  "players": 14,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-1-0"
+      },
+      "to": {
+        "playerId": "home-2-1"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

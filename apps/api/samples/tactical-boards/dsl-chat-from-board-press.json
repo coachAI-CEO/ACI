@@ -1,0 +1,22 @@
+{
+  "name": "from-board-press",
+  "applied": true,
+  "reply": "What I saw\n- Both teams in shape: ATT 4-3-3 against DEF 4-2-3-1 in the middle third.\n- Ball currently positioned with our single pivot.\n\nOn the board\n- Highlighted DEF #9 pressing our single pivot ATT #6 to force a predictable play.\n- Added a pressing arrow from away-9-10 to home-6-5.\n\nCoaching points\n- Scan early: ATT #6 must check our shoulders before receiving under pressure.\n- Support angle: Nearest midfielders provide an immediate passing option to break the press.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "away-9-10"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

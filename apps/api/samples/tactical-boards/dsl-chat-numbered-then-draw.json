@@ -1,0 +1,46 @@
+{
+  "name": "numbered-then-draw",
+  "applied": true,
+  "reply": "What I saw\n- You asked to show an immediate press after losing possession from our progression shape.\n- The team is in a 4-3-3 attacking shape in the middle third.\n\nOn the board\n- Kept all 22 players frozen in their current positions.\n- Added immediate counter-press pressure actions from the nearest blue shirts (#8 home-8-6 and #10 home-10-7) onto the red ball-carrier.\n- Highlighted the defensive transition moment in the central channel.\n\nCoaching points\n- Nearest players apply an immediate organized counterpress for 3 to 5 seconds upon losing the ball.\n- The goal of the counter-press is to win it back instantly or force a negative backward touch.\n- If the ball is bypassed, the rest of the unit recovers compact distances quickly to deny central progression.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-8-6"
+      },
+      "to": {
+        "playerId": "away-10-8"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-10-7"
+      },
+      "to": {
+        "playerId": "away-10-8"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "away-8-6"
+      },
+      "type": "cover",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

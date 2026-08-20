@@ -1,0 +1,34 @@
+{
+  "name": "9v9-transition",
+  "applied": true,
+  "reply": "What I saw\n- You requested a transition from the current 11v11 set-up to a 9v9 match scenario.\n- Formations specified: ATT 3-2-3 versus DEF 2-3-2-1 in the central channel during attacking transition.\n\nOn the board\n- Redrew the pitch for 9v9 format in the central channel with ATT 3-2-3 and DEF 2-3-2-1.\n- Placed ATT #9 central with immediate forward passing options.\n- Added tactical action arrows showing the first forward option on ball regain.\n\nCoaching points\n- On ball regain, take the first forward option if the opponent is disorganised.\n- If the forward lane is closed, secure the ball with a simple pass and expand shape immediately.\n- Maintain supportive spacing so the ball-carrier always has a safe outlet under pressure.",
+  "players": 18,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-6-4"
+      },
+      "to": {
+        "playerId": "home-9-7"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-7-6"
+      },
+      "to": {
+        "playerId": "home-9-7"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

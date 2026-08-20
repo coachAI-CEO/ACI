@@ -1,0 +1,46 @@
+{
+  "name": "switch-3-to-7",
+  "applied": true,
+  "reply": "What I saw\n- ATT 4-3-3 shape facing a DEF 4-2-3-1 block in the middle third.\n- The ball is circulating in the build-up zone on our left side.\n\nOn the board\n- We highlighted a switch of play from our left-sided center-back (#3 LB / #4 CB) across to our right winger (#7 RW).\n- Added a progression passing sequence from home-3-4 through home-6-5 to home-7-8.\n\nCoaching points\n- Scan early: before receiving, check the shoulder to see if the weak-side winger is isolated in space.\n- Play away from pressure: circulate quickly to switch the point of attack when the opponent shifts heavy to one side.\n- Weight of pass: use a driven aerial or flat diagonal pass so the winger can attack the space immediately.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-3-4"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-7-8"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-7-8"
+      },
+      "to": {
+        "playerId": "away-3-4"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

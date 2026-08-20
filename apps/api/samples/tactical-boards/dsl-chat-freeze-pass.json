@@ -1,0 +1,22 @@
+{
+  "name": "freeze-pass",
+  "applied": true,
+  "reply": "What I saw\n- The current setup shows our ATT 4-3-3 against their DEF 4-2-3-1 in a middle-third progression phase.\n- The ball is central and ready for circulation.\n\nOn the board\n- Added a support pass from ATT #6 to ATT #10 in the central channel.\n- Maintained existing player positions and structure.\n\nCoaching points\n- Scan early before receiving so you know the picture around the #10 pocket.\n- Open your body shape when receiving to see both sides of the pitch.\n- Play with clean weight of pass into feet to protect possession under pressure.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-10-7"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

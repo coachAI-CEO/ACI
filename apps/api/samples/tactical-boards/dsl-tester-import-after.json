@@ -1,0 +1,93 @@
+{
+  "pitch": {
+    "variant": "FULL",
+    "orientation": "HORIZONTAL",
+    "format": "11V11",
+    "showZones": false
+  },
+  "players": [
+    {
+      "id": "att-1",
+      "number": 1,
+      "team": "ATT",
+      "role": "GK",
+      "x": 50,
+      "y": 94,
+      "relativePosition": "own_gk",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-4",
+      "number": 4,
+      "team": "ATT",
+      "role": "CB",
+      "x": 27.6,
+      "y": 91.18,
+      "relativePosition": "own_line",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-5",
+      "number": 5,
+      "team": "ATT",
+      "role": "CB",
+      "x": 50,
+      "y": 85.95,
+      "relativePosition": "own_line",
+      "labelStyle": "number-only"
+    },
+    {
+      "id": "att-3",
+      "number": 3,
+      "team": "ATT",
+      "role": "CB",
+      "x": 72.4,
+      "y": 91.18,
+      "relativePosition": "own_line",
+      "labelStyle": "number-only"
+    }
+  ],
+  "arrows": [],
+  "areas": [
+    {
+      "label": "third_right",
+      "x": 10,
+      "y": 67,
+      "width": 80,
+      "height": 31,
+      "shape": "rect"
+    }
+  ],
+  "labels": [],
+  "balls": [
+    {
+      "x": 50,
+      "y": 82.5
+    }
+  ],
+  "goals": [
+    {
+      "id": "goal-left",
+      "x": 50,
+      "y": 2,
+      "type": "BIG",
+      "width": 16
+    },
+    {
+      "id": "goal-right",
+      "x": 50,
+      "y": 98,
+      "type": "BIG",
+      "width": 16
+    }
+  ],
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 94.28,
+      "rotation": 0
+    }
+  ]
+}

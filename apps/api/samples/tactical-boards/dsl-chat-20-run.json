@@ -1,0 +1,189 @@
+{
+  "flag": "1",
+  "passed": 20,
+  "total": 20,
+  "failed": [],
+  "cases": [
+    {
+      "name": "rondo-4v4",
+      "ok": true,
+      "ms": 3654,
+      "lines": [
+        "applied=true players=8 overlaps=0 mini-goals=2 arrows=2",
+        "ATT GK —  DEF GK —  thirds L/M/R=0/8/0"
+      ]
+    },
+    {
+      "name": "play-out-433",
+      "ok": true,
+      "ms": 3621,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=3",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/8/12"
+      ]
+    },
+    {
+      "name": "back3-mini-goal",
+      "ok": true,
+      "ms": 3157,
+      "lines": [
+        "applied=true players=5 overlaps=0 mini-goals=1 arrows=2",
+        "ATT GK —  DEF GK —  thirds L/M/R=0/1/4"
+      ]
+    },
+    {
+      "name": "just-draw-press",
+      "ok": true,
+      "ms": 2844,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=4",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/11/9"
+      ]
+    },
+    {
+      "name": "high-press-left",
+      "ok": true,
+      "ms": 2483,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=2",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=12/8/0"
+      ]
+    },
+    {
+      "name": "defend-our-third",
+      "ok": true,
+      "ms": 4214,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=2",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/7/13"
+      ]
+    },
+    {
+      "name": "7v7-build",
+      "ok": true,
+      "ms": 2189,
+      "lines": [
+        "applied=true players=14 overlaps=0 mini-goals=0 arrows=1",
+        "ATT GK 88.2  DEF GK 11.8  thirds L/M/R=5/7/0"
+      ]
+    },
+    {
+      "name": "9v9-transition",
+      "ok": true,
+      "ms": 3292,
+      "lines": [
+        "applied=true players=18 overlaps=0 mini-goals=0 arrows=2",
+        "ATT GK 89.0  DEF GK 10.9  thirds L/M/R=0/16/0"
+      ]
+    },
+    {
+      "name": "442-press-playout",
+      "ok": true,
+      "ms": 3622,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=2",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/9/11"
+      ]
+    },
+    {
+      "name": "switch-3-to-7",
+      "ok": true,
+      "ms": 2366,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=3",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/20/0"
+      ]
+    },
+    {
+      "name": "freeze-pass",
+      "ok": true,
+      "ms": 1871,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=1",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=4/11/5"
+      ]
+    },
+    {
+      "name": "from-board-press",
+      "ok": true,
+      "ms": 1892,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=1",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/19/1"
+      ]
+    },
+    {
+      "name": "ssg-6v6",
+      "ok": true,
+      "ms": 2964,
+      "lines": [
+        "applied=true players=12 overlaps=0 mini-goals=2 arrows=0",
+        "ATT GK 94.0  DEF GK 6.0  thirds L/M/R=1/8/1"
+      ]
+    },
+    {
+      "name": "rondo-5v2",
+      "ok": true,
+      "ms": 2437,
+      "lines": [
+        "applied=true players=7 overlaps=0 mini-goals=0 arrows=1",
+        "ATT GK —  DEF GK —  thirds L/M/R=0/7/0"
+      ]
+    },
+    {
+      "name": "combo-right",
+      "ok": true,
+      "ms": 2623,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=3",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/8/12"
+      ]
+    },
+    {
+      "name": "numbered-then-draw",
+      "ok": true,
+      "ms": 4595,
+      "lines": [
+        "follow-up used (first turn did not apply)",
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=3",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=4/11/5"
+      ]
+    },
+    {
+      "name": "counterpress-left",
+      "ok": true,
+      "ms": 2570,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=4",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=13/7/0"
+      ]
+    },
+    {
+      "name": "goal-kick-seq",
+      "ok": true,
+      "ms": 2910,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=1 arrows=3",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/12/8"
+      ]
+    },
+    {
+      "name": "technical-diamond",
+      "ok": true,
+      "ms": 2267,
+      "lines": [
+        "applied=true players=4 overlaps=0 mini-goals=2 arrows=2",
+        "ATT GK —  DEF GK —  thirds L/M/R=0/4/0"
+      ]
+    },
+    {
+      "name": "mid-block",
+      "ok": true,
+      "ms": 3571,
+      "lines": [
+        "applied=true players=22 overlaps=0 mini-goals=0 arrows=2",
+        "ATT GK 89.9  DEF GK 10.1  thirds L/M/R=0/20/0"
+      ]
+    }
+  ]
+}

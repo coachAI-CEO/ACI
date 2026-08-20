@@ -1,0 +1,46 @@
+{
+  "name": "play-out-433",
+  "applied": true,
+  "reply": "What I saw\n- You asked to set up an 11v11 match scenario with our 4-3-3 against their 4-2-3-1, starting our build-out from the right side.\n\nOn the board\n- Positioned our 4-3-3 shape in the right third to build out under control.\n- Split our central defenders and dropped our single pivot (#6) near the box to create a numerical advantage against their two pressing strikers.\n- Placed our full-backs high and wide to stretch their defensive block.\n\nCoaching points\n- Scan early before receiving so you know your support angle and your line-breaking option.\n- Prioritise ball security by circulating safely when pressure is locked rather than forcing speculative balls.\n\nSequence: 2 frames — Frame 1 is your saved board; later frames add the play. Use Play on the board to scrub.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-1-0"
+      },
+      "to": {
+        "playerId": "home-4-2"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-4-2"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-2-1"
+      },
+      "to": {
+        "playerId": "home-7-8"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}
