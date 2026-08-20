@@ -74,7 +74,7 @@ function PairFields({
 }
 
 export default function CoachCenterGameDayPage() {
-  const { selectedTeam, selectedTeamId, access } = useCoachCenter();
+  const { selectedTeam, selectedTeamId, access, finishTeamSwitch } = useCoachCenter();
   const [items, setItems] = useState<GameDayItem[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -94,10 +94,14 @@ export default function CoachCenterGameDayPage() {
   );
 
   const load = useCallback(async (teamId: string) => {
-    const res = await fetch(`/api/coach-center/teams/${teamId}/game-days`, { headers: authHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data?.ok) setItems(data.items || []);
-  }, []);
+    try {
+      const res = await fetch(`/api/coach-center/teams/${teamId}/game-days`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) setItems(data.items || []);
+    } finally {
+      finishTeamSwitch(teamId);
+    }
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId) void load(selectedTeamId);

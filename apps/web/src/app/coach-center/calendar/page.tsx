@@ -7,7 +7,7 @@ import type { CalendarDay } from "../_lib/types";
 import { authHeaders, mondayWeekStartIso, shiftWeek } from "../_lib/utils";
 
 export default function CoachCenterCalendarPage() {
-  const { selectedTeam, selectedTeamId, access } = useCoachCenter();
+  const { selectedTeam, selectedTeamId, access, finishTeamSwitch } = useCoachCenter();
   const [weekStart, setWeekStart] = useState(mondayWeekStartIso());
   const [days, setDays] = useState<CalendarDay[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,8 +23,9 @@ export default function CoachCenterCalendarPage() {
       else setDays([]);
     } finally {
       setLoading(false);
+      finishTeamSwitch(teamId);
     }
-  }, []);
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId) void load(selectedTeamId, weekStart);

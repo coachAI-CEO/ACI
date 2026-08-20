@@ -14,7 +14,7 @@ import {
 } from "../_lib/utils";
 
 export default function CoachCenterCurriculumPage() {
-  const { selectedTeam, selectedTeamId, access } = useCoachCenter();
+  const { selectedTeam, selectedTeamId, access, finishTeamSwitch } = useCoachCenter();
   const weeks = useMemo(
     () => [...(selectedTeam?.season?.weeks || [])].sort((a, b) => a.weekIndex - b.weekIndex),
     [selectedTeam?.season?.weeks]
@@ -43,8 +43,9 @@ export default function CoachCenterCurriculumPage() {
       setVault(res.ok && data?.ok ? data.recommendations || [] : []);
     } finally {
       setVaultLoading(false);
+      finishTeamSwitch(teamId);
     }
-  }, []);
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId && selected?.weekIndex) {

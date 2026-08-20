@@ -44,7 +44,7 @@ function SectionCard({
 }
 
 export default function CoachCenterOverviewPage() {
-  const { access, selectedTeamId, selectedTeam, teams, canViewAllTeams } = useCoachCenter();
+  const { access, selectedTeamId, selectedTeam, teams, canViewAllTeams, finishTeamSwitch } = useCoachCenter();
   const [overview, setOverview] = useState<{
     team: TeamSummary;
     upcoming: any[];
@@ -62,8 +62,9 @@ export default function CoachCenterOverviewPage() {
       else setOverview(null);
     } finally {
       setLoading(false);
+      finishTeamSwitch(teamId);
     }
-  }, []);
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId) void load(selectedTeamId);

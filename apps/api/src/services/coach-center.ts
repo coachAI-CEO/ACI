@@ -957,23 +957,24 @@ export async function getTeamOverview(userId: string, teamId: string) {
   const weekEnd = new Date(now);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 14);
 
+  const teamEventWhere = {
+    cancelled: false as const,
+    OR: [{ teamId }, { teamName: team.name }],
+  };
+
   const [upcoming, recent, nextMatch, recommendations] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
-        userId,
-        cancelled: false,
+        ...teamEventWhere,
         scheduledDate: { gte: now, lte: weekEnd },
-        OR: [{ teamId }, { teamName: team.name }],
       },
       orderBy: { scheduledDate: "asc" },
       take: 6,
     }),
     prisma.calendarEvent.findMany({
       where: {
-        userId,
-        cancelled: false,
+        ...teamEventWhere,
         scheduledDate: { lt: now },
-        OR: [{ teamId }, { teamName: team.name }],
       },
       orderBy: { scheduledDate: "desc" },
       take: 4,
@@ -1020,9 +1021,9 @@ export async function getTeamCalendar(userId: string, teamId: string, weekStartI
 
   const events = await prisma.calendarEvent.findMany({
     where: {
-      userId,
       cancelled: false,
       scheduledDate: { gte: start, lt: end },
+      OR: [{ teamId }, { teamName: team.name }],
     },
     orderBy: { scheduledDate: "asc" },
   });
@@ -1110,7 +1111,7 @@ export async function recommendSessions(userId: string, teamId: string, weekInde
         zone: json.zone || null,
         score,
         matchReason: reasons.join(" · ") || "Same age group and game model",
-        href: `/vault?sessionId=${session.id}`,
+        href: `/demo/session?sessionId=${session.id}`,
       };
     })
     .sort((a, b) => b.score - a.score)
@@ -1122,9 +1123,9 @@ export async function recommendSessions(userId: string, teamId: string, weekInde
 export async function listChat(userId: string, teamId: string) {
   await requireTeamAccess(userId, teamId);
   const messages = await prisma.coachCenterMessage.findMany({
-    where: { teamId, userId },
+    where: { teamId },
     orderBy: { createdAt: "asc" },
-    take: 40,
+    take: 80,
   });
   return messages.map((m) => ({
     id: m.id,
@@ -1144,7 +1145,6 @@ export async function sendChat(userId: string, teamId: string, content: string) 
   const history = await listChat(userId, teamId);
   const upcoming = await prisma.calendarEvent.findMany({
     where: {
-      userId,
       cancelled: false,
       scheduledDate: { gte: new Date() },
       OR: [{ teamId }, { teamName: team.name }],

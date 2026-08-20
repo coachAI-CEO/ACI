@@ -26,6 +26,8 @@ type CoachCenterContextValue = {
   canViewAllTeams: boolean;
   accessError: string | null;
   refresh: () => Promise<void>;
+  switchingTeam: boolean;
+  finishTeamSwitch: (loadedTeamId: string) => void;
 };
 
 const CoachCenterContext = createContext<CoachCenterContextValue | null>(null);
@@ -35,11 +37,19 @@ export function CoachCenterProvider({ children }: { children: ReactNode }) {
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [clubs, setClubs] = useState<ClubOption[]>([]);
   const [selectedTeamId, setSelectedTeamIdState] = useState("");
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [canViewAllTeams, setCanViewAllTeams] = useState(false);
 
+  const finishTeamSwitch = useCallback((loadedTeamId: string) => {
+    setSwitchingTo((current) => (current === loadedTeamId ? null : current));
+  }, []);
+
   const setSelectedTeamId = useCallback((teamId: string) => {
-    setSelectedTeamIdState(teamId);
+    setSelectedTeamIdState((current) => {
+      if (teamId && teamId !== current) setSwitchingTo(teamId);
+      return teamId;
+    });
     writeStoredTeamId(teamId);
   }, []);
 
@@ -99,8 +109,10 @@ export function CoachCenterProvider({ children }: { children: ReactNode }) {
       canViewAllTeams,
       accessError,
       refresh,
+      switchingTeam: Boolean(switchingTo),
+      finishTeamSwitch,
     }),
-    [access, teams, clubs, selectedTeamId, setSelectedTeamId, selectedTeam, canViewAllTeams, accessError, refresh]
+    [access, teams, clubs, selectedTeamId, setSelectedTeamId, selectedTeam, canViewAllTeams, accessError, refresh, switchingTo, finishTeamSwitch]
   );
 
   return <CoachCenterContext.Provider value={value}>{children}</CoachCenterContext.Provider>;
@@ -110,4 +122,13 @@ export function useCoachCenter() {
   const ctx = useContext(CoachCenterContext);
   if (!ctx) throw new Error("useCoachCenter must be used inside CoachCenterProvider");
   return ctx;
+}
+
+/** Call after a page finishes loading data for the current team. */
+export function useFinishTeamSwitch(ready: boolean) {
+  const { selectedTeamId, switchingTeam, finishTeamSwitch } = useCoachCenter();
+  useEffect(() => {
+    if (!switchingTeam || !ready || !selectedTeamId) return;
+    finishTeamSwitch(selectedTeamId);
+  }, [switchingTeam, ready, selectedTeamId, finishTeamSwitch]);
 }

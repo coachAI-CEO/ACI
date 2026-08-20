@@ -3,13 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { GAME_MODEL_OPTIONS } from "@/lib/game-model-scope";
-import { useCoachCenter } from "../_lib/CoachCenterContext";
+import { useCoachCenter, useFinishTeamSwitch } from "../_lib/CoachCenterContext";
 import { authHeaders, btnPrimary, COACH_LEVEL_LABELS, PLAYER_LEVEL_LABELS } from "../_lib/utils";
 
 const AGE_GROUPS = ["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"];
 
 export default function CoachCenterTeamPage() {
   const { teams, clubs, selectedTeam, refresh, setSelectedTeamId } = useCoachCenter();
+  useFinishTeamSwitch(true);
   const [name, setName] = useState("");
   const [ageGroup, setAgeGroup] = useState(selectedTeam?.ageGroup || "U12");
   const [gameModelId, setGameModelId] = useState(clubs[0]?.gameModelId || "COACHAI");

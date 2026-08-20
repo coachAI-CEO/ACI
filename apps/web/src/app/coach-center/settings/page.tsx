@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useCoachCenter } from "../_lib/CoachCenterContext";
+import { useCoachCenter, useFinishTeamSwitch } from "../_lib/CoachCenterContext";
 import {
   authHeaders,
   btnPrimary,
@@ -20,6 +20,7 @@ const LEVEL_OPTIONS = [
 
 export default function CoachCenterSettingsPage() {
   const { selectedTeam, refresh } = useCoachCenter();
+  useFinishTeamSwitch(true);
   const [playerLevel, setPlayerLevel] = useState("AUTO");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

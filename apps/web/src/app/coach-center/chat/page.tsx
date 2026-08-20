@@ -7,17 +7,22 @@ import type { ChatMessage } from "../_lib/types";
 import { authHeaders } from "../_lib/utils";
 
 export default function CoachCenterChatPage() {
-  const { selectedTeam, selectedTeamId, access } = useCoachCenter();
+  const { selectedTeam, selectedTeamId, access, finishTeamSwitch } = useCoachCenter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (teamId: string) => {
-    const res = await fetch(`/api/coach-center/teams/${teamId}/chat`, { headers: authHeaders() });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && data?.ok) setMessages(data.messages || []);
-  }, []);
+    try {
+      const res = await fetch(`/api/coach-center/teams/${teamId}/chat`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.ok) setMessages(data.messages || []);
+      else setMessages([]);
+    } finally {
+      finishTeamSwitch(teamId);
+    }
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId) void load(selectedTeamId);

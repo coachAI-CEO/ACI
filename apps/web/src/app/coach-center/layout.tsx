@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -173,7 +174,13 @@ function TopBar({ pathname }: { pathname: string }) {
 
 function CoachCenterShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { access, accessError } = useCoachCenter();
+  const { access, accessError, switchingTeam, selectedTeam, selectedTeamId, finishTeamSwitch } = useCoachCenter();
+
+  useEffect(() => {
+    if (!switchingTeam || !selectedTeamId) return;
+    const t = window.setTimeout(() => finishTeamSwitch(selectedTeamId), 1200);
+    return () => window.clearTimeout(t);
+  }, [switchingTeam, selectedTeamId, finishTeamSwitch]);
 
   if (access === "checking") {
     return (
@@ -207,13 +214,24 @@ function CoachCenterShell({ children }: { children: React.ReactNode }) {
       <CoachCenterSidebar pathname={pathname} />
       <div className="min-w-0 flex-1">
         <TopBar pathname={pathname} />
-        <main className="min-h-[calc(100vh-3.5rem)] p-6">
+        <main className="relative min-h-[calc(100vh-3.5rem)] p-6">
           {accessError ? (
             <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
               {accessError}
             </div>
           ) : null}
           {children}
+          {switchingTeam ? (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/85 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-slate-700/70 bg-slate-900 px-8 py-7 shadow-xl">
+                <span className="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+                <p className="text-sm font-medium text-slate-100">
+                  Loading {selectedTeam?.name || "team"}…
+                </p>
+                <p className="text-xs text-slate-500">Switching calendar, chat, and game day</p>
+              </div>
+            </div>
+          ) : null}
         </main>
       </div>
     </div>

@@ -7,7 +7,7 @@ import type { Recommendation } from "../_lib/types";
 import { authHeaders, COACH_LEVEL_LABELS, PLAYER_LEVEL_LABELS } from "../_lib/utils";
 
 export default function CoachCenterNextSessionsPage() {
-  const { selectedTeam, selectedTeamId, access } = useCoachCenter();
+  const { selectedTeam, selectedTeamId, access, finishTeamSwitch } = useCoachCenter();
   const [items, setItems] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -22,8 +22,9 @@ export default function CoachCenterNextSessionsPage() {
       else setItems([]);
     } finally {
       setLoading(false);
+      finishTeamSwitch(teamId);
     }
-  }, []);
+  }, [finishTeamSwitch]);
 
   useEffect(() => {
     if (access === "allowed" && selectedTeamId) void load(selectedTeamId);
