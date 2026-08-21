@@ -15,10 +15,33 @@ type ApiErrorBody = {
   code?: string;
 };
 
+function isApiError(error: unknown): error is ApiError {
+  // Must be our plain normalized object — not an AxiosError/Error (those also have message/status).
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    !(error instanceof Error) &&
+    !axios.isAxiosError(error) &&
+    typeof (error as ApiError).status === 'number' &&
+    typeof (error as ApiError).message === 'string'
+  );
+}
+
 export function normalizeApiError(error: unknown): ApiError {
+  // Interceptors already normalize; avoid wiping the real message on re-normalize.
+  if (isApiError(error)) {
+    return error;
+  }
   if (axios.isAxiosError(error)) {
-    const status = error.response?.status ?? 500;
+    const status = error.response?.status ?? 0;
     const data = error.response?.data as ApiErrorBody | undefined;
+    if (!error.response) {
+      const hint =
+        error.code === 'ERR_NETWORK' || error.message === 'Network Error'
+          ? `Cannot reach API at ${API_URL}. Check EXPO_PUBLIC_API_URL and your connection.`
+          : error.message || 'Network request failed';
+      return { status: 0, message: hint };
+    }
     const message = data?.error ?? data?.message ?? error.message ?? 'Request failed';
     return { status, message, code: data?.code };
   }
@@ -29,7 +52,7 @@ export function normalizeApiError(error: unknown): ApiError {
 }
 
 export function describeApiError(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
-  const normalized = (error as ApiError)?.message ? (error as ApiError) : normalizeApiError(error);
+  const normalized = isApiError(error) ? error : normalizeApiError(error);
 
   if (normalized.code === 'TRIALS_CLOSED' || normalized.status === 503) {
     return normalized.message || 'Free trials are currently closed. Contact support or manage billing on the web.';
@@ -107,9 +130,12 @@ api.interceptors.response.use(
     }
 
     const status = error.response?.status;
-    const isRefreshEndpoint = originalRequest.url?.includes('/auth/refresh');
+    const url = originalRequest.url || '';
+    const isAuthCredentialRequest =
+      url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh');
 
-    if (status !== 401 || originalRequest._retry || isRefreshEndpoint) {
+    // Don't attempt token refresh for bad login/register credentials.
+    if (status !== 401 || originalRequest._retry || isAuthCredentialRequest) {
       throw normalizeApiError(error);
     }
 

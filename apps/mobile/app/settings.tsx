@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Linking, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../components/ui/Button';
 import { ErrorMessage } from '../components/ui/ErrorMessage';
@@ -8,6 +8,7 @@ import { colors } from '../constants/colors';
 import { useAuth } from '../hooks/useAuth';
 import { describeApiError } from '../services/api';
 import { openBillingPortal } from '../services/billing.service';
+import { formatPlanLabel, humanizeLabel } from '../utils/format';
 
 export default function SettingsScreen() {
   const { user, updateProfile, logout, isLoading, error, clearError } = useAuth();
@@ -44,30 +45,31 @@ export default function SettingsScreen() {
 
         <Input label="Name" value={name} onChangeText={setName} placeholder="Coach name" />
 
-        <View style={styles.readOnlyRow}>
+        <View style={styles.readOnlyRow} accessibilityLabel={`Email ${user?.email || 'unavailable'}`}>
           <Text style={styles.label}>Email</Text>
-          <Text style={styles.value}>{user?.email || '--'}</Text>
+          <Text style={styles.value}>{user?.email || '—'}</Text>
         </View>
-        <View style={styles.readOnlyRow}>
+        <View
+          style={styles.readOnlyRow}
+          accessibilityLabel={`Plan ${formatPlanLabel(user?.subscriptionPlan, user?.subscriptionStatus)}`}
+        >
           <Text style={styles.label}>Plan</Text>
-          <Text style={styles.value}>
-            {user?.subscriptionPlan || '--'} · {user?.subscriptionStatus || 'unknown'}
-          </Text>
+          <Text style={styles.value}>{formatPlanLabel(user?.subscriptionPlan, user?.subscriptionStatus)}</Text>
         </View>
-        <View style={styles.readOnlyRow}>
+        <View style={styles.readOnlyRow} accessibilityLabel={`Club ${user?.clubName || 'No club membership'}`}>
           <Text style={styles.label}>Club</Text>
           <Text style={styles.value}>{user?.clubName || 'No club membership'}</Text>
         </View>
         {user?.enforcedGameModelId ? (
-          <View style={styles.readOnlyRow}>
+          <View style={styles.readOnlyRow} accessibilityLabel={`Club game model ${humanizeLabel(user.enforcedGameModelId)}`}>
             <Text style={styles.label}>Club game model</Text>
-            <Text style={styles.value}>{user.enforcedGameModelId}</Text>
+            <Text style={styles.value}>{humanizeLabel(user.enforcedGameModelId)}</Text>
           </View>
         ) : null}
         {user?.coachLevel ? (
-          <View style={styles.readOnlyRow}>
+          <View style={styles.readOnlyRow} accessibilityLabel={`Coach level ${humanizeLabel(user.coachLevel)}`}>
             <Text style={styles.label}>Coach level</Text>
-            <Text style={styles.value}>{user.coachLevel}</Text>
+            <Text style={styles.value}>{humanizeLabel(user.coachLevel)}</Text>
           </View>
         ) : null}
 
@@ -117,13 +119,13 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.muted,
-    fontSize: 12,
-    textTransform: 'uppercase',
+    fontSize: 14,
+    fontWeight: '600',
   },
   value: {
     color: colors.text,
     fontSize: 15,
     fontWeight: '600',
-    marginTop: 4,
+    marginTop: 6,
   },
 });

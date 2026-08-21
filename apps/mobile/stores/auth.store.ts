@@ -80,7 +80,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user, isAuthenticated: true });
     } catch (error) {
       set({ error: toErrorMessage(error), isAuthenticated: false, user: null });
-      throw error;
     } finally {
       set({ isLoading: false });
     }
@@ -108,7 +107,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user, isAuthenticated: true });
     } catch (error) {
       set({ error: toErrorMessage(error) });
-      throw error;
     } finally {
       set({ isLoading: false });
     }

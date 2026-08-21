@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CacheStaleIndicator } from '../../components/offline/CacheStaleIndicator';
 import { OfflineEmptyState } from '../../components/offline/OfflineEmptyState';
 import { Button } from '../../components/ui/Button';
@@ -43,12 +43,25 @@ function useDebouncedValue<T>(value: T, delay = 400): T {
 
 function Tabs({ activeTab, onChange }: { activeTab: 'sessions' | 'series' | 'drills'; onChange: (tab: 'sessions' | 'series' | 'drills') => void }) {
   return (
-    <View style={styles.tabs}>
-      {(['sessions', 'series', 'drills'] as const).map((tab) => (
-        <Text key={tab} onPress={() => onChange(tab)} style={[styles.tab, activeTab === tab ? styles.tabActive : null]}>
-          {tab.toUpperCase()}
-        </Text>
-      ))}
+    <View accessibilityRole="tablist" style={styles.tabs}>
+      {(['sessions', 'series', 'drills'] as const).map((tab) => {
+        const selected = activeTab === tab;
+        return (
+          <Pressable
+            key={tab}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            accessibilityLabel={`${tab} vault tab`}
+            hitSlop={4}
+            onPress={() => onChange(tab)}
+            style={[styles.tab, selected ? styles.tabActive : null]}
+          >
+            <Text style={[styles.tabText, selected ? styles.tabTextActive : null]}>
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -271,9 +284,15 @@ export default function VaultTab() {
       >
         <View style={styles.headerRow}>
           <Text style={styles.title}>Vault</Text>
-          <Text style={styles.link} onPress={() => router.push('/favorites')}>
-            Favorites
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open favorites"
+            hitSlop={8}
+            onPress={() => router.push('/favorites')}
+            style={styles.linkPress}
+          >
+            <Text style={styles.link}>Favorites</Text>
+          </Pressable>
         </View>
 
         {!isOnline ? <CacheStaleIndicator updatedAt={cacheUpdatedAt} /> : null}
@@ -376,6 +395,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
+  linkPress: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
   tabs: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -385,13 +409,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   tab: {
-    color: colors.muted,
     flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: 10,
-    textAlign: 'center',
   },
   tabActive: {
     backgroundColor: colors.surfaceAlt,
+  },
+  tabText: {
+    color: colors.muted,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  tabTextActive: {
     color: colors.text,
     fontWeight: '700',
   },

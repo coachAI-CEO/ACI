@@ -8,15 +8,21 @@ type Props = {
 };
 
 export function UsageBar({ label, used, limit }: Props) {
-  const safeLimit = limit > 0 ? limit : 1;
-  const ratio = Math.min(used / safeLimit, 1);
-  const color = ratio > 0.85 ? colors.danger : ratio > 0.6 ? colors.warning : colors.primary;
+  const unlimited = !Number.isFinite(limit) || limit <= 0;
+  const safeLimit = unlimited ? Math.max(used, 1) : limit;
+  const ratio = unlimited ? 0 : Math.min(used / safeLimit, 1);
+  const color = unlimited ? colors.primary : ratio > 0.85 ? colors.danger : ratio > 0.6 ? colors.warning : colors.primary;
+  const valueLabel = unlimited ? `${used} / Unlimited` : `${used} / ${limit}`;
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessibilityRole="summary"
+      accessibilityLabel={`${label}: ${valueLabel}`}
+    >
       <View style={styles.row}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.value}>{used} / {limit}</Text>
+        <Text style={styles.value}>{valueLabel}</Text>
       </View>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: color }]} />

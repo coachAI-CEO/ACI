@@ -14,10 +14,19 @@ type Props = {
 
 export function Input({ label, error, ...props }: Props) {
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityLabel={label}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.muted} style={styles.input} {...props} />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <TextInput
+        accessibilityLabel={label}
+        placeholderTextColor={colors.muted}
+        style={styles.input}
+        {...props}
+      />
+      {error ? (
+        <Text accessibilityLiveRegion="polite" style={styles.error}>
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }

@@ -1,6 +1,22 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
+import { humanizeLabel } from '../../utils/format';
 import type { VaultDrillLite, VaultSeries, VaultSession } from '../../services/vault.service';
+
+function FavoriteButton({ isFavorited, onToggle }: { isFavorited: boolean; onToggle: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={isFavorited ? 'Remove from favorites' : 'Add to favorites'}
+      accessibilityState={{ selected: isFavorited }}
+      hitSlop={10}
+      onPress={onToggle}
+      style={styles.favoritePress}
+    >
+      <Text style={[styles.favorite, isFavorited ? styles.favoriteOn : null]}>{isFavorited ? '★' : '☆'}</Text>
+    </Pressable>
+  );
+}
 
 export function SessionCard({
   session,
@@ -14,16 +30,14 @@ export function SessionCard({
   onPress?: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.card}>
+    <Pressable accessibilityRole="button" accessibilityLabel={session.title || 'Untitled session'} onPress={onPress} style={styles.card}>
       <View style={styles.rowBetween}>
         <Text style={styles.ref}>{session.refCode || 'Session'}</Text>
-        <Text onPress={onToggleFavorite} style={[styles.favorite, isFavorited ? styles.favoriteOn : null]}>
-          {isFavorited ? '★' : '☆'}
-        </Text>
+        <FavoriteButton isFavorited={isFavorited} onToggle={onToggleFavorite} />
       </View>
-      <Text style={styles.title}>{session.title || 'Untitled Session'}</Text>
+      <Text style={styles.title}>{session.title || 'Untitled session'}</Text>
       <Text style={styles.meta}>
-        {session.ageGroup || '--'} · {session.gameModelId || '--'} · {session.durationMin || '--'} min
+        {session.ageGroup || '—'} · {session.gameModelId ? humanizeLabel(session.gameModelId) : '—'} · {session.durationMin || '—'} min
       </Text>
     </Pressable>
   );
@@ -39,14 +53,12 @@ export function SeriesCard({
   onToggleFavorite: () => void;
 }) {
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessibilityLabel="Progressive series">
       <View style={styles.rowBetween}>
         <Text style={styles.ref}>{series.seriesId}</Text>
-        <Text onPress={onToggleFavorite} style={[styles.favorite, isFavorited ? styles.favoriteOn : null]}>
-          {isFavorited ? '★' : '☆'}
-        </Text>
+        <FavoriteButton isFavorited={isFavorited} onToggle={onToggleFavorite} />
       </View>
-      <Text style={styles.title}>{series.sessions?.[0]?.title || 'Progressive Series'}</Text>
+      <Text style={styles.title}>{series.sessions?.[0]?.title || 'Progressive series'}</Text>
       <Text style={styles.meta}>{series.totalSessions || series.sessions?.length || 0} sessions</Text>
     </View>
   );
@@ -62,16 +74,14 @@ export function DrillCard({
   onToggleFavorite: () => void;
 }) {
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessibilityLabel={drill.title}>
       <View style={styles.rowBetween}>
         <Text style={styles.ref}>{drill.refCode}</Text>
-        <Text onPress={onToggleFavorite} style={[styles.favorite, isFavorited ? styles.favoriteOn : null]}>
-          {isFavorited ? '★' : '☆'}
-        </Text>
+        <FavoriteButton isFavorited={isFavorited} onToggle={onToggleFavorite} />
       </View>
       <Text style={styles.title}>{drill.title}</Text>
       <Text style={styles.meta}>
-        {drill.ageGroup || '--'} · {drill.phase || '--'} · {drill.durationMin || '--'} min
+        {drill.ageGroup || '—'} · {drill.phase ? humanizeLabel(drill.phase) : '—'} · {drill.durationMin || '—'} min
       </Text>
     </View>
   );
@@ -96,20 +106,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  favoritePress: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favorite: {
+    color: colors.muted,
+    fontSize: 20,
+  },
+  favoriteOn: {
+    color: colors.warning,
+  },
   title: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   meta: {
     color: colors.muted,
     fontSize: 12,
-  },
-  favorite: {
-    color: colors.muted,
-    fontSize: 18,
-  },
-  favoriteOn: {
-    color: '#fbbf24',
   },
 });

@@ -1,5 +1,6 @@
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors } from '../../constants/colors';
+import { humanizeLabel } from '../../utils/format';
 
 type Props = {
   search: string;
@@ -25,20 +26,24 @@ function ChipRow({
   onChange: (next: string) => void;
 }) {
   return (
-    <View style={styles.chipBlock}>
+    <View style={styles.chipBlock} accessibilityRole="radiogroup" accessibilityLabel={label}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.chipsRow}>
         {options.map((option) => {
           const selected = option === value;
-          const text = option || 'All';
+          const text = option ? (option.startsWith('U') ? option : humanizeLabel(option)) : 'All';
           return (
-            <Text
+            <Pressable
               key={`${label}-${text}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`${label}: ${text}`}
+              hitSlop={6}
               onPress={() => onChange(option)}
-              style={[styles.chip, selected ? styles.chipActive : null]}
+              style={({ pressed }) => [styles.chip, selected ? styles.chipActive : null, pressed ? styles.chipPressed : null]}
             >
-              {text}
-            </Text>
+              <Text style={[styles.chipText, selected ? styles.chipTextActive : null]}>{text}</Text>
+            </Pressable>
           );
         })}
       </View>
@@ -57,6 +62,7 @@ export function VaultFilterBar({
   return (
     <View style={styles.wrap}>
       <TextInput
+        accessibilityLabel="Search vault"
         placeholder="Search keyword or ref code"
         placeholderTextColor={colors.muted}
         value={search}
@@ -80,7 +86,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     color: colors.text,
-    minHeight: 42,
+    minHeight: 44,
     paddingHorizontal: 12,
   },
   chipBlock: {
@@ -88,8 +94,8 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.muted,
-    fontSize: 11,
-    textTransform: 'uppercase',
+    fontSize: 13,
+    fontWeight: '600',
   },
   chipsRow: {
     flexDirection: 'row',
@@ -101,13 +107,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 999,
     borderWidth: 1,
-    color: colors.muted,
-    fontSize: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   chipActive: {
     borderColor: colors.primary,
+  },
+  chipPressed: {
+    opacity: 0.8,
+  },
+  chipText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  chipTextActive: {
     color: colors.primary,
     fontWeight: '700',
   },

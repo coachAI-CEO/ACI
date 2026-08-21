@@ -3,9 +3,19 @@ import { SplashScreen, Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useMemo } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NetworkBanner } from '../components/offline/NetworkBanner';
+import { colors } from '../constants/colors';
 import { useOfflineVaultSync } from '../hooks/useOfflineVaultSync';
 import { useReminderSync } from '../hooks/useReminderSync';
 import { useAuthStore } from '../stores/auth.store';
+
+const stackHeader = {
+  headerShown: true as const,
+  headerStyle: { backgroundColor: colors.background },
+  headerTintColor: colors.text,
+  headerTitleStyle: { color: colors.text, fontWeight: '700' as const },
+  headerShadowVisible: false,
+  headerBackTitle: 'Back',
+};
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -59,28 +69,28 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="favorites" options={{ headerShown: true, title: 'Favorites' }} />
-          <Stack.Screen name="notifications/index" options={{ headerShown: true, title: 'Notifications' }} />
-          <Stack.Screen name="session/result" options={{ headerShown: true, title: 'Session Result' }} />
-          <Stack.Screen name="session/drill/[drillId]" options={{ headerShown: true, title: 'Drill Detail' }} />
-          <Stack.Screen name="session/drill/result" options={{ headerShown: true, title: 'Drill Result' }} />
-          <Stack.Screen name="series/result" options={{ headerShown: true, title: 'Series Result' }} />
-          <Stack.Screen name="video/result" options={{ headerShown: true, title: 'Video Result' }} />
-          <Stack.Screen name="vault/session/[sessionId]" options={{ headerShown: true, title: 'Vault Session' }} />
-          <Stack.Screen name="player-plans/index" options={{ headerShown: true, title: 'Player Plans' }} />
-          <Stack.Screen name="player-plans/[planId]" options={{ headerShown: true, title: 'Player Plan' }} />
-          <Stack.Screen name="coach-center/index" options={{ headerShown: true, title: 'Coach Center' }} />
-          <Stack.Screen name="coach-center/[teamId]/index" options={{ headerShown: true, title: 'Team' }} />
-          <Stack.Screen name="coach-center/[teamId]/week" options={{ headerShown: true, title: 'Team Week' }} />
-          <Stack.Screen name="coach-center/[teamId]/game-days/index" options={{ headerShown: true, title: 'Game Days' }} />
+          <Stack.Screen name="favorites" options={{ ...stackHeader, title: 'Favorites' }} />
+          <Stack.Screen name="notifications/index" options={{ ...stackHeader, title: 'Notifications' }} />
+          <Stack.Screen name="session/result" options={{ ...stackHeader, title: 'Session Result' }} />
+          <Stack.Screen name="session/drill/[drillId]" options={{ ...stackHeader, title: 'Drill Detail' }} />
+          <Stack.Screen name="session/drill/result" options={{ ...stackHeader, title: 'Drill Result' }} />
+          <Stack.Screen name="series/result" options={{ ...stackHeader, title: 'Series Result' }} />
+          <Stack.Screen name="video/result" options={{ ...stackHeader, title: 'Video Result' }} />
+          <Stack.Screen name="vault/session/[sessionId]" options={{ ...stackHeader, title: 'Vault Session' }} />
+          <Stack.Screen name="player-plans/index" options={{ ...stackHeader, title: 'Player Plans' }} />
+          <Stack.Screen name="player-plans/[planId]" options={{ ...stackHeader, title: 'Player Plan' }} />
+          <Stack.Screen name="coach-center/index" options={{ ...stackHeader, title: 'Coach Center' }} />
+          <Stack.Screen name="coach-center/[teamId]/index" options={{ ...stackHeader, title: 'Team' }} />
+          <Stack.Screen name="coach-center/[teamId]/week" options={{ ...stackHeader, title: 'Team Week' }} />
+          <Stack.Screen name="coach-center/[teamId]/game-days/index" options={{ ...stackHeader, title: 'Game Days' }} />
           <Stack.Screen
             name="coach-center/[teamId]/game-days/[gameDayId]"
-            options={{ headerShown: true, title: 'Game Day' }}
+            options={{ ...stackHeader, title: 'Game Day' }}
           />
-          <Stack.Screen name="boards/index" options={{ headerShown: true, title: 'Boards' }} />
-          <Stack.Screen name="boards/[id]" options={{ headerShown: true, title: 'Board' }} />
+          <Stack.Screen name="boards/index" options={{ ...stackHeader, title: 'Boards' }} />
+          <Stack.Screen name="boards/[id]" options={{ ...stackHeader, title: 'Board' }} />
           <Stack.Screen name="sideline/[sessionId]" />
-          <Stack.Screen name="settings" options={{ headerShown: true, title: 'Settings' }} />
+          <Stack.Screen name="settings" options={{ ...stackHeader, title: 'Settings', headerBackTitle: 'Home' }} />
         </Stack>
       </QueryClientProvider>
     </SafeAreaProvider>

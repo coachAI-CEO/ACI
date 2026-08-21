@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
@@ -56,9 +56,15 @@ export default function HomeTab() {
         <Card>
           <View style={styles.rowBetween}>
             <Text style={styles.greeting}>Good training day, Coach {user?.name || 'Coach'}.</Text>
-            <Text onPress={() => router.push('/settings')} style={styles.inlineLink}>
-              Settings
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+              hitSlop={8}
+              onPress={() => router.push('/settings')}
+              style={styles.linkPress}
+            >
+              <Text style={styles.inlineLink}>Settings</Text>
+            </Pressable>
           </View>
           <View style={styles.badgeRow}>
             <Badge label={user?.subscriptionPlan || 'FREE'} />
@@ -93,7 +99,15 @@ export default function HomeTab() {
         <Card>
           <View style={styles.rowBetween}>
             <Text style={styles.sectionTitle}>Recent vault items</Text>
-            <Text onPress={() => router.push('/(tabs)/vault')} style={styles.inlineLink}>View all</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="View all vault items"
+              hitSlop={8}
+              onPress={() => router.push('/(tabs)/vault')}
+              style={styles.linkPress}
+            >
+              <Text style={styles.inlineLink}>View all</Text>
+            </Pressable>
           </View>
           {recentSessionsQuery.data?.length ? (
             recentSessionsQuery.data.map((item) => (
@@ -158,6 +172,11 @@ const styles = StyleSheet.create({
   inlineLink: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  linkPress: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingLeft: 8,
   },
   empty: {
     color: colors.muted,

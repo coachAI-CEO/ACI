@@ -21,18 +21,18 @@ type Props = {
 };
 
 const BASE_ACTIONS: QuickAction[] = [
-  { key: 'session', title: 'Generate Session', route: '/(tabs)/generate', enabled: true },
-  { key: 'drill', title: 'Generate Drill', route: '/(tabs)/generate', enabled: true },
-  { key: 'video', title: 'Video Analysis', route: '/(tabs)/video', enabled: true },
+  { key: 'session', title: 'Generate session', route: '/(tabs)/generate', enabled: true },
+  { key: 'drill', title: 'Generate drill', route: '/(tabs)/generate', enabled: true },
+  { key: 'video', title: 'Video analysis', route: '/(tabs)/video', enabled: true },
   { key: 'calendar', title: 'Calendar', route: '/(tabs)/calendar', enabled: true },
-  { key: 'plans', title: 'Player Plans', route: '/player-plans', enabled: true },
+  { key: 'plans', title: 'Player plans', route: '/player-plans', enabled: true },
   { key: 'coach', title: 'Coach Center', route: '/coach-center', enabled: true },
   { key: 'boards', title: 'Boards', route: '/boards', enabled: true },
 ];
 
 export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Props) {
   return (
-    <View style={styles.grid}>
+    <View style={styles.grid} accessibilityRole="menu">
       {BASE_ACTIONS.map((action) => {
         const enabled =
           action.key === 'calendar'
@@ -42,6 +42,9 @@ export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Pro
               : action.enabled;
         return (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={action.title}
+            accessibilityState={{ disabled: !enabled }}
             disabled={!enabled}
             key={action.key}
             onPress={() => router.push(action.route)}

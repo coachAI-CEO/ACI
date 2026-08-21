@@ -1,7 +1,8 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { Input } from '../../components/ui/Input';
@@ -29,7 +30,13 @@ function formatDate(value: string | undefined): string {
   if (!value) return 'TBD';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return date.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function weekBounds(): { start: string; end: string } {
@@ -56,7 +63,14 @@ export default function CalendarTab() {
   const sessionRemindersEnabled = useNotificationsStore((s) => s.sessionRemindersEnabled);
 
   const [sessionId, setSessionId] = useState('');
-  const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().slice(0, 16));
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    const next = new Date();
+    next.setMinutes(0, 0, 0);
+    next.setHours(next.getHours() + 1);
+    return next;
+  });
+  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
+  const [showTimePicker, setShowTimePicker] = useState(Platform.OS === 'ios');
   const [durationMin, setDurationMin] = useState('60');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +96,6 @@ export default function CalendarTab() {
   useEffect(() => {
     const events = eventsQuery.data || [];
     const count = countEventsForTodayAndTomorrow(events, new Date());
-
     setBadgeCount(count).catch(() => undefined);
   }, [eventsQuery.data]);
 
@@ -129,12 +142,11 @@ export default function CalendarTab() {
       return;
     }
     if (!sessionId.trim()) {
-      setError('Session ID is required.');
+      setError('Pick a vault session before scheduling.');
       return;
     }
 
-    const normalizedDate = scheduledDate.includes('T') ? scheduledDate : `${scheduledDate}T16:00`;
-    const isoDate = new Date(normalizedDate).toISOString();
+    const isoDate = scheduledAt.toISOString();
 
     setIsSubmitting(true);
     try {
@@ -188,15 +200,61 @@ export default function CalendarTab() {
         </Text>
 
         <View style={styles.block}>
-          <Text style={styles.blockTitle}>Create Event</Text>
-          <Input label="Session ID" value={sessionId} onChangeText={setSessionId} placeholder="Paste vault session ID" />
-          <Button title="Use Most Recent Vault Session" onPress={onPickRecentSession} variant="secondary" />
+          <Text style={styles.blockTitle}>Create event</Text>
           <Input
-            label="Scheduled Date (ISO/local)"
-            value={scheduledDate}
-            onChangeText={setScheduledDate}
-            placeholder="2026-03-10T16:00"
+            label="Vault session"
+            value={sessionId}
+            onChangeText={setSessionId}
+            placeholder="Session ID from vault"
           />
+          <Button title="Use most recent vault session" onPress={onPickRecentSession} variant="secondary" />
+
+          <Text style={styles.fieldLabel}>Date & time</Text>
+          <Text style={styles.schedulePreview} accessibilityLabel={`Scheduled for ${formatDate(scheduledAt.toISOString())}`}>
+            {formatDate(scheduledAt.toISOString())}
+          </Text>
+
+          {Platform.OS === 'android' ? (
+            <View style={styles.pickerActions}>
+              <Button title="Pick date" onPress={() => setShowDatePicker(true)} variant="secondary" />
+              <Button title="Pick time" onPress={() => setShowTimePicker(true)} variant="secondary" />
+            </View>
+          ) : null}
+
+          {showDatePicker ? (
+            <DateTimePicker
+              value={scheduledAt}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'compact' : 'default'}
+              onChange={(_, date) => {
+                if (Platform.OS === 'android') setShowDatePicker(false);
+                if (!date) return;
+                setScheduledAt((current) => {
+                  const next = new Date(current);
+                  next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+                  return next;
+                });
+              }}
+            />
+          ) : null}
+
+          {showTimePicker || Platform.OS === 'ios' ? (
+            <DateTimePicker
+              value={scheduledAt}
+              mode="time"
+              display={Platform.OS === 'ios' ? 'compact' : 'default'}
+              onChange={(_, date) => {
+                if (Platform.OS === 'android') setShowTimePicker(false);
+                if (!date) return;
+                setScheduledAt((current) => {
+                  const next = new Date(current);
+                  next.setHours(date.getHours(), date.getMinutes(), 0, 0);
+                  return next;
+                });
+              }}
+            />
+          ) : null}
+
           <Input label="Duration (minutes)" value={durationMin} onChangeText={setDurationMin} placeholder="60" />
           <Input label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional notes" />
           {error ? <ErrorMessage message={error} /> : null}
@@ -205,41 +263,49 @@ export default function CalendarTab() {
 
         {user.features.canGenerateWeeklySummaries ? (
           <View style={styles.block}>
-            <Text style={styles.blockTitle}>Weekly Summary</Text>
+            <Text style={styles.blockTitle}>Weekly summary</Text>
             <Text style={styles.summaryText}>{weeklySummaryQuery.data?.text || 'No summary available for this week.'}</Text>
           </View>
         ) : null}
 
         <View style={styles.block}>
-          <Text style={styles.blockTitle}>Upcoming Events</Text>
+          <Text style={styles.blockTitle}>Upcoming events</Text>
           {(eventsQuery.data || []).map((event: any) => (
             <View key={event.id} style={styles.eventRow}>
               <View style={styles.eventMeta}>
-                <Text style={styles.eventTitle}>{event.teamName || event.location || 'Training Event'}</Text>
+                <Text style={styles.eventTitle}>{event.teamName || event.location || 'Training event'}</Text>
                 <Text style={styles.eventTime}>{formatDate(event.scheduledDate || event.startAt || event.date)}</Text>
                 <Text style={styles.eventTime}>{event.completed ? 'Completed' : 'Scheduled'}</Text>
                 {event.sessionId ? (
-                  <Text
-                    style={styles.startPractice}
-                    onPress={() => router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: String(event.sessionId) } })}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Start practice"
+                    onPress={() =>
+                      router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: String(event.sessionId) } })
+                    }
+                    style={styles.linkPress}
                   >
-                    Start Practice
-                  </Text>
+                    <Text style={styles.startPractice}>Start practice</Text>
+                  </Pressable>
                 ) : null}
-                <Text
-                  style={styles.startPractice}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={event.completed ? 'Mark incomplete' : 'Mark complete'}
                   onPress={() =>
                     void updateCalendarEvent(event.id, { completed: !event.completed })
                       .then(() => eventsQuery.refetch())
-                      .catch((err) => Alert.alert('Update failed', (err as { message?: string }).message || 'Could not update event.'))
+                      .catch((err) =>
+                        Alert.alert('Update failed', (err as { message?: string }).message || 'Could not update event.')
+                      )
                   }
+                  style={styles.linkPress}
                 >
-                  {event.completed ? 'Mark incomplete' : 'Mark complete'}
-                </Text>
+                  <Text style={styles.startPractice}>{event.completed ? 'Mark incomplete' : 'Mark complete'}</Text>
+                </Pressable>
               </View>
-              <Text style={styles.deleteLink} onPress={() => void onDelete(event.id)}>
-                Delete
-              </Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Delete event" onPress={() => void onDelete(event.id)}>
+                <Text style={styles.deleteLink}>Delete</Text>
+              </Pressable>
             </View>
           ))}
           {!eventsQuery.data?.length ? <Text style={styles.empty}>No upcoming events.</Text> : null}
@@ -280,6 +346,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+  fieldLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  schedulePreview: {
+    color: colors.muted,
+    fontSize: 15,
+  },
+  pickerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   summaryText: {
     color: colors.text,
     lineHeight: 20,
@@ -309,12 +388,18 @@ const styles = StyleSheet.create({
   deleteLink: {
     color: colors.danger,
     fontWeight: '600',
+    minHeight: 44,
+    paddingTop: 12,
   },
   startPractice: {
     color: colors.primary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
-    marginTop: 4,
+  },
+  linkPress: {
+    marginTop: 6,
+    minHeight: 32,
+    justifyContent: 'center',
   },
   empty: {
     color: colors.muted,
