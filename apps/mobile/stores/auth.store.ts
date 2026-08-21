@@ -21,6 +21,25 @@ type AuthState = {
   clearError: () => void;
 };
 
+function writeUserMeta(user: CurrentUser): Promise<void> {
+  return writeUserMetaCache(
+    {
+      id: user.id,
+      name: user.name,
+      role: user.role,
+      adminRole: user.adminRole,
+      subscriptionPlan: user.subscriptionPlan,
+      subscriptionStatus: user.subscriptionStatus,
+      emailVerified: user.emailVerified,
+      features: user.features,
+      clubId: user.clubId,
+      clubName: user.clubName,
+      enforcedGameModelId: user.enforcedGameModelId,
+    },
+    user.id
+  );
+}
+
 function toErrorMessage(error: unknown): string {
   return describeApiError(error);
 }
@@ -37,18 +56,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const user = await authService.getCurrentUser();
       await setCacheActiveUser(user.id);
-      await writeUserMetaCache(
-        {
-          id: user.id,
-          name: user.name,
-          subscriptionPlan: user.subscriptionPlan,
-          features: user.features,
-          clubId: user.clubId,
-          clubName: user.clubName,
-          enforcedGameModelId: user.enforcedGameModelId,
-        },
-        user.id
-      );
+      await writeUserMeta(user);
       set({ user, isAuthenticated: true });
     } catch {
       await clearAuthTokens();
@@ -65,18 +73,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await setAuthTokens(payload.tokens.accessToken, payload.tokens.refreshToken);
       const user = await authService.getCurrentUser();
       await setCacheActiveUser(user.id);
-      await writeUserMetaCache(
-        {
-          id: user.id,
-          name: user.name,
-          subscriptionPlan: user.subscriptionPlan,
-          features: user.features,
-          clubId: user.clubId,
-          clubName: user.clubName,
-          enforcedGameModelId: user.enforcedGameModelId,
-        },
-        user.id
-      );
+      await writeUserMeta(user);
       set({ user, isAuthenticated: true });
     } catch (error) {
       set({ error: toErrorMessage(error), isAuthenticated: false, user: null });
@@ -92,18 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await setAuthTokens(payload.tokens.accessToken, payload.tokens.refreshToken);
       const user = await authService.getCurrentUser();
       await setCacheActiveUser(user.id);
-      await writeUserMetaCache(
-        {
-          id: user.id,
-          name: user.name,
-          subscriptionPlan: user.subscriptionPlan,
-          features: user.features,
-          clubId: user.clubId,
-          clubName: user.clubName,
-          enforcedGameModelId: user.enforcedGameModelId,
-        },
-        user.id
-      );
+      await writeUserMeta(user);
       set({ user, isAuthenticated: true });
     } catch (error) {
       set({ error: toErrorMessage(error) });

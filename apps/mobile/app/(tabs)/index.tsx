@@ -93,8 +93,17 @@ export default function HomeTab() {
           <Text style={styles.greetingLine}>{greeting},</Text>
           <Text style={styles.greetingName}>Coach {firstName}</Text>
           <View style={styles.badgeRow}>
-            <Badge label={user?.subscriptionPlan || 'FREE'} />
+            <Badge label={plan} />
             {user?.clubName ? <Badge label={user.clubName} /> : null}
+            {user?.adminRole === 'SUPER_ADMIN' ? (
+              <Badge label="Super admin" tone="amber" />
+            ) : user?.adminRole === 'ADMIN' ? (
+              <Badge label="Admin" tone="amber" />
+            ) : user?.adminRole === 'MODERATOR' ? (
+              <Badge label="Moderator" tone="muted" />
+            ) : user?.adminRole === 'SUPPORT' ? (
+              <Badge label="Support" tone="muted" />
+            ) : null}
           </View>
           <Pressable
             accessibilityRole="button"
@@ -133,7 +142,18 @@ export default function HomeTab() {
         ) : null}
 
         <Card>
-          <Text style={styles.sectionTitle}>Usage this month</Text>
+          <View style={styles.rowBetween}>
+            <Text style={styles.sectionTitle}>Usage & limits</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open usage in settings"
+              hitSlop={8}
+              onPress={() => router.push('/settings')}
+              style={styles.linkPress}
+            >
+              <Text style={styles.inlineLink}>Open in Settings</Text>
+            </Pressable>
+          </View>
           <View style={styles.gap}>
             {usageQuery.data ? (
               <>
