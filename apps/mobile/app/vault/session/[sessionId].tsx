@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScheduleSessionSheet } from '../../../components/calendar/ScheduleSessionSheet';
 import { StoredDrillDiagram } from '../../../components/diagram/StoredDrillDiagram';
 import { Button } from '../../../components/ui/Button';
 import { ErrorMessage } from '../../../components/ui/ErrorMessage';
@@ -11,9 +12,11 @@ import { useAuth } from '../../../hooks/useAuth';
 import { describeApiError } from '../../../services/api';
 import { createCalendarEvent } from '../../../services/calendar.service';
 import { writeSessionDetailCache } from '../../../services/offline-cache.service';
+import { exportSessionPdf, sessionPayloadForPdf } from '../../../services/pdf.service';
 import { createPlayerPlanFromSession } from '../../../services/player-plans.service';
 import { getVaultSession } from '../../../services/vault.service';
 import { extractSessionDrills } from '../../../utils/session-payload';
+import { sharePdfArrayBuffer } from '../../../utils/share-pdf';
 
 export default function VaultSessionDetailScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -22,6 +25,7 @@ export default function VaultSessionDetailScreen() {
   const [status, setStatus] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedIndex, setExpandedIndex] = useState(0);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ['vault', 'session', sessionId],
@@ -56,21 +60,37 @@ export default function VaultSessionDetailScreen() {
     );
   }
 
-  const onSchedule = async () => {
+  const onScheduleConfirm = async (payload: { scheduledAt: Date; durationMin: number }) => {
     setBusy('schedule');
     setActionError(null);
     try {
-      const when = new Date();
-      when.setDate(when.getDate() + 1);
-      when.setHours(16, 0, 0, 0);
       await createCalendarEvent({
         sessionId: session.id,
-        scheduledDate: when.toISOString(),
-        durationMin: Number(session.durationMin) || 60,
+        scheduledDate: payload.scheduledAt.toISOString(),
+        durationMin: payload.durationMin,
       });
-      setStatus('Scheduled for tomorrow at 4:00 PM.');
+      setScheduleOpen(false);
+      setStatus(`Scheduled for ${payload.scheduledAt.toLocaleString()}.`);
     } catch (err) {
       setActionError(describeApiError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onSharePdf = async () => {
+    if (!user?.features?.canExportPDF) {
+      Alert.alert('PDF export', 'Your plan does not include PDF export. Upgrade on the web to unlock.');
+      return;
+    }
+    setBusy('pdf');
+    setActionError(null);
+    try {
+      const buffer = await exportSessionPdf(sessionPayloadForPdf(session), 'full');
+      await sharePdfArrayBuffer(buffer, `session-${session.refCode || session.id}.pdf`);
+      setStatus('PDF ready to share.');
+    } catch (err) {
+      setActionError(describeApiError(err, 'Could not export PDF.'));
     } finally {
       setBusy(null);
     }
@@ -137,11 +157,11 @@ export default function VaultSessionDetailScreen() {
           title="Sideline Mode"
           onPress={() => router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: session.id } })}
         />
+        <Button title="Share PDF" onPress={() => void onSharePdf()} loading={busy === 'pdf'} variant="secondary" />
         <Button
-          title="Schedule tomorrow"
-          onPress={() => void onSchedule()}
+          title="Schedule…"
+          onPress={() => setScheduleOpen(true)}
           disabled={!user?.features?.canAccessCalendar}
-          loading={busy === 'schedule'}
           variant="secondary"
         />
         <Button
@@ -152,6 +172,14 @@ export default function VaultSessionDetailScreen() {
           variant="secondary"
         />
       </ScrollView>
+
+      <ScheduleSessionSheet
+        visible={scheduleOpen}
+        durationMin={Number(session.durationMin) || 60}
+        loading={busy === 'schedule'}
+        onCancel={() => setScheduleOpen(false)}
+        onConfirm={(payload) => void onScheduleConfirm(payload)}
+      />
     </SafeAreaView>
   );
 }
@@ -189,6 +217,7 @@ const styles = StyleSheet.create({
   row: {
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 2,
     paddingBottom: 8,
   },
   rowHeader: {
@@ -216,6 +245,7 @@ const styles = StyleSheet.create({
   },
   status: {
     color: colors.primary,
+    fontSize: 13,
     fontWeight: '600',
   },
 });

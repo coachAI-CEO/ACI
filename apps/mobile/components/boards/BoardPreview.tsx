@@ -1,37 +1,53 @@
-import { StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Line, Rect, Text as SvgText } from 'react-native-svg';
 
 type Props = {
   diagram: any;
+  /** Optional frame override from diagram.sequence.frames[i] */
+  frame?: any;
   height?: number;
 };
 
-function asPlayers(diagram: any): any[] {
-  if (!diagram || typeof diagram !== 'object') return [];
-  const frames = diagram?.sequence?.frames;
-  if (Array.isArray(frames) && frames[0]?.players) return frames[0].players;
-  if (Array.isArray(diagram.players)) return diagram.players;
+function asPlayers(source: any): any[] {
+  if (!source || typeof source !== 'object') return [];
+  if (Array.isArray(source.players)) return source.players;
   return [];
 }
 
-function asLines(diagram: any): any[] {
-  if (!diagram || typeof diagram !== 'object') return [];
-  const elements = Array.isArray(diagram.elements) ? diagram.elements : [];
-  return elements.filter(
+function asLines(source: any): any[] {
+  if (!source || typeof source !== 'object') return [];
+  const elements = Array.isArray(source.elements) ? source.elements : [];
+  const arrows = Array.isArray(source.arrows) ? source.arrows : [];
+  const fromElements = elements.filter(
     (el: any) =>
       el?.type === 'line' ||
       el?.kind === 'line' ||
       (el?.from && el?.to) ||
       (el?.x1 != null && el?.x2 != null)
   );
+  const fromArrows = arrows.map((arrow: any) => ({
+    from: arrow?.from || { x: arrow?.x1, y: arrow?.y1 },
+    to: arrow?.to || { x: arrow?.x2, y: arrow?.y2 },
+  }));
+  return [...fromElements, ...fromArrows];
 }
 
-export function BoardPreview({ diagram, height = 240 }: Props) {
-  const players = asPlayers(diagram).slice(0, 30);
-  const lines = asLines(diagram).slice(0, 40);
+function resolveSource(diagram: any, frame?: any): any {
+  if (frame && typeof frame === 'object') return frame;
+  if (!diagram || typeof diagram !== 'object') return {};
+  const frames = diagram?.sequence?.frames;
+  if (Array.isArray(frames) && frames[0]) return frames[0];
+  return diagram;
+}
+
+export function BoardPreview({ diagram, frame, height = 240 }: Props) {
+  const source = resolveSource(diagram, frame);
+  const players = asPlayers(source).slice(0, 30);
+  const lines = asLines(source).slice(0, 40);
+  const width = Dimensions.get('window').width - 32;
 
   return (
-    <View style={[styles.wrap, { height }]}>
+    <View style={[styles.wrap, { height, width }]}>
       <Svg width="100%" height="100%" viewBox="0 0 100 70">
         <Rect x={0} y={0} width={100} height={70} fill="#0a3d1f" />
         <Rect x={2} y={2} width={96} height={66} stroke="rgba(255,255,255,0.35)" strokeWidth={0.6} fill="none" />
@@ -78,9 +94,9 @@ export function BoardPreview({ diagram, height = 240 }: Props) {
 
 const styles = StyleSheet.create({
   wrap: {
+    alignSelf: 'center',
     backgroundColor: '#062816',
     borderRadius: 12,
     overflow: 'hidden',
-    width: '100%',
   },
 });

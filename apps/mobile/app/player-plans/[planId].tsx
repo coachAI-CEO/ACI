@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { SafeAreaView, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { colors } from '../../constants/colors';
+import { useAuth } from '../../hooks/useAuth';
 import { describeApiError } from '../../services/api';
+import { exportPlayerPlanPdf } from '../../services/pdf.service';
 import { deletePlayerPlan, getPlayerPlan } from '../../services/player-plans.service';
+import { sharePdfArrayBuffer } from '../../utils/share-pdf';
 
 function asList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -16,8 +19,10 @@ function asList(value: unknown): string[] {
 
 export default function PlayerPlanDetailScreen() {
   const { planId } = useLocalSearchParams<{ planId: string }>();
-  const [busy, setBusy] = useState(false);
+  const { user } = useAuth();
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['player-plans', planId],
@@ -53,14 +58,32 @@ export default function PlayerPlanDetailScreen() {
       ? payload.drills
       : [];
 
-  const onShare = async () => {
+  const onShareText = async () => {
     await Share.share({
       message: `Player plan ${plan.title || ''} (${plan.refCode || plan.id})`,
     });
   };
 
+  const onSharePdf = async () => {
+    if (!user?.features?.canExportPDF && !user?.features?.canCreatePlayerPlans) {
+      Alert.alert('PDF export', 'PDF export is not available on your current plan.');
+      return;
+    }
+    setBusy('pdf');
+    setError(null);
+    try {
+      const buffer = await exportPlayerPlanPdf(plan.id);
+      await sharePdfArrayBuffer(buffer, `player-plan-${plan.refCode || plan.id}.pdf`);
+      setStatus('PDF ready to share.');
+    } catch (err) {
+      setError(describeApiError(err, 'Could not export PDF.'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onDelete = async () => {
-    setBusy(true);
+    setBusy('delete');
     setError(null);
     try {
       await deletePlayerPlan(plan.id);
@@ -68,7 +91,7 @@ export default function PlayerPlanDetailScreen() {
     } catch (err) {
       setError(describeApiError(err));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -105,9 +128,11 @@ export default function PlayerPlanDetailScreen() {
         </View>
 
         {error ? <ErrorMessage message={error} /> : null}
+        {status ? <Text style={styles.status}>{status}</Text> : null}
 
-        <Button title="Share" onPress={() => void onShare()} />
-        <Button title="Delete" onPress={() => void onDelete()} loading={busy} variant="danger" />
+        <Button title="Share PDF" onPress={() => void onSharePdf()} loading={busy === 'pdf'} />
+        <Button title="Share text" onPress={() => void onShareText()} variant="secondary" />
+        <Button title="Delete" onPress={() => void onDelete()} loading={busy === 'delete'} variant="danger" />
       </ScrollView>
     </SafeAreaView>
   );
@@ -147,5 +172,10 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     lineHeight: 18,
+  },
+  status: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

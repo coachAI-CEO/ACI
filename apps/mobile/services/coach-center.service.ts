@@ -75,6 +75,20 @@ export type CoachCenterWeekDay = {
   }>;
 };
 
+export type MatchRecapLite = {
+  type?: string;
+  usScore?: number;
+  themScore?: number;
+  headline?: string;
+  summary?: string;
+  caption?: string;
+  location?: string;
+  opponentLabel?: string;
+  proudOf?: string;
+  keepBuilding?: string;
+  nextUp?: string[];
+};
+
 export type GameDayItem = {
   id: string;
   matchDate: string;
@@ -87,6 +101,7 @@ export type GameDayItem = {
   attackingNotes?: string | null;
   defendingNotes?: string | null;
   setPieces?: string | null;
+  recap?: MatchRecapLite | null;
 };
 
 export async function getCoachCenterAccess(): Promise<CoachCenterAccess> {
@@ -160,6 +175,27 @@ export async function downloadGameDayPdf(teamId: string, gameDayId: string): Pro
       { responseType: 'arraybuffer' }
     );
     return response.data;
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
+export async function updateGameDay(
+  teamId: string,
+  gameDayId: string,
+  payload: {
+    opponent?: string;
+    venue?: string;
+    keyFocus?: string;
+    recap?: MatchRecapLite;
+  }
+): Promise<GameDayItem> {
+  try {
+    const response = await api.patch<{ ok: boolean; item: GameDayItem }>(
+      `/coach-center/teams/${encodeURIComponent(teamId)}/game-days/${encodeURIComponent(gameDayId)}`,
+      payload
+    );
+    return response.data.item;
   } catch (error) {
     throw normalizeApiError(error);
   }

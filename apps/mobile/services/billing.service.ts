@@ -1,5 +1,6 @@
 import api, { normalizeApiError } from './api';
 import * as Linking from 'expo-linking';
+import { webPath } from '../constants/web';
 
 export async function openBillingPortal(returnUrl?: string): Promise<void> {
   try {
@@ -13,4 +14,9 @@ export async function openBillingPortal(returnUrl?: string): Promise<void> {
   } catch (error) {
     throw normalizeApiError(error);
   }
+}
+
+/** Opens public pricing / upgrade page in the system browser. */
+export async function openUpgradePricing(): Promise<void> {
+  await Linking.openURL(webPath('/pricing'));
 }

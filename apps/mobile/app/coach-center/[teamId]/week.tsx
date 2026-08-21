@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,6 +7,7 @@ import { ErrorMessage } from '../../../components/ui/ErrorMessage';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { colors } from '../../../constants/colors';
 import { describeApiError } from '../../../services/api';
+import { updateCalendarEvent } from '../../../services/calendar.service';
 import { getTeamWeekCalendar, mondayUtcIso } from '../../../services/coach-center.service';
 
 function shiftWeek(iso: string, deltaWeeks: number): string {
@@ -17,7 +18,9 @@ function shiftWeek(iso: string, deltaWeeks: number): string {
 
 export default function CoachCenterWeekScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const queryClient = useQueryClient();
   const [weekStart, setWeekStart] = useState(mondayUtcIso());
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['coach-center', 'week', teamId, weekStart],
@@ -26,6 +29,16 @@ export default function CoachCenterWeekScreen() {
   });
 
   const title = useMemo(() => `Week of ${weekStart}`, [weekStart]);
+
+  const onMarkComplete = async (eventId: string) => {
+    setBusyId(eventId);
+    try {
+      await updateCalendarEvent(eventId, { completed: true });
+      await queryClient.invalidateQueries({ queryKey: ['coach-center', 'week', teamId, weekStart] });
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (query.isLoading) {
     return (
@@ -74,19 +87,47 @@ export default function CoachCenterWeekScreen() {
                     {event.forThisTeam ? '' : ' (other team)'}
                   </Text>
                   {event.location ? <Text style={styles.meta}>{event.location}</Text> : null}
-                  {event.session?.id ? (
-                    <Text
-                      style={styles.link}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/sideline/[sessionId]',
-                          params: { sessionId: event.session!.id },
-                        })
-                      }
-                    >
-                      Start practice
-                    </Text>
-                  ) : null}
+                  <View style={styles.links}>
+                    {event.session?.id ? (
+                      <Text
+                        style={styles.link}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/sideline/[sessionId]',
+                            params: { sessionId: event.session!.id },
+                          })
+                        }
+                      >
+                        Sideline
+                      </Text>
+                    ) : null}
+                    {event.session?.id ? (
+                      <Text
+                        style={styles.link}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/vault/session/[sessionId]',
+                            params: { sessionId: event.session!.id },
+                          })
+                        }
+                      >
+                        Session
+                      </Text>
+                    ) : null}
+                    {!event.completed ? (
+                      <Text
+                        style={styles.link}
+                        onPress={() => {
+                          if (busyId === event.id) return;
+                          void onMarkComplete(event.id);
+                        }}
+                      >
+                        {busyId === event.id ? 'Saving…' : 'Mark done'}
+                      </Text>
+                    ) : (
+                      <Text style={styles.meta}>Done</Text>
+                    )}
+                  </View>
                 </View>
               ))
             ) : (
@@ -117,5 +158,6 @@ const styles = StyleSheet.create({
   body: { color: colors.text, fontSize: 14 },
   meta: { color: colors.muted, fontSize: 12 },
   row: { gap: 4 },
+  links: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   link: { color: colors.primary, fontWeight: '600' },
 });

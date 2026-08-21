@@ -47,20 +47,27 @@ export function SeriesCard({
   series,
   isFavorited,
   onToggleFavorite,
+  onPress,
 }: {
   series: VaultSeries;
   isFavorited: boolean;
   onToggleFavorite: () => void;
+  onPress?: () => void;
 }) {
   return (
-    <View style={styles.card} accessibilityLabel="Progressive series">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Progressive series"
+      onPress={onPress}
+      style={styles.card}
+    >
       <View style={styles.rowBetween}>
         <Text style={styles.ref}>{series.seriesId}</Text>
         <FavoriteButton isFavorited={isFavorited} onToggle={onToggleFavorite} />
       </View>
       <Text style={styles.title}>{series.sessions?.[0]?.title || 'Progressive series'}</Text>
       <Text style={styles.meta}>{series.totalSessions || series.sessions?.length || 0} sessions</Text>
-    </View>
+    </Pressable>
   );
 }
 

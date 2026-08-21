@@ -48,7 +48,9 @@ export default function CoachCenterHomeScreen() {
         refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} tintColor={colors.primary} />}
       >
         <Text style={styles.title}>Coach Center</Text>
-        <Text style={styles.subtitle}>Read-only team week, next sessions, and game-day packs.</Text>
+        <Text style={styles.subtitle}>
+          Team week, sideline links, and game-day packs stay in-app. Curriculum, chat, and team editing stay on web.
+        </Text>
 
         {clubs.length ? (
           <View style={styles.card}>
@@ -95,7 +97,11 @@ export default function CoachCenterHomeScreen() {
           )}
         </View>
 
-        <Button title="Open full Coach Center on web" onPress={() => void Linking.openURL(webPath('/coach-center'))} variant="secondary" />
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Web-only tools</Text>
+          <Text style={styles.meta}>Edit teams, curriculum, and coach chat on the website.</Text>
+          <Button title="Open Coach Center on web" onPress={() => void Linking.openURL(webPath('/coach-center'))} variant="secondary" />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

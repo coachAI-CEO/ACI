@@ -33,6 +33,17 @@ The TacticalEdge mobile app brings the full coaching platform to iOS and Android
 - Push notifications for scheduled sessions
 - Native share sheet for player plan PDFs
 
+### Expo constraints (web handoff)
+
+Pitch-day and daily coach loops stay native. Dense authoring and billing checkout stay on web:
+
+| Native | Web handoff (`webPath()`) |
+|--------|---------------------------|
+| Generate, vault, sideline, calendar, video, player plans | Doc Hub, `/admin/*` |
+| Coach Center consume (week, game day, recap) | Curriculum edit, coach chat, team settings |
+| Boards multi-slide viewer + favorites | Board editor / Board AI |
+| Upgrade CTA → `/pricing`, billing portal | Stripe checkout UI / IAP (not in app) |
+
 ---
 
 ## Tech Stack

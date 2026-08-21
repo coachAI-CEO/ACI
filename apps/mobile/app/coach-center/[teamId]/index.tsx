@@ -1,11 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
-import { RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Linking, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../components/ui/Button';
 import { ErrorMessage } from '../../../components/ui/ErrorMessage';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { colors } from '../../../constants/colors';
+import { webPath } from '../../../constants/web';
 import { describeApiError } from '../../../services/api';
+import { updateCalendarEvent } from '../../../services/calendar.service';
 import { getTeamOverview } from '../../../services/coach-center.service';
 
 function formatWhen(value?: string | null): string {
@@ -17,6 +20,9 @@ function formatWhen(value?: string | null): string {
 
 export default function CoachCenterTeamScreen() {
   const { teamId } = useLocalSearchParams<{ teamId: string }>();
+  const queryClient = useQueryClient();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['coach-center', 'overview', teamId],
@@ -44,6 +50,19 @@ export default function CoachCenterTeamScreen() {
   }
 
   const { team, upcoming, nextMatch, recommendations } = query.data;
+
+  const onMarkComplete = async (eventId: string) => {
+    setBusyId(eventId);
+    setActionError(null);
+    try {
+      await updateCalendarEvent(eventId, { completed: true });
+      await queryClient.invalidateQueries({ queryKey: ['coach-center', 'overview', teamId] });
+    } catch (err) {
+      setActionError(describeApiError(err, 'Could not mark complete.'));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -76,11 +95,13 @@ export default function CoachCenterTeamScreen() {
             {nextMatch.venue ? <Text style={styles.meta}>{nextMatch.venue}</Text> : null}
             {nextMatch.keyFocus ? <Text style={styles.meta}>{nextMatch.keyFocus}</Text> : null}
             <Button
-              title="Open game days"
+              title="Open game day pack"
               onPress={() =>
-                router.push({ pathname: '/coach-center/[teamId]/game-days', params: { teamId: String(teamId) } })
+                router.push({
+                  pathname: '/coach-center/[teamId]/game-days/[gameDayId]',
+                  params: { teamId: String(teamId), gameDayId: nextMatch.id },
+                })
               }
-              variant="secondary"
             />
           </View>
         ) : null}
@@ -90,18 +111,47 @@ export default function CoachCenterTeamScreen() {
           {upcoming.length ? (
             upcoming.map((event) => (
               <View key={event.id} style={styles.row}>
-                <Text style={styles.body}>{event.session?.title || 'Training'}</Text>
+                <Text style={styles.body}>
+                  {event.session?.title || 'Training'}
+                  {event.completed ? ' · Done' : ''}
+                </Text>
                 <Text style={styles.meta}>{formatWhen(event.scheduledDate)}</Text>
-                {event.session?.id ? (
-                  <Text
-                    style={styles.link}
-                    onPress={() =>
-                      router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: event.session!.id } })
-                    }
-                  >
-                    Start practice
-                  </Text>
-                ) : null}
+                <View style={styles.rowActions}>
+                  {event.session?.id ? (
+                    <Text
+                      style={styles.link}
+                      onPress={() =>
+                        router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: event.session!.id } })
+                      }
+                    >
+                      Sideline
+                    </Text>
+                  ) : null}
+                  {event.session?.id ? (
+                    <Text
+                      style={styles.link}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/vault/session/[sessionId]',
+                          params: { sessionId: event.session!.id },
+                        })
+                      }
+                    >
+                      Session
+                    </Text>
+                  ) : null}
+                  {!event.completed ? (
+                    <Text
+                      style={styles.link}
+                      onPress={() => {
+                        if (busyId === event.id) return;
+                        void onMarkComplete(event.id);
+                      }}
+                    >
+                      {busyId === event.id ? 'Saving…' : 'Mark done'}
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ))
           ) : (
@@ -118,12 +168,34 @@ export default function CoachCenterTeamScreen() {
                 {item.reason || item.matchReason ? (
                   <Text style={styles.meta}>{item.reason || item.matchReason}</Text>
                 ) : null}
+                {item.id ? (
+                  <View style={styles.rowActions}>
+                    <Text
+                      style={styles.link}
+                      onPress={() =>
+                        router.push({ pathname: '/vault/session/[sessionId]', params: { sessionId: item.id! } })
+                      }
+                    >
+                      Open session
+                    </Text>
+                    <Text
+                      style={styles.link}
+                      onPress={() =>
+                        router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: item.id! } })
+                      }
+                    >
+                      Sideline
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ))
           ) : (
             <Text style={styles.meta}>No recommendations yet.</Text>
           )}
         </View>
+
+        {actionError ? <ErrorMessage message={actionError} /> : null}
 
         <Button
           title="This week calendar"
@@ -136,6 +208,21 @@ export default function CoachCenterTeamScreen() {
           }
           variant="secondary"
         />
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Authoring on web</Text>
+          <Text style={styles.meta}>Edit team settings, curriculum, and coach chat on the website.</Text>
+          <Button
+            title="Team settings on web"
+            onPress={() => void Linking.openURL(webPath('/coach-center'))}
+            variant="secondary"
+          />
+          <Button
+            title="Curriculum on web"
+            onPress={() => void Linking.openURL(webPath('/coach-center'))}
+            variant="secondary"
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -143,7 +230,7 @@ export default function CoachCenterTeamScreen() {
 
 const styles = StyleSheet.create({
   safe: { backgroundColor: colors.background, flex: 1 },
-  container: { gap: 12, padding: 16 },
+  container: { gap: 12, padding: 16, paddingBottom: 28 },
   title: { color: colors.text, fontSize: 24, fontWeight: '700' },
   subtitle: { color: colors.muted },
   card: {
@@ -158,5 +245,6 @@ const styles = StyleSheet.create({
   body: { color: colors.text, fontSize: 14 },
   meta: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   row: { gap: 4, paddingVertical: 4 },
+  rowActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   link: { color: colors.primary, fontWeight: '600' },
 });

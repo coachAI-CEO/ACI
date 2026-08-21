@@ -347,6 +347,12 @@ export default function VaultTab() {
                 series={entry}
                 isFavorited={Boolean(favoriteSeries[entry.seriesId])}
                 onToggleFavorite={() => void toggleSeries(entry.seriesId)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/vault/series/[seriesId]',
+                    params: { seriesId: entry.seriesId },
+                  })
+                }
               />
             ))}
             {!visibleSeries.length ? <Text style={styles.empty}>No series found.</Text> : null}

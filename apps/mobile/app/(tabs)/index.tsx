@@ -1,18 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
+import { WebOnlyNotice } from '../../components/ui/WebOnlyNotice';
 import { QuickActionGrid } from '../../components/dashboard/QuickActionGrid';
 import { RecentVaultItem } from '../../components/dashboard/RecentVaultItem';
 import { UpcomingEventItem } from '../../components/dashboard/UpcomingEventItem';
 import { UsageBar } from '../../components/dashboard/UsageBar';
 import { colors } from '../../constants/colors';
+import { webPath } from '../../constants/web';
 import { useAuth } from '../../hooks/useAuth';
 import { useUsage } from '../../hooks/useUsage';
 import { getUpcomingEvents } from '../../services/calendar.service';
 import { getRecentVaultSessions } from '../../services/vault.service';
+
+function nearLimit(used: number, limit: number): boolean {
+  if (!Number.isFinite(limit) || limit <= 0) return false;
+  return used / limit >= 0.85;
+}
 
 export default function HomeTab() {
   const { user, isAuthenticated } = useAuth();
@@ -47,6 +55,17 @@ export default function HomeTab() {
     );
   }
 
+  const sessionsUsed = usageQuery.data?.sessions.used || 0;
+  const sessionsLimit = usageQuery.data?.sessions.limit || 0;
+  const drillsUsed = usageQuery.data?.drills.used || 0;
+  const drillsLimit = usageQuery.data?.drills.limit || 0;
+  const plan = String(user?.subscriptionPlan || 'FREE').toUpperCase();
+  const showUpgrade =
+    plan === 'FREE' ||
+    plan === 'TRIAL' ||
+    nearLimit(sessionsUsed, sessionsLimit) ||
+    nearLimit(drillsUsed, drillsLimit);
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -75,17 +94,15 @@ export default function HomeTab() {
         <Card>
           <Text style={styles.sectionTitle}>Usage this month</Text>
           <View style={styles.gap}>
-            <UsageBar
-              label="Sessions"
-              used={usageQuery.data?.sessions.used || 0}
-              limit={usageQuery.data?.sessions.limit || 0}
-            />
-            <UsageBar
-              label="Drills"
-              used={usageQuery.data?.drills.used || 0}
-              limit={usageQuery.data?.drills.limit || 0}
-            />
+            <UsageBar label="Sessions" used={sessionsUsed} limit={sessionsLimit} />
+            <UsageBar label="Drills" used={drillsUsed} limit={drillsLimit} />
           </View>
+          {showUpgrade ? (
+            <View style={styles.upgradeWrap}>
+              <Text style={styles.upgradeCopy}>Need more sessions or PDF export? Upgrade in the browser.</Text>
+              <Button title="Upgrade on web" onPress={() => void Linking.openURL(webPath('/pricing'))} />
+            </View>
+          ) : null}
         </Card>
 
         <Card>
@@ -132,6 +149,13 @@ export default function HomeTab() {
             <Text style={styles.empty}>No events scheduled.</Text>
           )}
         </Card>
+
+        <WebOnlyNotice
+          title="Doc Hub & admin"
+          body="Club Doc Hub and platform admin are web-only. Open them in Safari or Chrome when you need dense authoring."
+          webHref="/doc-hub"
+          ctaLabel="Open Doc Hub on web"
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -163,6 +187,15 @@ const styles = StyleSheet.create({
   },
   gap: {
     gap: 12,
+  },
+  upgradeWrap: {
+    gap: 10,
+    marginTop: 12,
+  },
+  upgradeCopy: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
   },
   rowBetween: {
     alignItems: 'center',

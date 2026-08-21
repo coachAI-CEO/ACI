@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { ScheduleSessionSheet } from '../../components/calendar/ScheduleSessionSheet';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { colors } from '../../constants/colors';
@@ -8,9 +9,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { describeApiError } from '../../services/api';
 import { createCalendarEvent } from '../../services/calendar.service';
 import { toggleSessionFavorite } from '../../services/favorites.service';
+import { exportSessionPdf, sessionPayloadForPdf } from '../../services/pdf.service';
 import { createPlayerPlanFromSession } from '../../services/player-plans.service';
 import { saveSessionToVault } from '../../services/session.service';
 import { useGenerateStore } from '../../stores/generate.store';
+import { sharePdfArrayBuffer } from '../../utils/share-pdf';
 
 function asList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -24,6 +27,7 @@ export default function SessionResultScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const drills = useMemo(() => session?.drills || session?.json?.drills || [], [session]);
   const sessionId = session?.id;
@@ -58,21 +62,19 @@ export default function SessionResultScreen() {
     }
   };
 
-  const onSchedule = async () => {
+  const onScheduleConfirm = async (payload: { scheduledAt: Date; durationMin: number }) => {
     if (!sessionId) return;
     setBusy('schedule');
     setError(null);
     try {
-      const when = new Date();
-      when.setDate(when.getDate() + 1);
-      when.setHours(16, 0, 0, 0);
       await createCalendarEvent({
         sessionId,
-        scheduledDate: when.toISOString(),
-        durationMin: Number(session?.durationMin) || 60,
+        scheduledDate: payload.scheduledAt.toISOString(),
+        durationMin: payload.durationMin,
         notes: session?.title || undefined,
       });
-      setStatus('Scheduled for tomorrow at 4:00 PM.');
+      setScheduleOpen(false);
+      setStatus(`Scheduled for ${payload.scheduledAt.toLocaleString()}.`);
     } catch (err) {
       setError(describeApiError(err));
     } finally {
@@ -97,6 +99,24 @@ export default function SessionResultScreen() {
       router.push({ pathname: '/player-plans/[planId]', params: { planId: result.id } });
     } catch (err) {
       setError(describeApiError(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onSharePdf = async () => {
+    if (!user?.features?.canExportPDF) {
+      Alert.alert('PDF export', 'Your plan does not include PDF export. Upgrade on the web to unlock.');
+      return;
+    }
+    setBusy('pdf');
+    setError(null);
+    try {
+      const buffer = await exportSessionPdf(sessionPayloadForPdf(session), 'full');
+      await sharePdfArrayBuffer(buffer, `session-${session?.refCode || sessionId || 'draft'}.pdf`);
+      setStatus('PDF ready to share.');
+    } catch (err) {
+      setError(describeApiError(err, 'Could not export PDF.'));
     } finally {
       setBusy(null);
     }
@@ -195,12 +215,12 @@ export default function SessionResultScreen() {
         {status ? <Text style={styles.status}>{status}</Text> : null}
 
         <Button title="Save to Vault" onPress={() => void onSave()} disabled={!sessionId} loading={busy === 'save'} />
+        <Button title="Share PDF" onPress={() => void onSharePdf()} loading={busy === 'pdf'} variant="secondary" />
         <Button title="Favorite" onPress={() => void onFavorite()} disabled={!sessionId} loading={busy === 'favorite'} variant="secondary" />
         <Button
-          title="Schedule tomorrow"
-          onPress={() => void onSchedule()}
+          title="Schedule…"
+          onPress={() => setScheduleOpen(true)}
           disabled={!sessionId || !user?.features?.canAccessCalendar}
-          loading={busy === 'schedule'}
           variant="secondary"
         />
         <Button
@@ -217,6 +237,14 @@ export default function SessionResultScreen() {
           variant="secondary"
         />
       </ScrollView>
+
+      <ScheduleSessionSheet
+        visible={scheduleOpen}
+        durationMin={Number(session?.durationMin) || 60}
+        loading={busy === 'schedule'}
+        onCancel={() => setScheduleOpen(false)}
+        onConfirm={(payload) => void onScheduleConfirm(payload)}
+      />
     </SafeAreaView>
   );
 }

@@ -48,7 +48,10 @@ export default function BoardsHomeScreen() {
         {boards.length ? (
           boards.map((board) => (
             <View key={board.id} style={styles.card}>
-              <Text style={styles.cardTitle}>{board.title || 'Untitled board'}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{board.title || 'Untitled board'}</Text>
+                {board.favorited ? <Text style={styles.star}>★</Text> : null}
+              </View>
               <Text style={styles.meta}>
                 {board.ageGroup || '--'} · {board.gameModelId || '--'}
                 {board.phase ? ` · ${board.phase}` : ''}
@@ -91,7 +94,9 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
   },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  cardTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '700' },
+  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  star: { color: colors.warning, fontSize: 18 },
   meta: { color: colors.muted, fontSize: 12 },
   row: { flexDirection: 'row', gap: 8 },
 });

@@ -67,6 +67,14 @@ export async function resetPassword(token: string, password: string): Promise<vo
   }
 }
 
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  try {
+    await api.post('/auth/password/change', { currentPassword, newPassword });
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
 export async function updateProfile(payload: Partial<Pick<CurrentUser, 'name' | 'coachLevel' | 'organizationName'>>): Promise<void> {
   try {
     await api.patch('/auth/me', payload);

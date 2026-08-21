@@ -25,6 +25,7 @@ export type BoardDetail = {
   shareMode?: string | null;
   sourceSessionId?: string | null;
   canEdit?: boolean;
+  favorited?: boolean;
   updatedAt?: string;
   createdAt?: string;
 };
@@ -50,4 +51,22 @@ export async function getBoard(boardId: string): Promise<BoardDetail> {
   } catch (error) {
     throw normalizeApiError(error);
   }
+}
+
+export async function setBoardFavorited(boardId: string, favorited: boolean): Promise<BoardDetail> {
+  try {
+    const response = await api.patch<{ ok: boolean; board: BoardDetail }>(`/boards/${encodeURIComponent(boardId)}`, {
+      favorited,
+    });
+    return response.data.board;
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
+export function extractBoardFrames(diagram: any): any[] {
+  const frames = diagram?.sequence?.frames;
+  if (Array.isArray(frames) && frames.length) return frames;
+  if (diagram && typeof diagram === 'object') return [diagram];
+  return [];
 }

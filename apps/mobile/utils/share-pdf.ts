@@ -29,7 +29,7 @@ export async function sharePdfArrayBuffer(buffer: ArrayBuffer, filename: string)
   });
   await Sharing.shareAsync(path, {
     mimeType: 'application/pdf',
-    dialogTitle: 'Share game day PDF',
+    dialogTitle: 'Share PDF',
     UTI: 'com.adobe.pdf',
   });
 }
