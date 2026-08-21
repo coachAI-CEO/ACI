@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -10,17 +10,19 @@ import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { colors } from '../../../constants/colors';
 import { useAuth } from '../../../hooks/useAuth';
 import { describeApiError } from '../../../services/api';
-import { createCalendarEvent } from '../../../services/calendar.service';
+import { createCalendarEvent, getVaultCalendarEvents } from '../../../services/calendar.service';
 import { writeSessionDetailCache } from '../../../services/offline-cache.service';
 import { exportSessionPdf, sessionPayloadForPdf } from '../../../services/pdf.service';
 import { createPlayerPlanFromSession } from '../../../services/player-plans.service';
 import { getVaultSession } from '../../../services/vault.service';
+import { formatGameModelLabel } from '../../../utils/format';
 import { extractSessionDrills } from '../../../utils/session-payload';
 import { sharePdfArrayBuffer } from '../../../utils/share-pdf';
 
 export default function VaultSessionDetailScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -33,8 +35,39 @@ export default function VaultSessionDetailScreen() {
     enabled: Boolean(sessionId),
   });
 
+  const calendarQuery = useQuery({
+    queryKey: ['vault', 'calendar-counts'],
+    queryFn: getVaultCalendarEvents,
+    enabled: Boolean(user?.features?.canAccessCalendar),
+    staleTime: 60_000,
+  });
+
   const session = query.data;
   const drills = useMemo(() => extractSessionDrills(session), [session]);
+
+  const scheduledForSession = useMemo(() => {
+    const id = session?.id;
+    if (!id) return [];
+    return (calendarQuery.data || [])
+      .filter((event) => event.sessionId === id && !event.cancelled)
+      .sort((a, b) => new Date(a.scheduledDate || 0).getTime() - new Date(b.scheduledDate || 0).getTime());
+  }, [calendarQuery.data, session?.id]);
+
+  const nextScheduledLabel = useMemo(() => {
+    const next =
+      scheduledForSession.find((event) => {
+        const when = event.scheduledDate ? new Date(event.scheduledDate) : null;
+        return when && when.getTime() >= Date.now() - 60 * 60 * 1000;
+      }) || scheduledForSession[0];
+    if (!next?.scheduledDate) return null;
+    return new Date(next.scheduledDate).toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }, [scheduledForSession]);
 
   useEffect(() => {
     if (!session || !user?.id) return;
@@ -71,6 +104,7 @@ export default function VaultSessionDetailScreen() {
       });
       setScheduleOpen(false);
       setStatus(`Scheduled for ${payload.scheduledAt.toLocaleString()}.`);
+      await queryClient.invalidateQueries({ queryKey: ['vault', 'calendar-counts'] });
     } catch (err) {
       setActionError(describeApiError(err));
     } finally {
@@ -111,14 +145,33 @@ export default function VaultSessionDetailScreen() {
     }
   };
 
+  const alreadyScheduled = scheduledForSession.length > 0;
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>{session.title || 'Vault session'}</Text>
         <Text style={styles.meta}>
-          {session.ageGroup || '--'} · {session.gameModelId || '--'} · {session.durationMin || '--'} min
+          {session.ageGroup || '--'} · {formatGameModelLabel(session.gameModelId) || '--'} ·{' '}
+          {session.durationMin || '--'} min
           {session.refCode ? ` · ${session.refCode}` : ''}
         </Text>
+
+        {alreadyScheduled ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open calendar"
+            onPress={() => router.push('/(tabs)/calendar')}
+            style={styles.calendarBanner}
+          >
+            <Text style={styles.calendarBannerTitle}>Already on your calendar</Text>
+            <Text style={styles.calendarBannerMeta}>
+              {scheduledForSession.length} scheduled
+              {nextScheduledLabel ? ` · next ${nextScheduledLabel}` : ''}
+            </Text>
+            <Text style={styles.calendarBannerLink}>View calendar</Text>
+          </Pressable>
+        ) : null}
 
         <View style={styles.block}>
           <Text style={styles.blockTitle}>Drills ({drills.length})</Text>
@@ -132,7 +185,12 @@ export default function VaultSessionDetailScreen() {
               </Pressable>
               {expandedIndex === idx ? (
                 <View style={styles.drillBody}>
-                  <StoredDrillDiagram drillId={drill?.id || drill?.refCode} height={200} />
+                  <StoredDrillDiagram
+                    key={String(drill?.id || drill?.refCode || idx)}
+                    drillId={drill?.id || drill?.refCode}
+                    svg={drill?.diagramSvg || null}
+                    height={220}
+                  />
                   <Text
                     style={styles.link}
                     onPress={() =>
@@ -157,20 +215,31 @@ export default function VaultSessionDetailScreen() {
           title="Sideline Mode"
           onPress={() => router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: session.id } })}
         />
-        <Button title="Share PDF" onPress={() => void onSharePdf()} loading={busy === 'pdf'} variant="secondary" />
-        <Button
-          title="Schedule…"
-          onPress={() => setScheduleOpen(true)}
-          disabled={!user?.features?.canAccessCalendar}
-          variant="secondary"
-        />
-        <Button
-          title="Create player plan"
-          onPress={() => void onPlayerPlan()}
-          disabled={!user?.features?.canCreatePlayerPlans}
-          loading={busy === 'plan'}
-          variant="secondary"
-        />
+        {user?.features?.canExportPDF ? (
+          <Button title="Share PDF" onPress={() => void onSharePdf()} loading={busy === 'pdf'} variant="secondary" />
+        ) : null}
+        {user?.features?.canAccessCalendar ? (
+          <Button
+            title={alreadyScheduled ? 'Schedule again…' : 'Schedule…'}
+            onPress={() => setScheduleOpen(true)}
+            variant="secondary"
+          />
+        ) : null}
+        {user?.features?.canCreatePlayerPlans ? (
+          <Button
+            title="Create player plan"
+            onPress={() => void onPlayerPlan()}
+            loading={busy === 'plan'}
+            variant="secondary"
+          />
+        ) : null}
+        {!user?.features?.canExportPDF ||
+        !user?.features?.canAccessCalendar ||
+        !user?.features?.canCreatePlayerPlans ? (
+          <Text style={styles.gateHint}>
+            More actions (PDF, calendar, player plans) are available on higher plans. Upgrade on the web.
+          </Text>
+        ) : null}
       </ScrollView>
 
       <ScheduleSessionSheet
@@ -200,6 +269,30 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: colors.muted,
+  },
+  calendarBanner: {
+    backgroundColor: 'rgba(59,130,246,0.14)',
+    borderColor: 'rgba(59,130,246,0.4)',
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    padding: 12,
+  },
+  calendarBannerTitle: {
+    color: '#93c5fd',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  calendarBannerMeta: {
+    color: '#bfdbfe',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarBannerLink: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
   },
   block: {
     backgroundColor: colors.surface,
@@ -247,5 +340,11 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  gateHint: {
+    color: colors.muted,
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: -4,
   },
 });

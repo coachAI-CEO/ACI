@@ -20,7 +20,7 @@ export default function LoginScreen() {
     setEmailError(undefined);
     setPasswordError(undefined);
 
-    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email)) {
+    if (!email.trim() || !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
       setEmailError('Enter a valid email address.');
       return;
     }

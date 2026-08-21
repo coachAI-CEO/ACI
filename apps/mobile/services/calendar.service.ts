@@ -43,6 +43,35 @@ export async function getCalendarEventsInRange(startDate: string, endDate: strin
   }
 }
 
+/** Active (non-cancelled) calendar events — wide window for vault schedule badges. */
+export async function getVaultCalendarEvents(): Promise<CalendarEventItem[]> {
+  const start = new Date();
+  start.setMonth(start.getMonth() - 2);
+  const end = new Date();
+  end.setMonth(end.getMonth() + 6);
+  try {
+    const response = await api.get<{ ok: boolean; events: CalendarEventItem[] }>('/calendar/events', {
+      params: {
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        includeCancelled: false,
+      },
+    });
+    return (response.data.events || []).filter((event) => !event.cancelled);
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
+export function countEventsBySessionId(events: CalendarEventItem[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of events) {
+    if (!event.sessionId || event.cancelled) continue;
+    counts[event.sessionId] = (counts[event.sessionId] || 0) + 1;
+  }
+  return counts;
+}
+
 export async function createCalendarEvent(payload: {
   sessionId: string;
   scheduledDate: string;

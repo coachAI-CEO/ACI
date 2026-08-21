@@ -26,7 +26,7 @@ function goBackSafe() {
 }
 
 export default function SidelineModeScreen() {
-  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
+  const { sessionId, autostart } = useLocalSearchParams<{ sessionId?: string; autostart?: string }>();
   const { user } = useAuth();
   const { isOnline } = useNetworkStatus();
   const latestSession = useGenerateStore((s) => s.latestSession) as any;
@@ -35,6 +35,7 @@ export default function SidelineModeScreen() {
   const [cachedDetail, setCachedDetail] = useState<any | null>(null);
 
   const normalizedId = sessionId && sessionId !== 'latest' ? String(sessionId) : null;
+  const shouldAutostart = autostart === '1' || autostart === 'true';
 
   useEffect(() => {
     if (!normalizedId) return;
@@ -74,6 +75,10 @@ export default function SidelineModeScreen() {
   const drills = useMemo(() => extractSessionDrills(session), [session]);
 
   useEffect(() => {
+    if (shouldAutostart) {
+      setConfirmed(true);
+      return;
+    }
     if (confirmed || !session || !drills.length) return;
 
     Alert.alert(
@@ -85,7 +90,7 @@ export default function SidelineModeScreen() {
       ],
       { cancelable: false }
     );
-  }, [confirmed, session, drills.length]);
+  }, [shouldAutostart, confirmed, session, drills.length]);
 
   if (remoteQuery.isLoading && !session) {
     return (
@@ -130,14 +135,14 @@ export default function SidelineModeScreen() {
   }
 
   return (
-    <View style={styles.fill}>
+    <SafeAreaView style={styles.fill}>
       {!isOnline ? (
         <View style={styles.offlineBanner}>
           <Text style={styles.offlineText}>Offline · using cached session</Text>
         </View>
       ) : null}
       <SidelineScreen session={session} drills={drills} />
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -25,7 +25,7 @@ export default function RegisterScreen() {
       return;
     }
 
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
       setLocalError('Enter a valid email address.');
       return;
     }

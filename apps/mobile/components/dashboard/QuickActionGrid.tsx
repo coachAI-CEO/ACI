@@ -5,6 +5,7 @@ import { colors } from '../../constants/colors';
 type QuickAction = {
   key: string;
   title: string;
+  icon: string;
   route:
     | '/(tabs)/generate'
     | '/(tabs)/video'
@@ -21,13 +22,13 @@ type Props = {
 };
 
 const BASE_ACTIONS: QuickAction[] = [
-  { key: 'session', title: 'Generate session', route: '/(tabs)/generate', enabled: true },
-  { key: 'drill', title: 'Generate drill', route: '/(tabs)/generate', enabled: true },
-  { key: 'video', title: 'Video analysis', route: '/(tabs)/video', enabled: true },
-  { key: 'calendar', title: 'Calendar', route: '/(tabs)/calendar', enabled: true },
-  { key: 'plans', title: 'Player plans', route: '/player-plans', enabled: true },
-  { key: 'coach', title: 'Coach Center', route: '/coach-center', enabled: true },
-  { key: 'boards', title: 'Boards', route: '/boards', enabled: true },
+  { key: 'session', title: 'Generate session', icon: '＋', route: '/(tabs)/generate', enabled: true },
+  { key: 'drill', title: 'Generate drill', icon: '◐', route: '/(tabs)/generate', enabled: true },
+  { key: 'video', title: 'Video analysis', icon: '▶', route: '/(tabs)/video', enabled: true },
+  { key: 'calendar', title: 'Calendar', icon: '📅', route: '/(tabs)/calendar', enabled: true },
+  { key: 'plans', title: 'Player plans', icon: '📋', route: '/player-plans', enabled: true },
+  { key: 'coach', title: 'Coach Center', icon: '🛠', route: '/coach-center', enabled: true },
+  { key: 'boards', title: 'Boards', icon: '◇', route: '/boards', enabled: true },
 ];
 
 export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Props) {
@@ -53,6 +54,7 @@ export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Pro
               { opacity: !enabled ? 0.45 : pressed ? 0.8 : 1 },
             ]}
           >
+            <Text style={styles.icon}>{action.icon}</Text>
             <Text style={styles.title}>{action.title}</Text>
           </Pressable>
         );
@@ -68,17 +70,23 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tile: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 10,
-    borderWidth: 1,
-    minHeight: 84,
-    padding: 12,
+    backgroundColor: '#151e2f',
+    borderRadius: 12,
+    gap: 6,
+    justifyContent: 'center',
+    minHeight: 72,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
     width: '48%',
+  },
+  icon: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
   },
   title: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
 });

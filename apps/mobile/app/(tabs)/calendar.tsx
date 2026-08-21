@@ -63,6 +63,7 @@ export default function CalendarTab() {
   const sessionRemindersEnabled = useNotificationsStore((s) => s.sessionRemindersEnabled);
 
   const [sessionId, setSessionId] = useState('');
+  const [sessionPickerQuery, setSessionPickerQuery] = useState('');
   const [scheduledAt, setScheduledAt] = useState(() => {
     const next = new Date();
     next.setMinutes(0, 0, 0);
@@ -110,7 +111,7 @@ export default function CalendarTab() {
 
   const recentSessionsQuery = useQuery({
     queryKey: ['calendar', 'recentSessions'],
-    queryFn: () => getVaultSessions({ limit: 5, offset: 0 }),
+    queryFn: () => getVaultSessions({ limit: 25, offset: 0 }),
     enabled: Boolean(user?.features.canAccessCalendar) && isOnline,
   });
 
@@ -125,15 +126,19 @@ export default function CalendarTab() {
     );
   }
 
-  const onPickRecentSession = () => {
-    const first = recentSessionsQuery.data?.sessions?.[0];
-    if (!first?.id) {
-      setError('No recent session found in vault.');
-      return;
-    }
-    setSessionId(first.id);
-    setError(null);
-  };
+  const filteredRecentSessions = useMemo(() => {
+    const sessions = recentSessionsQuery.data?.sessions || [];
+    const q = sessionPickerQuery.trim().toLowerCase();
+    if (!q) return sessions.slice(0, 8);
+    return sessions
+      .filter(
+        (s) =>
+          (s.title || '').toLowerCase().includes(q) ||
+          (s.refCode || '').toLowerCase().includes(q) ||
+          (s.ageGroup || '').toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [recentSessionsQuery.data, sessionPickerQuery]);
 
   const onCreateEvent = async () => {
     setError(null);
@@ -203,11 +208,39 @@ export default function CalendarTab() {
           <Text style={styles.blockTitle}>Create event</Text>
           <Input
             label="Vault session"
-            value={sessionId}
-            onChangeText={setSessionId}
-            placeholder="Session ID from vault"
+            value={sessionPickerQuery}
+            onChangeText={setSessionPickerQuery}
+            placeholder="Search title, ref code, age…"
           />
-          <Button title="Use most recent vault session" onPress={onPickRecentSession} variant="secondary" />
+          {filteredRecentSessions.length ? (
+            <View style={styles.pickerList}>
+              {filteredRecentSessions.map((s) => (
+                <Pressable
+                  key={s.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use session ${s.title}`}
+                  onPress={() => {
+                    setSessionId(s.id);
+                    setSessionPickerQuery(s.title || '');
+                    setError(null);
+                  }}
+                  style={styles.pickerItem}
+                >
+                  <Text style={styles.pickerItemTitle} numberOfLines={1}>
+                    {s.title || 'Untitled session'}
+                  </Text>
+                  <Text style={styles.pickerItemMeta} numberOfLines={1}>
+                    {s.refCode ? `${s.refCode} · ` : ''}
+                    {s.ageGroup || '--'} · {s.durationMin || '--'} min
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : sessionPickerQuery.length > 0 ? (
+            <Text style={styles.empty}>No matches in your vault.</Text>
+          ) : (
+            <Text style={styles.empty}>Start typing to search your vault.</Text>
+          )}
 
           <Text style={styles.fieldLabel}>Date & time</Text>
           <Text style={styles.schedulePreview} accessibilityLabel={`Scheduled for ${formatDate(scheduledAt.toISOString())}`}>
@@ -273,9 +306,12 @@ export default function CalendarTab() {
           {(eventsQuery.data || []).map((event: any) => (
             <View key={event.id} style={styles.eventRow}>
               <View style={styles.eventMeta}>
-                <Text style={styles.eventTitle}>{event.teamName || event.location || 'Training event'}</Text>
+                <Text style={styles.eventTitle}>
+                  {event.session?.title || event.title || event.teamName || event.location || 'Training event'}
+                </Text>
                 <Text style={styles.eventTime}>{formatDate(event.scheduledDate || event.startAt || event.date)}</Text>
-                <Text style={styles.eventTime}>{event.completed ? 'Completed' : 'Scheduled'}</Text>
+                {event.location ? <Text style={styles.eventTime}>📍 {event.location}</Text> : null}
+                {event.teamName ? <Text style={styles.eventTime}>👥 {event.teamName}</Text> : null}
                 {event.sessionId ? (
                   <Pressable
                     accessibilityRole="button"
@@ -400,6 +436,28 @@ const styles = StyleSheet.create({
     marginTop: 6,
     minHeight: 32,
     justifyContent: 'center',
+  },
+  pickerList: {
+    backgroundColor: '#15203a',
+    borderRadius: 10,
+    gap: 4,
+    marginTop: 6,
+    paddingVertical: 4,
+  },
+  pickerItem: {
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pickerItemTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pickerItemMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 1,
   },
   empty: {
     color: colors.muted,

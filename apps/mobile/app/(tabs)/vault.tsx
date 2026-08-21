@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CacheStaleIndicator } from '../../components/offline/CacheStaleIndicator';
 import { OfflineEmptyState } from '../../components/offline/OfflineEmptyState';
 import { Button } from '../../components/ui/Button';
@@ -13,6 +13,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { useOfflineVault } from '../../hooks/useOfflineVault';
 import { describeApiError } from '../../services/api';
+import {
+  countEventsBySessionId,
+  getVaultCalendarEvents,
+} from '../../services/calendar.service';
 import {
   checkFavorites,
   toggleDrillFavorite,
@@ -31,6 +35,7 @@ import {
 } from '../../services/vault.service';
 import { readVaultSessionsCache, writeVaultSessionsCache } from '../../services/offline-cache.service';
 import { useVaultStore } from '../../stores/vault.store';
+import { shouldShowGameModelInVault } from '../../utils/game-model-scope';
 
 function useDebouncedValue<T>(value: T, delay = 400): T {
   const [debounced, setDebounced] = useState(value);
@@ -39,6 +44,17 @@ function useDebouncedValue<T>(value: T, delay = 400): T {
     return () => clearTimeout(timer);
   }, [value, delay]);
   return debounced;
+}
+
+function matchesSessionFilters(
+  session: VaultSession,
+  filters: { ageGroup: string; gameModelId: string; phase: string; zone: string }
+) {
+  if (filters.ageGroup && session.ageGroup !== filters.ageGroup) return false;
+  if (filters.gameModelId && session.gameModelId !== filters.gameModelId) return false;
+  if (filters.phase && session.phase !== filters.phase) return false;
+  if (filters.zone && session.zone !== filters.zone) return false;
+  return true;
 }
 
 function Tabs({ activeTab, onChange }: { activeTab: 'sessions' | 'series' | 'drills'; onChange: (tab: 'sessions' | 'series' | 'drills') => void }) {
@@ -84,12 +100,31 @@ export default function VaultTab() {
   const [favoriteSeries, setFavoriteSeries] = useState<Record<string, boolean>>({});
   const [lookupResult, setLookupResult] = useState<string | null>(null);
 
+  const showGameModelFilter = shouldShowGameModelInVault(user);
+  const singleListModel = useMemo(() => {
+    const models = [
+      ...new Set(
+        sessionList.map((session) => session.gameModelId).filter((value): value is string => Boolean(value))
+      ),
+    ];
+    return models.length === 1 ? models[0] : null;
+  }, [sessionList]);
+  // Club-locked users never need model labels; also hide when the open list is already one model.
+  const showGameModelOnCards = showGameModelFilter && !filters.gameModelId && !singleListModel;
+
   const debouncedSearch = useDebouncedValue(filters.search, 400);
   const hasSearch = debouncedSearch.trim().length > 0;
 
   useEffect(() => {
+    if (!showGameModelFilter && filters.gameModelId) {
+      patchFilters({ gameModelId: '' });
+    }
+  }, [showGameModelFilter, filters.gameModelId, patchFilters]);
+
+  const resetFiltersAndOffset = (next: Partial<typeof filters>) => {
     setOffset(0);
-  }, [debouncedSearch, filters.ageGroup, filters.gameModelId, filters.phase, filters.zone]);
+    patchFilters(next);
+  };
 
   const sessionsQuery = useQuery({
     queryKey: ['vault', 'sessions', offset, debouncedSearch, filters.ageGroup, filters.gameModelId, filters.phase, filters.zone],
@@ -118,6 +153,8 @@ export default function VaultTab() {
       });
     },
     enabled: isOnline,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const seriesQuery = useQuery({
@@ -125,6 +162,35 @@ export default function VaultTab() {
     queryFn: getVaultSeries,
     enabled: activeTab === 'series' && isOnline,
   });
+
+  const calendarQuery = useQuery({
+    queryKey: ['vault', 'calendar-counts'],
+    queryFn: getVaultCalendarEvents,
+    enabled: isOnline && Boolean(user?.features?.canAccessCalendar),
+    staleTime: 60_000,
+  });
+
+  const sessionCalendarCounts = useMemo(
+    () => countEventsBySessionId(calendarQuery.data || []),
+    [calendarQuery.data]
+  );
+
+  const seriesCalendarStats = useMemo(() => {
+    const totalCounts: Record<string, number> = {};
+    const scheduledParts: Record<string, number> = {};
+    for (const entry of seriesQuery.data || []) {
+      let total = 0;
+      let partsScheduled = 0;
+      for (const session of entry.sessions || []) {
+        const sessionCount = sessionCalendarCounts[session.id] || 0;
+        total += sessionCount;
+        if (sessionCount > 0) partsScheduled += 1;
+      }
+      if (total > 0) totalCounts[entry.seriesId] = total;
+      if (partsScheduled > 0) scheduledParts[entry.seriesId] = partsScheduled;
+    }
+    return { totalCounts, scheduledParts };
+  }, [seriesQuery.data, sessionCalendarCounts]);
 
   useEffect(() => {
     const incoming = sessionsQuery.data?.sessions || [];
@@ -193,20 +259,39 @@ export default function VaultTab() {
     });
   }, [seriesQuery.data, filters.ageGroup, filters.gameModelId, hasSearch, debouncedSearch]);
 
+  // Show matching cards immediately while the server catch-up request is in flight.
+  const displayedSessions = useMemo(() => {
+    if (!sessionsQuery.isFetching || !sessionsQuery.isPlaceholderData) {
+      return sessionList;
+    }
+    return sessionList.filter((session) => matchesSessionFilters(session, filters));
+  }, [sessionList, sessionsQuery.isFetching, sessionsQuery.isPlaceholderData, filters]);
+
+  const displayedDrills = useMemo<VaultDrillLite[]>(() => {
+    if (!sessionsQuery.isFetching || !sessionsQuery.isPlaceholderData) {
+      return drills;
+    }
+    return deriveDrillsFromSessions(displayedSessions);
+  }, [drills, displayedSessions, sessionsQuery.isFetching, sessionsQuery.isPlaceholderData]);
+
   useEffect(() => {
-    const syncFavorites = async () => {
-      const sessionIds = sessionList.map((item) => item.id).filter(Boolean) as string[];
-      const seriesIds = (seriesQuery.data || []).map((entry) => entry.seriesId).filter(Boolean);
-      const drillIds = drills.map((item) => item.refCode || item.id).filter(Boolean);
+    const timer = setTimeout(() => {
+      const syncFavorites = async () => {
+        const sessionIds = displayedSessions.map((item) => item.id).filter(Boolean) as string[];
+        const seriesIds = (seriesQuery.data || []).map((entry) => entry.seriesId).filter(Boolean);
+        const drillIds = displayedDrills.map((item) => item.refCode || item.id).filter(Boolean);
+        if (!sessionIds.length && !seriesIds.length && !drillIds.length) return;
 
-      const payload = await checkFavorites({ sessionIds, seriesIds, drillIds });
-      setFavoriteSessions(payload.sessions || {});
-      setFavoriteDrills(payload.drills || {});
-      setFavoriteSeries(payload.series || {});
-    };
+        const payload = await checkFavorites({ sessionIds, seriesIds, drillIds });
+        setFavoriteSessions(payload.sessions || {});
+        setFavoriteDrills(payload.drills || {});
+        setFavoriteSeries(payload.series || {});
+      };
 
-    syncFavorites().catch(() => undefined);
-  }, [sessionList, seriesQuery.data, drills]);
+      syncFavorites().catch(() => undefined);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [displayedSessions, seriesQuery.data, displayedDrills]);
 
   const onLookup = async () => {
     const value = filters.search.trim();
@@ -223,7 +308,7 @@ export default function VaultTab() {
   };
 
   const onRefresh = async () => {
-    await Promise.all([sessionsQuery.refetch(), seriesQuery.refetch()]);
+    await Promise.all([sessionsQuery.refetch(), seriesQuery.refetch(), calendarQuery.refetch()]);
   };
 
   const onLoadMoreSessions = () => {
@@ -266,9 +351,14 @@ export default function VaultTab() {
     }
   };
 
-  const isLoading = sessionsQuery.isLoading || (activeTab === 'series' && seriesQuery.isLoading);
+  const isInitialLoading =
+    (isOnline && sessionsQuery.isPending && !sessionsQuery.data && !sessionList.length) ||
+    (activeTab === 'series' && seriesQuery.isPending && !seriesQuery.data);
 
-  if (isLoading) {
+  const isFilterUpdating =
+    sessionsQuery.isFetching && Boolean(sessionsQuery.isPlaceholderData) && !sessionsQuery.isRefetching;
+
+  if (isInitialLoading) {
     return (
       <SafeAreaView style={styles.safe}>
         <LoadingSpinner />
@@ -280,7 +370,13 @@ export default function VaultTab() {
     <SafeAreaView style={styles.safe}>
       <ScrollView
         contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={sessionsQuery.isRefetching || seriesQuery.isRefetching} onRefresh={onRefresh} tintColor={colors.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={sessionsQuery.isRefetching && !sessionsQuery.isPlaceholderData}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.headerRow}>
           <Text style={styles.title}>Vault</Text>
@@ -301,28 +397,42 @@ export default function VaultTab() {
 
         <VaultFilterBar
           search={filters.search}
-          onSearchChange={(search) => patchFilters({ search })}
+          onSearchChange={(search) => {
+            resetFiltersAndOffset({ search });
+            setLookupResult(null);
+          }}
           ageGroup={filters.ageGroup}
-          onAgeGroupChange={(ageGroup) => patchFilters({ ageGroup })}
+          onAgeGroupChange={(ageGroup) => resetFiltersAndOffset({ ageGroup })}
           gameModelId={filters.gameModelId}
-          onGameModelIdChange={(gameModelId) => patchFilters({ gameModelId })}
+          onGameModelIdChange={(gameModelId) => resetFiltersAndOffset({ gameModelId })}
+          showGameModelFilter={showGameModelFilter}
+          onRefLookup={() => void onLookup()}
+          onClearFilters={() => {
+            setOffset(0);
+            clearFilters();
+            setLookupResult(null);
+          }}
         />
 
-        <View style={styles.actionRow}>
-          <Button title="Ref Lookup" onPress={() => void onLookup()} variant="secondary" />
-          <Button title="Clear Filters" onPress={clearFilters} variant="secondary" />
-        </View>
+        {isFilterUpdating ? (
+          <View style={styles.updatingRow}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.updatingText}>Updating…</Text>
+          </View>
+        ) : null}
 
         {lookupResult ? <Text style={styles.lookupText}>{lookupResult}</Text> : null}
 
         {activeTab === 'sessions' ? (
-          <View style={styles.listWrap}>
-            {sessionList.map((session) => (
+          <View style={[styles.listWrap, isFilterUpdating ? styles.listUpdating : null]}>
+            {displayedSessions.map((session) => (
               <SessionCard
                 key={session.id}
                 session={session}
                 isFavorited={Boolean(favoriteSessions[session.id])}
                 onToggleFavorite={() => void toggleSession(session.id)}
+                showGameModel={showGameModelOnCards}
+                calendarCount={sessionCalendarCounts[session.id] || 0}
                 onPress={() =>
                   router.push({ pathname: '/vault/session/[sessionId]', params: { sessionId: session.id } })
                 }
@@ -331,9 +441,14 @@ export default function VaultTab() {
             {sessionsQuery.error ? (
               <Text style={styles.empty}>{describeApiError(sessionsQuery.error)}</Text>
             ) : null}
-            {!sessionList.length && !isOnline ? <OfflineEmptyState /> : null}
-            {!sessionList.length && isOnline ? <Text style={styles.empty}>No sessions found.</Text> : null}
-            {!hasSearch && sessionsQuery.data && sessionList.length < (sessionsQuery.data.total || 0) ? (
+            {!displayedSessions.length && !isOnline ? <OfflineEmptyState /> : null}
+            {!displayedSessions.length && isOnline && !isFilterUpdating ? (
+              <Text style={styles.empty}>No sessions found.</Text>
+            ) : null}
+            {!hasSearch &&
+            sessionsQuery.data &&
+            !sessionsQuery.isPlaceholderData &&
+            sessionList.length < (sessionsQuery.data.total || 0) ? (
               <Button title="Load More" onPress={onLoadMoreSessions} variant="secondary" />
             ) : null}
           </View>
@@ -347,6 +462,9 @@ export default function VaultTab() {
                 series={entry}
                 isFavorited={Boolean(favoriteSeries[entry.seriesId])}
                 onToggleFavorite={() => void toggleSeries(entry.seriesId)}
+                showGameModel={showGameModelOnCards}
+                calendarCount={seriesCalendarStats.totalCounts[entry.seriesId] || 0}
+                scheduledParts={seriesCalendarStats.scheduledParts[entry.seriesId] || 0}
                 onPress={() =>
                   router.push({
                     pathname: '/vault/series/[seriesId]',
@@ -360,8 +478,8 @@ export default function VaultTab() {
         ) : null}
 
         {activeTab === 'drills' ? (
-          <View style={styles.listWrap}>
-            {drills.map((drill) => (
+          <View style={[styles.listWrap, isFilterUpdating ? styles.listUpdating : null]}>
+            {displayedDrills.map((drill) => (
               <DrillCard
                 key={drill.refCode}
                 drill={drill}
@@ -369,7 +487,7 @@ export default function VaultTab() {
                 onToggleFavorite={() => void toggleDrill(drill.refCode)}
               />
             ))}
-            {!drills.length ? <Text style={styles.empty}>No drills found in cached sessions.</Text> : null}
+            {!displayedDrills.length ? <Text style={styles.empty}>No drills found in cached sessions.</Text> : null}
           </View>
         ) : null}
       </ScrollView>
@@ -432,17 +550,26 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '700',
   },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
   lookupText: {
     color: colors.primary,
     fontSize: 12,
     fontWeight: '600',
   },
+  updatingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  updatingText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
   listWrap: {
     gap: 10,
+  },
+  listUpdating: {
+    opacity: 0.72,
   },
   empty: {
     color: colors.muted,

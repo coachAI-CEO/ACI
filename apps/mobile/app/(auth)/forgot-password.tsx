@@ -17,7 +17,7 @@ export default function ForgotPasswordScreen() {
     setError(null);
     setMessage(null);
 
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
       setError('Enter a valid email address.');
       return;
     }
