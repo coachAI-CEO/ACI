@@ -1,8 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { Linking, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/ui/Badge';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { WebOnlyNotice } from '../../components/ui/WebOnlyNotice';
@@ -11,16 +10,11 @@ import { RecentVaultItem } from '../../components/dashboard/RecentVaultItem';
 import { UpcomingEventItem } from '../../components/dashboard/UpcomingEventItem';
 import { UsageBar } from '../../components/dashboard/UsageBar';
 import { colors } from '../../constants/colors';
-import { webPath } from '../../constants/web';
 import { useAuth } from '../../hooks/useAuth';
 import { useUsage } from '../../hooks/useUsage';
 import { getUpcomingEvents } from '../../services/calendar.service';
 import { getRecentVaultSessions } from '../../services/vault.service';
 
-function nearLimit(used: number, limit: number): boolean {
-  if (!Number.isFinite(limit) || limit <= 0) return false;
-  return used / limit >= 0.85;
-}
 
 function coachFirstName(name?: string | null): string {
   const raw = (name || 'Coach').trim();
@@ -59,11 +53,6 @@ export default function HomeTab() {
   const drillsUsed = usageQuery.data?.drills.used || 0;
   const drillsLimit = usageQuery.data?.drills.limit || 0;
   const plan = String(user?.subscriptionPlan || 'FREE').toUpperCase();
-  const showUpgrade =
-    plan === 'FREE' ||
-    plan === 'TRIAL' ||
-    nearLimit(sessionsUsed, sessionsLimit) ||
-    nearLimit(drillsUsed, drillsLimit);
 
   const firstName = coachFirstName(user?.name);
   const greeting = greetingForHour(new Date().getHours());
@@ -167,12 +156,6 @@ export default function HomeTab() {
               </View>
             )}
           </View>
-          {showUpgrade ? (
-            <View style={styles.upgradeWrap}>
-              <Text style={styles.upgradeCopy}>Need more sessions or PDF export? Upgrade in the browser.</Text>
-              <Button title="Upgrade on web" onPress={() => void Linking.openURL(webPath('/pricing'))} />
-            </View>
-          ) : null}
         </Card>
 
         <View>
@@ -290,15 +273,6 @@ const styles = StyleSheet.create({
   },
   gap: {
     gap: 14,
-  },
-  upgradeWrap: {
-    gap: 10,
-    marginTop: 14,
-  },
-  upgradeCopy: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
   },
   rowBetween: {
     alignItems: 'center',

@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings — TacticalEdge Mobile (mock v2)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --surface: #121a2a;
+      --surface-2: #172033;
+      --border: #1f2a3f;
+      --border-soft: #162033;
+      --text: #f8fafc;
+      --muted: #9ca3af;
+      --primary: #22c55e;
+      --primary-dim: #14381f;
+      --amber: #fbbf24;
+      --amber-bg: #3d2a0c;
+      --danger: #ef4444;
+      --shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 360px) minmax(360px, 420px) minmax(320px, 360px);
+      gap: 24px;
+      padding: 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+      align-items: start;
+    }
+    .pane { display: flex; flex-direction: column; gap: 8px; }
+    .pane h2 {
+      margin: 0 0 4px 4px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .frame {
+      width: 100%;
+      aspect-ratio: 9 / 19.5;
+      background: var(--bg);
+      border-radius: 38px;
+      border: 8px solid #050a14;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      position: relative;
+    }
+    .notch {
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 110px;
+      height: 26px;
+      background: #050a14;
+      border-radius: 14px;
+      z-index: 2;
+    }
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .screen.active { display: flex; }
+    .scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      scrollbar-width: thin;
+    }
+    .scroll::-webkit-scrollbar { width: 4px; }
+    .scroll::-webkit-scrollbar-thumb { background: #1f2a3f; border-radius: 4px; }
+
+    /* ---- Topbar ---- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px 4px;
+      min-height: 28px;
+    }
+    .topbar .pill {
+      flex: 1;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .topbar .btn-tiny {
+      color: var(--primary);
+      font-size: 14px;
+      font-weight: 700;
+      min-width: 38px;
+    }
+    .topbar .btn-tiny.muted { color: var(--muted); }
+
+    /* ---- Hero (denser, single row of badges) ---- */
+    .hero {
+      background: linear-gradient(180deg, #172033 0%, #131c2e 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .hero-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hero-eyebrow {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .hero-name {
+      color: var(--text);
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      line-height: 24px;
+    }
+    .hero-email {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .badge {
+      align-self: flex-start;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .badge-default { background: var(--primary-dim); color: var(--primary); }
+    .badge-amber { background: var(--amber-bg); color: var(--amber); }
+    .badge-muted { background: #1f2a3f; color: var(--muted); }
+
+    /* ---- Section + card ---- */
+    .section-title {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      padding: 6px 4px 2px;
+      text-transform: uppercase;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    /* ---- Row ---- */
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      padding: 8px 12px;
+    }
+    .row.compact { min-height: 32px; padding: 6px 12px; }
+    .row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0; }
+    .row-label {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-label.danger { color: var(--danger); }
+    .row-label.small { font-size: 13px; }
+    .row-sub {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .row-trailing {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      max-width: 130px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .chevron {
+      color: #4b5b7a;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .divider {
+      height: 1px;
+      background: var(--border-soft);
+      margin-left: 12px;
+    }
+
+    /* ---- Inputs ---- */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 8px 10px;
+    }
+    .form-grid.one { grid-template-columns: 1fr; }
+    .input { display: flex; flex-direction: column; gap: 3px; }
+    .input label { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.2px; }
+    .input .field {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 7px 10px;
+      color: var(--text);
+      font-size: 14px;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+    }
+    .input .field.muted { color: var(--muted); }
+
+    /* ---- Buttons ---- */
+    .actions {
+      padding: 8px 10px 10px;
+      display: flex;
+      gap: 8px;
+    }
+    .btn {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid #1d5430;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .btn.danger { color: var(--danger); border-color: #5a1b1b; }
+    .btn.subtle { color: var(--muted); border-color: var(--border); }
+    .btn.primary { background: var(--primary); color: #03150a; border-color: var(--primary); }
+    .btn.primary.danger { background: var(--danger); color: #1a0606; border-color: var(--danger); }
+
+    /* ---- Usage ---- */
+    .usage {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 10px 12px;
+    }
+    .usage-row { display: flex; flex-direction: column; gap: 4px; }
+    .usage-row .top {
+      display: flex; justify-content: space-between;
+      font-size: 11px; font-weight: 700; color: var(--muted);
+    }
+    .usage-row .num { color: var(--text); }
+    .bar { background: #0a1426; height: 6px; border-radius: 3px; overflow: hidden; }
+    .bar .fill { background: var(--primary); height: 100%; }
+    .bar .fill.warn { background: var(--amber); }
+
+    /* ---- Inline notice ---- */
+    .notice {
+      background: #10243b;
+      border: 1px solid #1d3556;
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+    }
+    .notice .body { flex: 1; }
+    .notice .t { font-size: 12px; font-weight: 700; color: #93c5fd; }
+    .notice .b { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .notice .link {
+      color: #93c5fd;
+      font-weight: 700;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    /* Upgrade prompt */
+    .upgrade {
+      align-items: center;
+      background: #0e2a1d;
+      border-bottom: 1px solid #1f2a3f;
+      border-top: 1px solid #1d5430;
+      flex-direction: row;
+      gap: 10px;
+      padding: 12px;
+    }
+    .upgrade .upgrade-body { flex: 1; min-width: 0; }
+    .upgrade .t { color: var(--text); font-size: 13px; font-weight: 700; }
+    .upgrade .b { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 16px; margin-top: 2px; }
+    .upgrade .btn { flex: 0 0 auto; min-width: 92px; padding: 8px 12px; }
+
+    /* ---- Tabbar ---- */
+    .tabbar {
+      display: flex;
+      background: #050a14;
+      border-top: 1px solid #111c30;
+      padding: 6px 4px 12px;
+      gap: 4px;
+      justify-content: space-around;
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+    }
+    .tab .ico { font-size: 16px; }
+    .tab.active { color: var(--primary); }
+
+    /* ---- Inline link / link inside row ---- */
+    .row.link {
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .row.link:hover { background: #1c2740; }
+
+    /* ---- 2-col responsive helpers ---- */
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- Home -->
+  <div class="pane">
+    <h2>Home (v2 — denser)</h2>
+    <div class="frame">
+      <div class="notch"></div>
+      <div class="screen active" id="screen-home">
+        <div class="topbar"><div class="pill"></div><div class="pill">10:24</div><div class="pill"></div></div>
+        <div class="scroll">
+
+          <!-- Compact greeting -->
+          <div class="hero">
+            <div class="hero-row">
+              <div>
+                <div class="hero-eyebrow">Good training day,</div>
+                <div class="hero-name">Coach Leo</div>
+              </div>
+              <div class="badge badge-amber">Super admin</div>
+            </div>
+            <div class="hero-email">leo@rocklinfc.org · Rocklin FC · Trial</div>
+          </div>
+
+          <!-- Usage as 2-col mini bars (read-only on Home) -->
+          <div>
+            <div class="section-title">Usage</div>
+            <div class="card">
+              <div class="usage">
+                <div class="usage-row">
+                  <div class="top"><span>Sessions</span><span class="num">3 / 10</span></div>
+                  <div class="bar"><div class="fill" style="width: 30%;"></div></div>
+                </div>
+                <div class="usage-row">
+                  <div class="top"><span>Drills</span><span class="num">12 / 50</span></div>
+                  <div class="bar"><div class="fill" style="width: 24%;"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick actions, 3 cols x 2 rows -->
+          <div>
+            <div class="section-title">Quick actions</div>
+            <div class="card">
+              <div class="two">
+                <div class="row link"><div class="row-text"><div class="row-label small">＋ Generate session</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">◐ Generate drill</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">▶ Video analysis</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">📅 Calendar</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Recent vault, 3 cols -->
+          <div>
+            <div class="section-title">Recent vault</div>
+            <div class="card">
+              <div class="row link"><div class="row-text"><div class="row-label small">Rondo 4v2 keepaway</div><div class="row-sub">U10 · Coerver II · 15m</div></div><div class="chevron">›</div></div>
+              <div class="divider"></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">3-zone possession</div><div class="row-sub">U12 · 9v9 · 60m</div></div><div class="chevron">›</div></div>
+              <div class="divider"></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">Press-trigger rotation</div><div class="row-sub">U15 · 11v11 · 75m</div></div><div class="chevron">›</div></div>
+            </div>
+          </div>
+
+        </div>
+        <div class="tabbar">
+          <div class="tab active"><div class="ico">⌂</div>Home</div>
+          <div class="tab"><div class="ico">＋</div>Generate</div>
+          <div class="tab"><div class="ico">⛁</div>Vault</div>
+          <div class="tab"><div class="ico">▶</div>Video</div>
+          <div class="tab"><div class="ico">📅</div>Calendar</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="pane">
+    <h2>Settings (v2 — denser)</h2>
+    <div class="frame">
+      <div class="notch"></div>
+      <div class="screen active" id="screen-settings">
+        <div class="topbar">
+          <div class="btn-tiny" onclick="show('home')">‹ Back</div>
+          <div class="pill">Settings</div>
+          <div class="btn-tiny muted">›</div>
+        </div>
+
+        <div class="scroll">
+
+          <!-- HERO: name on left, primary badge on right -->
+          <div class="hero">
+            <div class="hero-row">
+              <div>
+                <div class="hero-eyebrow">Signed in as</div>
+                <div class="hero-name">Leo</div>
+              </div>
+              <div class="badge badge-amber">Super admin</div>
+            </div>
+            <div class="hero-email">leo@rocklinfc.org · Rocklin FC · Trial</div>
+          </div>
+
+          <!-- ACCOUNT + USAGE on one card to save real estate -->
+          <div>
+            <div class="section-title">Account</div>
+            <div class="card">
+              <div class="row compact link"><div class="row-text"><div class="row-label small">Name</div></div><div class="row-trailing">Leo</div></div>
+              <div class="divider"></div>
+              <div class="row compact link"><div class="row-text"><div class="row-label small">Email</div></div><div class="row-trailing">leo@rocklinfc.org</div></div>
+              <div class="divider"></div>
+              <div class="row compact link"><div class="row-text"><div class="row-label small">Coach level</div></div><div class="row-trailing">D</div></div>
+              <div class="divider"></div>
+              <div class="row compact link"><div class="row-text"><div class="row-label small">Club game model</div></div><div class="row-trailing">Rocklin FC 9v9</div></div>
+            </div>
+          </div>
+
+          <!-- PLAN + USAGE side-by-side -->
+          <div>
+            <div class="section-title">Plan & usage</div>
+            <div class="card">
+              <!-- Upgrade prompt now lives here -->
+              <div class="upgrade">
+                <div class="upgrade-body">
+                  <div class="t">Upgrade your plan</div>
+                  <div class="b">You're on Trial. Unlock PDF export, calendar, and player plans.</div>
+                </div>
+                <div class="btn primary">Upgrade</div>
+              </div>
+              <div class="usage">
+                <div class="usage-row">
+                  <div class="top"><span>Sessions</span><span class="num">3 / 10</span></div>
+                  <div class="bar"><div class="fill" style="width: 30%;"></div></div>
+                </div>
+                <div class="usage-row">
+                  <div class="top"><span>Drills</span><span class="num">12 / 50</span></div>
+                  <div class="bar"><div class="fill" style="width: 24%;"></div></div>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="row link" onclick="show('billing')">
+                <div class="row-text"><div class="row-label small">Manage billing</div><div class="row-sub">Card · cancel · invoices</div></div>
+                <div class="chevron">›</div>
+              </div>
+              <div class="divider"></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">See all plans</div></div><div class="chevron">›</div></div>
+            </div>
+          </div>
+
+          <!-- SECURITY in compact 2-col grid -->
+          <div>
+            <div class="section-title">Security</div>
+            <div class="card">
+              <div class="form-grid">
+                <div class="input" style="grid-column: 1 / -1;">
+                  <label>Current password</label>
+                  <div class="field">••••••••</div>
+                </div>
+                <div class="input">
+                  <label>New password</label>
+                  <div class="field">••••••••</div>
+                </div>
+                <div class="input">
+                  <label>Confirm</label>
+                  <div class="field">••••••••</div>
+                </div>
+              </div>
+              <div class="actions">
+                <div class="btn subtle">Update</div>
+                <div class="btn primary">Save</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TOOLS in 2-col grid -->
+          <div>
+            <div class="section-title">Tools</div>
+            <div class="card">
+              <div class="two">
+                <div class="row link" onclick="show('coach-center')"><div class="row-text"><div class="row-label small">🛠 Coach Center</div><div class="row-sub">Sessions · teams</div></div></div>
+                <div class="row link" onclick="show('boards')"><div class="row-text"><div class="row-label small">◇ Boards</div><div class="row-sub">Plays</div></div></div>
+                <div class="row link" onclick="show('notifications')"><div class="row-text"><div class="row-label small">🔔 Notifications</div><div class="row-sub">Reminders</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">🌐 Web app</div><div class="row-sub">Doc Hub · admin</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inline notice (compact) -->
+          <div class="notice">
+            <div class="body">
+              <div class="t">Doc Hub & admin — web only</div>
+              <div class="b">Use Safari for full authoring tools.</div>
+            </div>
+            <div class="link">Open ›</div>
+          </div>
+
+          <!-- Sign out -->
+          <div class="actions" style="padding-top: 0;">
+            <div class="btn danger" onclick="if(confirm('Sign out?'))show('home')">Sign out</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Billing deep-link -->
+      <div class="screen" id="screen-billing">
+        <div class="topbar">
+          <div class="btn-tiny" onclick="show('settings')">‹ Settings</div>
+          <div class="pill">Billing</div>
+          <div class="btn-tiny muted"></div>
+        </div>
+        <div class="scroll">
+          <div class="notice">
+            <div class="body">
+              <div class="t">Manage on the web</div>
+              <div class="b">Billing needs a secure browser session. Opens Safari.</div>
+            </div>
+            <div class="link">Open ›</div>
+          </div>
+          <div class="card">
+            <div class="row compact link"><div class="row-text"><div class="row-label small">Plan</div></div><div class="row-trailing">Trial · 7 days</div></div>
+            <div class="divider"></div>
+            <div class="row compact link"><div class="row-text"><div class="row-label small">Renewal date</div></div><div class="row-trailing">Aug 28, 2026</div></div>
+            <div class="divider"></div>
+            <div class="row compact link"><div class="row-text"><div class="row-label small">Saved card</div></div><div class="row-trailing">Visa •••• 4242</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coach Center -->
+      <div class="screen" id="screen-coach-center">
+        <div class="topbar">
+          <div class="btn-tiny" onclick="show('settings')">‹ Settings</div>
+          <div class="pill">Coach Center</div>
+          <div class="btn-tiny muted"></div>
+        </div>
+        <div class="scroll">
+          <div class="section-title">Teams · 3</div>
+          <div class="card">
+            <div class="two">
+              <div class="row link"><div class="row-text"><div class="row-label small">U10 G Int.</div><div class="row-sub">Rocklin · 7v7</div></div></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">U12 B Sel.</div><div class="row-sub">Rocklin · 9v9</div></div></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">U15 B Prem.</div><div class="row-sub">Rocklin · 11v11</div></div></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">＋ Add team</div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Boards -->
+      <div class="screen" id="screen-boards">
+        <div class="topbar">
+          <div class="btn-tiny" onclick="show('settings')">‹ Settings</div>
+          <div class="pill">Boards</div>
+          <div class="btn-tiny muted"></div>
+        </div>
+        <div class="scroll">
+          <div class="section-title">Recent</div>
+          <div class="card">
+            <div class="row link"><div class="row-text"><div class="row-label small">Half-space overload</div><div class="row-sub">3 cones · 2 players</div></div><div class="chevron">›</div></div>
+            <div class="divider"></div>
+            <div class="row link"><div class="row-text"><div class="row-label small">Press-trigger rotation</div><div class="row-sub">5 players</div></div><div class="chevron">›</div></div>
+          </div>
+          <div class="notice">
+            <div class="body">
+              <div class="t">Full editor on web</div>
+              <div class="b">Mobile is read-only in v1.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="screen" id="screen-notifications">
+        <div class="topbar">
+          <div class="btn-tiny" onclick="show('settings')">‹ Settings</div>
+          <div class="pill">Notifications</div>
+          <div class="btn-tiny muted"></div>
+        </div>
+        <div class="scroll">
+          <div class="card">
+            <div class="row">
+              <div class="row-text"><div class="row-label small">Session reminders</div><div class="row-sub">30 min before</div></div>
+              <div class="seg-btn on">On</div>
+            </div>
+            <div class="divider"></div>
+            <div class="row">
+              <div class="row-text"><div class="row-label small">Weekly summary ready</div><div class="row-sub">Sundays · 6pm</div></div>
+              <div class="seg-btn">Off</div>
+            </div>
+            <div class="divider"></div>
+            <div class="row">
+              <div class="row-text"><div class="row-label small">Favorited drills updated</div><div class="row-sub">Quiet · batched</div></div>
+              <div class="seg-btn">Off</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabbar">
+        <div class="tab active"><div class="ico">⌂</div>Home</div>
+        <div class="tab"><div class="ico">＋</div>Generate</div>
+        <div class="tab"><div class="ico">⛁</div>Vault</div>
+        <div class="tab"><div class="ico">▶</div>Video</div>
+        <div class="tab"><div class="ico">📅</div>Calendar</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Persona -->
+  <div class="pane">
+    <h2>Coach persona (v2 — same density)</h2>
+    <div class="frame">
+      <div class="notch"></div>
+      <div class="screen active">
+        <div class="topbar"><div class="btn-tiny muted"></div><div class="pill">Settings</div><div class="btn-tiny muted">›</div></div>
+        <div class="scroll">
+
+          <div class="hero">
+            <div class="hero-row">
+              <div>
+                <div class="hero-eyebrow">Signed in as</div>
+                <div class="hero-name">Coach Alvarez</div>
+              </div>
+              <div class="badge badge-default">Club Std.</div>
+            </div>
+            <div class="hero-email">9v9.coach@rocklinfc.org · Rocklin FC</div>
+          </div>
+
+          <div>
+            <div class="section-title">Account</div>
+            <div class="card">
+              <div class="row compact"><div class="row-text"><div class="row-label small">Name</div></div><div class="row-trailing">Alvarez</div></div>
+              <div class="divider"></div>
+              <div class="row compact"><div class="row-text"><div class="row-label small">Email</div></div><div class="row-trailing">9v9.coach@…</div></div>
+              <div class="divider"></div>
+              <div class="row compact"><div class="row-text"><div class="row-label small">Coach level</div></div><div class="row-trailing">D</div></div>
+              <div class="divider"></div>
+              <div class="row compact"><div class="row-text"><div class="row-label small">Club game model</div></div><div class="row-trailing">Rocklin FC 9v9</div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-title">Plan & usage</div>
+            <div class="card">
+              <div class="upgrade">
+                <div class="upgrade-body">
+                  <div class="t">You’re near your limits</div>
+                  <div class="b">Need more sessions or drills? Upgrade on the web for higher limits.</div>
+                </div>
+                <div class="btn primary">Upgrade</div>
+              </div>
+              <div class="usage">
+                <div class="usage-row">
+                  <div class="top"><span>Sessions</span><span class="num">42 / 50</span></div>
+                  <div class="bar"><div class="fill warn" style="width: 84%;"></div></div>
+                </div>
+                <div class="usage-row">
+                  <div class="top"><span>Drills</span><span class="num">210 / 250</span></div>
+                  <div class="bar"><div class="fill warn" style="width: 84%;"></div></div>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">Manage billing</div><div class="row-sub">Card · cancel · invoices</div></div><div class="chevron">›</div></div>
+              <div class="divider"></div>
+              <div class="row link"><div class="row-text"><div class="row-label small">See all plans</div></div><div class="chevron">›</div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-title">Security</div>
+            <div class="card">
+              <div class="form-grid">
+                <div class="input" style="grid-column: 1 / -1;"><label>Current</label><div class="field">••••••••</div></div>
+                <div class="input"><label>New</label><div class="field">••••••••</div></div>
+                <div class="input"><label>Confirm</label><div class="field">••••••••</div></div>
+              </div>
+              <div class="actions"><div class="btn subtle">Update</div><div class="btn primary">Save</div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-title">Tools</div>
+            <div class="card">
+              <div class="two">
+                <div class="row link"><div class="row-text"><div class="row-label small">🛠 Coach Center</div><div class="row-sub">3 teams</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">◇ Boards</div><div class="row-sub">12</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">🔔 Notifications</div></div></div>
+                <div class="row link"><div class="row-text"><div class="row-label small">🌐 Web app</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions" style="padding-top: 0;">
+            <div class="btn danger">Sign out</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function show(id) {
+    const ids = ['home', 'settings', 'billing', 'coach-center', 'boards', 'notifications']
+      .map((x) => `screen-${x}`);
+    document.querySelectorAll('.frame').forEach((frame, idx) => {
+      if (idx !== 1) return; // only middle frame owns the sub-screens
+      frame.querySelectorAll('.screen').forEach((s) => {
+        s.classList.toggle('active', s.id === `screen-${id}`);
+      });
+    });
+    // Persona frame (right) is independent — keep its own screen visible
+    const persona = document.querySelectorAll('.frame')[2];
+    if (persona) {
+      persona.querySelectorAll('.screen').forEach((s) => s.classList.add('active'));
+    }
+  }
+</script>
+
+</body>
+</html>

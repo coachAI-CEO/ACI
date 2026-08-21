@@ -226,6 +226,21 @@ export default function SettingsScreen() {
 
         {/* Plan + usage in one card */}
         <Section title="Plan & usage">
+          {isLimitedPlan || sessionsUsed / Math.max(sessionsLimit, 1) >= 0.85 || drillsUsed / Math.max(drillsLimit, 1) >= 0.85 ? (
+            <View style={styles.upgradeCard}>
+              <View style={styles.upgradeBody}>
+                <Text style={styles.upgradeTitle}>
+                  {isLimitedPlan ? 'Upgrade your plan' : 'You\u2019re near your limits'}
+                </Text>
+                <Text style={styles.upgradeCopy} numberOfLines={2}>
+                  {isLimitedPlan
+                    ? `You\u2019re on ${planLabel}. Unlock PDF export, calendar, and player plans.`
+                    : 'Need more sessions or drills? Upgrade on the web for higher limits.'}
+                </Text>
+              </View>
+              <Button title="Upgrade" onPress={() => void openUpgradePricing()} />
+            </View>
+          ) : null}
           <View style={styles.usageGrid}>
             <View style={styles.usageCell}>
               <UsageBar label="Sessions" used={sessionsUsed} limit={sessionsLimit} />
@@ -237,11 +252,11 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
           <Row
             label="Manage billing"
-            sub={isLimitedPlan ? 'Upgrade to unlock the full feature set' : 'Card · cancel · invoices'}
+            sub={isLimitedPlan ? 'Card · cancel · invoices' : 'Card · cancel · invoices'}
             onPress={() => void onManageBilling()}
           />
           <View style={styles.divider} />
-          <Row label="Upgrade / pricing" onPress={() => void openUpgradePricing()} />
+          <Row label="See all plans" onPress={() => void openUpgradePricing()} />
           {billingError ? (
             <View style={styles.errorWrap}>
               <ErrorMessage message={billingError} />
@@ -465,5 +480,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingHorizontal: 12,
     paddingVertical: 6,
+  },
+  upgradeCard: {
+    alignItems: 'center',
+    backgroundColor: '#0e2a1d',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#1d5430',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  upgradeBody: { flex: 1, gap: 2, minWidth: 0 },
+  upgradeTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  upgradeCopy: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 16,
   },
 });
