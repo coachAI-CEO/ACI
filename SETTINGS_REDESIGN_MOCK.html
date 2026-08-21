@@ -322,6 +322,19 @@
     .upgrade .b { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 16px; margin-top: 2px; }
     .upgrade .btn { flex: 0 0 auto; min-width: 92px; padding: 8px 12px; }
 
+    /* Club-managed note (no button) */
+    .club-note {
+      background: #152033;
+      border-bottom: 1px solid #1f2a3f;
+      border-top: 1px solid #1d3556;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 12px;
+    }
+    .club-note .t { color: var(--text); font-size: 13px; font-weight: 700; }
+    .club-note .b { color: var(--muted); font-size: 11px; font-weight: 500; line-height: 16px; }
+
     /* ---- Tabbar ---- */
     .tabbar {
       display: flex;
@@ -483,7 +496,7 @@
           <div>
             <div class="section-title">Plan & usage</div>
             <div class="card">
-              <!-- Upgrade prompt now lives here -->
+              <!-- Upgrade prompt: visible only when canSelfUpgrade -->
               <div class="upgrade">
                 <div class="upgrade-body">
                   <div class="t">Upgrade your plan</div>
@@ -706,12 +719,10 @@
           <div>
             <div class="section-title">Plan & usage</div>
             <div class="card">
-              <div class="upgrade">
-                <div class="upgrade-body">
-                  <div class="t">You’re near your limits</div>
-                  <div class="b">Need more sessions or drills? Upgrade on the web for higher limits.</div>
-                </div>
-                <div class="btn primary">Upgrade</div>
+              <!-- Club coach: no self-upgrade. Note only. -->
+              <div class="club-note">
+                <div class="t">Plan managed by your club</div>
+                <div class="b">Rocklin FC manages your subscription. Contact your club admin to change your plan.</div>
               </div>
               <div class="usage">
                 <div class="usage-row">
@@ -723,10 +734,6 @@
                   <div class="bar"><div class="fill warn" style="width: 84%;"></div></div>
                 </div>
               </div>
-              <div class="divider"></div>
-              <div class="row link"><div class="row-text"><div class="row-label small">Manage billing</div><div class="row-sub">Card · cancel · invoices</div></div><div class="chevron">›</div></div>
-              <div class="divider"></div>
-              <div class="row link"><div class="row-text"><div class="row-label small">See all plans</div></div><div class="chevron">›</div></div>
             </div>
           </div>
 

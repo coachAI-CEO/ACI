@@ -155,6 +155,17 @@ export default function SettingsScreen() {
   const planLabel = formatPlanLabel(user?.subscriptionPlan, user?.subscriptionStatus);
   const isLimitedPlan = planLabel.toLowerCase().includes('trial') || planLabel.toLowerCase().includes('free');
 
+  // Coaches on a club plan are paid for by their club — they cannot
+  // self-upgrade. Admins still see the upgrade block so they can manage
+  // pricing for themselves and verify the public page.
+  const isAdmin = user?.adminRole === 'SUPER_ADMIN' || user?.adminRole === 'ADMIN';
+  const hasClubSeat = Boolean(user?.clubId);
+  const canSelfUpgrade = !hasClubSeat || isAdmin;
+  const sessionsPct = sessionsLimit > 0 ? sessionsUsed / sessionsLimit : 0;
+  const drillsPct = drillsLimit > 0 ? drillsUsed / drillsLimit : 0;
+  const nearLimit = sessionsPct >= 0.85 || drillsPct >= 0.85;
+  const showUpgradeCard = canSelfUpgrade && (isLimitedPlan || nearLimit);
+
   const heroSub = [user?.email, user?.clubName, planLabel].filter(Boolean).join(' · ');
 
   return (
@@ -226,7 +237,7 @@ export default function SettingsScreen() {
 
         {/* Plan + usage in one card */}
         <Section title="Plan & usage">
-          {isLimitedPlan || sessionsUsed / Math.max(sessionsLimit, 1) >= 0.85 || drillsUsed / Math.max(drillsLimit, 1) >= 0.85 ? (
+          {showUpgradeCard ? (
             <View style={styles.upgradeCard}>
               <View style={styles.upgradeBody}>
                 <Text style={styles.upgradeTitle}>
@@ -240,6 +251,15 @@ export default function SettingsScreen() {
               </View>
               <Button title="Upgrade" onPress={() => void openUpgradePricing()} />
             </View>
+          ) : !canSelfUpgrade ? (
+            <View style={styles.clubNote}>
+              <Text style={styles.upgradeTitle}>Plan managed by your club</Text>
+              <Text style={styles.upgradeCopy} numberOfLines={2}>
+                {user?.clubName
+                  ? `${user.clubName} manages your subscription. Contact your club admin to change your plan.`
+                  : 'Your subscription is managed by your club. Contact your club admin to change your plan.'}
+              </Text>
+            </View>
           ) : null}
           <View style={styles.usageGrid}>
             <View style={styles.usageCell}>
@@ -249,14 +269,18 @@ export default function SettingsScreen() {
               <UsageBar label="Drills" used={drillsUsed} limit={drillsLimit} />
             </View>
           </View>
-          <View style={styles.divider} />
-          <Row
-            label="Manage billing"
-            sub={isLimitedPlan ? 'Card · cancel · invoices' : 'Card · cancel · invoices'}
-            onPress={() => void onManageBilling()}
-          />
-          <View style={styles.divider} />
-          <Row label="See all plans" onPress={() => void openUpgradePricing()} />
+          {canSelfUpgrade ? (
+            <>
+              <View style={styles.divider} />
+              <Row
+                label="Manage billing"
+                sub="Card · cancel · invoices"
+                onPress={() => void onManageBilling()}
+              />
+              <View style={styles.divider} />
+              <Row label="See all plans" onPress={() => void openUpgradePricing()} />
+            </>
+          ) : null}
           {billingError ? (
             <View style={styles.errorWrap}>
               <ErrorMessage message={billingError} />
@@ -504,5 +528,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     lineHeight: 16,
+  },
+  clubNote: {
+    backgroundColor: '#152033',
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#1d3556',
+    borderTopWidth: 1,
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
 });
