@@ -30,7 +30,7 @@ Move `CalendarEventItem` from `apps/mobile/services/calendar.service.ts` into `p
 Replace the flat list in `apps/mobile/app/(tabs)/calendar.tsx` with a tabbed read view backed by a shared `useCalendarEvents(anchor, range)` hook.
 
 **Components (new, in `apps/mobile/components/calendar/`):**
-- `MonthGrid` — 7×6 grid; each cell renders day number + up to 3 chips (`EventChip`) + `+N more` overflow badge. Tap a day → opens `DayAgenda` for that date. Tap a chip → opens event detail.
+- `MonthGrid` — 7×6 grid; each cell renders day number + **up to 3 dot indicators** (4px-tall colored bars, no title text — title text gets squeezed unreadable at this width) + `+N more` overflow badge. Tap a day → opens `DayAgenda` for that date. Tap a chip → opens event detail.
 - `WeekStrip` — 7 columns, scrollable horizontally for past weeks; each column is a `DayColumn` listing `EventRow`s.
 - `DayAgenda` — single-day flat list grouped by section header; used both as a tab and as the day-detail drill-in from MonthGrid.
 - `EventRow` — small card: time, title, optional team/location, status dot (completed/cancelled). Tap → opens `EventDetailSheet`. Long-press → action sheet (Mark done / Reschedule / Delete / Cancel).

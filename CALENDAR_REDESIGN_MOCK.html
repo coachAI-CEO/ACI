@@ -130,21 +130,23 @@
   }
   .day.outside { opacity: 0.4; }
   .day.today { border-color: var(--primary); background: rgba(52,211,153,.08); }
-  .day.has-events .num { color: var(--text); font-weight: 600; }
   .day .num { font-size: 11px; color: var(--muted); }
   .chip {
-    font-size: 9.5px;
-    padding: 1px 4px;
-    border-radius: 4px;
-    background: var(--accent-dim);
-    color: var(--accent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--accent);
   }
-  .chip.done { background: rgba(138,146,173,.18); color: var(--muted); text-decoration: line-through; }
-  .chip.cancel { background: var(--danger-dim); color: var(--danger); text-decoration: line-through; }
-  .more { font-size: 9.5px; color: var(--muted); padding: 0 4px; }
+  .chip.done { background: var(--muted); opacity: .5; }
+  .chip.cancel { background: var(--danger); }
+  .chip-stack { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-bottom: 4px; }
+  .chip-row { display: flex; gap: 2px; align-items: center; }
+  .chip-count {
+    font-size: 9px;
+    color: var(--muted);
+    margin-left: auto;
+    padding: 0 4px;
+  }
+  .day.has-events .num { color: var(--text); font-weight: 600; }
 
   /* ------- Filter chips ------- */
   .filter-row {
@@ -421,7 +423,7 @@
   <!-- ============================================== -->
   <!-- 1. Month view                                  -->
   <!-- ============================================== -->
-  <div class="scene-label" id="s1">1 · Month view (default landing)</div>
+  <div class="scene-label" id="s1">1 · Month view (default landing) — dot indicators only, no title text</div>
   <div class="deck">
     <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
 
@@ -458,17 +460,23 @@
       <div class="day"><span class="num">3</span></div>
       <div class="day has-events">
         <span class="num">4</span>
-        <span class="chip">3v3 Possession</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day has-events today">
         <span class="num">5</span>
-        <span class="chip">Press drill · U10</span>
-        <span class="chip">Shooting circuit</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">6</span></div>
       <div class="day has-events">
         <span class="num">7</span>
-        <span class="chip">Defending shape</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">8</span></div>
 
@@ -476,16 +484,19 @@
       <div class="day"><span class="num">10</span></div>
       <div class="day has-events">
         <span class="num">11</span>
-        <span class="chip">3v3 Possession</span>
-        <span class="chip done">Conditioned scrimmage</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip done"></span>
+        </div>
       </div>
       <div class="day"><span class="num">12</span></div>
       <div class="day has-events">
         <span class="num">13</span>
-        <span class="chip">Finishing circuit</span>
-        <span class="chip">Shooting circuit</span>
-        <span class="chip cancel">Cancelled — field</span>
-        <span class="more">+1 more</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+          <span class="chip cancel"></span>
+        </div>
       </div>
       <div class="day"><span class="num">14</span></div>
       <div class="day"><span class="num">15</span></div>
@@ -494,17 +505,23 @@
       <div class="day"><span class="num">17</span></div>
       <div class="day has-events">
         <span class="num">18</span>
-        <span class="chip">3v3 Possession</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day has-events">
         <span class="num">19</span>
-        <span class="chip">Press drill · U10</span>
-        <span class="chip">Shooting circuit</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">20</span></div>
       <div class="day has-events">
         <span class="num">21</span>
-        <span class="chip">Defending shape</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">22</span></div>
 
@@ -512,16 +529,22 @@
       <div class="day"><span class="num">24</span></div>
       <div class="day has-events">
         <span class="num">25</span>
-        <span class="chip">3v3 Possession</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">26</span></div>
       <div class="day has-events">
         <span class="num">27</span>
-        <span class="chip">Finishing circuit</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day has-events">
         <span class="num">28</span>
-        <span class="chip">Conditioned scrim.</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
       </div>
       <div class="day"><span class="num">29</span></div>
 
