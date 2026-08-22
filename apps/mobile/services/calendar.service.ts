@@ -1,17 +1,12 @@
 import type { CalendarEvent } from '@aci/shared';
 import api, { normalizeApiError } from './api';
 
-export type CalendarEventItem = CalendarEvent & {
-  id: string;
-  sessionId?: string;
-  scheduledDate?: string;
-  durationMin?: number;
-  notes?: string;
-  location?: string;
-  teamName?: string;
-  completed?: boolean;
-  cancelled?: boolean;
-};
+/**
+ * The mobile's view of a calendar event is the shared `CalendarEvent`
+ * from `@aci/shared` — lifted from the API's `CalendarEventWithSession`
+ * shape (see `apps/api/src/services/calendar.ts`).
+ */
+export type CalendarEventItem = CalendarEvent;
 
 export async function getUpcomingEvents(limit = 2): Promise<CalendarEventItem[]> {
   try {
