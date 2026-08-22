@@ -248,7 +248,7 @@ export default function VideoTab() {
       playerLevel,
       coachLevel,
       gameModelId,
-      phase: phase === 'TRANSITION' ? 'TRANSITION_TO_ATTACK' : phase,
+      phase,
       zone,
       formationUsed,
       formationAttacking: formationUsed,

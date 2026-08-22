@@ -9,6 +9,7 @@ export async function generateSession(form: GenerateFormState, generationId: str
       ageGroup: form.ageGroup,
       phase: form.phase,
       zone: form.zone,
+      topic: form.topic || undefined,
       numbersMin: form.numbersMin,
       numbersMax: form.numbersMax,
       goalsAvailable: form.goalsAvailable,
@@ -18,7 +19,7 @@ export async function generateSession(form: GenerateFormState, generationId: str
       formationDefending: form.formationDefending,
       playerLevel: form.playerLevel,
       coachLevel: form.coachLevel,
-      focus: form.phase,
+      focus: form.topic || form.phase,
     });
 
     return response.data;

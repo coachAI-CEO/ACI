@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CoachLevel, GameModelId, PlayerLevel } from '@aci/shared';
+import type { DrillType, Phase, SpaceConstraint, Zone } from '@aci/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -10,16 +11,21 @@ export type GenerateFormState = {
   playerLevel: PlayerLevel;
   coachLevel: CoachLevel;
   gameModelId: GameModelId;
-  phase: 'ATTACKING' | 'DEFENDING' | 'TRANSITION_TO_ATTACK' | 'TRANSITION_TO_DEFEND';
-  zone: 'DEFENSIVE_THIRD' | 'MIDDLE_THIRD' | 'ATTACKING_THIRD';
+  phase: Phase;
+  zone: Zone;
+  topic: string | null;
   durationMin: 60 | 90;
+  /** Drill-specific duration (independent of session duration). Used only when activeType === 'drill'. */
+  drillDurationMin: number;
   numbersMin: number;
   numbersMax: number;
   goalsAvailable: number;
-  spaceConstraint: 'QUARTER' | 'THIRD' | 'HALF' | 'FULL';
+  spaceConstraint: SpaceConstraint;
   formationUsed: string;
   formationAttacking: string;
   formationDefending: string;
+  drillType: DrillType | null;
+  gkOptional: boolean;
   numberOfSessions: number;
 };
 
@@ -44,7 +50,9 @@ const defaultForm: GenerateFormState = {
   gameModelId: 'PRESSING',
   phase: 'ATTACKING',
   zone: 'MIDDLE_THIRD',
+  topic: null,
   durationMin: 60,
+  drillDurationMin: 20,
   numbersMin: 6,
   numbersMax: 12,
   goalsAvailable: 2,
@@ -52,6 +60,8 @@ const defaultForm: GenerateFormState = {
   formationUsed: '4-3-3',
   formationAttacking: '4-3-3',
   formationDefending: '4-4-2',
+  drillType: null,
+  gkOptional: false,
   numberOfSessions: 3,
 };
 
@@ -60,6 +70,19 @@ function migrateLegacyForm(form: Partial<GenerateFormState> | undefined): Genera
   if ((next.coachLevel as string) === 'GRASSROOTS') {
     next.coachLevel = 'USSF_D';
   }
+  // Migrate legacy 4-way phase enum to the 3-way web-aligned enum.
+  const legacyPhase = next.phase as string;
+  if (
+    legacyPhase === 'TRANSITION_TO_ATTACK' ||
+    legacyPhase === 'TRANSITION_TO_DEFEND'
+  ) {
+    next.phase = 'TRANSITION';
+  }
+  // Backfill new optional fields.
+  if (typeof (next as any).topic === 'undefined') next.topic = null;
+  if (typeof (next as any).drillType === 'undefined') next.drillType = null;
+  if (typeof (next as any).gkOptional !== 'boolean') next.gkOptional = false;
+  if (typeof (next as any).drillDurationMin !== 'number') next.drillDurationMin = 20;
   return next;
 }
 
@@ -79,7 +102,7 @@ export const useGenerateStore = create<GenerateStore>()(
       resetLatest: () => set({ latestDrill: null, latestSession: null, latestSeries: null }),
     }),
     {
-      name: 'generate-store-v2',
+      name: 'generate-store-v3',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({ activeType: state.activeType, form: state.form }),
       merge: (persisted, current) => {

@@ -23,7 +23,7 @@ export const GAME_MODEL_OPTIONS: Array<{ value: GameModelId; label: string }> = 
   { value: 'POSSESSION', label: 'Possession' },
   { value: 'PRESSING', label: 'Pressing' },
   { value: 'TRANSITION', label: 'Transition' },
-  { value: 'COACHAI', label: 'CoachAI' },
+  { value: 'COACHAI', label: 'Balanced model' },
   { value: 'ROCKLIN_FC', label: 'Rocklin FC' },
 ];
 
