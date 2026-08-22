@@ -78,31 +78,35 @@ export default function HomeTab() {
           />
         }
       >
-        <Card>
-          <Text style={styles.greetingLine}>{greeting},</Text>
-          <Text style={styles.greetingName}>Coach {firstName}</Text>
-          <View style={styles.badgeRow}>
-            <Badge label={plan} />
-            {user?.clubName ? <Badge label={user.clubName} /> : null}
-            {user?.adminRole === 'SUPER_ADMIN' ? (
-              <Badge label="Super admin" tone="amber" />
-            ) : user?.adminRole === 'ADMIN' ? (
-              <Badge label="Admin" tone="amber" />
-            ) : user?.adminRole === 'MODERATOR' ? (
-              <Badge label="Moderator" tone="muted" />
-            ) : user?.adminRole === 'SUPPORT' ? (
-              <Badge label="Support" tone="muted" />
-            ) : null}
+        <Card compact>
+          <View style={styles.greetingRow}>
+            <View style={styles.greetingLeft}>
+              <Text style={styles.greetingLine} numberOfLines={1}>
+                {greeting}, Coach {firstName}
+              </Text>
+              <View style={styles.badgeRow}>
+                <Badge label={plan} />
+                {user?.adminRole === 'SUPER_ADMIN' ? (
+                  <Badge label="Super admin" tone="amber" />
+                ) : user?.adminRole === 'ADMIN' ? (
+                  <Badge label="Admin" tone="amber" />
+                ) : user?.adminRole === 'MODERATOR' ? (
+                  <Badge label="Moderator" tone="muted" />
+                ) : user?.adminRole === 'SUPPORT' ? (
+                  <Badge label="Support" tone="muted" />
+                ) : null}
+              </View>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+              hitSlop={8}
+              onPress={() => router.push('/settings')}
+              style={styles.settingsLink}
+            >
+              <Text style={styles.inlineLink}>Settings</Text>
+            </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            hitSlop={8}
-            onPress={() => router.push('/settings')}
-            style={styles.settingsLink}
-          >
-            <Text style={styles.inlineLink}>Settings</Text>
-          </Pressable>
         </Card>
 
         {nextEvent ? (
@@ -112,10 +116,15 @@ export default function HomeTab() {
             onPress={() => router.push('/(tabs)/calendar')}
             style={styles.nextCard}
           >
-            <Text style={styles.nextKicker}>Up next</Text>
-            <Text style={styles.nextTitle} numberOfLines={1}>
-              {nextEvent.title || nextEvent.teamName || 'Training event'}
-            </Text>
+            <View style={styles.nextRow}>
+              <View style={styles.nextLeft}>
+                <Text style={styles.nextKicker}>Up next</Text>
+                <Text style={styles.nextTitle} numberOfLines={1}>
+                  {nextEvent.title || nextEvent.teamName || 'Training event'}
+                </Text>
+              </View>
+              <Text style={styles.nextCta}>Open →</Text>
+            </View>
             <Text style={styles.nextMeta} numberOfLines={1}>
               {nextEvent.teamName ? `${nextEvent.teamName} · ` : ''}
               {new Date(nextEvent.scheduledDate || nextEvent.startAt || '').toLocaleString(undefined, {
@@ -126,37 +135,31 @@ export default function HomeTab() {
                 minute: '2-digit',
               })}
             </Text>
-            <Text style={styles.nextCta}>Open calendar →</Text>
           </Pressable>
         ) : null}
 
-        <Card>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitle}>Usage & limits</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open usage in settings"
-              hitSlop={8}
-              onPress={() => router.push('/settings')}
-              style={styles.linkPress}
-            >
-              <Text style={styles.inlineLink}>Open in Settings</Text>
-            </Pressable>
-          </View>
-          <View style={styles.gap}>
-            {usageQuery.data ? (
-              <>
-                <UsageBar label="Sessions" used={sessionsUsed} limit={sessionsLimit} />
-                <UsageBar label="Drills" used={drillsUsed} limit={drillsLimit} />
-              </>
-            ) : (
-              <View style={styles.skeletonGroup}>
-                <View style={[styles.skeleton, { width: '90%' }]} />
-                <View style={[styles.skeleton, { width: '70%' }]} />
-              </View>
-            )}
-          </View>
-        </Card>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open usage in settings"
+          onPress={() => router.push('/settings')}
+        >
+          <Card>
+            <Text style={styles.sectionEyebrow}>Usage & limits</Text>
+            <View style={styles.usageGrid}>
+              {usageQuery.data ? (
+                <>
+                  <UsageBar label="Sessions" used={sessionsUsed} limit={sessionsLimit} compact />
+                  <UsageBar label="Drills" used={drillsUsed} limit={drillsLimit} compact />
+                </>
+              ) : (
+                <View style={styles.skeletonGroup}>
+                  <View style={[styles.skeleton, { width: '90%' }]} />
+                  <View style={[styles.skeleton, { width: '70%' }]} />
+                </View>
+              )}
+            </View>
+          </Card>
+        </Pressable>
 
         <View>
           <Text style={styles.sectionTitleOutside}>Quick actions</Text>
@@ -235,27 +238,29 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 28,
   },
+  greetingRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  greetingLeft: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
+  },
   greetingLine: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: '600',
-  },
-  greetingName: {
-    color: colors.text,
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginTop: 2,
+    fontWeight: '700',
+    letterSpacing: -0.1,
   },
   badgeRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 12,
+    gap: 6,
   },
   settingsLink: {
-    alignSelf: 'flex-start',
-    marginTop: 12,
     minHeight: 32,
     justifyContent: 'center',
   },
@@ -265,6 +270,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 12,
   },
+  sectionEyebrow: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
   sectionTitleOutside: {
     color: colors.text,
     fontSize: 16,
@@ -273,6 +286,9 @@ const styles = StyleSheet.create({
   },
   gap: {
     gap: 14,
+  },
+  usageGrid: {
+    gap: 6,
   },
   rowBetween: {
     alignItems: 'center',
@@ -306,18 +322,30 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     gap: 4,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  nextRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  nextLeft: {
+    flex: 1,
+    gap: 1,
+    minWidth: 0,
   },
   nextKicker: {
     color: '#86efac',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   nextTitle: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
   },
   nextMeta: {
@@ -329,6 +357,5 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
-    marginTop: 4,
   },
 });
