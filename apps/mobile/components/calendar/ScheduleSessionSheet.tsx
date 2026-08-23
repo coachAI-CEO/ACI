@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
+import { DatePickerSheet } from '../ui/DatePickerSheet';
 import { DropdownCell, DropdownRow } from '../ui/DropdownCell';
 import { PickerSheet } from '../ui/PickerSheet';
 
@@ -45,23 +46,6 @@ function formatTimeForSheet(d: Date): string {
   return d.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-function buildDateOptions(anchor: Date, days = 60): Array<{ value: string; label: string; sublabel?: string }> {
-  const out: Array<{ value: string; label: string; sublabel?: string }> = [];
-  const start = new Date(anchor);
-  start.setHours(0, 0, 0, 0);
-  for (let i = 0; i < days; i++) {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    const value = d.toISOString();
-    out.push({
-      value,
-      label: d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-      sublabel: d.toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
-    });
-  }
-  return out;
-}
-
 export function ScheduleSessionSheet({
   visible,
   title = 'Schedule session',
@@ -81,12 +65,9 @@ export function ScheduleSessionSheet({
   const [timeSheetOpen, setTimeSheetOpen] = useState(false);
   const [durationSheetOpen, setDurationSheetOpen] = useState(false);
 
-  const dateOptions = useMemo(() => buildDateOptions(scheduledAt), [scheduledAt]);
-
-  const onPickDate = (value: string) => {
-    const next = new Date(value);
+  const onPickDate = (date: Date) => {
     const merged = new Date(scheduledAt);
-    merged.setFullYear(next.getFullYear(), next.getMonth(), next.getDate());
+    merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
     setScheduledAt(merged);
     setDateSheetOpen(false);
   };
@@ -177,12 +158,10 @@ export function ScheduleSessionSheet({
           <Text style={styles.cancelLabel}>Cancel</Text>
         </Pressable>
 
-        <PickerSheet
+        <DatePickerSheet
           visible={dateSheetOpen}
-          title="Pick a date"
-          subTitle={`From ${formatDateForSheet(scheduledAt)}`}
-          options={dateOptions}
-          selectedValue={scheduledAt.toISOString()}
+          initialDate={scheduledAt}
+          selectedDate={scheduledAt}
           onCancel={() => setDateSheetOpen(false)}
           onPick={onPickDate}
         />
