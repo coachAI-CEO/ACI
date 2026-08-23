@@ -3,6 +3,9 @@ services:
     name: tacticaledge-api-dev
     runtime: node
     plan: starter
+    # Pin Render to the active release branch. Switch this back to `dev` once
+    # codex/mobile-app merges upstream — see /docs/release-process.md.
+    branch: codex/mobile-app
     rootDir: .
     healthCheckPath: /health
     buildCommand: pnpm install --frozen-lockfile && pnpm --filter api build
