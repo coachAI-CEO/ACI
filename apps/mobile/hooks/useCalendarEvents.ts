@@ -17,25 +17,36 @@ export type UseCalendarEventsOptions = {
   enabled?: boolean;
 };
 
+export function startOfDay(d = new Date()): Date {
+  const next = new Date(d);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+export function shiftAnchor(anchor: Date, view: CalendarViewMode, direction: -1 | 1): Date {
+  const next = new Date(anchor);
+  if (view === 'month') {
+    next.setMonth(next.getMonth() + direction);
+    return startOfDay(next);
+  }
+  next.setDate(next.getDate() + direction * 7);
+  return startOfDay(next);
+}
+
 /**
  * Returns the ISO range window to fetch for the given view + anchor.
  *
  * - month  : 6 weeks centred on the month containing `anchor`
  *            (covers spillover days in the 42-cell grid).
  * - week   : Mon → Sun week containing `anchor`.
- * - day    : The single day of `anchor`.
- *
- * Each range is at least one day wider than the visible window so
- * neighbouring-range prefetches overlap on the same query key and
- * navigation feels instant.
+ * - day    : 30-day agenda starting at `anchor` (the Day tab).
  */
 export function rangeForView(view: CalendarViewMode, anchor: Date): CalendarRange {
-  const start = new Date(anchor);
-  start.setHours(0, 0, 0, 0);
+  const start = startOfDay(anchor);
 
   if (view === 'day') {
     const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    end.setDate(end.getDate() + 30);
     return { start, end };
   }
 
@@ -69,7 +80,8 @@ export function rangeForView(view: CalendarViewMode, anchor: Date): CalendarRang
  * callers should pair this with an offline-cache fallback (Phase G).
  */
 export function useCalendarEvents({ view, anchor, enabled = true }: UseCalendarEventsOptions) {
-  const range = useMemo(() => rangeForView(view, anchor), [view, anchor.getTime()]);
+  const anchorKey = dayKey(anchor);
+  const range = useMemo(() => rangeForView(view, anchor), [view, anchorKey]);
 
   const query = useQuery<CalendarEvent[]>({
     queryKey: ['calendar', 'events', range.start.toISOString(), range.end.toISOString()],

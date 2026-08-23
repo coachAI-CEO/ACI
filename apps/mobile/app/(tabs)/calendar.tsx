@@ -1,18 +1,36 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
+import type { CalendarEvent } from '@aci/shared';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button } from '../../components/ui/Button';
-import { ErrorMessage } from '../../components/ui/ErrorMessage';
-import { Input } from '../../components/ui/Input';
+import { useMemo, useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { CalendarToolbar } from '../../components/calendar/CalendarToolbar';
+import { DayAgenda } from '../../components/calendar/DayAgenda';
+import { MonthGrid } from '../../components/calendar/MonthGrid';
+import { ScheduleSessionSheet } from '../../components/calendar/ScheduleSessionSheet';
+import { WeekStrip } from '../../components/calendar/WeekStrip';
+import { PickerSheet } from '../../components/ui/PickerSheet';
 import { colors } from '../../constants/colors';
 import { useAuth } from '../../hooks/useAuth';
+import {
+  dayKey,
+  shiftAnchor,
+  startOfDay,
+  useCalendarEvents,
+  type CalendarViewMode,
+} from '../../hooks/useCalendarEvents';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import {
   createCalendarEvent,
   deleteCalendarEvent,
-  getCalendarEventsInRange,
   getWeeklySummary,
   updateCalendarEvent,
 } from '../../services/calendar.service';
@@ -20,41 +38,31 @@ import {
   cancelEventReminders,
   requestNotificationPermission,
   scheduleSessionReminders,
-  setBadgeCount,
 } from '../../services/notifications.service';
 import { getVaultSessions } from '../../services/vault.service';
 import { useNotificationsStore } from '../../stores/notifications.store';
-import { countEventsForTodayAndTomorrow } from '../../utils/calendar-badge';
-
-function formatDate(value: string | undefined): string {
-  if (!value) return 'TBD';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
+import { formatEventTitle, formatMonthLabel, formatWeekRangeLabel } from '../../utils/format';
 
 function weekBounds(): { start: string; end: string } {
-  const now = new Date();
-  const day = now.getDay();
-  const diffToMonday = (day + 6) % 7;
+  const now = startOfDay();
+  const diffToMonday = (now.getDay() + 6) % 7;
   const start = new Date(now);
   start.setDate(now.getDate() - diffToMonday);
-  start.setHours(0, 0, 0, 0);
-
   const end = new Date(start);
   end.setDate(start.getDate() + 6);
   end.setHours(23, 59, 59, 999);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
 
-  return {
-    start: start.toISOString(),
-    end: end.toISOString(),
-  };
+function toolbarTitle(view: CalendarViewMode, anchor: Date, rangeStart: Date, rangeEnd: Date): string {
+  if (view === 'month') return formatMonthLabel(anchor.toISOString());
+  if (view === 'week') {
+    const last = new Date(rangeEnd);
+    last.setDate(last.getDate() - 1);
+    return formatWeekRangeLabel(rangeStart, last);
+  }
+  if (dayKey(anchor) === dayKey(new Date())) return 'Next 30 days';
+  return `From ${formatMonthLabel(anchor.toISOString()).split(' ')[0]} ${anchor.getDate()}`;
 }
 
 export default function CalendarTab() {
@@ -62,43 +70,24 @@ export default function CalendarTab() {
   const { isOnline } = useNetworkStatus();
   const sessionRemindersEnabled = useNotificationsStore((s) => s.sessionRemindersEnabled);
 
-  const [sessionId, setSessionId] = useState('');
-  const [sessionPickerQuery, setSessionPickerQuery] = useState('');
-  const [scheduledAt, setScheduledAt] = useState(() => {
-    const next = new Date();
-    next.setMinutes(0, 0, 0);
-    next.setHours(next.getHours() + 1);
-    return next;
-  });
-  const [showDatePicker, setShowDatePicker] = useState(Platform.OS === 'ios');
-  const [showTimePicker, setShowTimePicker] = useState(Platform.OS === 'ios');
-  const [durationMin, setDurationMin] = useState('60');
-  const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<CalendarViewMode>('month');
+  const [anchor, setAnchor] = useState(() => startOfDay());
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pendingSession, setPendingSession] = useState<{ id: string; title: string; durationMin?: number } | null>(
+    null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setBadgeCount(0).catch(() => undefined);
-  }, []);
+  const canAccess = Boolean(user?.features.canAccessCalendar);
+  const todayKey = dayKey(new Date());
 
-  const range = useMemo(() => {
-    const now = new Date();
-    const in30 = new Date();
-    in30.setDate(now.getDate() + 30);
-    return { start: now.toISOString(), end: in30.toISOString() };
-  }, []);
-
-  const eventsQuery = useQuery({
-    queryKey: ['calendar', 'events', range.start, range.end],
-    queryFn: () => getCalendarEventsInRange(range.start, range.end),
-    enabled: Boolean(user?.features.canAccessCalendar) && isOnline,
+  const eventsQuery = useCalendarEvents({
+    view,
+    anchor,
+    enabled: canAccess && isOnline,
   });
-
-  useEffect(() => {
-    const events = eventsQuery.data || [];
-    const count = countEventsForTodayAndTomorrow(events, new Date());
-    setBadgeCount(count).catch(() => undefined);
-  }, [eventsQuery.data]);
 
   const weeklySummaryQuery = useQuery({
     queryKey: ['calendar', 'weeklySummary'],
@@ -112,66 +101,70 @@ export default function CalendarTab() {
   const recentSessionsQuery = useQuery({
     queryKey: ['calendar', 'recentSessions'],
     queryFn: () => getVaultSessions({ limit: 25, offset: 0 }),
-    enabled: Boolean(user?.features.canAccessCalendar) && isOnline,
+    enabled: canAccess && isOnline,
   });
 
-  if (!user?.features.canAccessCalendar) {
+  const sessionOptions = useMemo(
+    () =>
+      (recentSessionsQuery.data?.sessions || []).map((s) => ({
+        value: s.id,
+        label: s.title || 'Untitled session',
+        sublabel: [s.refCode, s.ageGroup, s.durationMin ? `${s.durationMin} min` : null].filter(Boolean).join(' · '),
+      })),
+    [recentSessionsQuery.data]
+  );
+
+  const selectedDayEvents = useMemo(() => {
+    if (!selectedDayKey) return [];
+    return eventsQuery.eventsByDay.get(selectedDayKey) ?? [];
+  }, [eventsQuery.eventsByDay, selectedDayKey]);
+
+  if (!canAccess) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.block}>
-          <Text style={styles.title}>Calendar</Text>
-          <Text style={styles.subtitle}>Your plan does not include calendar access.</Text>
+        <View style={styles.gate}>
+          <Text style={styles.pageTitle}>Calendar</Text>
+          <Text style={styles.subtitle}>Calendar is available on Coach Pro and up.</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open Settings to upgrade"
+            onPress={() => router.push('/settings')}
+            style={styles.upgradeLink}
+          >
+            <Text style={styles.upgradeLinkText}>Open Settings → Upgrade</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  const filteredRecentSessions = useMemo(() => {
-    const sessions = recentSessionsQuery.data?.sessions || [];
-    const q = sessionPickerQuery.trim().toLowerCase();
-    if (!q) return sessions.slice(0, 8);
-    return sessions
-      .filter(
-        (s) =>
-          (s.title || '').toLowerCase().includes(q) ||
-          (s.refCode || '').toLowerCase().includes(q) ||
-          (s.ageGroup || '').toLowerCase().includes(q)
-      )
-      .slice(0, 8);
-  }, [recentSessionsQuery.data, sessionPickerQuery]);
-
-  const onCreateEvent = async () => {
-    setError(null);
+  const onCreateConfirm = async (payload: { scheduledAt: Date; durationMin: number }) => {
+    if (!pendingSession) return;
     if (!isOnline) {
       setError('Calendar scheduling requires an internet connection.');
       return;
     }
-    if (!sessionId.trim()) {
-      setError('Pick a vault session before scheduling.');
-      return;
-    }
-
-    const isoDate = scheduledAt.toISOString();
-
     setIsSubmitting(true);
+    setError(null);
     try {
+      const isoDate = payload.scheduledAt.toISOString();
       const created = await createCalendarEvent({
-        sessionId: sessionId.trim(),
+        sessionId: pendingSession.id,
         scheduledDate: isoDate,
-        durationMin: Number(durationMin) || undefined,
-        notes: notes || undefined,
+        durationMin: payload.durationMin,
+        notes: pendingSession.title,
       });
       if (sessionRemindersEnabled) {
         const granted = await requestNotificationPermission();
         if (granted) {
           await scheduleSessionReminders({
             id: created.id,
-            title: 'Training Session',
+            title: pendingSession.title || 'Training Session',
             scheduledDate: isoDate,
           });
         }
       }
-      setNotes('');
+      setPendingSession(null);
       eventsQuery.refetch().catch(() => undefined);
     } catch (err) {
       setError((err as { message?: string }).message || 'Could not create event.');
@@ -183,7 +176,7 @@ export default function CalendarTab() {
   const onDelete = async (eventId: string) => {
     try {
       if (!isOnline) {
-        setError('Calendar updates require an internet connection.');
+        Alert.alert('Offline', 'Calendar updates require an internet connection.');
         return;
       }
       await cancelEventReminders(eventId);
@@ -194,159 +187,176 @@ export default function CalendarTab() {
     }
   };
 
+  const onToggleComplete = async (event: CalendarEvent) => {
+    try {
+      if (!isOnline) {
+        Alert.alert('Offline', 'Calendar updates require an internet connection.');
+        return;
+      }
+      await updateCalendarEvent(event.id, { completed: !event.completed });
+      eventsQuery.refetch().catch(() => undefined);
+    } catch (err) {
+      Alert.alert('Update failed', (err as { message?: string }).message || 'Could not update event.');
+    }
+  };
+
+  const onPressEvent = (event: CalendarEvent) => {
+    const title = formatEventTitle(event);
+    const buttons: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
+      { text: 'Close', style: 'cancel' },
+    ];
+    if (event.sessionId) {
+      buttons.push({
+        text: 'Start practice',
+        onPress: () =>
+          router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: String(event.sessionId) } }),
+      });
+    }
+    buttons.push({
+      text: event.completed ? 'Mark incomplete' : 'Mark done',
+      onPress: () => void onToggleComplete(event),
+    });
+    buttons.push({
+      text: 'Delete',
+      style: 'destructive',
+      onPress: () => void onDelete(event.id),
+    });
+    Alert.alert(title, event.location || event.teamName || undefined, buttons);
+  };
+
+  const title = toolbarTitle(view, anchor, eventsQuery.range.start, eventsQuery.range.end);
+
+  const header = (
+    <View style={styles.header}>
+      <Text style={styles.pageTitle}>Calendar</Text>
+      <Text style={styles.subtitle}>
+        {isOnline
+          ? 'Schedule sessions and view upcoming training.'
+          : 'Calendar updates require an internet connection.'}
+      </Text>
+      <CalendarToolbar
+        title={title}
+        view={view}
+        onChangeView={(next) => {
+          setView(next);
+          setSelectedDayKey(null);
+        }}
+        onPrev={() => {
+          setAnchor((current) => shiftAnchor(current, view, -1));
+          setSelectedDayKey(null);
+        }}
+        onNext={() => {
+          setAnchor((current) => shiftAnchor(current, view, 1));
+          setSelectedDayKey(null);
+        }}
+        onToday={() => {
+          setAnchor(startOfDay());
+          setSelectedDayKey(dayKey(new Date()));
+        }}
+      />
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+
+  const weeklySummary = user?.features.canGenerateWeeklySummaries ? (
+    <View style={styles.summaryCard}>
+      <Text style={styles.summaryTitle}>Weekly summary</Text>
+      <Text style={styles.summaryText}>
+        {weeklySummaryQuery.data?.text || 'No summary available for this week.'}
+      </Text>
+    </View>
+  ) : null;
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Calendar</Text>
-        <Text style={styles.subtitle}>
-          {isOnline
-            ? 'Schedule sessions and view upcoming training.'
-            : 'Calendar updates require an internet connection.'}
-        </Text>
-
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>Create event</Text>
-          <Input
-            label="Vault session"
-            value={sessionPickerQuery}
-            onChangeText={setSessionPickerQuery}
-            placeholder="Search title, ref code, age…"
-          />
-          {filteredRecentSessions.length ? (
-            <View style={styles.pickerList}>
-              {filteredRecentSessions.map((s) => (
-                <Pressable
-                  key={s.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use session ${s.title}`}
-                  onPress={() => {
-                    setSessionId(s.id);
-                    setSessionPickerQuery(s.title || '');
-                    setError(null);
-                  }}
-                  style={styles.pickerItem}
-                >
-                  <Text style={styles.pickerItemTitle} numberOfLines={1}>
-                    {s.title || 'Untitled session'}
-                  </Text>
-                  <Text style={styles.pickerItemMeta} numberOfLines={1}>
-                    {s.refCode ? `${s.refCode} · ` : ''}
-                    {s.ageGroup || '--'} · {s.durationMin || '--'} min
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : sessionPickerQuery.length > 0 ? (
-            <Text style={styles.empty}>No matches in your vault.</Text>
-          ) : (
-            <Text style={styles.empty}>Start typing to search your vault.</Text>
-          )}
-
-          <Text style={styles.fieldLabel}>Date & time</Text>
-          <Text style={styles.schedulePreview} accessibilityLabel={`Scheduled for ${formatDate(scheduledAt.toISOString())}`}>
-            {formatDate(scheduledAt.toISOString())}
-          </Text>
-
-          {Platform.OS === 'android' ? (
-            <View style={styles.pickerActions}>
-              <Button title="Pick date" onPress={() => setShowDatePicker(true)} variant="secondary" />
-              <Button title="Pick time" onPress={() => setShowTimePicker(true)} variant="secondary" />
-            </View>
-          ) : null}
-
-          {showDatePicker ? (
-            <DateTimePicker
-              value={scheduledAt}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'compact' : 'default'}
-              onChange={(_, date) => {
-                if (Platform.OS === 'android') setShowDatePicker(false);
-                if (!date) return;
-                setScheduledAt((current) => {
-                  const next = new Date(current);
-                  next.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
-                  return next;
-                });
-              }}
+      {view === 'month' ? (
+        <View style={styles.monthLayout}>
+          {header}
+          <View style={styles.monthGridWrap}>
+            <MonthGrid
+              rangeStart={eventsQuery.range.start}
+              events={eventsQuery.data || []}
+              anchorMonth={anchor.getMonth()}
+              todayKey={todayKey}
+              selectedKey={selectedDayKey}
+              onPressDay={(date) => setSelectedDayKey(dayKey(date))}
             />
-          ) : null}
-
-          {showTimePicker || Platform.OS === 'ios' ? (
-            <DateTimePicker
-              value={scheduledAt}
-              mode="time"
-              display={Platform.OS === 'ios' ? 'compact' : 'default'}
-              onChange={(_, date) => {
-                if (Platform.OS === 'android') setShowTimePicker(false);
-                if (!date) return;
-                setScheduledAt((current) => {
-                  const next = new Date(current);
-                  next.setHours(date.getHours(), date.getMinutes(), 0, 0);
-                  return next;
-                });
-              }}
-            />
-          ) : null}
-
-          <Input label="Duration (minutes)" value={durationMin} onChangeText={setDurationMin} placeholder="60" />
-          <Input label="Notes" value={notes} onChangeText={setNotes} placeholder="Optional notes" />
-          {error ? <ErrorMessage message={error} /> : null}
-          <Button title="Schedule" onPress={() => void onCreateEvent()} loading={isSubmitting} />
-        </View>
-
-        {user.features.canGenerateWeeklySummaries ? (
-          <View style={styles.block}>
-            <Text style={styles.blockTitle}>Weekly summary</Text>
-            <Text style={styles.summaryText}>{weeklySummaryQuery.data?.text || 'No summary available for this week.'}</Text>
           </View>
-        ) : null}
-
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>Upcoming events</Text>
-          {(eventsQuery.data || []).map((event: any) => (
-            <View key={event.id} style={styles.eventRow}>
-              <View style={styles.eventMeta}>
-                <Text style={styles.eventTitle}>
-                  {event.session?.title || event.title || event.teamName || event.location || 'Training event'}
-                </Text>
-                <Text style={styles.eventTime}>{formatDate(event.scheduledDate || event.startAt || event.date)}</Text>
-                {event.location ? <Text style={styles.eventTime}>📍 {event.location}</Text> : null}
-                {event.teamName ? <Text style={styles.eventTime}>👥 {event.teamName}</Text> : null}
-                {event.sessionId ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Start practice"
-                    onPress={() =>
-                      router.push({ pathname: '/sideline/[sessionId]', params: { sessionId: String(event.sessionId) } })
-                    }
-                    style={styles.linkPress}
-                  >
-                    <Text style={styles.startPractice}>Start practice</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={event.completed ? 'Mark incomplete' : 'Mark complete'}
-                  onPress={() =>
-                    void updateCalendarEvent(event.id, { completed: !event.completed })
-                      .then(() => eventsQuery.refetch())
-                      .catch((err) =>
-                        Alert.alert('Update failed', (err as { message?: string }).message || 'Could not update event.')
-                      )
-                  }
-                  style={styles.linkPress}
-                >
-                  <Text style={styles.startPractice}>{event.completed ? 'Mark incomplete' : 'Mark complete'}</Text>
-                </Pressable>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Delete event" onPress={() => void onDelete(event.id)}>
-                <Text style={styles.deleteLink}>Delete</Text>
-              </Pressable>
-            </View>
-          ))}
-          {!eventsQuery.data?.length ? <Text style={styles.empty}>No upcoming events.</Text> : null}
+          {selectedDayKey ? (
+            <ScrollView style={styles.dayPeek} contentContainerStyle={styles.dayPeekContent}>
+              <DayAgenda events={selectedDayEvents} todayKey={todayKey} onPressEvent={onPressEvent} />
+            </ScrollView>
+          ) : null}
         </View>
-      </ScrollView>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.container}
+          refreshControl={
+            <RefreshControl
+              refreshing={eventsQuery.isRefetching && !eventsQuery.isLoading}
+              onRefresh={() => {
+                eventsQuery.refetch().catch(() => undefined);
+                weeklySummaryQuery.refetch().catch(() => undefined);
+              }}
+              tintColor={colors.primary}
+            />
+          }
+        >
+          {header}
+          {view === 'week' ? (
+            <WeekStrip
+              weekStart={eventsQuery.range.start}
+              eventsByDay={eventsQuery.eventsByDay}
+              todayKey={todayKey}
+              onPressEvent={onPressEvent}
+            />
+          ) : (
+            <DayAgenda events={eventsQuery.data || []} todayKey={todayKey} onPressEvent={onPressEvent} />
+          )}
+          {weeklySummary}
+        </ScrollView>
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Schedule a session"
+        accessibilityState={{ disabled: !isOnline }}
+        disabled={!isOnline}
+        onPress={() => {
+          setError(null);
+          setPickerOpen(true);
+        }}
+        style={({ pressed }) => [styles.fab, !isOnline ? styles.fabDisabled : null, pressed ? styles.fabPressed : null]}
+      >
+        <Text style={styles.fabGlyph}>+</Text>
+      </Pressable>
+
+      <PickerSheet
+        visible={pickerOpen}
+        title="Vault session"
+        subTitle="Pick a session to put on the calendar."
+        options={sessionOptions}
+        onCancel={() => setPickerOpen(false)}
+        onPick={(value) => {
+          const session = (recentSessionsQuery.data?.sessions || []).find((s) => s.id === value);
+          setPickerOpen(false);
+          if (!session) return;
+          setPendingSession({
+            id: session.id,
+            title: session.title || 'Training Session',
+            durationMin: session.durationMin,
+          });
+        }}
+      />
+
+      <ScheduleSessionSheet
+        visible={Boolean(pendingSession)}
+        title={pendingSession ? `Schedule ${pendingSession.title}` : 'Schedule session'}
+        durationMin={pendingSession?.durationMin}
+        loading={isSubmitting}
+        onCancel={() => setPendingSession(null)}
+        onConfirm={(payload) => void onCreateConfirm(payload)}
+      />
     </SafeAreaView>
   );
 }
@@ -356,110 +366,102 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flex: 1,
   },
-  container: {
-    gap: 12,
-    padding: 14,
-    paddingBottom: 28,
+  monthLayout: {
+    flex: 1,
+    minHeight: 0,
   },
-  title: {
+  monthGridWrap: {
+    flex: 1,
+    minHeight: 0,
+  },
+  header: {
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  container: {
+    gap: 10,
+    paddingBottom: 88,
+  },
+  gate: {
+    gap: 10,
+    padding: 14,
+  },
+  pageTitle: {
     color: colors.text,
     fontSize: 22,
     fontWeight: '700',
   },
   subtitle: {
     color: colors.muted,
+    fontSize: 13,
   },
-  block: {
+  upgradeLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+  },
+  upgradeLinkText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    paddingHorizontal: 4,
+  },
+  dayPeek: {
+    maxHeight: 220,
+    borderTopColor: colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  dayPeekContent: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingBottom: 80,
+  },
+  summaryCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 12,
     borderWidth: 1,
-    gap: 10,
+    gap: 8,
+    marginTop: 8,
     padding: 12,
   },
-  blockTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  fieldLabel: {
+  summaryTitle: {
     color: colors.text,
     fontSize: 14,
-    fontWeight: '600',
-  },
-  schedulePreview: {
-    color: colors.muted,
-    fontSize: 15,
-  },
-  pickerActions: {
-    flexDirection: 'row',
-    gap: 8,
+    fontWeight: '700',
   },
   summaryText: {
     color: colors.text,
+    fontSize: 13,
     lineHeight: 20,
   },
-  eventRow: {
+  fab: {
     alignItems: 'center',
-    borderBottomColor: colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  eventMeta: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  eventTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  eventTime: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  deleteLink: {
-    color: colors.danger,
-    fontWeight: '600',
-    minHeight: 44,
-    paddingTop: 12,
-  },
-  startPractice: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  linkPress: {
-    marginTop: 6,
-    minHeight: 32,
+    backgroundColor: colors.primary,
+    borderRadius: 26,
+    bottom: 16,
+    height: 52,
     justifyContent: 'center',
+    position: 'absolute',
+    right: 16,
+    width: 52,
   },
-  pickerList: {
-    backgroundColor: '#15203a',
-    borderRadius: 10,
-    gap: 4,
-    marginTop: 6,
-    paddingVertical: 4,
+  fabDisabled: {
+    backgroundColor: colors.surfaceAlt,
   },
-  pickerItem: {
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  fabPressed: {
+    opacity: 0.75,
   },
-  pickerItemTitle: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  pickerItemMeta: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 1,
-  },
-  empty: {
-    color: colors.muted,
+  fabGlyph: {
+    color: '#062b1d',
+    fontSize: 28,
+    fontWeight: '300',
+    lineHeight: 30,
+    marginTop: -2,
   },
 });

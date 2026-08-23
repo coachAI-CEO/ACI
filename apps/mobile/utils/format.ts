@@ -81,6 +81,86 @@ export function formatShortDate(value?: string | null): string {
   });
 }
 
+/**
+ * Long-form weekday + date for calendar day headers, e.g.
+ * "Monday, Aug 4".
+ */
+export function formatLongDayDate(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * Compact day header for week-strip cells, e.g. "Mon 4".
+ */
+export function formatCompactDay(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
+  return `${weekday} ${date.getDate()}`;
+}
+
+/**
+ * Month label for the month-view header, e.g. "August 2026".
+ */
+export function formatMonthLabel(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+/**
+ * Week-range label, e.g. "Aug 4–10" or "Aug 28 – Sep 3".
+ */
+export function formatWeekRangeLabel(start: Date, end: Date): string {
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const startFmt = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const endDay = end.getDate();
+  if (sameMonth) return `${startFmt}–${endDay}`;
+  const endFmt = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${startFmt} – ${endFmt}`;
+}
+
+/**
+ * Event time, e.g. "5:30 PM".
+ */
+export function formatEventTime(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * "Mon Aug 4 · 5:30 PM" combo for row previews.
+ */
+export function formatDateTimeLine(value?: string | null): string {
+  if (!value) return 'TBD';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const day = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${day} · ${time}`;
+}
+
+/**
+ * Resolve the best display title for a calendar event, falling back
+ * across session title → team → location → "Training event".
+ */
+export function formatEventTitle(
+  event: { session?: { title?: string } | null; title?: string; teamName?: string; location?: string }
+): string {
+  return event.session?.title || event.title || event.teamName || event.location || 'Training event';
+}
+
 export function formatPlanLabel(plan?: string | null, status?: string | null): string {
   const planLabel = plan ? humanizeLabel(plan) : '—';
   if (!status || status.toUpperCase() === plan?.toUpperCase()) {
