@@ -124,7 +124,7 @@ export default function CalendarTab() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.gate}>
           <Text style={styles.pageTitle}>Calendar</Text>
-          <Text style={styles.subtitle}>Calendar is available on Coach Pro and up.</Text>
+          <Text style={styles.gateCopy}>Calendar is available on Coach Pro and up.</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open Settings to upgrade"
@@ -228,12 +228,6 @@ export default function CalendarTab() {
 
   const header = (
     <View style={styles.header}>
-      <Text style={styles.pageTitle}>Calendar</Text>
-      <Text style={styles.subtitle}>
-        {isOnline
-          ? 'Schedule sessions and view upcoming training.'
-          : 'Calendar updates require an internet connection.'}
-      </Text>
       <CalendarToolbar
         title={title}
         view={view}
@@ -377,8 +371,8 @@ const styles = StyleSheet.create({
   header: {
     gap: 8,
     paddingHorizontal: 14,
-    paddingTop: 14,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   container: {
     gap: 10,
@@ -393,9 +387,9 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  subtitle: {
+  gateCopy: {
     color: colors.muted,
-    fontSize: 13,
+    fontSize: 14,
   },
   upgradeLink: {
     alignSelf: 'flex-start',
