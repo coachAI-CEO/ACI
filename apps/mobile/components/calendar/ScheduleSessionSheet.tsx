@@ -4,6 +4,7 @@ import { colors } from '../../constants/colors';
 import { DatePickerSheet } from '../ui/DatePickerSheet';
 import { DropdownCell, DropdownRow } from '../ui/DropdownCell';
 import { PickerSheet } from '../ui/PickerSheet';
+import { TimePickerSheet } from '../ui/TimePickerSheet';
 
 type Props = {
   visible: boolean;
@@ -24,19 +25,6 @@ const DURATION_OPTIONS = [
   { value: '75', label: '75 min' },
   { value: '90', label: '90 min' },
 ];
-
-const TIME_OPTIONS = (() => {
-  const out: Array<{ value: string; label: string }> = [];
-  for (let h = 6; h <= 21; h++) {
-    for (const m of [0, 30]) {
-      const hour12 = ((h + 11) % 12) + 1;
-      const mm = m.toString().padStart(2, '0');
-      const suffix = h < 12 ? 'AM' : 'PM';
-      out.push({ value: `${h.toString().padStart(2, '0')}:${mm}`, label: `${hour12}:${mm} ${suffix}` });
-    }
-  }
-  return out;
-})();
 
 function formatDateForSheet(d: Date): string {
   return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -72,11 +60,8 @@ export function ScheduleSessionSheet({
     setDateSheetOpen(false);
   };
 
-  const onPickTime = (value: string) => {
-    const [hh, mm] = value.split(':').map(Number);
-    const next = new Date(scheduledAt);
-    next.setHours(hh, mm, 0, 0);
-    setScheduledAt(next);
+  const onPickTime = (date: Date) => {
+    setScheduledAt(date);
     setTimeSheetOpen(false);
   };
 
@@ -165,15 +150,9 @@ export function ScheduleSessionSheet({
           onCancel={() => setDateSheetOpen(false)}
           onPick={onPickDate}
         />
-        <PickerSheet
+        <TimePickerSheet
           visible={timeSheetOpen}
-          title="Pick a time"
-          subTitle={`Currently ${formatTimeForSheet(scheduledAt)}`}
-          options={TIME_OPTIONS}
-          selectedValue={`${scheduledAt.getHours().toString().padStart(2, '0')}:${scheduledAt
-            .getMinutes()
-            .toString()
-            .padStart(2, '0')}`}
+          selectedDate={scheduledAt}
           onCancel={() => setTimeSheetOpen(false)}
           onPick={onPickTime}
         />
