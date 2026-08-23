@@ -166,6 +166,20 @@ export default function VaultSessionDetailScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
+        <Text
+          accessibilityRole="link"
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)/vault');
+            }
+          }}
+          style={styles.backLink}
+        >
+          ← Back to vault
+        </Text>
+
         <Text style={styles.title}>{session.title || 'Vault session'}</Text>
         <Text style={styles.meta}>
           {session.ageGroup || '--'} · {formatGameModelLabel(session.gameModelId) || '--'} ·{' '}
@@ -286,6 +300,12 @@ const styles = StyleSheet.create({
   },
   meta: {
     color: colors.muted,
+  },
+  backLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: -4,
   },
   calendarBanner: {
     backgroundColor: 'rgba(59,130,246,0.14)',

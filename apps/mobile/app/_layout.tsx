@@ -14,7 +14,10 @@ const stackHeader = {
   headerTintColor: colors.text,
   headerTitleStyle: { color: colors.text, fontWeight: '700' as const },
   headerShadowVisible: false,
+  // Show a visible text label next to the chevron so the back affordance is
+  // obvious on small phone screens where the bare "<" can be hard to spot.
   headerBackTitle: 'Back',
+  headerBackTitleVisible: true,
 };
 
 void SplashScreen.preventAutoHideAsync();
