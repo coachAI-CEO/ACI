@@ -349,6 +349,17 @@ export default function CoachCenterTeamScreen() {
             }
           />
           <SectionRow
+            icon="★"
+            title="Next sessions"
+            detail="Vault recommendations"
+            onPress={() =>
+              router.push({
+                pathname: '/coach-center/[teamId]/next-sessions',
+                params: { teamId: teamIdStr },
+              })
+            }
+          />
+          <SectionRow
             icon="◆"
             title="Game days"
             detail="Match-day packs"
