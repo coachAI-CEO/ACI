@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CoachLevel, GameModelId, PlayerLevel } from '@aci/shared';
 import type { DrillType, Phase, SpaceConstraint, Zone } from '@aci/shared';
+import { GAME_MODEL_IDS, COACH_LEVELS } from '@aci/shared';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -37,6 +38,14 @@ type GenerateStore = {
   latestSeries: unknown | null;
   setActiveType: (type: GenerateType) => void;
   patchForm: (patch: Partial<GenerateFormState>) => void;
+  /**
+   * Hydrate the form from a web-style search string (e.g.
+   * `ageGroup=U18&gameModelId=ROCKLIN_FC&phase=ATTACKING&topic=…`).
+   * Used by the Coach Center "Build this session" CTA, which carries the
+   * same `generateHref` shape the webapp already produces. Unknown / empty
+   * values are ignored — only fields present in the query string are patched.
+   */
+  hydrateFromHref: (search: string) => void;
   setLatestDrill: (data: unknown | null) => void;
   setLatestSession: (data: unknown | null) => void;
   setLatestSeries: (data: unknown | null) => void;
@@ -96,6 +105,45 @@ export const useGenerateStore = create<GenerateStore>()(
       latestSeries: null,
       setActiveType: (activeType) => set({ activeType }),
       patchForm: (patch) => set((state) => ({ form: { ...state.form, ...patch } })),
+      hydrateFromHref: (search) => {
+        const params = new URLSearchParams(search || '');
+        const patch: Partial<GenerateFormState> = {};
+
+        const ageGroup = params.get('ageGroup');
+        if (ageGroup) patch.ageGroup = ageGroup;
+
+        const playerLevel = params.get('playerLevel');
+        if (playerLevel && ['BEGINNER', 'INTERMEDIATE', 'ADVANCED'].includes(playerLevel)) {
+          patch.playerLevel = playerLevel as PlayerLevel;
+        }
+
+        const coachLevel = params.get('coachLevel');
+        if (coachLevel && COACH_LEVELS.includes(coachLevel as CoachLevel)) {
+          patch.coachLevel = coachLevel as CoachLevel;
+        }
+
+        const gameModelId = params.get('gameModelId');
+        if (gameModelId && GAME_MODEL_IDS.includes(gameModelId as GameModelId)) {
+          patch.gameModelId = gameModelId as GameModelId;
+        }
+
+        const phase = params.get('phase');
+        if (phase && ['ATTACKING', 'DEFENDING', 'TRANSITION'].includes(phase)) {
+          patch.phase = phase as Phase;
+        }
+
+        const zone = params.get('zone');
+        if (zone && ['DEFENSIVE_THIRD', 'MIDDLE_THIRD', 'ATTACKING_THIRD'].includes(zone)) {
+          patch.zone = zone as Zone;
+        }
+
+        const topic = params.get('topic');
+        if (topic) patch.topic = topic;
+
+        if (Object.keys(patch).length > 0) {
+          set((state) => ({ form: { ...state.form, ...patch } }));
+        }
+      },
       setLatestDrill: (latestDrill) => set({ latestDrill }),
       setLatestSession: (latestSession) => set({ latestSession }),
       setLatestSeries: (latestSeries) => set({ latestSeries }),
