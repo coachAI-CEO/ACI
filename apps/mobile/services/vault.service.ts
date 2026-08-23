@@ -11,6 +11,13 @@ export type VaultSession = VaultSessionListItem & {
   savedToVault?: boolean;
   json?: any;
   favoriteCount?: number;
+  formationUsed?: string;
+  playerLevel?: string;
+  coachLevel?: string;
+  numbersMin?: number;
+  numbersMax?: number;
+  user?: { id: string; name?: string | null; email?: string } | null;
+  creator?: { id: string; name?: string | null; email?: string } | null;
 };
 
 export type VaultSeries = {

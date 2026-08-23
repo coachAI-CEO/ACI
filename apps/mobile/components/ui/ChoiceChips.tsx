@@ -88,6 +88,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   chipActive: {
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   chipLocked: {
@@ -102,6 +103,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextActive: {
-    color: colors.primary,
+    color: '#052e16',
+    fontWeight: '700',
   },
 });
