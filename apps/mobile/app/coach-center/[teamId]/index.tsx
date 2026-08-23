@@ -360,6 +360,17 @@ export default function CoachCenterTeamScreen() {
             }
           />
           <SectionRow
+            icon="✎"
+            title="Season chat"
+            detail="Ask about this team"
+            onPress={() =>
+              router.push({
+                pathname: '/coach-center/[teamId]/chat',
+                params: { teamId: teamIdStr },
+              })
+            }
+          />
+          <SectionRow
             icon="◆"
             title="Game days"
             detail="Match-day packs"

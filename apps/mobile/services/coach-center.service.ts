@@ -87,6 +87,35 @@ export async function getCoachCenterAccess(): Promise<CoachCenterAccess> {
   }
 }
 
+export async function listTeamChat(teamId: string): Promise<ChatMessage[]> {
+  try {
+    const response = await api.get<{ ok: boolean; messages: ChatMessage[] }>(
+      `/coach-center/teams/${encodeURIComponent(teamId)}/chat`
+    );
+    return response.data.messages || [];
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
+/**
+ * Send a chat message. The server records the user message and returns
+ * the assistant reply (in `{ ok, message: ChatMessage }`). The user's
+ * own message is rendered optimistically on the client before the call
+ * returns so the bubble appears instantly.
+ */
+export async function sendTeamChatMessage(teamId: string, content: string): Promise<ChatMessage> {
+  try {
+    const response = await api.post<{ ok: boolean; message: ChatMessage }>(
+      `/coach-center/teams/${encodeURIComponent(teamId)}/chat`,
+      { message: content }
+    );
+    return response.data.message;
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
 export async function getTeamOverview(teamId: string): Promise<CoachCenterOverview> {
   try {
     const response = await api.get<{ ok: boolean } & CoachCenterOverview>(

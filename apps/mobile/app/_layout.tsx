@@ -89,6 +89,7 @@ export default function RootLayout() {
           <Stack.Screen name="coach-center/[teamId]/week" options={{ ...stackHeader, title: 'Team Week' }} />
           <Stack.Screen name="coach-center/[teamId]/next-sessions" options={{ ...stackHeader, title: 'Next Sessions' }} />
           <Stack.Screen name="coach-center/[teamId]/game-days/index" options={{ ...stackHeader, title: 'Game Days' }} />
+          <Stack.Screen name="coach-center/[teamId]/chat" options={{ ...stackHeader, title: 'Season Chat' }} />
           <Stack.Screen
             name="coach-center/[teamId]/game-days/[gameDayId]"
             options={{ ...stackHeader, title: 'Game Day' }}
