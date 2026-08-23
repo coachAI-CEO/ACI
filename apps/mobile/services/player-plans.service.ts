@@ -8,7 +8,10 @@ export type PlayerPlanSummary = {
   playerLevel?: string | null;
   durationMin?: number | null;
   sourceType?: string | null;
+  sourceId?: string | null;
   sourceRefCode?: string | null;
+  objectives?: string | null;
+  equipment?: string[] | null;
   createdAt?: string;
 };
 
