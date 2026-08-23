@@ -42,3 +42,7 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: DEV_SEED_SECRET
+        sync: false
+      - key: ENABLE_DEV_SEED_ROUTES
+        sync: false
