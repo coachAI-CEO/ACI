@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, SafeAreaView, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/ui/Badge';
@@ -107,7 +107,17 @@ export default function PlayerPlanDetailScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.container}>
           <ErrorMessage message={describeApiError(query.error, 'Plan not found.')} />
-          <Button title="Back to plans" onPress={() => router.replace('/player-plans')} variant="secondary" />
+          <Button
+            title="Back"
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/player-plans');
+              }
+            }}
+            variant="secondary"
+          />
         </View>
       </SafeAreaView>
     );
@@ -147,7 +157,11 @@ export default function PlayerPlanDetailScreen() {
     setError(null);
     try {
       await deletePlayerPlan(plan.id);
-      router.replace('/player-plans');
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace('/player-plans');
+      }
     } catch (err) {
       setError(describeApiError(err));
     } finally {
@@ -158,7 +172,19 @@ export default function PlayerPlanDetailScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Link href="/player-plans" style={styles.backLink}>← Back to plans</Link>
+        <Text
+          accessibilityRole="link"
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/player-plans');
+            }
+          }}
+          style={styles.backLink}
+        >
+          ← Back
+        </Text>
 
         <Text style={styles.title}>{plan.title || 'Player plan'}</Text>
 
