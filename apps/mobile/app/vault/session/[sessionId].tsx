@@ -13,7 +13,7 @@ import { describeApiError } from '../../../services/api';
 import { createCalendarEvent, getVaultCalendarEvents } from '../../../services/calendar.service';
 import { writeSessionDetailCache } from '../../../services/offline-cache.service';
 import { exportSessionPdf, sessionPayloadForPdf } from '../../../services/pdf.service';
-import { createPlayerPlanFromSession } from '../../../services/player-plans.service';
+import { createPlayerPlanFromSession, getPlayerPlanBySource } from '../../../services/player-plans.service';
 import { getVaultSession } from '../../../services/vault.service';
 import { formatGameModelLabel } from '../../../utils/format';
 import { extractSessionDrills } from '../../../utils/session-payload';
@@ -39,6 +39,13 @@ export default function VaultSessionDetailScreen() {
     queryKey: ['vault', 'calendar-counts'],
     queryFn: getVaultCalendarEvents,
     enabled: Boolean(user?.features?.canAccessCalendar),
+    staleTime: 60_000,
+  });
+
+  const playerPlanQuery = useQuery({
+    queryKey: ['vault', 'session', sessionId, 'player-plan'],
+    queryFn: () => getPlayerPlanBySource('SESSION', String(sessionId)),
+    enabled: Boolean(sessionId) && Boolean(user?.features?.canCreatePlayerPlans),
     staleTime: 60_000,
   });
 
@@ -131,12 +138,20 @@ export default function VaultSessionDetailScreen() {
   };
 
   const onPlayerPlan = async () => {
+    if (existingPlayerPlan) {
+      router.push({ pathname: '/player-plans/[planId]', params: { planId: existingPlayerPlan.id } });
+      return;
+    }
     setBusy('plan');
     setActionError(null);
     try {
       const result = await createPlayerPlanFromSession(session.id, {
         sourceRefCode: session.refCode,
       });
+      queryClient.setQueryData(
+        ['vault', 'session', sessionId, 'player-plan'],
+        { id: result.id, refCode: result.refCode, title: result.plan?.title || null, createdAt: result.plan?.createdAt }
+      );
       router.push({ pathname: '/player-plans/[planId]', params: { planId: result.id } });
     } catch (err) {
       setActionError(describeApiError(err));
@@ -146,6 +161,7 @@ export default function VaultSessionDetailScreen() {
   };
 
   const alreadyScheduled = scheduledForSession.length > 0;
+  const existingPlayerPlan = playerPlanQuery.data || null;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -170,6 +186,24 @@ export default function VaultSessionDetailScreen() {
               {nextScheduledLabel ? ` · next ${nextScheduledLabel}` : ''}
             </Text>
             <Text style={styles.calendarBannerLink}>View calendar</Text>
+          </Pressable>
+        ) : null}
+
+        {existingPlayerPlan ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open player plan"
+            onPress={() =>
+              router.push({ pathname: '/player-plans/[planId]', params: { planId: existingPlayerPlan.id } })
+            }
+            style={styles.playerPlanBanner}
+          >
+            <Text style={styles.playerPlanBannerTitle}>Player plan exists</Text>
+            <Text style={styles.playerPlanBannerMeta}>
+              {existingPlayerPlan.refCode ? `${existingPlayerPlan.refCode} · ` : ''}
+              {existingPlayerPlan.title || 'Saved player version'}
+            </Text>
+            <Text style={styles.playerPlanBannerLink}>View player plan</Text>
           </Pressable>
         ) : null}
 
@@ -227,7 +261,7 @@ export default function VaultSessionDetailScreen() {
         ) : null}
         {user?.features?.canCreatePlayerPlans ? (
           <Button
-            title="Create player plan"
+            title={existingPlayerPlan ? 'View player plan' : 'Create player plan'}
             onPress={() => void onPlayerPlan()}
             loading={busy === 'plan'}
             variant="secondary"
@@ -289,6 +323,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   calendarBannerLink: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  playerPlanBanner: {
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderColor: 'rgba(34,197,94,0.4)',
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    padding: 12,
+  },
+  playerPlanBannerTitle: {
+    color: '#86efac',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  playerPlanBannerMeta: {
+    color: '#bbf7d0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  playerPlanBannerLink: {
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',

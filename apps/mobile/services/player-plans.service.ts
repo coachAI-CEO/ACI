@@ -94,3 +94,30 @@ export async function deletePlayerPlan(planId: string): Promise<void> {
     throw normalizeApiError(error);
   }
 }
+
+export type PlayerPlanBySource = {
+  id: string;
+  refCode: string | null;
+  title: string | null;
+  createdAt?: string;
+};
+
+/**
+ * Check whether the current user already has a player plan for a given
+ * source session or series. Used by the UI to swap "Create player plan"
+ * for "View player plan" when one already exists, avoiding duplicate
+ * generation (and a wasted LLM call) every time the CTA is tapped.
+ */
+export async function getPlayerPlanBySource(
+  sourceType: 'SESSION' | 'SERIES',
+  sourceId: string
+): Promise<PlayerPlanBySource | null> {
+  try {
+    const response = await api.get<{ ok: boolean; exists: boolean; plan: PlayerPlanBySource | null }>(
+      `/player-plans/by-source/${sourceType}/${encodeURIComponent(sourceId)}`
+    );
+    return response.data.exists ? response.data.plan : null;
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
