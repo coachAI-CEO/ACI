@@ -104,6 +104,26 @@ export async function getTeamOverview(teamId: string): Promise<CoachCenterOvervi
   }
 }
 
+/**
+ * Vault recommendations that match a particular week of the team's curriculum.
+ * Used by the Curriculum detail screen to surface sessions that fit the
+ * week's phase/zone/theme.
+ */
+export async function getRecommendationsForWeek(
+  teamId: string,
+  weekIndex: number
+): Promise<Recommendation[]> {
+  try {
+    const response = await api.get<{ ok: boolean; recommendations: Recommendation[] }>(
+      `/coach-center/teams/${encodeURIComponent(teamId)}/recommendations`,
+      { params: { weekIndex } }
+    );
+    return response.data.recommendations || [];
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
 export async function getTeamWeekCalendar(
   teamId: string,
   weekStart: string

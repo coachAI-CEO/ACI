@@ -197,6 +197,18 @@ export default function CoachCenterTeamScreen() {
               title="Build this session"
               onPress={() => onBuildThisSession(currentWeek.generateHref || team.generateHref)}
             />
+            <Pressable
+              accessibilityRole="link"
+              onPress={() =>
+                router.push({
+                  pathname: '/coach-center/[teamId]/curriculum',
+                  params: { teamId: teamIdStr },
+                })
+              }
+              style={styles.heroLinkBtn}
+            >
+              <Text style={styles.heroLink}>See full curriculum</Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -313,10 +325,21 @@ export default function CoachCenterTeamScreen() {
 
         {/* Phase B4 — section card row grid.
             Only rows pointing at routes that already exist on mobile are
-            wired up. The Curriculum / Next sessions / Season chat rows
-            will be enabled as their respective phases (C/D/E) ship. */}
+            wired up. The Next sessions / Season chat rows will be enabled
+            as their respective phases (D/E) ship. */}
         <View style={styles.sectionsCard}>
           <Text style={styles.cardTitle}>Sections</Text>
+          <SectionRow
+            icon="✦"
+            title="Curriculum"
+            detail="16-week season plan"
+            onPress={() =>
+              router.push({
+                pathname: '/coach-center/[teamId]/curriculum',
+                params: { teamId: teamIdStr },
+              })
+            }
+          />
           <SectionRow
             icon="◷"
             title="Calendar"
@@ -398,6 +421,13 @@ const styles = StyleSheet.create({
   heroTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
   heroDetail: { color: colors.text, fontSize: 13 },
   heroFocus: { color: colors.muted, fontSize: 13, lineHeight: 19 },
+  heroLinkBtn: { alignSelf: 'flex-start' },
+  heroLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    paddingVertical: 4,
+  },
 
   // Sections card (Phase B4)
   sectionsCard: {
