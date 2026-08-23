@@ -1,0 +1,3 @@
+# Keep generated noise out of the index.
+node_modules linguist-generated=true -diff
+*.lock linguist-generated=true
