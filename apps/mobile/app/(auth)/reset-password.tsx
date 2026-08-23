@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
-import { Input } from '../../components/ui/Input';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { colors } from '../../constants/colors';
 import { resetPassword } from '../../services/auth.service';
 
@@ -52,21 +52,17 @@ export default function ResetPasswordScreen() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
         <Text style={styles.title}>Reset password</Text>
-        <Input
-          autoCapitalize="none"
+        <PasswordInput
           label="New password"
           value={password}
           onChangeText={setPassword}
           placeholder="Min 8 characters"
-          secureTextEntry
         />
-        <Input
-          autoCapitalize="none"
+        <PasswordInput
           label="Confirm new password"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           placeholder="Re-enter password"
-          secureTextEntry
         />
 
         {message ? <Text style={styles.success}>{message}</Text> : null}

@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, T
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { Input } from '../../components/ui/Input';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { colors } from '../../constants/colors';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -62,21 +63,17 @@ export default function RegisterScreen() {
             onChangeText={setEmail}
             placeholder="coach@club.com"
           />
-          <Input
-            autoCapitalize="none"
+          <PasswordInput
             label="Password"
             value={password}
             onChangeText={setPassword}
             placeholder="Min 8 characters"
-            secureTextEntry
           />
-          <Input
-            autoCapitalize="none"
+          <PasswordInput
             label="Confirm password"
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             placeholder="Re-enter password"
-            secureTextEntry
           />
 
           {localError ? <ErrorMessage message={localError} /> : null}

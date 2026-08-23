@@ -4,6 +4,7 @@ import { KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, T
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { Input } from '../../components/ui/Input';
+import { PasswordInput } from '../../components/ui/PasswordInput';
 import { colors } from '../../constants/colors';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -51,13 +52,11 @@ export default function LoginScreen() {
             value={email}
             error={emailError}
           />
-          <Input
-            autoCapitalize="none"
+          <PasswordInput
             label="Password"
+            value={password}
             onChangeText={setPassword}
             placeholder="Enter password"
-            secureTextEntry
-            value={password}
             error={passwordError}
           />
 
