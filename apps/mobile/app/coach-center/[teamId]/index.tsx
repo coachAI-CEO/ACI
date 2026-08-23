@@ -165,8 +165,8 @@ export default function CoachCenterTeamScreen() {
             recommendations.map((item, idx) => (
               <View key={`${item.id || item.refCode || idx}`} style={styles.row}>
                 <Text style={styles.body}>{item.title || item.refCode || 'Session'}</Text>
-                {item.reason || item.matchReason ? (
-                  <Text style={styles.meta}>{item.reason || item.matchReason}</Text>
+                {item.matchReason ? (
+                  <Text style={styles.meta}>{item.matchReason}</Text>
                 ) : null}
                 {item.id ? (
                   <View style={styles.rowActions}>

@@ -1,5 +1,24 @@
 import api, { normalizeApiError } from './api';
+import type {
+  ClubOption,
+  Recommendation,
+  ChatMessage,
+  CalendarDay as SharedCalendarDay,
+  GameDayItem as SharedGameDayItem,
+  MatchRecapLite,
+  TeamSeason,
+  CurriculumWeek,
+} from '@aci/shared';
 
+// ─── Mobile aliases ───────────────────────────────────────────────────────────
+//
+// Mobile's screens only consume a subset of the shared types. Each alias
+// picks the fields the screens actually read, so a screen that ignores
+// `season.weeks` etc. is still valid against the API response.
+//
+// Source of truth: packages/shared/src/types/coach-center.ts.
+
+/** Subset of TeamSummary used by the mobile Coach Center screens. */
 export type CoachCenterTeam = {
   id: string;
   name: string;
@@ -8,25 +27,15 @@ export type CoachCenterTeam = {
   gameModelLabel?: string | null;
   clubName?: string | null;
   playerLevel?: string | null;
-  season?: {
-    currentWeek?: {
-      weekIndex?: number;
-      theme?: string;
-      focus?: string;
-      phase?: string;
-      zone?: string;
-    } | null;
-  } | null;
+  coachLevel?: string | null;
+  generateHref?: string;
+  notes?: string | null;
+  season?: TeamSeason | null;
 };
 
 export type CoachCenterAccess = {
   canViewAllTeams: boolean;
-  clubs: Array<{
-    clubId: string;
-    clubName: string;
-    role: string;
-    gameModelId?: string | null;
-  }>;
+  clubs: Array<ClubOption & { role: string }>;
   teams: CoachCenterTeam[];
 };
 
@@ -52,57 +61,18 @@ export type CoachCenterOverview = {
     venue?: string | null;
     keyFocus?: string | null;
   } | null;
-  recommendations: Array<{
-    id?: string;
-    title?: string;
-    refCode?: string;
-    reason?: string;
-    matchReason?: string;
-    ageGroup?: string;
-  }>;
+  recommendations: Recommendation[];
 };
 
-export type CoachCenterWeekDay = {
-  date: string;
-  dayLabel: string;
-  events: Array<{
-    id: string;
-    time: string;
-    location?: string | null;
-    completed?: boolean;
-    forThisTeam?: boolean;
-    session?: { id: string; title?: string | null; refCode?: string | null; durationMin?: number | null } | null;
-  }>;
-};
+/** Alias of the shared CalendarDay — the mobile's screens read the same fields. */
+export type CoachCenterWeekDay = SharedCalendarDay;
 
-export type MatchRecapLite = {
-  type?: string;
-  usScore?: number;
-  themScore?: number;
-  headline?: string;
-  summary?: string;
-  caption?: string;
-  location?: string;
-  opponentLabel?: string;
-  proudOf?: string;
-  keepBuilding?: string;
-  nextUp?: string[];
-};
-
-export type GameDayItem = {
-  id: string;
-  matchDate: string;
-  opponent?: string | null;
-  venue?: string | null;
-  competition?: string | null;
-  kickoffTime?: string | null;
-  formation?: string | null;
-  keyFocus?: string | null;
-  attackingNotes?: string | null;
-  defendingNotes?: string | null;
-  setPieces?: string | null;
+/** Alias of the shared GameDayItem, with mobile's narrower recap shape. */
+export type GameDayItem = Omit<SharedGameDayItem, 'recap'> & {
   recap?: MatchRecapLite | null;
 };
+
+export type { MatchRecapLite, ChatMessage, CurriculumWeek };
 
 export async function getCoachCenterAccess(): Promise<CoachCenterAccess> {
   try {
