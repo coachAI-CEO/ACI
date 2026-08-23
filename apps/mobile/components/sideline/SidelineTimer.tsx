@@ -55,7 +55,7 @@ export function SidelineTimer({ durationMin, onComplete }: Props) {
     <View style={styles.wrap}>
       {flash ? <View pointerEvents="none" style={styles.flashOverlay} /> : null}
       <Text style={styles.time}>⏱ {display}</Text>
-      {secondsLeft === 0 ? <Text style={styles.done}>Done — swipe to next drill</Text> : null}
+      {secondsLeft === 0 ? <Text style={styles.done}>Done — next drill</Text> : null}
       <View style={styles.controls}>
         <Text
           style={styles.control}
@@ -91,9 +91,13 @@ const styles = StyleSheet.create({
     borderColor: '#374151',
     borderRadius: 10,
     borderWidth: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    justifyContent: 'space-between',
     overflow: 'hidden',
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   flashOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -101,24 +105,29 @@ const styles = StyleSheet.create({
   },
   time: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   done: {
     color: '#86efac',
-    fontSize: 14,
-    fontWeight: '700',
+    flexBasis: '100%',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   controls: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   control: {
     backgroundColor: '#1f2937',
     borderRadius: 8,
     color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
     overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
 });
