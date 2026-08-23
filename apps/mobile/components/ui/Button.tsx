@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { colors } from '../../constants/colors';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'outline';
+type Variant = 'primary' | 'secondary' | 'danger' | 'outline' | 'success';
 
 type Props = {
   title: string;
@@ -44,6 +44,12 @@ export function Button({
           backgroundColor: 'transparent',
           borderColor: colors.primary,
           color: colors.primary,
+        };
+      case 'success':
+        return {
+          backgroundColor: '#16a34a',
+          borderColor: '#15803d',
+          color: '#ffffff',
         };
       case 'primary':
       default:

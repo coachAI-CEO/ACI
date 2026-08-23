@@ -189,23 +189,6 @@ export default function VaultSessionDetailScreen() {
           </Pressable>
         ) : null}
 
-        {existingPlayerPlan ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open player plan"
-            onPress={() =>
-              router.push({ pathname: '/player-plans/[planId]', params: { planId: existingPlayerPlan.id } })
-            }
-            style={styles.playerPlanBanner}
-          >
-            <Text style={styles.playerPlanBannerTitle}>Player plan exists</Text>
-            <Text style={styles.playerPlanBannerMeta}>
-              {existingPlayerPlan.refCode ? `${existingPlayerPlan.refCode} · ` : ''}
-              {existingPlayerPlan.title || 'Saved player version'}
-            </Text>
-            <Text style={styles.playerPlanBannerLink}>View player plan</Text>
-          </Pressable>
-        ) : null}
 
         <View style={styles.block}>
           <Text style={styles.blockTitle}>Drills ({drills.length})</Text>
@@ -264,7 +247,7 @@ export default function VaultSessionDetailScreen() {
             title={existingPlayerPlan ? 'View player plan' : 'Create player plan'}
             onPress={() => void onPlayerPlan()}
             loading={busy === 'plan'}
-            variant="secondary"
+            variant={existingPlayerPlan ? 'success' : 'secondary'}
           />
         ) : null}
         {!user?.features?.canExportPDF ||
@@ -323,30 +306,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   calendarBannerLink: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  playerPlanBanner: {
-    backgroundColor: 'rgba(34,197,94,0.12)',
-    borderColor: 'rgba(34,197,94,0.4)',
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 4,
-    padding: 12,
-  },
-  playerPlanBannerTitle: {
-    color: '#86efac',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  playerPlanBannerMeta: {
-    color: '#bbf7d0',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  playerPlanBannerLink: {
     color: colors.primary,
     fontSize: 12,
     fontWeight: '700',
