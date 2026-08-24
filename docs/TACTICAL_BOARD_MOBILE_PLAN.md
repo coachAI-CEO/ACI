@@ -4,11 +4,13 @@ Make the tactical board first-class on the mobile app. Phases are sized
 so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
-> **Status (2026-08-24)**: Phase A and Phase A.5 are shipped
-> (`docs/TACTICAL_BOARD_TYPES.md` has the details). **Phase B (list +
-> create flow) is also shipped** — coaches can search, filter, paginate,
-> create (blank / fork session / fork drill), and delete boards from the
-> mobile app. The next step is Phase C (read-only editor fidelity).
+> **Status (2026-08-24)**: Phase A, Phase A.5, **and Phase B** (list +
+> create flow) are shipped. **Phase C (read-only editor fidelity) is also
+> shipped** — `/boards/[id]` now renders the pitch chrome (penalty boxes,
+> center circle, thirds, zones, build-out lines), token rings, sequence
+> timeline with autoplay, format / orientation / zoom viewer toolbar, and
+> a long-press copy-share-link action. Editor mutation is still
+> web-only; native editing is **Phase D**.
 >
 > **Where to start**: Phase C → Phase D → Phase E → Phase F → Phase G →
 > Phase H. Phases build on each other; don't skip C.
@@ -220,7 +222,7 @@ cd apps/api && pnpm exec jest --runInBand \
 
 ---
 
-## Phase C — Editor v1: read-mode fidelity
+## Phase C — Editor v1: read-mode fidelity ✅ SHIPPED
 
 **Goal**: the `/boards/[id]` screen reads like the web editor's read mode
 — pitch chrome is accurate to format (7v7/9v9/11v11), zones/thirds are
