@@ -14,6 +14,7 @@ import {
 import { BoardCanvas } from '../../../components/boards/BoardCanvas';
 import { BoardSequenceBar } from '../../../components/boards/BoardSequenceBar';
 import { BoardToolPalette, type Tool } from '../../../components/boards/BoardToolPalette';
+import { BoardAiSheet } from '../../../components/boards/BoardAiSheet';
 import { PlayerPopover } from '../../../components/boards/PlayerPopover';
 import { Button } from '../../../components/ui/Button';
 import { ErrorMessage } from '../../../components/ui/ErrorMessage';
@@ -68,6 +69,7 @@ export default function BoardEditScreen() {
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [editingTitle, setEditingTitle] = useState('');
+  const [aiOpen, setAiOpen] = useState(false);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tweenTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -565,6 +567,7 @@ export default function BoardEditScreen() {
           <View style={styles.actionsRow}>
             <Button title="Undo" variant="secondary" onPress={undo} disabled={history.length === 0} />
             <Button title="Redo" variant="secondary" onPress={redo} disabled={future.length === 0} />
+            <Button title="AI coach" variant="secondary" onPress={() => setAiOpen(true)} />
           </View>
           <View style={styles.actionsRow}>
             <Button
@@ -587,6 +590,24 @@ export default function BoardEditScreen() {
             <ErrorMessage message={describeApiError(saveMutation.error, 'Save failed.')} />
           ) : null}
         </View>
+
+        <BoardAiSheet
+          visible={aiOpen}
+          boardId={String(id)}
+          diagram={diagram}
+          onClose={() => setAiOpen(false)}
+          onApplyDiagram={(next) => {
+            // Stage the AI's updated diagram into the active frame using the
+            // same sequence helper that drag-and-drop uses. The next save
+            // flushes root → frame via syncActiveFrame() inside `commit`.
+            const staged: WebDiagramV1 = {
+              ...next,
+              pitch: next.pitch ?? diagram?.pitch,
+            };
+            commit(staged);
+            setAiOpen(false);
+          }}
+        />
 
         <BoardToolPalette tool={tool} onTool={setTool} team={team} onTeam={setTeam} />
       </KeyboardAvoidingView>

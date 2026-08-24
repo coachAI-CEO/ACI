@@ -391,7 +391,7 @@ players move smoothly between frames.
 
 ---
 
-## Phase F — AI chat for boards (text-only)
+## Phase F — AI chat for boards (text-only) ✅ SHIPPED (v1)
 
 **Goal**: a coach can ask the board "show me a 4-2-3-1 press trigger from
 the GK" and see the diagram update on the phone, with the same reply /
@@ -431,6 +431,29 @@ F7. Read-only boards hide the composer — show "View-only — open on web to
 with a #6 dropping between the CBs", confirm the reply carries a
 diagram, Apply updates the board, the server returns the same diagram on
 GET.
+
+**Shipped (v1)**:
+- F1 ✅ `sendBoardAiChat(boardId, { message, history, diagram })` →
+  `POST /boards/:id/ai-chat`, returning `{ reply, applied, diagram,
+  coachLevel, playerLevel, sessionBridge }`.
+- F2 ✅ `<BoardAiSheet>` bottom sheet with composer, history bubbles, and
+  "AI is thinking…" loading row. Keyboard-aware.
+- F3 ✅ Mobile detail screen: AI button in the action row opens the
+  sheet. When `applied: true` arrives, the sheet shows an "Apply"
+  banner. On Apply (editable boards): `patchBoard(diagram)` writes
+  through. On view-only boards: a preview overlay appears with the AI's
+  diagram + reply and the coach can Apply (mutates via PATCH) or
+  Discard.
+- F4 ✅ In the editor, "AI coach" sits next to Undo/Redo. On Apply the
+  updated diagram is committed via `commit()` so it lands in the active
+  frame's layers (via the same `syncActiveFrame()` path drag/drop
+  uses); the next save flushes through `patchBoard`.
+
+**Pending for v2**: F5 welcome message, F7 read-only composer gating,
+F6 optimistic insertion with immediate user bubble (current order:
+user → assistant in one mutation cycle). F4 (sessionBridge deep-link
+CTA) is parked — `hydrateFromHref` already supports it but the coach
+context hasn't been wired in the mobile editor yet.
 
 ---
 

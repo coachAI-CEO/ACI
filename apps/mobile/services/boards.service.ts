@@ -117,6 +117,54 @@ export async function patchBoard(
   }
 }
 
+// ─── AI chat ──────────────────────────────────────────────────────────
+
+export type BoardAiHistoryMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type BoardAiChatPayload = {
+  message: string;
+  /** Optional base64 photo of the board, mirrors the web editor. */
+  image?: { data: string; mimeType: string } | null;
+  /** Last-N history slice (the API already caps at 8). */
+  history?: BoardAiHistoryMessage[];
+  /** Send the coach's current diagram so the AI can edit it. */
+  diagram?: WebDiagramV1;
+};
+
+export type BoardAiChatResult = {
+  reply: string;
+  applied: boolean;
+  diagram: WebDiagramV1 | null;
+  coachLevel: string | null;
+  playerLevel: string | null;
+  sessionBridge: { teamId: string; title: string; topic?: string | null } | null;
+};
+
+export async function sendBoardAiChat(
+  boardId: string,
+  payload: BoardAiChatPayload
+): Promise<BoardAiChatResult> {
+  try {
+    const response = await api.post<{ ok: boolean } & BoardAiChatResult>(
+      `/boards/${encodeURIComponent(boardId)}/ai-chat`,
+      payload
+    );
+    return {
+      reply: response.data.reply,
+      applied: response.data.applied,
+      diagram: response.data.diagram ?? null,
+      coachLevel: response.data.coachLevel ?? null,
+      playerLevel: response.data.playerLevel ?? null,
+      sessionBridge: response.data.sessionBridge ?? null,
+    };
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
 export function extractBoardFrames(diagram: WebDiagramV1 | null | undefined): WebDiagramSequenceFrame[] {
   const frames = diagram?.sequence?.frames;
   if (Array.isArray(frames) && frames.length) return frames;

@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { BoardPreview } from '../../components/boards/BoardPreview';
 import { BoardSequenceBar } from '../../components/boards/BoardSequenceBar';
+import { BoardAiSheet } from '../../components/boards/BoardAiSheet';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
@@ -28,10 +29,10 @@ import { SegmentedControl } from '../../components/ui/SegmentedControl';
 import { colors } from '../../constants/colors';
 import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
-import { extractBoardFrames, getBoard, setBoardFavorited } from '../../services/boards.service';
+import { extractBoardFrames, getBoard, patchBoard, setBoardFavorited } from '../../services/boards.service';
 import { formatGameModelLabel } from '../../utils/format';
 import { formatFromBoard } from '../../utils/board-format';
-import type { PitchFormatId, PitchZoom } from '@aci/shared';
+import type { PitchFormatId, PitchZoom, WebDiagramV1 } from '@aci/shared';
 
 type Orientation = 'HORIZONTAL' | 'VERTICAL';
 
@@ -70,6 +71,18 @@ export default function BoardDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
+
+  const patchDiagramMutation = useMutation({
+    mutationFn: (next: WebDiagramV1) => patchBoard(String(id), { diagram: next }),
+    onSuccess: (board) => {
+      queryClient.setQueryData(['boards', id], board);
+      void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
+    },
+  });
+
+  // AI chat state.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [previewOverlay, setPreviewOverlay] = useState<{ diagram: WebDiagramV1; reply: string } | null>(null);
 
   const frames = useMemo(() => extractBoardFrames(query.data?.diagram), [query.data?.diagram]);
 
@@ -288,6 +301,9 @@ export default function BoardDetailScreen() {
             )}
             <Button title="Share" variant="secondary" onPress={onShare} />
           </View>
+          <View style={styles.actionsRow}>
+            <Button title="AI coach" variant="secondary" onPress={() => setAiOpen(true)} />
+          </View>
           {board.sourceSessionId ? (
             <Button
               title="Open source session"
@@ -301,6 +317,45 @@ export default function BoardDetailScreen() {
             />
           ) : null}
         </View>
+
+        {previewOverlay ? (
+          <View style={styles.previewOverlay}>
+            <View style={styles.previewCard}>
+              <Text style={styles.previewTitle}>AI preview</Text>
+              <Text style={styles.previewBody} numberOfLines={3}>{previewOverlay.reply}</Text>
+              <View style={styles.previewActions}>
+                <Button
+                  title="Discard"
+                  variant="secondary"
+                  onPress={() => setPreviewOverlay(null)}
+                />
+                <Button
+                  title="Apply"
+                  onPress={() => {
+                    patchDiagramMutation.mutate(previewOverlay.diagram);
+                    setPreviewOverlay(null);
+                  }}
+                  disabled={!canEdit || patchDiagramMutation.isPending}
+                />
+              </View>
+            </View>
+          </View>
+        ) : null}
+
+        <BoardAiSheet
+          visible={aiOpen}
+          boardId={board.id}
+          diagram={board.diagram || null}
+          onClose={() => setAiOpen(false)}
+          onApplyDiagram={(next, reply) => {
+            setAiOpen(false);
+            if (canEdit) {
+              patchDiagramMutation.mutate(next);
+            } else {
+              setPreviewOverlay({ diagram: next, reply });
+            }
+          }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -352,4 +407,21 @@ const styles = StyleSheet.create({
   note: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 16 },
   actions: { gap: 12, paddingHorizontal: 16 },
   actionsRow: { flexDirection: 'row', gap: 8 },
+  previewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  previewCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    gap: 10,
+    padding: 16,
+    width: '90%',
+  },
+  previewTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  previewBody: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  previewActions: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end', paddingTop: 4 },
 });
