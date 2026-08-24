@@ -104,7 +104,7 @@ export async function deleteBoard(boardId: string): Promise<void> {
 
 export async function patchBoard(
   boardId: string,
-  body: { title?: string; shareMode?: BoardShareMode; favorited?: boolean }
+  body: { title?: string; shareMode?: BoardShareMode; favorited?: boolean; diagram?: WebDiagramV1; ageGroup?: string | null }
 ): Promise<BoardDetail> {
   try {
     const response = await api.patch<{ ok: boolean; board: BoardDetail }>(

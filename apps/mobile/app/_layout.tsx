@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SplashScreen, Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useMemo } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NetworkBanner } from '../components/offline/NetworkBanner';
 import { colors } from '../constants/colors';
@@ -66,6 +67,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <AppEffects />
         <NetworkBanner />
@@ -100,6 +102,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" options={{ ...stackHeader, title: 'Settings', headerBackTitle: 'Home' }} />
         </Stack>
       </QueryClientProvider>
+      </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }

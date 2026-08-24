@@ -4,13 +4,14 @@ Make the tactical board first-class on the mobile app. Phases are sized
 so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
-> **Status (2026-08-24)**: Phase A, Phase A.5, **and Phase B** (list +
-> create flow) are shipped. **Phase C (read-only editor fidelity) is also
-> shipped** — `/boards/[id]` now renders the pitch chrome (penalty boxes,
-> center circle, thirds, zones, build-out lines), token rings, sequence
-> timeline with autoplay, format / orientation / zoom viewer toolbar, and
-> a long-press copy-share-link action. Editor mutation is still
-> web-only; native editing is **Phase D**.
+> **Status (2026-08-24)**: Phase A, Phase A.5, Phase B (list + create
+> flow), Phase C (read-only fidelity), and **Phase D (native editor)
+> v1** are shipped. Coaches can edit boards directly on the phone
+> from `/boards/[id]/edit` — pinch to zoom, drag players, tap-tap to
+> draw arrows, drop shapes/labels/cones, erase, undo/redo, and save
+> back via `PATCH /boards/:id`. The remaining items (D6 player
+> popover, D8 frame-affordances) and Phases E (timeline playback) /
+> F (AI chat) / G (coach sync) follow.
 >
 > **Where to start**: Phase C → Phase D → Phase E → Phase F → Phase G →
 > Phase H. Phases build on each other; don't skip C.
@@ -285,7 +286,7 @@ between frame slides, toggle auto-play, change orientation.
 
 ---
 
-## Phase D — Editor v2: native editing
+## Phase D — Editor v2: native editing ✅ SHIPPED (v1)
 
 **Goal**: a coach can edit the diagram with their thumb — no "Edit on web"
 button.

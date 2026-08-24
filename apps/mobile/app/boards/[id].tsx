@@ -275,10 +275,17 @@ export default function BoardDetailScreen() {
         <View style={styles.actions}>
           {canEdit ? <Badge label="You can edit" tone="default" /> : <Badge label="View only" tone="muted" />}
           <View style={styles.actionsRow}>
-            <Button
-              title={canEdit ? 'Open editor' : 'Edit on web'}
-              onPress={() => void Linking.openURL(webPath(`/board/${board.id}`))}
-            />
+            {canEdit ? (
+              <Button
+                title="Open editor"
+                onPress={() => router.push({ pathname: '/boards/[id]/edit', params: { id: board.id } })}
+              />
+            ) : (
+              <Button
+                title="Edit on web"
+                onPress={() => void Linking.openURL(webPath(`/board/${board.id}`))}
+              />
+            )}
             <Button title="Share" variant="secondary" onPress={onShare} />
           </View>
           {board.sourceSessionId ? (
