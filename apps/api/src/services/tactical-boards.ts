@@ -95,6 +95,12 @@ async function resolveCreateGameModel(params: {
   clientGameModelId?: unknown;
   forkSessionGameModelId?: GameModelId | null;
   shareMode: BoardShareMode;
+  /**
+   * Allow falling back to the default game model instead of throwing
+   * GAME_MODEL_REQUIRED. Used by BLANK boards so coaches can spin up a
+   * clean slate without first picking a club / model.
+   */
+  allowFallbackDefault?: boolean;
 }): Promise<{ clubId: string | null; gameModelId: GameModelId }> {
   const stamp = await resolveBoardClubStamp(params.userId);
 
@@ -107,6 +113,10 @@ async function resolveCreateGameModel(params: {
 
   if (!gameModelId) {
     gameModelId = parseClientGameModelId(params.clientGameModelId);
+  }
+
+  if (!gameModelId && params.allowFallbackDefault) {
+    gameModelId = 'COACHAI';
   }
 
   if (!gameModelId) {
@@ -390,11 +400,22 @@ async function resolveBlankBoardAudience(
 
 export async function createBlankBoard(userId: string, body: any) {
   await assertCanCreateBoards(userId);
-  const shareMode = parseShareMode(body?.shareMode);
+  const requestedShareMode = parseShareMode(body?.shareMode);
+  // If a non-club coach asks for CLUB share on a blank board, downgrade
+  // silently to PRIVATE rather than 400-ing — they don't have a club
+  // yet, and rejecting them blocks the whole create flow.
+  const stamp = await resolveBoardClubStamp(userId);
+  const shareMode =
+    requestedShareMode === BoardShareMode.CLUB && !stamp.clubId
+      ? BoardShareMode.PRIVATE
+      : requestedShareMode;
   const { clubId, gameModelId } = await resolveCreateGameModel({
     userId,
     clientGameModelId: body?.gameModelId,
     shareMode,
+    // BLANK boards are a clean slate — let the user spin one up without
+    // forcing a club/model pick first.
+    allowFallbackDefault: true,
   });
   const { ageGroup, format } = await resolveBlankBoardAudience(userId, body);
 
