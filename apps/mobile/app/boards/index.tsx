@@ -1,102 +1,280 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { Linking, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { BoardCard } from '../../components/boards/BoardCard';
+import { CreateBoardSheet } from '../../components/boards/CreateBoardSheet';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
-import { LoadingSpinner } from '../../components/ui/LoadingSpinner';
 import { colors } from '../../constants/colors';
-import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
-import { listBoards } from '../../services/boards.service';
+import { deleteBoard, listBoards, type BoardListItem } from '../../services/boards.service';
+
+type ShareFilter = 'ALL' | 'PRIVATE' | 'CLUB';
+
+const PAGE_SIZE = 40;
 
 export default function BoardsHomeScreen() {
-  const query = useQuery({
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [shareFilter, setShareFilter] = useState<ShareFilter>('ALL');
+  const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const infinite = useInfiniteQuery({
     queryKey: ['boards', 'list'],
-    queryFn: () => listBoards(40),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) => listBoards(PAGE_SIZE, pageParam as string | null),
+    getNextPageParam: (last) => last.nextCursor,
   });
 
-  if (query.isLoading) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <LoadingSpinner />
-      </SafeAreaView>
+  const allBoards: BoardListItem[] = useMemo(() => {
+    const pages = infinite.data?.pages || [];
+    return pages.flatMap((p) => p.boards);
+  }, [infinite.data]);
+
+  const filtered = useMemo(() => {
+    return allBoards.filter((board) => {
+      if (shareFilter !== 'ALL' && (board.shareMode || 'PRIVATE') !== shareFilter) return false;
+      if (debouncedSearch) {
+        const haystack = `${board.title || ''} ${board.ageGroup || ''}`.toLowerCase();
+        if (!haystack.includes(debouncedSearch)) return false;
+      }
+      return true;
+    });
+  }, [allBoards, shareFilter, debouncedSearch]);
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteBoard(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
+    },
+    onError: (err) => {
+      Alert.alert('Couldn’t delete board', describeApiError(err, 'Try again in a moment.'));
+    },
+  });
+
+  function confirmDelete(board: BoardListItem) {
+    if (!board.canEdit) return;
+    Alert.alert(
+      'Delete board?',
+      `${board.title || 'Untitled board'} will be removed. This can’t be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteMutation.mutate(board.id),
+        },
+      ]
     );
   }
 
-  if (query.error) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.container}>
-          <ErrorMessage message={describeApiError(query.error, 'Boards unavailable.')} />
-          <Button title="Open on web" onPress={() => void Linking.openURL(webPath('/boards'))} variant="secondary" />
+  const renderHeader = () => (
+    <View style={styles.headerWrap}>
+      <View style={styles.headerRow}>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>Boards</Text>
+          <Text style={styles.subtitle}>
+            View + create boards. Edit on web for drawing tools.
+          </Text>
         </View>
-      </SafeAreaView>
-    );
-  }
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Create board"
+          onPress={() => setCreateOpen(true)}
+          style={({ pressed }) => [styles.createBtn, pressed ? styles.createBtnPressed : null]}
+        >
+          <Text style={styles.createBtnLabel}>＋ New</Text>
+        </Pressable>
+      </View>
 
-  const boards = query.data?.boards || [];
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search boards"
+        placeholderTextColor={colors.muted}
+        style={styles.search}
+        returnKeyType="search"
+        autoCorrect={false}
+        autoCapitalize="none"
+      />
+
+      <View style={styles.chipsRow}>
+        {(['ALL', 'PRIVATE', 'CLUB'] as ShareFilter[]).map((id) => {
+          const selected = shareFilter === id;
+          const label = id === 'ALL' ? 'All' : id === 'PRIVATE' ? 'Private' : 'Club';
+          return (
+            <Pressable
+              key={id}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => setShareFilter(id)}
+              style={[styles.chip, selected ? styles.chipSelected : null]}
+            >
+              <Text style={[styles.chipLabel, selected ? styles.chipLabelSelected : null]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  const renderFooter = () => {
+    if (!infinite.hasNextPage) return null;
+    return (
+      <View style={styles.footer}>
+        <Button
+          title={infinite.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          variant="secondary"
+          onPress={() => infinite.fetchNextPage()}
+          disabled={infinite.isFetchingNextPage}
+        />
+      </View>
+    );
+  };
+
+  const renderEmpty = () => {
+    if (infinite.isLoading) {
+      return (
+        <View style={styles.empty}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      );
+    }
+    if (infinite.error) {
+      return (
+        <View style={styles.empty}>
+          <ErrorMessage message={describeApiError(infinite.error, 'Boards unavailable.')} />
+        </View>
+      );
+    }
+    const hasFilters = debouncedSearch.length > 0 || shareFilter !== 'ALL';
+    if (hasFilters) {
+      return (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>No matches</Text>
+          <Text style={styles.emptyBody}>Try clearing the search or share filter.</Text>
+        </View>
+      );
+    }
+    return <EmptyState onCreate={() => setCreateOpen(true)} />;
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} tintColor={colors.primary} />}
-      >
-        <Text style={styles.title}>Boards</Text>
-        <Text style={styles.subtitle}>View boards on phone. Edit on web for drawing tools.</Text>
-
-        {boards.length ? (
-          boards.map((board) => (
-            <View key={board.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{board.title || 'Untitled board'}</Text>
-                {board.favorited ? <Text style={styles.star}>★</Text> : null}
-              </View>
-              <Text style={styles.meta}>
-                {board.ageGroup || '--'} · {board.gameModelId || '--'}
-                {board.phase ? ` · ${board.phase}` : ''}
-                {board.slideCount ? ` · ${board.slideCount} slides` : ''}
-              </Text>
-              <View style={styles.row}>
-                <Button
-                  title="View"
-                  onPress={() => router.push({ pathname: '/boards/[id]', params: { id: board.id } })}
-                  variant="secondary"
-                />
-                <Button
-                  title="Edit on web"
-                  onPress={() => void Linking.openURL(webPath(`/board/${board.id}`))}
-                  variant="secondary"
-                />
-              </View>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.meta}>No boards yet. Create one on the web.</Text>
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <BoardCard board={item} onLongPress={item.canEdit ? () => confirmDelete(item) : undefined} />
         )}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmpty}
+        ListFooterComponent={renderFooter}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={infinite.isRefetching}
+            onRefresh={() => infinite.refetch()}
+            tintColor={colors.primary}
+          />
+        }
+        onEndReached={() => {
+          if (infinite.hasNextPage && !infinite.isFetchingNextPage) {
+            infinite.fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.6}
+        keyboardShouldPersistTaps="handled"
+      />
 
-        <Button title="Open boards on web" onPress={() => void Linking.openURL(webPath('/boards'))} />
-      </ScrollView>
+      <CreateBoardSheet
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(boardId) => {
+          setCreateOpen(false);
+          router.push({ pathname: '/boards/[id]', params: { id: boardId } });
+        }}
+      />
     </SafeAreaView>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <View style={styles.empty}>
+      <Text style={styles.emptyTitle}>No boards yet</Text>
+      <Text style={styles.emptyBody}>
+        Create a blank board, fork a session, or fork a drill. Drawing tools still live on the
+        web — once you save on the web, it shows up here.
+      </Text>
+      <View style={styles.emptyActions}>
+        <Button title="Create your first board" onPress={onCreate} />
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { backgroundColor: colors.background, flex: 1 },
-  container: { gap: 12, padding: 16 },
-  title: { color: colors.text, fontSize: 28, fontWeight: '700' },
-  subtitle: { color: colors.muted },
-  card: {
+  listContent: { gap: 12, padding: 16, paddingBottom: 48 },
+  headerWrap: { gap: 12 },
+  headerRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8 },
+  headerText: { flex: 1, gap: 4 },
+  title: { color: colors.text, fontSize: 28, fontWeight: '800', letterSpacing: -0.4 },
+  subtitle: { color: colors.muted, fontSize: 13 },
+  createBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  createBtnPressed: { opacity: 0.7 },
+  createBtnLabel: { color: '#062816', fontSize: 13, fontWeight: '800' },
+  search: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    gap: 8,
-    padding: 12,
+    color: colors.text,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
-  cardTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '700' },
-  cardHeader: { alignItems: 'center', flexDirection: 'row', gap: 8 },
-  star: { color: colors.warning, fontSize: 18 },
-  meta: { color: colors.muted, fontSize: 12 },
-  row: { flexDirection: 'row', gap: 8 },
+  chipsRow: { flexDirection: 'row', gap: 6 },
+  chip: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  chipSelected: { backgroundColor: '#14381f', borderColor: colors.primary },
+  chipLabel: { color: colors.text, fontSize: 12, fontWeight: '600' },
+  chipLabelSelected: { color: colors.primary, fontWeight: '800' },
+  separator: { height: 12 },
+  footer: { paddingTop: 4 },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 32 },
+  emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  emptyBody: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  emptyActions: { paddingTop: 8, width: '100%' },
 });
