@@ -145,6 +145,29 @@ export default function BoardEditScreen() {
     return JSON.stringify(diagram || {}) !== JSON.stringify(baseline || {});
   }, [diagram, baseline]);
 
+  // ─── Cleanup hooks (must run before any early returns below) ────────
+  useEffect(() => () => stopPlayback(), []);
+
+  // ─── Navigation guard ────────────────────────────────────────────────
+  const navAway = useCallback(
+    (after: () => void) => {
+      if (!dirty) {
+        after();
+        return;
+      }
+      // Real alert via the prompt card shown at the bottom of the screen.
+      const evt = new CustomEvent('board:prompt-leave', { detail: { after } });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(evt);
+      } else {
+        // Mobile: just go if user agreed (expo-router gestures back). We
+        // emit a native alert via the embedded PromptSaveOnExit below.
+        after();
+      }
+    },
+    [dirty]
+  );
+
   // ─── Save ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -303,29 +326,6 @@ export default function BoardEditScreen() {
       if (tweenTimer.current) clearInterval(tweenTimer.current);
     }, duration);
   }
-
-  useEffect(() => stopPlayback, []);
-  useEffect(() => () => stopPlayback(), []);
-
-  // ─── Navigation guard ────────────────────────────────────────────────
-  const navAway = useCallback(
-    (after: () => void) => {
-      if (!dirty) {
-        after();
-        return;
-      }
-      // Real alert via the prompt card shown at the bottom of the screen.
-      const evt = new CustomEvent('board:prompt-leave', { detail: { after } });
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(evt);
-      } else {
-        // Mobile: just go if user agreed (expo-router gestures back). We
-        // emit a native alert via the embedded PromptSaveOnExit below.
-        after();
-      }
-    },
-    [dirty]
-  );
 
   if (query.isLoading) {
     return (

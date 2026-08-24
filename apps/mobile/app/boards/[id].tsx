@@ -52,6 +52,10 @@ export default function BoardDetailScreen() {
   const [zoom, setZoom] = useState<PitchZoom>('FULL');
   const [orientation, setOrientation] = useState<Orientation>('HORIZONTAL');
 
+  // AI chat state.
+  const [aiOpen, setAiOpen] = useState(false);
+  const [previewOverlay, setPreviewOverlay] = useState<{ diagram: WebDiagramV1; reply: string } | null>(null);
+
   const query = useQuery({
     queryKey: ['boards', id],
     queryFn: () => getBoard(String(id)),
@@ -80,11 +84,49 @@ export default function BoardDetailScreen() {
     },
   });
 
-  // AI chat state.
-  const [aiOpen, setAiOpen] = useState(false);
-  const [previewOverlay, setPreviewOverlay] = useState<{ diagram: WebDiagramV1; reply: string } | null>(null);
-
   const frames = useMemo(() => extractBoardFrames(query.data?.diagram), [query.data?.diagram]);
+
+  // Keep these hooks above the early returns so the hook order is stable
+  // across loading / error / loaded renders.
+  const boardId = query.data?.id ?? '';
+  const copyShareLink = useCallback(async () => {
+    if (!boardId) return;
+    const link = webPath(`/board/${boardId}`);
+    try {
+      await Clipboard.setStringAsync(link);
+      Alert.alert('Link copied', 'Board link is on your clipboard.');
+    } catch {
+      Alert.alert('Copy failed', 'Please copy the link from the Share sheet instead.');
+    }
+  }, [boardId]);
+
+  const onShare = useCallback(async () => {
+    if (!boardId) return;
+    try {
+      await Share.share({ message: webPath(`/board/${boardId}`) });
+    } catch {
+      // user cancelled
+    }
+  }, [boardId]);
+
+  const onLongPress = useCallback(() => {
+    if (!boardId) return;
+    const copyIdx = 0;
+    const cancelIdx = 1;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Copy share link', 'Cancel'], cancelButtonIndex: cancelIdx },
+        (idx) => {
+          if (idx === copyIdx) void copyShareLink();
+        }
+      );
+    } else {
+      Alert.alert('Board', webPath(`/board/${boardId}`), [
+        { text: 'Copy link', onPress: () => void copyShareLink() },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [boardId, copyShareLink]);
 
   if (query.isLoading) {
     return (
@@ -122,42 +164,6 @@ export default function BoardDetailScreen() {
     setSlideIndex(index);
     pagerRef.current?.scrollTo({ x: index * PAGE_WIDTH, animated: true });
   }
-
-  const copyShareLink = useCallback(async () => {
-    const link = webPath(`/board/${board.id}`);
-    try {
-      await Clipboard.setStringAsync(link);
-      Alert.alert('Link copied', 'Board link is on your clipboard.');
-    } catch {
-      Alert.alert('Copy failed', 'Please copy the link from the Share sheet instead.');
-    }
-  }, [board.id]);
-
-  const onShare = useCallback(async () => {
-    try {
-      await Share.share({ message: webPath(`/board/${board.id}`) });
-    } catch {
-      // user cancelled
-    }
-  }, [board.id]);
-
-  const onLongPress = useCallback(() => {
-    const copyIdx = 0;
-    const cancelIdx = 1;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        { options: ['Copy share link', 'Cancel'], cancelButtonIndex: cancelIdx },
-        (idx) => {
-          if (idx === copyIdx) void copyShareLink();
-        }
-      );
-    } else {
-      Alert.alert('Board actions', undefined, [
-        { text: 'Copy share link', onPress: () => void copyShareLink() },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-    }
-  }, [copyShareLink]);
 
   return (
     <SafeAreaView style={styles.safe}>
