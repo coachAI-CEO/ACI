@@ -14,6 +14,12 @@ export type UserFeatures = {
   canGenerateWeeklySummaries: boolean;
   canInviteCoaches: boolean;
   canManageOrganization: boolean;
+  /**
+   * Mobile tactical-board editor. Off by default; the API gates every
+   * `/boards/*` route on this so disabled accounts can't list, view or
+   * mutate boards even if the mobile app surfaces the screens.
+   */
+  tacticalBoardV1: boolean;
 };
 
 export type ClubMembershipSummary = {

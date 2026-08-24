@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActionSheetIOS,
+  Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -21,8 +24,9 @@ import { ErrorMessage } from '../../../components/ui/ErrorMessage';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { SegmentedControl } from '../../../components/ui/SegmentedControl';
 import { colors } from '../../../constants/colors';
+import { webPath } from '../../../constants/web';
 import { describeApiError } from '../../../services/api';
-import { getBoard, patchBoard } from '../../../services/boards.service';
+import { deleteBoard, getBoard, patchBoard } from '../../../services/boards.service';
 import { formatGameModelLabel } from '../../../utils/format';
 import { formatFromBoard } from '../../../utils/board-format';
 import {
@@ -190,6 +194,94 @@ export default function BoardEditScreen() {
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
+
+  // ─── Share / delete / open-on-web (Phase G1, G2, G3) ────────────────
+  const shareMutation = useMutation({
+    mutationFn: (next: 'PRIVATE' | 'CLUB') => patchBoard(String(id), { shareMode: next }),
+    onSuccess: (board) => {
+      queryClient.setQueryData(['boards', id], board);
+      void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteBoard(String(id)),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['boards', id] });
+      void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
+      router.replace('/boards');
+    },
+  });
+
+  function openOverflow() {
+    const currentShare = board?.shareMode || 'PRIVATE';
+    const otherShare = currentShare === 'CLUB' ? 'Private' : 'Club';
+    const otherShareValue: 'PRIVATE' | 'CLUB' = currentShare === 'CLUB' ? 'PRIVATE' : 'CLUB';
+    const shareLabel = `Share with ${otherShare}`;
+    const deleteLabel = 'Delete board';
+    const webLabel = 'Edit on web';
+    const cancel = 'Cancel';
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Board actions',
+          options: [shareLabel, webLabel, deleteLabel, cancel],
+          cancelButtonIndex: 3,
+          destructiveButtonIndex: 2,
+        },
+        (idx) => {
+          if (idx === 0) {
+            shareMutation.mutate(otherShareValue, {
+              onError: (err) =>
+                Alert.alert('Share failed', describeApiError(err, 'Could not update share mode.')),
+            });
+            return;
+          }
+          if (idx === 1) {
+            void Linking.openURL(webPath(`/board/${id}`));
+            return;
+          }
+          if (idx === 2) confirmDelete();
+        }
+      );
+      return;
+    }
+    Alert.alert('Board actions', undefined, [
+      {
+        text: shareLabel,
+        onPress: () =>
+          shareMutation.mutate(otherShareValue, {
+            onError: (err) =>
+              Alert.alert('Share failed', describeApiError(err, 'Could not update share mode.')),
+          }),
+      },
+      {
+        text: webLabel,
+        onPress: () => void Linking.openURL(webPath(`/board/${id}`)),
+      },
+      { text: deleteLabel, style: 'destructive', onPress: () => confirmDelete() },
+      { text: cancel, style: 'cancel' },
+    ]);
+  }
+
+  function confirmDelete() {
+    Alert.alert(
+      'Delete this board?',
+      'This permanently removes the board and its frames. You can’t undo this on mobile.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            deleteMutation.mutate(undefined, {
+              onError: (err) =>
+                Alert.alert('Delete failed', describeApiError(err, 'Could not delete board.')),
+            }),
+        },
+      ]
+    );
+  }
 
   // ─── Frame operations ────────────────────────────────────────────────
   function jumpToFrame(index: number) {
@@ -388,6 +480,16 @@ export default function BoardEditScreen() {
               style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
             >
               <Text style={styles.headerBack}>← Back</Text>
+            </Pressable>
+          ),
+          headerRight: () => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More"
+              onPress={openOverflow}
+              style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
+            >
+              <Text style={styles.headerMore}>⋯</Text>
             </Pressable>
           ),
         }}
@@ -617,6 +719,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   headerSubtitle: { color: colors.muted, fontSize: 11 },
   headerBack: { color: colors.primary, fontSize: 16, fontWeight: '600', paddingHorizontal: 8 },
+  headerMore: { color: colors.primary, fontSize: 22, fontWeight: '700', paddingHorizontal: 8 },
   toolbar: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

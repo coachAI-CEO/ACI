@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -18,8 +19,10 @@ import { CreateBoardSheet } from '../../components/boards/CreateBoardSheet';
 import { Button } from '../../components/ui/Button';
 import { ErrorMessage } from '../../components/ui/ErrorMessage';
 import { colors } from '../../constants/colors';
+import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
 import { deleteBoard, listBoards, type BoardListItem } from '../../services/boards.service';
+import { useAuthStore } from '../../stores/auth.store';
 
 type ShareFilter = 'ALL' | 'PRIVATE' | 'CLUB';
 
@@ -27,6 +30,8 @@ const PAGE_SIZE = 40;
 
 export default function BoardsHomeScreen() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
+  const tacticalBoardV1 = Boolean(user?.features?.tacticalBoardV1);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [shareFilter, setShareFilter] = useState<ShareFilter>('ALL');
@@ -37,11 +42,16 @@ export default function BoardsHomeScreen() {
     return () => clearTimeout(t);
   }, [search]);
 
+  if (user && !tacticalBoardV1) {
+    return <BoardsComingSoon />;
+  }
+
   const infinite = useInfiniteQuery({
     queryKey: ['boards', 'list'],
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => listBoards(PAGE_SIZE, pageParam as string | null),
     getNextPageParam: (last) => last.nextCursor,
+    enabled: tacticalBoardV1,
   });
 
   const allBoards: BoardListItem[] = useMemo(() => {
@@ -230,6 +240,27 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
         <Button title="Create your first board" onPress={onCreate} />
       </View>
     </View>
+  );
+}
+
+function BoardsComingSoon() {
+  return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.empty}>
+        <Text style={styles.emptyTitle}>Boards are coming soon</Text>
+        <Text style={styles.emptyBody}>
+          The mobile tactical-board editor isn't enabled on your plan yet. You can still view
+          boards shared with your club on the web.
+        </Text>
+        <View style={styles.emptyActions}>
+          <Button
+            title="Open web"
+            variant="secondary"
+            onPress={() => void Linking.openURL(webPath('/boards'))}
+          />
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 

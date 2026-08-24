@@ -23,6 +23,7 @@ type QuickAction = {
 type Props = {
   canAccessCalendar: boolean;
   canCreatePlayerPlans: boolean;
+  tacticalBoardV1: boolean;
 };
 
 const BASE_ACTIONS: QuickAction[] = [
@@ -36,7 +37,7 @@ const BASE_ACTIONS: QuickAction[] = [
   { key: 'boards', title: 'Boards', icon: '◇', route: '/boards', enabled: true },
 ];
 
-export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Props) {
+export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans, tacticalBoardV1 }: Props) {
   const setActiveType = useGenerateStore((s) => s.setActiveType);
 
   const handlePress = (action: QuickAction) => {
@@ -52,7 +53,9 @@ export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans }: Pro
             ? canAccessCalendar
             : action.key === 'plans'
               ? canCreatePlayerPlans
-              : action.enabled;
+              : action.key === 'boards'
+                ? tacticalBoardV1
+                : action.enabled;
         return (
           <Pressable
             accessibilityRole="button"

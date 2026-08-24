@@ -166,6 +166,7 @@ export default function HomeTab() {
           <QuickActionGrid
             canAccessCalendar={Boolean(user?.features.canAccessCalendar)}
             canCreatePlayerPlans={Boolean(user?.features.canCreatePlayerPlans)}
+            tacticalBoardV1={Boolean(user?.features.tacticalBoardV1)}
           />
         </View>
 
