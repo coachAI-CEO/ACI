@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActionSheetIOS, Alert, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
 
-export type Tool = 'move' | 'player' | 'arrow' | 'shape' | 'label' | 'erase';
+export type Tool = 'move' | 'player' | 'arrow' | 'ball' | 'shape' | 'label' | 'erase';
 export type Team = 'ATT' | 'DEF' | 'NEUTRAL';
 
 type Props = {
@@ -16,7 +16,7 @@ const PRIMARY: { id: Tool; icon: string; label: string }[] = [
   { id: 'move', icon: '✥', label: 'Move' },
   { id: 'player', icon: '◉', label: 'Player' },
   { id: 'arrow', icon: '⇢', label: 'Arrow' },
-  { id: 'shape', icon: '◯', label: 'Shape' },
+  { id: 'ball', icon: '●', label: 'Ball' },
   { id: 'erase', icon: '⌫', label: 'Erase' },
 ];
 
@@ -28,9 +28,9 @@ const TEAMS: { id: Team; label: string; color: string }[] = [
 
 /**
  * Bottom tool palette. Mirrors the web's tool palette shape:
- *   - 5 primary tools (Move / Player / Arrow / Shape / Erase).
+ *   - 5 primary tools (Move / Player / Arrow / Ball / Erase).
  *   - Team pill (ATT / DEF / NEUTRAL) — cycles on tap.
- *   - "More" sheet exposes advanced: ball, label, mini-goal, cone,
+ *   - "More" sheet exposes advanced: shape, label, mini-goal, cone,
  *     mannequin, pole.
  */
 export function BoardToolPalette({ tool, onTool, team, onTeam }: Props) {
@@ -41,15 +41,17 @@ export function BoardToolPalette({ tool, onTool, team, onTeam }: Props) {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: 'More tools',
-          options: ['Cancel', 'Label', 'Ball', 'Mini-goal', 'Cone', 'Mannequin', 'Pole'],
+          options: ['Cancel', 'Shape', 'Label', 'Mini-goal', 'Cone', 'Mannequin', 'Pole'],
           cancelButtonIndex: 0,
         },
         (idx) => {
-          if (idx === 1) onTool('label');
+          if (idx === 1) onTool('shape');
+          if (idx === 2) onTool('label');
         }
       );
     } else {
       Alert.alert('More tools', undefined, [
+        { text: 'Shape', onPress: () => onTool('shape') },
         { text: 'Label', onPress: () => onTool('label') },
         { text: 'Cancel', style: 'cancel' },
       ]);

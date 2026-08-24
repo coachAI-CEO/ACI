@@ -413,7 +413,6 @@ export default function BoardEditScreen() {
             />
           </View>
           <View style={styles.toolbarRow}>
-            <Text style={styles.toolbarLabel}>Orientation</Text>
             <SegmentedControl
               accessibilityLabel="Pitch orientation"
               compact
@@ -424,9 +423,6 @@ export default function BoardEditScreen() {
                 { value: 'VERTICAL', label: 'Vertical' },
               ]}
             />
-          </View>
-          <View style={styles.toolbarRow}>
-            <Text style={styles.toolbarLabel}>Zoom</Text>
             <SegmentedControl
               accessibilityLabel="Pitch zoom"
               compact
@@ -492,7 +488,7 @@ export default function BoardEditScreen() {
         </View>
 
         <View style={styles.frameDurationRow}>
-          <Text style={styles.toolbarLabel}>Frame duration ({(activeDuration / 1000).toFixed(1)}s)</Text>
+          <Text style={styles.toolbarLabel}>Duration · {(activeDuration / 1000).toFixed(1)}s</Text>
           <View style={styles.frameDurationBtns}>
             {[800, 1600, 3200, 6000].map((ms) => (
               <Pressable
@@ -627,10 +623,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     gap: 8,
-    margin: 12,
-    padding: 10,
+    marginHorizontal: 12,
+    marginTop: 12,
+    padding: 8,
   },
-  toolbarRow: { alignItems: 'center', flexDirection: 'row', gap: 12, justifyContent: 'space-between' },
+  toolbarRow: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
   toolbarLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
   frameMetaRow: {
     alignItems: 'center',

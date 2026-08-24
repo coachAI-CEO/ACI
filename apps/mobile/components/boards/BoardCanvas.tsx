@@ -30,7 +30,7 @@ import {
 import { colors } from '../../constants/colors';
 
 type Orientation = 'HORIZONTAL' | 'VERTICAL';
-export type Tool = 'move' | 'player' | 'arrow' | 'shape' | 'label' | 'erase';
+export type Tool = 'move' | 'player' | 'arrow' | 'ball' | 'shape' | 'label' | 'erase';
 type Team = 'ATT' | 'DEF' | 'NEUTRAL';
 
 type Props = {
@@ -82,7 +82,7 @@ export function BoardCanvas({
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [scale, setScale] = useState(1);
   const [draftArrow, setDraftArrow] = useState<{ fromX: number; fromY: number; toX: number; toY: number } | null>(null);
-  const dragRef = useRef<{ key: string; type: 'player' | 'label'; startX: number; startY: number } | null>(null);
+  const dragRef = useRef<{ key: string; type: 'player' | 'label' | 'ball'; startX: number; startY: number } | null>(null);
 
   const layers = useMemo<WebDiagramFrameLayers>(() => resolveLayers(diagram), [diagram]);
 
@@ -145,6 +145,12 @@ export function BoardCanvas({
         setDraftArrow(null);
         return;
       }
+      if (tool === 'ball') {
+        // Single ball per diagram (matches the diagram schema's single-ball
+        // convention in the web). Replacing on each tap is the simpler UX.
+        commit({ ...diagram, balls: [{ x: px, y: py }] });
+        return;
+      }
       if (tool === 'shape') {
         const areas = diagram.areas || [];
         const newArea: WebDiagramArea = { x: px, y: py, width: 16, height: 16, shape: 'spotlight' };
@@ -161,7 +167,7 @@ export function BoardCanvas({
     (px: number, py: number) => {
       if (tool !== 'move') return;
       const hit = findHit(layers, px, py, HIT_RADIUS_PCT);
-      if (!hit || (hit.kind !== 'player' && hit.kind !== 'label')) return;
+      if (!hit || (hit.kind !== 'player' && hit.kind !== 'label' && hit.kind !== 'ball')) return;
       dragRef.current = { key: `${hit.kind}:${hit.index}`, type: hit.kind, startX: px, startY: py };
       onSelect(`${hit.kind}:${hit.index}`);
     },
@@ -178,6 +184,13 @@ export function BoardCanvas({
           ...diagram,
           players: (diagram.players || []).map((p, i) =>
             i === idx ? { ...p, x: clamp(p.x + dpx, 0, 100), y: clamp(p.y + dpy, 0, 100) } : p
+          ),
+        });
+      } else if (dragRef.current.type === 'ball') {
+        commit({
+          ...diagram,
+          balls: (diagram.balls || []).map((b, i) =>
+            i === idx ? { x: clamp(b.x + dpx, 0, 100), y: clamp(b.y + dpy, 0, 100) } : b
           ),
         });
       } else {
@@ -375,7 +388,7 @@ function nextPlayerNumber(players: WebDiagramPlayer[], team: Team): number {
   return ((onTeam % 11) + 1) || 1;
 }
 
-type Hit = { kind: 'player' | 'arrow' | 'label' | 'area'; index: number };
+type Hit = { kind: 'player' | 'arrow' | 'label' | 'area' | 'ball'; index: number };
 
 function findHit(layers: WebDiagramFrameLayers, px: number, py: number, radius: number): Hit | null {
   (layers.players || []).forEach((p, i) => {
@@ -397,6 +410,10 @@ function findHit(layers: WebDiagramFrameLayers, px: number, py: number, radius: 
     const l = (layers.labels || [])[i];
     if (dist(l.x, l.y, px, py) <= radius) return { kind: 'label', index: i };
   }
+  for (let i = 0; i < (layers.balls || []).length; i++) {
+    const b = (layers.balls || [])[i];
+    if (dist(b.x, b.y, px, py) <= radius) return { kind: 'ball', index: i };
+  }
   return null;
 }
 
@@ -412,6 +429,9 @@ function eraseByHit(d: WebDiagramV1, hit: Hit): WebDiagramV1 {
   }
   if (hit.kind === 'area') {
     return { ...d, areas: (d.areas || []).filter((_, i) => i !== hit.index) };
+  }
+  if (hit.kind === 'ball') {
+    return { ...d, balls: (d.balls || []).filter((_, i) => i !== hit.index) };
   }
   return d;
 }
