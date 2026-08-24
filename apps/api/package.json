@@ -7,8 +7,8 @@
     "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts src/__tests__/board-ai-followup.test.ts src/__tests__/board-card-meta.test.ts src/__tests__/board-combo-composer.test.ts src/__tests__/board-playout-nine.test.ts",
     "test:all": "jest --runInBand",
     "dev": "nodemon --watch src -e ts,js,json --exec \"ts-node --project tsconfig.json src/index.ts\"",
-    "build": "prisma migrate deploy && prisma generate && tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "build": "prisma migrate deploy && prisma generate && tsc",
+    "start": "node dist/apps/api/src/index.js",
     "bulk:sessions": "ts-node --project tsconfig.json src/scripts/generate-bulk-sessions.ts",
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts",
     "preview:session-pdf": "ts-node --transpile-only --project tsconfig.json src/scripts/preview-session-pdf.ts",
@@ -35,6 +35,7 @@
   "license": "ISC",
   "packageManager": "pnpm@10.20.0",
   "dependencies": {
+    "@aci/shared": "workspace:*",
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.0",
     "@resvg/resvg-js": "^2.6.2",

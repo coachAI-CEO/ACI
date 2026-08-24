@@ -1,143 +1,61 @@
-export type DiagramTeamCode = "ATT" | "DEF" | "NEUTRAL";
+/**
+ * Web type re-exports for the tactical board.
+ *
+ * The canonical type lives in `@aci/shared` (`packages/shared/src/types/tactical-board.ts`).
+ * This file re-exports under the `Diagram*` names that the web app uses so
+ * existing imports (`import { DiagramV1 } from '@/types/diagram'`) keep
+ * working without a 30-file refactor.
+ *
+ * If you need to add a field: add it to the shared type and to the API Zod
+ * schema. Then both apps pick it up automatically.
+ */
+import type {
+  WebDiagramArea,
+  WebDiagramArrow,
+  WebDiagramArrowStyle,
+  WebDiagramArrowType,
+  WebDiagramArrowWeight,
+  WebDiagramBall,
+  WebDiagramCoach,
+  WebDiagramCone,
+  WebDiagramElement,
+  WebDiagramElementKind,
+  WebDiagramFrameLayers,
+  WebDiagramGoal,
+  WebDiagramLabel,
+  WebDiagramPitch,
+  WebDiagramPlayer,
+  WebDiagramPointRef,
+  WebDiagramSequence,
+  WebDiagramSequenceFrame,
+  WebDiagramTeam,
+  WebDiagramV1,
+  WebDiagramZones,
+} from '@aci/shared';
 
-export interface DiagramPitchZones {
-  leftWide?: boolean;
-  leftHalfSpace?: boolean;
-  centralChannel?: boolean;
-  rightHalfSpace?: boolean;
-  rightWide?: boolean;
-}
+export type DiagramTeamCode = WebDiagramTeam;
+export type DiagramZones = WebDiagramZones;
+export type DiagramPitchZones = WebDiagramZones;
+export type DiagramPitch = WebDiagramPitch;
+export type DiagramGoal = WebDiagramGoal;
+export type DiagramElementKind = WebDiagramElementKind;
+export type DiagramElement = WebDiagramElement;
+export type DiagramPlayer = WebDiagramPlayer;
+export type DiagramCoach = WebDiagramCoach;
+export type DiagramPointRef = WebDiagramPointRef;
+export type DiagramArrowType = WebDiagramArrowType;
+export type DiagramArrowStyle = WebDiagramArrowStyle;
+export type DiagramArrowWeight = WebDiagramArrowWeight;
+export type DiagramArrow = WebDiagramArrow;
+export type DiagramArea = WebDiagramArea;
+export type DiagramLabel = WebDiagramLabel;
+export type DiagramFrameLayers = WebDiagramFrameLayers;
+export type DiagramSequenceFrame = WebDiagramSequenceFrame;
+export type DiagramSequence = WebDiagramSequence;
+export type DiagramV1 = WebDiagramV1;
+export type DiagramBall = WebDiagramBall;
+export type DiagramCone = WebDiagramCone;
 
-export interface DiagramPitch {
-  variant: "FULL" | "HALF" | "THIRD";
-  orientation: "HORIZONTAL" | "VERTICAL";
-  /** Age-group field size; markings/zoom scale from this. */
-  format?: "7V7" | "9V9" | "11V11";
-  showZones?: boolean;
-  /** Dashed lines at 1/3 and 2/3 of pitch length (def / mid / att thirds). */
-  showThirds?: boolean;
-  zones?: DiagramPitchZones;
-}
-
-export interface DiagramGoal {
-  id: string;
-  x: number;
-  y: number;
-  width?: number;
-  type?: "BIG" | "SMALL" | string;
-}
-
-export type DiagramElementKind = "mini-goal" | "cone" | "mannequin" | "pole";
-
-export interface DiagramElement {
-  id: string;
-  kind: DiagramElementKind;
-  x: number;
-  y: number;
-  /** Degrees; 0 = mouth/face toward +y (right on the board). */
-  rotation?: number;
-  color?: string;
-  width?: number;
-}
-
-export interface DiagramPlayer {
-  id: string;
-  number?: number;
-  team: DiagramTeamCode;
-  role?: string;
-  x: number; // 0–100
-  y: number; // 0–100
-  relativePosition?: string;
-  facingAngle?: number; // degrees, 0 = up
-  labelStyle?: "number-only" | "number-and-role";
-}
-
-export interface DiagramCoach {
-  x: number;
-  y: number;
-  label?: string;
-  note?: string;
-}
-
-export interface DiagramPointRef {
-  playerId?: string;
-  x?: number;
-  y?: number;
-}
-
-export type DiagramArrowType = "pass" | "run" | "press" | "cover" | "transition";
-export type DiagramArrowStyle = "solid" | "dashed" | "dotted";
-export type DiagramArrowWeight = "normal" | "bold";
-
-export interface DiagramArrow {
-  from: DiagramPointRef;
-  to: DiagramPointRef;
-  type: DiagramArrowType;
-  style: DiagramArrowStyle;
-  weight: DiagramArrowWeight;
-  /** Explicit arrowhead; when omitted, inferred from type (transition = none). */
-  arrowhead?: boolean;
-  /** Quadratic curve control point in pitch coords (0–100). */
-  control?: { x: number; y: number };
-  /** Freehand polyline in pitch coords; from/to remain endpoints. */
-  path?: Array<{ x: number; y: number }>;
-  /** 1-based pass/run order for combination filmstrips. */
-  order?: number;
-}
-
-export interface DiagramArea {
-  label?: string;
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  /** rect = zone box; circle = outlined oval; spotlight = soft radial highlight */
-  shape?: "rect" | "circle" | "spotlight";
-}
-
-export interface DiagramLabel {
-  text: string;
-  x: number;
-  y: number;
-}
-
-/** Mutable board layers stored per sequence frame (pitch stays on root). */
-export type DiagramFrameLayers = {
-  players: DiagramPlayer[];
-  arrows: DiagramArrow[];
-  areas: DiagramArea[];
-  labels: DiagramLabel[];
-  balls?: Array<{ x: number; y: number }>;
-  goals?: DiagramGoal[];
-  coach?: DiagramCoach;
-  cones?: Array<{ x: number; y: number; color?: string }>;
-  elements?: DiagramElement[];
-};
-
-export interface DiagramSequenceFrame extends DiagramFrameLayers {
-  id: string;
-  title?: string;
-  note?: string;
-  /** Hold time before advancing during Play (default ~1600). */
-  durationMs?: number;
-}
-
-export interface DiagramSequence {
-  frames: DiagramSequenceFrame[];
-  activeFrameId: string;
-}
-
-export interface DiagramV1 {
-  pitch: DiagramPitch;
-  players: DiagramPlayer[];
-  goals?: DiagramGoal[];
-  coach?: DiagramCoach;
-  balls?: any[];
-  cones?: any[];
-  elements?: DiagramElement[];
-  arrows: DiagramArrow[];
-  areas: DiagramArea[];
-  labels: DiagramLabel[];
-  /** Multi-step play sequence; root layers mirror the active frame. */
-  sequence?: DiagramSequence;
-}
+// Note: types are erased at runtime — re-exports under both names are
+// guaranteed to refer to the same TSC-instantiated shape because they
+// all resolve to the same WebDiagram* declarations from @aci/shared.

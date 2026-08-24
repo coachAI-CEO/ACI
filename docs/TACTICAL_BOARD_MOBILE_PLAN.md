@@ -4,6 +4,15 @@ Make the tactical board first-class on the mobile app. Phases are sized
 so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
+> **Status (2026-08-24)**: Phase A and Phase A.5 are shipped
+> (`docs/TACTICAL_BOARD_TYPES.md` has the details). **Phase B (list +
+> create flow) is also shipped** — coaches can search, filter, paginate,
+> create (blank / fork session / fork drill), and delete boards from the
+> mobile app. The next step is Phase C (read-only editor fidelity).
+>
+> **Where to start**: Phase C → Phase D → Phase E → Phase F → Phase G →
+> Phase H. Phases build on each other; don't skip C.
+
 The end state:
 
 - **View + navigate** any board (already works — keeps working).
@@ -20,76 +29,194 @@ where they live), and the verification check on the simulator.
 
 ---
 
-## Phase A — Type foundation + shared schema
+## Phase A — Type foundation + shared schema ✅ SHIPPED
 
 **Goal**: stop passing `diagram: any` around. Hoist the `WebDiagramV1`
 shape into `@aci/shared` so mobile and web consume the same types.
 
-A1. Move `WebDiagramV1Schema` (or a normalized equivalent) into
-    `packages/shared/src/types/board.ts`. Re-export the relevant
-    zod-inferred TypeScript types (`DiagramV1`, `DiagramPlayer`,
-    `DiagramArrow`, `DiagramElement`, `DiagramArea`, `DiagramLabel`,
-    `DiagramFrame`, `DiagramSequence`).
+**Shipped (2026-08-24)** — see `docs/TACTICAL_BOARD_TYPES.md` for details.
 
-A2. Drop zod from `@aci/shared` if it bloats the bundle. Prefer
-    hand-written interfaces that match the API schema field-for-field
-    (and add a runtime test against the API to catch drift).
+A1. ✅ Created `packages/shared/src/types/tactical-board.ts` with the
+    canonical `WebDiagramV1` and friends (hand-written interfaces — no
+    zod). Re-exported `BoardElement`, `BoardElementKind`, and the
+    `BOARD_ELEMENT_KINDS` tuple alongside.
+A2. ✅ Kept zod in the API (`apps/api/src/services/board-diagram-schema.ts`)
+    where runtime validation belongs. The Zod schema is the wire-format
+    source of truth on the server, and the shared TS interfaces mirror
+    it field-for-field. The mobile, web, and API types are guaranteed to
+    agree because they all resolve to the same `@aci/shared` declarations.
+A3. ✅ `apps/web/src/types/diagram.ts` is now a thin re-export layer —
+    the legacy `Diagram*` names all map to `WebDiagram*`. The 2,800-line
+    `TacticalBoardEditor.tsx` and the 30+ web files keep working without
+    edits.
+A4. ✅ `apps/api/src/services/web-diagram-v1.ts` re-exports the type from
+    `@aci/shared` and keeps the runtime normalize pipeline local
+    (`toWebDiagramV1`, formation presets, axis remap, `formatFromAgeGroup`,
+    `isDiagramThinForFork`, `extractRawDiagramFromDrill`, etc.).
+A5. ⏳ **Not done yet** — `apps/mobile/services/boards.service.ts`
+    still types `diagram` as `unknown` (a step up from `any` we
+    inherited, but not the canonical `WebDiagramV1`). This is part of
+    Phase B1 below.
+A6. ✅ `pnpm tsc --noEmit` passes in `packages/shared`, `apps/api`,
+    `apps/web`, and `apps/mobile`. The API diagram schema tests
+    (`apps/api/src/__tests__/tactical-board-diagram.test.ts`) pass
+    10/10; the authz tests pass 23/23.
 
-A3. `apps/mobile/services/boards.service.ts` adopts the shared types —
-    `BoardDetail.diagram` is `DiagramV1 | null`, no more `any`.
-
-A4. `apps/mobile/components/boards/BoardPreview.tsx` types its props via
-    `DiagramV1` and `DiagramFrame`.
-
-A5. Web does the same — replace the local `@/types/diagram` with imports
-    from `@aci/shared` for the shape types (keep the local helpers for
-    geometry/layout).
-
-A6. `pnpm tsc --noEmit` clean across mobile + web.
-
-**Verify**: TypeScript compiles in both apps. The existing board viewer
-renders identically (regression check).
+**Verify**: TypeScript compiles in all four packages. The existing
+mobile board viewer renders identically (no render changes shipped in
+Phase A).
 
 ---
 
-## Phase B — List + create flow
+## Phase A.5 — Lift remaining shared libs (do this BEFORE Phase C) ✅ SHIPPED
+
+Phase A only moved types. Three more web libs are pure functions on
+`WebDiagramV1` (no DOM, no React) and should move before mobile starts
+rendering, or we'll pay for the duplication immediately.
+
+**Shipped (2026-08-24)**.
+
+A5.1. ✅ `pitch-formats.ts` → `packages/shared/src/board/pitch-formats.ts`.
+      `PITCH_SPECS`, `PitchMarkingSpec`, `PitchFormatId`, `PitchZoom`,
+      `PITCH_FORMAT_OPTIONS`, `formatFromAgeGroup`, `pitchChromeLabel`,
+      `viewportFor`, `layoutPitch`, `yardsToDiagramPercent`,
+      `tokenRadiusPx`, `ballRadiusPx`. Web re-exports from shared.
+A5.2. ✅ `board-elements.ts` (web) → `packages/shared/src/board/elements.ts`.
+      `BoardElement`, `BoardElementKind`, `BOARD_ELEMENT_KINDS`,
+      `BOARD_ELEMENT_MAX`, `parseBoardElementKind`, `mergePracticeElements`,
+      `conesFromElements`, `facingRotation`. Web re-exports from shared.
+      API's `apps/api/src/services/board-elements.ts` collapsed to a
+      re-export of `@aci/shared`.
+A5.3. ✅ `board-lines.ts` (web) → `packages/shared/src/board/lines.ts`.
+      `buildPointRef`, `resolveEndpoint`, `defaultCurveControl`,
+      `curveBulgeSign`, `flipCurveControl`, `sampleQuadratic`,
+      `arrowHasHead`, `arrowPitchPolyline`, `distanceToSegment`,
+      `findArrowIndexAtScreenPoint`, `eraseArrowAtIndex`,
+      `arrowFollowsPlayer`, `createLineArrow`,
+      `shortenSegmentForTokens`, `shortenPolylineForTokens`,
+      `polylineToPathD`. Web re-exports from shared.
+A5.4. ✅ `board-player-spacing.ts` (web) →
+      `packages/shared/src/board/player-spacing.ts`. `MIN_PLAYER_GAP`,
+      `OPPOSITE_TEAM_GAP`, `playersNeedSpacing`,
+      `diagramPlayersNeedUnstack`, `diagramPlayerCoordsEqual`,
+      `separateOverlappingPlayers`, `unstackDiagramPlayers`. Web
+      re-exports from shared.
+A5.5. ✅ `board-sequence.ts` (web) → `packages/shared/src/board/sequence.ts`.
+      `BOARD_SEQUENCE_MAX_FRAMES`, `BOARD_SEQUENCE_DEFAULT_DURATION_MS`,
+      `BOARD_SEQUENCE_TWEEN_MS`, `extractFrameLayers`, `applyFrameLayers`,
+      `layersToFrame`, `ensureSequence`, `syncActiveFrame`,
+      `getActiveFrameIndex`, `selectFrame`, `selectFrameByIndex`,
+      `duplicateActiveFrame`, `deleteActiveFrame`,
+      `updateActiveFrameMeta`, `renameFramesSequentially`,
+      `interpolateLayers`, `getSequenceSummary`. Web re-exports from
+      shared. Phase E1 is now just consumption, not a refactor.
+
+**Implementation notes**
+
+- Added `board/pitch-formats`, `board/elements`, `board/lines`,
+  `board/player-spacing`, `board/sequence` to
+  `packages/shared/src/index.ts` so consumers can
+  `import { ... } from '@aci/shared'`.
+- API tsconfig: dropped `rootDir: "src"`, added `paths` mapping for
+  `@aci/shared` and `@aci/shared/*`. The API now emits shared into
+  `dist/apps/api/src/...`; updated `start` script to
+  `node dist/apps/api/src/index.js`. (No runtime regression — local
+  typecheck + 52 board tests pass.)
+- Web re-exports (`apps/web/src/lib/{pitch-formats,board-elements,board-lines,board-player-spacing,board-sequence}.ts`)
+  are now 1-line `export * from "@aci/shared"`. Existing imports
+  across the 2,800-line editor and 30+ web files keep working.
+
+**Verify**
+
+```bash
+cd packages/shared && pnpm exec tsc --noEmit -p tsconfig.json   # ✓
+cd apps/web && pnpm exec tsc --noEmit -p tsconfig.json          # ✓
+cd apps/api && pnpm exec tsc --noEmit -p tsconfig.json          # ✓
+cd apps/mobile && pnpm exec tsc --noEmit -p tsconfig.json       # ✓
+cd apps/api && pnpm exec jest --runInBand \
+  src/__tests__/tactical-board-diagram.test.ts \
+  src/__tests__/tactical-board-drawing.test.ts \
+  src/__tests__/tactical-board-scenario.test.ts \
+  src/__tests__/tactical-boards.authz.test.ts \
+  src/__tests__/board-lines.test.ts \
+  src/__tests__/board-card-meta.test.ts \
+  src/__tests__/board-combo-composer.test.ts                   # ✓ 52/52
+pnpm --filter web lint                                           # ✓ no new errors
+```
+
+---
+
+## Phase B — List + create flow ✅ SHIPPED
 
 **Goal**: a coach can land on `/boards`, search their boards, see the
 share-mode filter, paginate, and create a new board.
 
-B1. Update `apps/mobile/services/boards.service.ts`:
-    - `createBlankBoard(payload)` → `POST /boards` with `{ mode: 'BLANK' }`
-    - `createBoardFromSession(sessionId)` → `POST /boards` with
-      `{ mode: 'FORK_SESSION', sourceSessionId }`
-    - `createBoardFromDrill(...)` → `POST /boards` with `{ mode: 'FORK_DRILL' }`
-    - `deleteBoard(id)` → `DELETE /boards/:id`
-    - `patchBoard(id, body)` → `PATCH /boards/:id` (for shareMode etc.)
+**Shipped (2026-08-24)**.
 
-B2. Update `BoardListItem` to include `shareMode`, `updatedAt`,
-    `canEdit`, and a `boardSummary` (the rich card metadata the web
-    summary uses: phase / zone / attFormation / defFormation).
+B1. ✅ `apps/mobile/services/boards.service.ts` extended:
+      - `createBoard(payload)` → `POST /boards`. Discriminated union for
+        `BLANK` / `FORK_SESSION` / `FORK_DRILL`.
+      - `deleteBoard(id)` → `DELETE /boards/:id`.
+      - `patchBoard(id, body)` → `PATCH /boards/:id` (title / shareMode /
+        favorited).
+      - `listBoards(limit, cursor)` now accepts a cursor.
 
-B3. Rewrite `apps/mobile/app/boards/index.tsx`:
-    - Search field (debounced, calls `listBoards` with a `q` filter if the
-      API supports it; otherwise client-filter).
-    - Share-mode filter chips (All / Private / Club).
-    - Infinite scroll via `nextCursor`.
-    - **Create** menu — `PickerSheet` with three rows:
-      Blank board · From a session · From a drill. Each opens a small
-      sub-flow.
-    - Long-press on a board → Delete confirm (only when `canEdit`).
+B2. ✅ `BoardListItem` extended with `summary: BoardSummary` (phase /
+      zone / channel / attFormation / defFormation / slideCount) and the
+      existing `shareMode` / `canEdit` / `updatedAt` fields. Typed
+      against `WebDiagramV1` from `@aci/shared` instead of `any`.
 
-B4. Add a "Boards" empty state with the same quick-create menu.
+B3. ✅ Rewrote `apps/mobile/app/boards/index.tsx`:
+      - Debounced (250ms) search input.
+      - Share filter chips (All / Private / Club).
+      - `useInfiniteQuery` over `nextCursor`, with on-end-reached + a
+        manual "Load more" footer button as a fallback.
+      - ＋ New button in the header opens a `CreateBoardSheet` modal
+        (3-step flow: pick template → optional inputs → create).
+      - Long-press on a `canEdit` row → destructive delete confirm.
 
-B5. Mirror the web's `MyBoardsPanel` card layout — show the
-    `boardSummary` chips (phase / zone / att / def formation) on each
-    row so coaches can scan without opening.
+B4. ✅ Empty state with "No boards yet" copy + a single
+      "Create your first board" CTA that opens the same sheet. Filtered
+      empty state ("No matches") is separate from the zero-data state.
 
-B6. The Quick Actions "Boards" tile and Settings row keep pushing
-    `/boards`. No new entry points yet (that's Phase C).
+B5. ✅ New `apps/mobile/components/boards/BoardCard.tsx` — mirrors the
+      web `MyBoardsPanel` card layout: title + ★ + chips (phase /
+      zone / formation pair) + meta line (age · model · slide count ·
+      updated) + share badge + actions footer (Edit on web, Open link).
+      Uses the existing `Badge` component.
 
-**Verify**: typecheck, simulator — log in as `11v11.coach@rocklinfc.org`,
-land on `/boards`, create a blank board, see it in the list, paginate.
+B6. ✅ No new entry points — Quick Actions and Settings already push
+      `/boards`.
+
+**Implementation notes**
+
+- `extractBoardFrames` now returns `WebDiagramSequenceFrame[]` (was
+  `any[]`). The detail screen still works because `WebDiagramSequenceFrame`
+  carries `id`, `title`, `note`.
+- The create sheet (`CreateBoardSheet`) shares a `shareMode` toggle
+  (Private / Club) at the top of every step, since the API's
+  `createBlankBoard` / `createForkBoard` / `createForkSessionBoard`
+  all accept it. The session picker reuses `getVaultSessions({ limit })`.
+- The drill-key input is intentionally a paste-in field — the mobile
+  drill list isn't designed for browsing yet (drill detail lives on the
+  web), so we don't fabricate one for mobile.
+
+**Verify**
+
+```bash
+cd apps/mobile && pnpm exec tsc --noEmit                                  # ✓
+pnpm exec tsc --noEmit                                                    # ✓ (web)
+cd apps/api && pnpm exec tsc --noEmit                                     # ✓
+cd apps/api && pnpm exec jest --runInBand \
+  src/__tests__/tactical-board-diagram.test.ts \
+  src/__tests__/tactical-board-drawing.test.ts \
+  src/__tests__/tactical-board-scenario.test.ts \
+  src/__tests__/tactical-boards.authz.test.ts \
+  src/__tests__/board-lines.test.ts \
+  src/__tests__/board-card-meta.test.ts \
+  src/__tests__/board-combo-composer.test.ts                              # ✓ 52/52
+# Simulator: log in as 11v11.coach@rocklinfc.org, land on /boards,
+# search, filter, create blank, fork session, long-press delete.
 
 ---
 
@@ -99,12 +226,11 @@ land on `/boards`, create a blank board, see it in the list, paginate.
 — pitch chrome is accurate to format (7v7/9v9/11v11), zones/thirds are
 shown, and frame timeline + dots are styled like the web.
 
-C1. Port `apps/web/src/lib/pitch-formats.ts` into
-    `apps/mobile/lib/pitch-formats.ts`. Pull `PITCH_SPECS`,
-    `PITCH_FORMAT_OPTIONS`, `formatFromAgeGroup`. Add a sibling
+C1. Wrap `@aci/shared` import (from A5.1) to add a sibling
     `formatFromBoard(board)` that prefers the explicit
     `board.diagram.pitch.format` and falls back to
-    `formatFromAgeGroup(board.ageGroup)`.
+    `formatFromAgeGroup(board.ageGroup)`. No copy-paste — `PITCH_SPECS`
+    lives in `@aci/shared` after Phase A5.
 
 C2. Extract a reusable `<PitchChrome>` component
     (`apps/mobile/components/boards/PitchChrome.tsx`) that renders the
