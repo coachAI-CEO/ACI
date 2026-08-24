@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { BOARD_SEQUENCE_DEFAULT_DURATION_MS } from '@aci/shared';
 import type { WebDiagramSequence, WebDiagramSequenceFrame } from '@aci/shared';
 import { colors } from '../../constants/colors';
@@ -175,11 +175,8 @@ export function BoardSequenceBar({ sequence, activeIndex, onSelect, showNote = t
   );
 }
 
-// Lightweight horizontal scroll without importing ScrollView (keeps the bar
-// self-contained — no scroll chaining, no ref plumbing in the parent).
+// Lightweight horizontal scroll wrapper.
 function ScrollRow({ children }: { children: React.ReactNode }) {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { ScrollView } = require('react-native');
   return (
     <ScrollView
       horizontal

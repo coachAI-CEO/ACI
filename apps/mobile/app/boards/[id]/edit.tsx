@@ -553,14 +553,13 @@ export default function BoardEditScreen() {
         ) : null}
 
         <View style={styles.frameBar}>
-          <BoardSequenceBar
-            sequence={{
-              frames,
-              activeFrameId: frames[frameIndex]?.id || null,
-            } as any}
-            activeIndex={frameIndex}
-            onSelect={jumpToFrame}
-          />
+          {diagram ? (
+            <BoardSequenceBar
+              sequence={diagram.sequence || null}
+              activeIndex={frameIndex}
+              onSelect={jumpToFrame}
+            />
+          ) : null}
         </View>
 
         <View style={styles.actions}>
