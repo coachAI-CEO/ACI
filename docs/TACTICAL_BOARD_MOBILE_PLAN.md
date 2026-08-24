@@ -5,13 +5,13 @@ so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
 > **Status (2026-08-24)**: Phase A, Phase A.5, Phase B (list + create
-> flow), Phase C (read-only fidelity), and **Phase D (native editor)
-> v1** are shipped. Coaches can edit boards directly on the phone
-> from `/boards/[id]/edit` — pinch to zoom, drag players, tap-tap to
-> draw arrows, drop shapes/labels/cones, erase, undo/redo, and save
-> back via `PATCH /boards/:id`. The remaining items (D6 player
-> popover, D8 frame-affordances) and Phases E (timeline playback) /
-> F (AI chat) / G (coach sync) follow.
+> flow), Phase C (read-only fidelity), Phase D (native editor v1),
+> and **Phase E (frame timeline + player popover)** are shipped. The
+> editor now supports multi-frame sequences end to end: add,
+> duplicate, delete, rename, per-frame duration, animated playback
+> using `interpolateLayers`, and a long-press player popover with
+> number / role / team / delete. Phase F (AI chat) and Phase G
+> (coach sync) remain.
 >
 > **Where to start**: Phase C → Phase D → Phase E → Phase F → Phase G →
 > Phase H. Phases build on each other; don't skip C.
@@ -356,7 +356,7 @@ the diagram is identical.
 
 ---
 
-## Phase E — Sequence timeline + playback
+## Phase E — Sequence timeline + playback ✅ SHIPPED
 
 **Goal**: multi-frame animations on the phone, matching the web's
 sequence bar behaviour.
