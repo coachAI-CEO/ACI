@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NetworkBanner } from '../components/offline/NetworkBanner';
 import { colors } from '../constants/colors';
 import { useOfflineVaultSync } from '../hooks/useOfflineVaultSync';
+import { useOfflineBoardsSync } from '../hooks/useOfflineBoardsSync';
 import { useReminderSync } from '../hooks/useReminderSync';
 import { useAuthStore } from '../stores/auth.store';
 
@@ -25,6 +26,7 @@ void SplashScreen.preventAutoHideAsync();
 
 function AppEffects() {
   useOfflineVaultSync();
+  useOfflineBoardsSync();
   useReminderSync();
   return null;
 }

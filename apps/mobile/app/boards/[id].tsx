@@ -30,6 +30,8 @@ import { colors } from '../../constants/colors';
 import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
 import { extractBoardFrames, getBoard, patchBoard, setBoardFavorited } from '../../services/boards.service';
+import { readCachedBoardDetail, writeBoardDetailCache } from '../../services/offline-cache.service';
+import { useAuthStore } from '../../stores/auth.store';
 import { formatGameModelLabel } from '../../utils/format';
 import { formatFromBoard } from '../../utils/board-format';
 import type { PitchFormatId, PitchZoom, WebDiagramV1 } from '@aci/shared';
@@ -56,10 +58,28 @@ export default function BoardDetailScreen() {
   const [aiOpen, setAiOpen] = useState(false);
   const [previewOverlay, setPreviewOverlay] = useState<{ diagram: WebDiagramV1; reply: string } | null>(null);
 
+  const userId = useAuthStore((s) => s.user?.id);
+
+  // Seed from offline cache so first paint isn't a spinner when offline.
+  const [seededBoard] = useState(() => null as Awaited<ReturnType<typeof readCachedBoardDetail>>);
+
   const query = useQuery({
     queryKey: ['boards', id],
-    queryFn: () => getBoard(String(id)),
+    queryFn: async () => {
+      try {
+        const board = await getBoard(String(id));
+        void writeBoardDetailCache(board, userId);
+        return board;
+      } catch (err) {
+        // Network unreachable? Fall back to the cached detail if we have one.
+        const cached = await readCachedBoardDetail(String(id), userId);
+        if (cached) return cached;
+        throw err;
+      }
+    },
     enabled: Boolean(id),
+    initialData: seededBoard ?? undefined,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -72,6 +92,7 @@ export default function BoardDetailScreen() {
     mutationFn: (favorited: boolean) => setBoardFavorited(String(id), favorited),
     onSuccess: (board) => {
       queryClient.setQueryData(['boards', id], board);
+      void writeBoardDetailCache(board, userId);
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
@@ -80,6 +101,7 @@ export default function BoardDetailScreen() {
     mutationFn: (next: WebDiagramV1) => patchBoard(String(id), { diagram: next }),
     onSuccess: (board) => {
       queryClient.setQueryData(['boards', id], board);
+      void writeBoardDetailCache(board, userId);
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });

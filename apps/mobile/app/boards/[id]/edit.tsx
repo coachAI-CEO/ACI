@@ -27,6 +27,8 @@ import { colors } from '../../../constants/colors';
 import { webPath } from '../../../constants/web';
 import { describeApiError } from '../../../services/api';
 import { deleteBoard, getBoard, patchBoard } from '../../../services/boards.service';
+import { evictCachedBoard, writeBoardDetailCache } from '../../../services/offline-cache.service';
+import { useAuthStore } from '../../../stores/auth.store';
 import { formatGameModelLabel } from '../../../utils/format';
 import { formatFromBoard } from '../../../utils/board-format';
 import {
@@ -52,6 +54,7 @@ export default function BoardEditScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   // Local editable diagram (mirrors the server, with our edits). Root
   // layers are the "working copy" of the active frame — that contract
@@ -191,6 +194,7 @@ export default function BoardEditScreen() {
       setHistory([]);
       setFuture([]);
       queryClient.setQueryData(['boards', id], board);
+      void writeBoardDetailCache(board, user?.id);
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
@@ -200,6 +204,7 @@ export default function BoardEditScreen() {
     mutationFn: (next: 'PRIVATE' | 'CLUB') => patchBoard(String(id), { shareMode: next }),
     onSuccess: (board) => {
       queryClient.setQueryData(['boards', id], board);
+      void writeBoardDetailCache(board, user?.id);
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
@@ -208,6 +213,7 @@ export default function BoardEditScreen() {
     mutationFn: () => deleteBoard(String(id)),
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: ['boards', id] });
+      void evictCachedBoard(String(id), user?.id);
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
       router.replace('/boards');
     },

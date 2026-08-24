@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../constants/colors';
 import { useGenerateStore, type GenerateType } from '../../stores/generate.store';
+import { useOfflineStore } from '../../stores/offline.store';
 
 type QuickAction = {
   key: string;
@@ -39,9 +40,19 @@ const BASE_ACTIONS: QuickAction[] = [
 
 export function QuickActionGrid({ canAccessCalendar, canCreatePlayerPlans, tacticalBoardV1 }: Props) {
   const setActiveType = useGenerateStore((s) => s.setActiveType);
+  const cachedBoards = useOfflineStore((s) => s.cachedBoards);
+  const boardsLoaded = useOfflineStore((s) => s.boardsCacheUpdatedAt != null);
+
+  // If the boards sync has run and the user has zero, route them to a
+  // create-on-launch flow instead of the listing.
+  const hasZeroBoards = boardsLoaded && cachedBoards.length === 0;
 
   const handlePress = (action: QuickAction) => {
     if (action.generateType) setActiveType(action.generateType);
+    if (action.key === 'boards' && hasZeroBoards) {
+      router.push({ pathname: '/boards', params: { create: '1' } });
+      return;
+    }
     router.push(action.route);
   };
 

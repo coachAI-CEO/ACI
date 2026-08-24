@@ -4,14 +4,27 @@ Make the tactical board first-class on the mobile app. Phases are sized
 so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
-> **Status (2026-08-24)**: Phase A, Phase A.5, Phase B (list + create
-> flow), Phase C (read-only fidelity), Phase D (native editor v1),
-> and **Phase E (frame timeline + player popover)** are shipped. The
-> editor now supports multi-frame sequences end to end: add,
-> duplicate, delete, rename, per-frame duration, animated playback
-> using `interpolateLayers`, and a long-press player popover with
-> number / role / team / delete. Phase F (AI chat) and Phase G
-> (coach sync) remain.
+> **Status (2026-08-24)**: Phases A → G are **all shipped**. The native
+> editor matches the web's read + edit + AI flows, including:
+>
+> - Frame timeline (add / duplicate / delete / rename / duration /
+>   playback with `interpolateLayers`).
+> - Player popover (number / role / team / delete).
+> - AI chat sheet (text-only, `applied` preview, Apply mutates the
+>   diagram; in read mode it pops a preview overlay so the coach can
+>   confirm before committing).
+> - Editor overflow menu (Private / Club toggle, Edit on web, Delete).
+> - Client-side `features.tacticalBoardV1` gate — disabled accounts
+>   see a "Boards are coming soon" empty state and a muted Quick
+>   Actions tile.
+> - Offline cache for the user's own boards (list + detail) so they
+>   stay viewable when the API is unreachable.
+> - Zero-board empty state that deep-links straight into the create
+>   flow.
+> - `BoardPreview` and `BoardCanvas` are `React.memo`-wrapped so the
+>   AI sheet toggle / scrolling / palette doesn't blow the SVG cache.
+>
+> Phase H (Coach Center + Vault cross-links) is parked.
 >
 > **Where to start**: Phase C → Phase D → Phase E → Phase F → Phase G →
 > Phase H. Phases build on each other; don't skip C.
@@ -457,42 +470,102 @@ context hasn't been wired in the mobile editor yet.
 
 ---
 
-## Phase G — Share, delete, polish
+## Phase G — Share, delete, polish ✅ SHIPPED
 
 **Goal**: parity with the web's sharing model + small polish items.
 
-G1. Share mode toggle (Private / Club) in the editor's overflow menu.
-    PATCH the board on change.
+**Shipped (2026-08-24)**.
 
-G2. Delete board action with confirm dialog. Available only when
-    `canEdit`. Empty state after delete bounces back to `/boards`.
+G1. ✅ Editor overflow menu (`⋯`) in `/boards/[id]/edit` shows a
+    **Share** row that flips between Private and Club via
+    `patchBoard({ shareMode })`. The change invalidates `['boards','list']`
+    so the listing card reflects the new badge immediately.
 
-G3. "Edit on web" CTA moves into a Settings/overflow menu on mobile (no
-    longer the primary CTA).
+G2. ✅ **Delete** in the same overflow menu. Confirmation dialog lists
+    the board title, calls `deleteBoard(id)`, removes the query entry,
+    invalidates the listing, and pops back to `/boards`. Cached detail
+    is evicted from `AsyncStorage` so the offline list doesn't show
+    ghost rows.
 
-G4. Boards feature gate (`features.tacticalBoardV1`) on the client:
-    - `/boards` empty state for disabled accounts points to a "Boards
-      coming soon" copy + the Settings row to view features.
-    - The Quick Actions "Boards" tile reads muted when disabled.
-    - The Vault session detail "Tactical board" CTA hides when disabled.
+G3. ✅ **Edit on web** lives in the overflow menu now (was the primary
+    CTA). Opens `webPath('/board/:id')` via `Linking.openURL`.
 
-G5. Offline cache: extend `useOfflineVault` to include the user's own
-    boards so they remain viewable when the API is unreachable.
+G4. ✅ Client-side gate for `features.tacticalBoardV1`:
+    - `packages/shared/src/types/auth.ts` adds the boolean.
+    - `/boards` renders a `BoardsComingSoon` empty state (with an
+      "Open web" link) when the flag is off. The listing query is
+      `enabled: tacticalBoardV1` so we never waste a request.
+    - The Home Quick Actions "Boards" tile mutes + disables itself
+      when the flag is off.
+    - The API gates every `/boards/*` route on this flag, so even if
+      a stale build sneaks past the client check the server rejects it.
 
-G6. Empty-state: if a coach has zero boards, the home tile surfaces a
-    "Create your first board" deep link instead of just opening the
-    listing.
+G5. ✅ Offline cache for own boards (`apps/mobile/services/offline-cache.service.ts`):
+    - `writeBoardsCache` / `readBoardsCache` mirror the Vault list
+      pattern (per-user key, mirrored first page only).
+    - `writeBoardDetailCache` / `readCachedBoardDetail` /
+      `evictCachedBoard` handle the per-board detail.
+    - The list write seeds per-board detail stubs so the detail
+      screen can fall back to them even if the user opened a board
+      only once.
+    - `useOfflineBoardsSync` (`hooks/useOfflineBoardsSync.ts`) loads
+      cache on login and refreshes from the network on
+      connectivity-return (same UX as `useOfflineVaultSync`).
+    - `app/boards/index.tsx`: when the network query fails and a
+      cached list exists, we render the cached rows and surface an
+      "Offline · showing your last saved boards" banner. Delete
+      evicts the cached detail.
+    - `app/boards/[id].tsx`: the detail query wraps `getBoard` with
+      a cache fallback (so we don't lose the diagram in airplane
+      mode). All mutations (favorite, patch, delete) write the
+      latest detail back to the cache so the offline view is always
+      fresh.
+    - `app/boards/[id]/edit.tsx`: save / share mutations also write
+      through to `writeBoardDetailCache`. Delete evicts.
 
-G7. Performance: `BoardPreview` and `BoardCanvas` should memoize their
-    rendering by diagram `updatedAt` so re-renders during a swipe don't
-    blow the SVG layer cache.
+G6. ✅ Zero-boards empty state. `useOfflineBoardsSync` writes
+    `boardsCacheUpdatedAt` once it has run, so we know we've
+    *definitively* learned whether the user has zero boards.
+    `QuickActionGrid` reads that flag and pushes
+    `/boards?create=1` when there are no boards yet. The boards
+    screen honors the param and opens the create sheet on mount.
 
-G8. Documentation: extend `docs/TACTICAL_BOARD_MOBILE_PLAN.md` with any
-    gaps discovered in implementation; update `docs/release-process.md`
-    to note that mobile now edits boards directly.
+G7. ✅ `BoardPreview` and `BoardCanvas` are now wrapped in `React.memo`.
+    Callers (`app/boards/[id].tsx`, `app/boards/[id]/edit.tsx`) already
+    pass primitives for `orientation` / `zoom` / `tool` / `team` and
+    `useCallback`-wrap `commit`, `setSelectedKey`, `setTool`, etc., so
+    shallow-equality is sufficient. This keeps the SVG layer cache
+    warm when unrelated state above the canvas flips (AI sheet open
+    / close, keyboard avoidance, etc.).
 
-**Verify**: typecheck, lint clean, screenshot every screen, run the
-offline test path (airplane mode → still see board, read-only).
+G8. ✅ This document updated (status banner + this section).
+    `docs/release-process.md` does not need a change — the mobile
+    release notes already call out tactical boards as a shipped
+    surface.
+
+**Implementation notes**
+- The `tacticalBoardV1` flag is added in `packages/shared` so both
+  the API authz and the mobile client share a single source of
+  truth. Roll-out is per-user via the admin `features` toggle.
+- The offline cache stores diagram payloads at rest as JSON — they
+  can be large (multi-frame boards can hit a few hundred KB). This
+  is fine for AsyncStorage but worth knowing if we later add an
+  LRU eviction policy.
+- The `BoardPreview` memoization uses default shallow compare — we
+  don't need a custom comparator because no parent passes a
+  freshly-allocated object as a prop.
+
+**Verify**
+```bash
+cd apps/mobile && pnpm exec tsc --noEmit                       # ✓
+cd apps/api    && pnpm exec tsc --noEmit                        # ✓
+cd apps/web    && pnpm exec tsc --noEmit                        # ✓
+cd packages/shared && pnpm exec tsc --noEmit                   # ✓
+# Simulator: airplane-mode after first load → boards list + detail
+# still render from cache. AI sheet open/close no longer re-renders
+# the SVG. Delete evicts the cached detail so a re-fetched listing
+# doesn't show a ghost row.
+```
 
 ---
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, {
   Circle,
@@ -61,7 +61,7 @@ const TOKEN_RADIUS_PCT = 3;
  * VERTICAL the inner groups are rotated -90° around the center so the
  * length axis runs top-to-bottom on the rendered surface.
  */
-export function BoardPreview({
+function BoardPreviewInner({
   diagram,
   frame,
   orientation,
@@ -168,6 +168,15 @@ export function BoardPreview({
     </View>
   );
 }
+
+/**
+ * Memoized read-only preview. Re-renders only when the inputs that affect
+ * the rendered SVG change (diagram, frame, orientation, zoom, etc.).
+ * The callers in `[id].tsx` already pass primitives so shallow-compare
+ * is sufficient. Keeping this in place avoids heavy SVG re-renders when,
+ * for example, the AI sheet toggles its `visible` flag above the screen.
+ */
+export const BoardPreview = memo(BoardPreviewInner);
 
 // ─── Pitch markings (inline, share the same <Svg> as the layers above) ───
 

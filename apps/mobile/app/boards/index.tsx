@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,7 +22,12 @@ import { colors } from '../../constants/colors';
 import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
 import { deleteBoard, listBoards, type BoardListItem } from '../../services/boards.service';
+import {
+  evictCachedBoard,
+  writeBoardsCache,
+} from '../../services/offline-cache.service';
 import { useAuthStore } from '../../stores/auth.store';
+import { useOfflineStore } from '../../stores/offline.store';
 
 type ShareFilter = 'ALL' | 'PRIVATE' | 'CLUB';
 
@@ -32,10 +37,16 @@ export default function BoardsHomeScreen() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const tacticalBoardV1 = Boolean(user?.features?.tacticalBoardV1);
+  const cachedBoards = useOfflineStore((s) => s.cachedBoards);
+  const { create } = useLocalSearchParams<{ create?: string }>();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [shareFilter, setShareFilter] = useState<ShareFilter>('ALL');
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (create === '1') setCreateOpen(true);
+  }, [create]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 250);
@@ -54,10 +65,22 @@ export default function BoardsHomeScreen() {
     enabled: tacticalBoardV1,
   });
 
-  const allBoards: BoardListItem[] = useMemo(() => {
+  // Mirror the first page to the offline cache so list+detail fall back
+  // to it when the API is unreachable.
+  useEffect(() => {
+    if (!user?.id) return;
+    const first = infinite.data?.pages?.[0];
+    if (!first?.boards) return;
+    void writeBoardsCache(first.boards, user.id);
+  }, [user?.id, infinite.data]);
+
+  const networkBoards: BoardListItem[] = useMemo(() => {
     const pages = infinite.data?.pages || [];
     return pages.flatMap((p) => p.boards);
   }, [infinite.data]);
+
+  const networkFailed = !!infinite.error && !infinite.data;
+  const allBoards: BoardListItem[] = networkFailed && cachedBoards.length > 0 ? cachedBoards : networkBoards;
 
   const filtered = useMemo(() => {
     return allBoards.filter((board) => {
@@ -72,8 +95,9 @@ export default function BoardsHomeScreen() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteBoard(id),
-    onSuccess: () => {
+    onSuccess: (_void, id) => {
       queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
+      void evictCachedBoard(id, user?.id);
     },
     onError: (err) => {
       Alert.alert('Couldn’t delete board', describeApiError(err, 'Try again in a moment.'));
@@ -98,6 +122,13 @@ export default function BoardsHomeScreen() {
 
   const renderHeader = () => (
     <View style={styles.headerWrap}>
+      {networkFailed && cachedBoards.length > 0 ? (
+        <View style={styles.offlineBanner}>
+          <Text style={styles.offlineBannerText}>
+            Offline · showing your last saved boards
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
           <Text style={styles.title}>Boards</Text>
@@ -304,6 +335,15 @@ const styles = StyleSheet.create({
   chipLabelSelected: { color: colors.primary, fontWeight: '800' },
   separator: { height: 12 },
   footer: { paddingTop: 4 },
+  offlineBanner: {
+    backgroundColor: '#3b2a16',
+    borderColor: colors.primary,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  offlineBannerText: { color: colors.text, fontSize: 12, fontWeight: '600' },
   empty: { alignItems: 'center', gap: 8, paddingVertical: 32 },
   emptyTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
   emptyBody: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },

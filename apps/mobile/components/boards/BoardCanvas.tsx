@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
@@ -67,7 +67,7 @@ const HISTORY_LIMIT = 50;
  * The local diagram is the source of truth while in edit mode; `commit`
  * pushes it back up to the editor's history (undo/redo).
  */
-export function BoardCanvas({
+function BoardCanvasInner({
   diagram,
   format,
   orientation,
@@ -372,6 +372,14 @@ export function BoardCanvas({
     </View>
   );
 }
+
+/**
+ * Memoized editor canvas. The parent (`/boards/[id]/edit`) already wraps
+ * `commit`, `setTool`, `setTeam` etc. in `useCallback`, so shallow
+ * equality on props is enough to skip the SVG re-render when unrelated
+ * state (like the AI sheet) flips above it.
+ */
+export const BoardCanvas = memo(BoardCanvasInner);
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

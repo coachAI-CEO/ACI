@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { BoardDetail, BoardListItem } from './boards.service';
 import type { VaultSession } from './vault.service';
 import { sessionHasUsableDrills } from '../utils/session-payload';
 
@@ -6,6 +7,8 @@ const KEYS = {
   activeUser: 'cache:activeUserId',
   vaultSessions: (userId: string) => `cache:${userId}:vault:sessions`,
   sessionById: (userId: string, sessionId: string) => `cache:${userId}:vault:session:${sessionId}`,
+  boardsList: (userId: string) => `cache:${userId}:boards:list`,
+  boardById: (userId: string, boardId: string) => `cache:${userId}:boards:detail:${boardId}`,
   userMeta: (userId: string) => `cache:${userId}:user:meta`,
   updatedAt: (userId: string) => `cache:${userId}:updatedAt`,
   legacyVaultSessions: 'cache:vault:sessions',
@@ -14,6 +17,11 @@ const KEYS = {
 
 export type CachedVaultPayload = {
   sessions: VaultSession[];
+  updatedAt: string;
+};
+
+export type CachedBoardsPayload = {
+  boards: BoardListItem[];
   updatedAt: string;
 };
 
@@ -168,6 +176,7 @@ export async function clearUserCache(userId?: string | null): Promise<void> {
     KEYS.vaultSessions(activeUserId),
     KEYS.updatedAt(activeUserId),
     KEYS.userMeta(activeUserId),
+    KEYS.boardsList(activeUserId),
   ];
 
   if (list?.sessions?.length) {
@@ -176,5 +185,94 @@ export async function clearUserCache(userId?: string | null): Promise<void> {
     }
   }
 
+  const boardsList = await readBoardsCache(activeUserId);
+  if (boardsList?.boards?.length) {
+    for (const board of boardsList.boards) {
+      if (board?.id) removals.push(KEYS.boardById(activeUserId, board.id));
+    }
+  }
+
   await Promise.all(removals.map((key) => AsyncStorage.removeItem(key)));
+}
+
+// ─── Boards cache (Phase G5) ─────────────────────────────────────────
+
+export async function writeBoardsCache(boards: BoardListItem[], userId?: string | null): Promise<void> {
+  const activeUserId = userId || (await getActiveUserId());
+  if (!activeUserId) return;
+
+  const payload: CachedBoardsPayload = {
+    boards,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await AsyncStorage.setItem(KEYS.boardsList(activeUserId), JSON.stringify(payload));
+
+  // Mirror each list item as a detail stub so the detail screen can fall
+  // back to it when the network is unreachable.
+  await Promise.all(
+    boards.slice(0, 50).map(async (board) => {
+      if (!board?.id) return;
+      const existing = await readCachedBoardDetail(board.id, activeUserId);
+      // Only overwrite if the existing detail is missing or older. The
+      // list item is light, so we keep the existing detail if we have
+      // one (it carries the diagram). Otherwise seed it.
+      if (existing) return;
+      const stub: BoardDetail = {
+        id: board.id,
+        title: board.title,
+        ageGroup: board.ageGroup,
+        gameModelId: board.gameModelId,
+        shareMode: board.shareMode,
+        sourceSessionId: board.sourceSessionId,
+        sourceDrillKey: board.sourceDrillKey,
+        canEdit: board.canEdit,
+        favorited: board.favorited,
+        updatedAt: board.updatedAt,
+        summary: board.summary,
+      };
+      await AsyncStorage.setItem(KEYS.boardById(activeUserId, board.id), JSON.stringify(stub));
+    })
+  );
+}
+
+export async function readBoardsCache(userId?: string | null): Promise<CachedBoardsPayload | null> {
+  const activeUserId = userId || (await getActiveUserId());
+  if (!activeUserId) return null;
+  const raw = await AsyncStorage.getItem(KEYS.boardsList(activeUserId));
+  if (!raw) return null;
+  try {
+    const payload = JSON.parse(raw) as CachedBoardsPayload;
+    if (!Array.isArray(payload.boards)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeBoardDetailCache(board: BoardDetail, userId?: string | null): Promise<void> {
+  const activeUserId = userId || (await getActiveUserId());
+  if (!activeUserId || !board?.id) return;
+  await AsyncStorage.setItem(KEYS.boardById(activeUserId, board.id), JSON.stringify(board));
+}
+
+export async function readCachedBoardDetail(
+  boardId: string,
+  userId?: string | null
+): Promise<BoardDetail | null> {
+  const activeUserId = userId || (await getActiveUserId());
+  if (!activeUserId || !boardId) return null;
+  const raw = await AsyncStorage.getItem(KEYS.boardById(activeUserId, boardId));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as BoardDetail;
+  } catch {
+    return null;
+  }
+}
+
+export async function evictCachedBoard(boardId: string, userId?: string | null): Promise<void> {
+  const activeUserId = userId || (await getActiveUserId());
+  if (!activeUserId || !boardId) return;
+  await AsyncStorage.removeItem(KEYS.boardById(activeUserId, boardId));
 }
