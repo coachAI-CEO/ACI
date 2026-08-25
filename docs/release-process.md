@@ -57,3 +57,8 @@ EXPO_PUBLIC_WEB_URL=https://tacticaledge.app
 Restart Metro with `--reset-cache` after changing `.env`. Board + Coach Center
 docs: `docs/mobile/README.md`, `docs/TACTICAL_BOARD_MOBILE_PLAN.md`,
 `docs/COACH_CENTER_IMPLEMENTATION_PLAN.md`.
+
+How-tos / tutorials: `docs/mobile/HOW_TO_TACTICAL_BOARDS.md`,
+`docs/mobile/HOW_TO_COACH_CENTER.md`, `docs/mobile/TUTORIAL_FIRST_BOARD.md`,
+`docs/mobile/TUTORIAL_COACH_CENTER_WEEK.md`. Docs hub: `DOCUMENTATION.md`.
+Project version: `VERSION` / `CHANGELOG.md` / `TODOS.md`.

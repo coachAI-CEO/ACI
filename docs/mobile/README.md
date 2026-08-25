@@ -17,6 +17,7 @@
 - [Design System](#design-system)
 - [State Management](#state-management)
 - [Security](#security)
+- [How-tos & tutorials](#how-tos--tutorials)
 
 ---
 
@@ -362,6 +363,20 @@ TanStack Query handles all server state (vault list, calendar events, etc.).
 
 ---
 
+## How-tos & tutorials
+
+| Doc | Kind |
+|---|---|
+| [HOW_TO_TACTICAL_BOARDS.md](./HOW_TO_TACTICAL_BOARDS.md) | How-to |
+| [HOW_TO_COACH_CENTER.md](./HOW_TO_COACH_CENTER.md) | How-to |
+| [TUTORIAL_FIRST_BOARD.md](./TUTORIAL_FIRST_BOARD.md) | Tutorial |
+| [TUTORIAL_COACH_CENTER_WEEK.md](./TUTORIAL_COACH_CENTER_WEEK.md) | Tutorial |
+| [Testing Strategy](./TESTING.md) | How-to |
+
+Hub: [`../../DOCUMENTATION.md`](../../DOCUMENTATION.md) · Version: [`../../VERSION`](../../VERSION)
+
+---
+
 ## See Also
 
 - [Phase 1 — Auth + Dashboard](./PHASE_1.md)
@@ -370,4 +385,6 @@ TanStack Query handles all server state (vault list, calendar events, etc.).
 - [Phase 4 — Video Analysis](./PHASE_4.md)
 - [Phase 5 — Calendar + Player Plans](./PHASE_5.md)
 - [Phase 6 — Sideline Mode + Offline](./PHASE_6.md)
-- [Testing Strategy](./TESTING.md)
+- [Tactical board plan](../TACTICAL_BOARD_MOBILE_PLAN.md)
+- [Coach Center plan](../COACH_CENTER_IMPLEMENTATION_PLAN.md)
+- [Release process](../release-process.md)
