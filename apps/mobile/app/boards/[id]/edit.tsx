@@ -11,12 +11,10 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { BoardCanvas } from '../../../components/boards/BoardCanvas';
-import { BoardSequenceBar } from '../../../components/boards/BoardSequenceBar';
-import { BoardToolPalette, type Tool } from '../../../components/boards/BoardToolPalette';
+import { BoardToolPalette, toolHint, type Tool } from '../../../components/boards/BoardToolPalette';
 import { BoardAiSheet } from '../../../components/boards/BoardAiSheet';
 import { PlayerPopover } from '../../../components/boards/PlayerPopover';
 import { Button } from '../../../components/ui/Button';
@@ -29,12 +27,10 @@ import { describeApiError } from '../../../services/api';
 import { deleteBoard, getBoard, patchBoard } from '../../../services/boards.service';
 import { evictCachedBoard, writeBoardDetailCache } from '../../../services/offline-cache.service';
 import { useAuthStore } from '../../../stores/auth.store';
-import { formatGameModelLabel } from '../../../utils/format';
 import { formatFromBoard } from '../../../utils/board-format';
 import {
   BOARD_SEQUENCE_DEFAULT_DURATION_MS,
   BOARD_SEQUENCE_MAX_FRAMES,
-  BOARD_SEQUENCE_TWEEN_MS,
   duplicateActiveFrame,
   ensureSequence,
   interpolateLayers,
@@ -70,12 +66,12 @@ export default function BoardEditScreen() {
   const [team, setTeam] = useState<'ATT' | 'DEF' | 'NEUTRAL'>('ATT');
 
   const [zoom, setZoom] = useState<PitchZoom>('FULL');
-  const [orientation, setOrientation] = useState<Orientation>('HORIZONTAL');
+  // Mockup is portrait-first: pitch fills the phone vertically.
+  const [orientation, setOrientation] = useState<Orientation>('VERTICAL');
 
   const frames = useMemo(() => extractBoardFrames(diagram), [diagram]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [editingTitle, setEditingTitle] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tweenTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,7 +90,7 @@ export default function BoardEditScreen() {
       const withSeq = ensureSequence(d);
       setDiagram(withSeq);
       setBaseline(withSeq);
-      setOrientation(withSeq.pitch?.orientation ?? 'HORIZONTAL');
+      setOrientation(withSeq.pitch?.orientation ?? 'VERTICAL');
     }
   }, [query.data, diagram]);
 
@@ -155,26 +151,6 @@ export default function BoardEditScreen() {
   // ─── Cleanup hooks (must run before any early returns below) ────────
   useEffect(() => () => stopPlayback(), []);
 
-  // ─── Navigation guard ────────────────────────────────────────────────
-  const navAway = useCallback(
-    (after: () => void) => {
-      if (!dirty) {
-        after();
-        return;
-      }
-      // Real alert via the prompt card shown at the bottom of the screen.
-      const evt = new CustomEvent('board:prompt-leave', { detail: { after } });
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(evt);
-      } else {
-        // Mobile: just go if user agreed (expo-router gestures back). We
-        // emit a native alert via the embedded PromptSaveOnExit below.
-        after();
-      }
-    },
-    [dirty]
-  );
-
   // ─── Save ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -220,39 +196,51 @@ export default function BoardEditScreen() {
   });
 
   function openOverflow() {
-    const currentShare = board?.shareMode || 'PRIVATE';
+    const currentShare = query.data?.shareMode || 'PRIVATE';
     const otherShare = currentShare === 'CLUB' ? 'Private' : 'Club';
     const otherShareValue: 'PRIVATE' | 'CLUB' = currentShare === 'CLUB' ? 'PRIVATE' : 'CLUB';
     const shareLabel = `Share with ${otherShare}`;
     const deleteLabel = 'Delete board';
     const webLabel = 'Edit on web';
+    const aiLabel = 'AI coach';
+    const orientLabel =
+      orientation === 'HORIZONTAL' ? 'Switch to vertical pitch' : 'Switch to horizontal pitch';
     const cancel = 'Cancel';
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: 'Board actions',
-          options: [shareLabel, webLabel, deleteLabel, cancel],
-          cancelButtonIndex: 3,
-          destructiveButtonIndex: 2,
+          options: [aiLabel, shareLabel, orientLabel, webLabel, deleteLabel, cancel],
+          cancelButtonIndex: 5,
+          destructiveButtonIndex: 4,
         },
         (idx) => {
           if (idx === 0) {
+            setAiOpen(true);
+            return;
+          }
+          if (idx === 1) {
             shareMutation.mutate(otherShareValue, {
               onError: (err) =>
                 Alert.alert('Share failed', describeApiError(err, 'Could not update share mode.')),
             });
             return;
           }
-          if (idx === 1) {
+          if (idx === 2) {
+            setOrientationLocal(orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL');
+            return;
+          }
+          if (idx === 3) {
             void Linking.openURL(webPath(`/board/${id}`));
             return;
           }
-          if (idx === 2) confirmDelete();
+          if (idx === 4) confirmDelete();
         }
       );
       return;
     }
     Alert.alert('Board actions', undefined, [
+      { text: aiLabel, onPress: () => setAiOpen(true) },
       {
         text: shareLabel,
         onPress: () =>
@@ -260,6 +248,11 @@ export default function BoardEditScreen() {
             onError: (err) =>
               Alert.alert('Share failed', describeApiError(err, 'Could not update share mode.')),
           }),
+      },
+      {
+        text: orientLabel,
+        onPress: () =>
+          setOrientationLocal(orientation === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL'),
       },
       {
         text: webLabel,
@@ -361,11 +354,6 @@ export default function BoardEditScreen() {
     commit(updateActiveFrameMeta(diagram, { title }));
   }
 
-  function setFrameDuration(ms: number) {
-    if (!diagram) return;
-    commit(updateActiveFrameMeta(diagram, { durationMs: ms }));
-  }
-
   // ─── Playback (frame-to-frame tween) ────────────────────────────────
   function stopPlayback() {
     setPlaying(false);
@@ -447,7 +435,6 @@ export default function BoardEditScreen() {
   const format: PitchFormatId = formatFromBoard({ ageGroup: board.ageGroup, diagram: board.diagram });
   const activeFrame = frames[frameIndex] || frames[0];
   const activeTitle = activeFrame?.title || `Frame ${frameIndex + 1}`;
-  const activeDuration = activeFrame?.durationMs ?? BOARD_SEQUENCE_DEFAULT_DURATION_MS;
   const canAddFrame = frames.length < BOARD_SEQUENCE_MAX_FRAMES;
 
   function setFormatLocal(next: PitchFormatId) {
@@ -466,38 +453,62 @@ export default function BoardEditScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: () => (
-            <View>
-              <Text style={styles.headerTitle}>{board.title || 'Edit board'}</Text>
-              <Text style={styles.headerSubtitle}>
-                {board.ageGroup || '--'} · {board.gameModelId ? formatGameModelLabel(board.gameModelId) : '--'}
-              </Text>
+          title: 'Edit board',
+          headerTitleAlign: 'center',
+          headerLeft: () => (
+            <View style={styles.headerLeft}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Undo"
+                onPress={undo}
+                disabled={history.length === 0}
+                style={({ pressed }) => [
+                  styles.navIconBtn,
+                  history.length === 0 ? styles.navIconDisabled : null,
+                  pressed ? { opacity: 0.5 } : null,
+                ]}
+              >
+                <Text style={styles.navIcon}>↶</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Redo"
+                onPress={redo}
+                disabled={future.length === 0}
+                style={({ pressed }) => [
+                  styles.navIconBtn,
+                  future.length === 0 ? styles.navIconDisabled : null,
+                  pressed ? { opacity: 0.5 } : null,
+                ]}
+              >
+                <Text style={styles.navIcon}>↷</Text>
+              </Pressable>
             </View>
           ),
-          headerLeft: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              onPress={() =>
-                navAway(() =>
-                  router.replace({ pathname: '/boards/[id]', params: { id: String(id) } })
-                )
-              }
-              style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
-            >
-              <Text style={styles.headerBack}>← Back</Text>
-            </Pressable>
-          ),
           headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More"
-              onPress={openOverflow}
-              style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
-            >
-              <Text style={styles.headerMore}>⋯</Text>
-            </Pressable>
+            <View style={styles.headerRight}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={dirty ? 'Save' : 'Saved'}
+                onPress={() => dirty && saveMutation.mutate()}
+                disabled={!dirty || saveMutation.isPending}
+                style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
+              >
+                <Text style={[styles.navSave, !dirty ? styles.navSaveIdle : null]}>
+                  {saveMutation.isPending ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="More"
+                onPress={openOverflow}
+                style={({ pressed }) => [pressed ? { opacity: 0.5 } : null]}
+              >
+                <Text style={styles.navMore}>⋯</Text>
+              </Pressable>
+            </View>
           ),
+          headerBackVisible: false,
         }}
       />
 
@@ -505,9 +516,9 @@ export default function BoardEditScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.toolbar}>
-          <View style={styles.toolbarRow}>
-            <Text style={styles.toolbarLabel}>Format</Text>
+        {/* Format + Zoom — matches mockup meta-row */}
+        <View style={styles.metaRow}>
+          <View style={styles.metaSeg}>
             <SegmentedControl
               accessibilityLabel="Pitch format"
               compact
@@ -520,17 +531,7 @@ export default function BoardEditScreen() {
               ]}
             />
           </View>
-          <View style={styles.toolbarRow}>
-            <SegmentedControl
-              accessibilityLabel="Pitch orientation"
-              compact
-              value={orientation}
-              onChange={setOrientationLocal}
-              options={[
-                { value: 'HORIZONTAL', label: 'Horizontal' },
-                { value: 'VERTICAL', label: 'Vertical' },
-              ]}
-            />
+          <View style={styles.metaSegCompact}>
             <SegmentedControl
               accessibilityLabel="Pitch zoom"
               compact
@@ -545,75 +546,7 @@ export default function BoardEditScreen() {
           </View>
         </View>
 
-        <View style={styles.frameMetaRow}>
-          <Text style={styles.frameMetaLabel}>Frame {frameIndex + 1} of {frames.length}</Text>
-          <TextInput
-            value={editingTitle}
-            onChangeText={setEditingTitle}
-            onEndEditing={() => editingTitle !== activeTitle && renameFrame(editingTitle)}
-            placeholder={activeTitle}
-            placeholderTextColor={colors.muted}
-            style={styles.frameTitleInput}
-            returnKeyType="done"
-          />
-          <View style={styles.frameActions}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={playing ? 'Pause' : 'Play'}
-              onPress={togglePlay}
-              style={styles.frameActionBtn}
-            >
-              <Text style={styles.frameActionLabel}>{playing ? '❚❚' : '▶'}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add frame"
-              onPress={addFrame}
-              disabled={!canAddFrame}
-              style={[styles.frameActionBtn, !canAddFrame ? styles.frameActionDisabled : null]}
-            >
-              <Text style={styles.frameActionLabel}>+</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Duplicate frame"
-              onPress={duplicateFrame}
-              disabled={!canAddFrame}
-              style={[styles.frameActionBtn, !canAddFrame ? styles.frameActionDisabled : null]}
-            >
-              <Text style={styles.frameActionLabel}>⎘</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Delete frame"
-              onPress={deleteFrame}
-              disabled={frames.length <= 1}
-              style={[styles.frameActionBtn, frames.length <= 1 ? styles.frameActionDisabled : null]}
-            >
-              <Text style={styles.frameActionLabel}>×</Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.frameDurationRow}>
-          <Text style={styles.toolbarLabel}>Duration · {(activeDuration / 1000).toFixed(1)}s</Text>
-          <View style={styles.frameDurationBtns}>
-            {[800, 1600, 3200, 6000].map((ms) => (
-              <Pressable
-                key={ms}
-                accessibilityRole="button"
-                accessibilityLabel={`${ms / 1000}s`}
-                onPress={() => setFrameDuration(ms)}
-                style={[styles.durationBtn, activeDuration === ms ? styles.durationBtnSelected : null]}
-              >
-                <Text style={[styles.durationLabel, activeDuration === ms ? styles.durationLabelSelected : null]}>
-                  {ms / 1000}s
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
+        {/* Canvas first — tool hint + team pill overlays */}
         <View style={styles.canvasWrap}>
           {diagram ? (
             <BoardCanvas
@@ -629,6 +562,42 @@ export default function BoardEditScreen() {
               onDiagramChange={(next) => commit(next)}
             />
           ) : null}
+
+          <View style={styles.toolBadge} pointerEvents="none">
+            <Text style={styles.toolBadgeText}>{toolHint(tool)}</Text>
+          </View>
+
+          <View style={styles.teamPill}>
+            {(['ATT', 'DEF', 'NEUTRAL'] as const).map((t) => {
+              const selected = team === t;
+              const label = t === 'NEUTRAL' ? 'NEU' : t;
+              return (
+                <Pressable
+                  key={t}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Team ${label}`}
+                  accessibilityState={{ selected }}
+                  onPress={() => setTeam(t)}
+                  style={[
+                    styles.teamPillBtn,
+                    selected && t === 'ATT' ? styles.teamPillAtt : null,
+                    selected && t === 'DEF' ? styles.teamPillDef : null,
+                    selected && t === 'NEUTRAL' ? styles.teamPillNeu : null,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.teamPillLabel,
+                      selected ? styles.teamPillLabelSelected : null,
+                      selected && t === 'DEF' ? styles.teamPillLabelOnDef : null,
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {editingPlayer != null && diagram ? (
@@ -656,43 +625,103 @@ export default function BoardEditScreen() {
           </View>
         ) : null}
 
-        <View style={styles.frameBar}>
-          {diagram ? (
-            <BoardSequenceBar
-              sequence={diagram.sequence || null}
-              activeIndex={frameIndex}
-              onSelect={jumpToFrame}
-            />
-          ) : null}
+        {/* Frame bar — below canvas per mockup */}
+        <View style={styles.seq}>
+          <View style={styles.seqHead}>
+            <Text style={styles.seqTitle} numberOfLines={1}>
+              Frame {frameIndex + 1} · {activeTitle}
+            </Text>
+            <Text style={styles.seqCounter}>
+              {frameIndex + 1} of {frames.length}
+            </Text>
+          </View>
+
+          <View style={styles.seqFrames}>
+            {frames.map((f, i) => {
+              const selected = i === frameIndex;
+              const name = f.title || `Frame ${i + 1}`;
+              return (
+                <Pressable
+                  key={f.id || `f-${i}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={name}
+                  accessibilityState={{ selected }}
+                  onPress={() => jumpToFrame(i)}
+                  onLongPress={() => {
+                    if (Platform.OS === 'ios') {
+                      Alert.prompt(
+                        'Rename frame',
+                        undefined,
+                        (text) => {
+                          if (text != null && text.trim()) renameFrame(text.trim());
+                        },
+                        'plain-text',
+                        name
+                      );
+                    }
+                  }}
+                  style={[styles.seqFrame, selected ? styles.seqFrameActive : null]}
+                >
+                  <Text style={[styles.seqFrameNum, selected ? styles.seqFrameTextActive : null]}>
+                    {i + 1}
+                  </Text>
+                  <Text
+                    style={[styles.seqFrameName, selected ? styles.seqFrameTextActive : null]}
+                    numberOfLines={1}
+                  >
+                    {name}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.seqTools}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add frame"
+              onPress={addFrame}
+              disabled={!canAddFrame}
+              style={[styles.seqGhost, !canAddFrame ? styles.seqGhostDisabled : null]}
+            >
+              <Text style={styles.seqGhostLabel}>+ Frame</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Duplicate frame"
+              onPress={duplicateFrame}
+              disabled={!canAddFrame}
+              style={[styles.seqGhost, !canAddFrame ? styles.seqGhostDisabled : null]}
+            >
+              <Text style={styles.seqGhostLabel}>Duplicate</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Delete frame"
+              onPress={deleteFrame}
+              disabled={frames.length <= 1}
+              style={[styles.seqGhost, frames.length <= 1 ? styles.seqGhostDisabled : null]}
+            >
+              <Text style={styles.seqGhostLabel}>Delete</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={playing ? 'Pause' : 'Play'}
+              onPress={togglePlay}
+              style={[styles.seqGhost, styles.seqGhostPrimary]}
+            >
+              <Text style={[styles.seqGhostLabel, styles.seqGhostPrimaryLabel]}>
+                {playing ? '❚❚ Pause' : '▶ Play'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
 
-        <View style={styles.actions}>
-          <View style={styles.actionsRow}>
-            <Button title="Undo" variant="secondary" onPress={undo} disabled={history.length === 0} />
-            <Button title="Redo" variant="secondary" onPress={redo} disabled={future.length === 0} />
-            <Button title="AI coach" variant="secondary" onPress={() => setAiOpen(true)} />
-          </View>
-          <View style={styles.actionsRow}>
-            <Button
-              title={dirty ? 'Save' : 'Saved'}
-              onPress={() => saveMutation.mutate()}
-              disabled={!dirty || saveMutation.isPending}
-            />
-            <Button
-              title="Save & exit"
-              variant="secondary"
-              onPress={() =>
-                saveMutation.mutate(undefined, {
-                  onSuccess: () => router.replace({ pathname: '/boards/[id]', params: { id: String(id) } }),
-                })
-              }
-              disabled={!diagram || saveMutation.isPending}
-            />
-          </View>
-          {saveMutation.error ? (
+        {saveMutation.error ? (
+          <View style={styles.saveError}>
             <ErrorMessage message={describeApiError(saveMutation.error, 'Save failed.')} />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
 
         <BoardAiSheet
           visible={aiOpen}
@@ -700,9 +729,6 @@ export default function BoardEditScreen() {
           diagram={diagram}
           onClose={() => setAiOpen(false)}
           onApplyDiagram={(next) => {
-            // Stage the AI's updated diagram into the active frame using the
-            // same sequence helper that drag-and-drop uses. The next save
-            // flushes root → frame via syncActiveFrame() inside `commit`.
             const staged: WebDiagramV1 = {
               ...next,
               pitch: next.pitch ?? diagram?.pitch,
@@ -712,7 +738,7 @@ export default function BoardEditScreen() {
           }}
         />
 
-        <BoardToolPalette tool={tool} onTool={setTool} team={team} onTeam={setTeam} />
+        <BoardToolPalette tool={tool} onTool={setTool} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -722,77 +748,118 @@ const styles = StyleSheet.create({
   safe: { backgroundColor: colors.background, flex: 1 },
   flex: { flex: 1 },
   container: { gap: 12, padding: 16 },
-  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  headerSubtitle: { color: colors.muted, fontSize: 11 },
-  headerBack: { color: colors.primary, fontSize: 16, fontWeight: '600', paddingHorizontal: 8 },
-  headerMore: { color: colors.primary, fontSize: 22, fontWeight: '700', paddingHorizontal: 8 },
-  toolbar: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-    marginHorizontal: 12,
-    marginTop: 12,
-    padding: 8,
-  },
-  toolbarRow: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
-  toolbarLabel: { color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
-  frameMetaRow: {
-    alignItems: 'center',
+  headerLeft: { flexDirection: 'row', gap: 2, marginLeft: 4 },
+  headerRight: { alignItems: 'center', flexDirection: 'row', gap: 4, marginRight: 4 },
+  navIconBtn: { paddingHorizontal: 8, paddingVertical: 4 },
+  navIconDisabled: { opacity: 0.35 },
+  navIcon: { color: colors.primary, fontSize: 20, fontWeight: '600' },
+  navSave: { color: colors.primary, fontSize: 14, fontWeight: '800', paddingHorizontal: 6 },
+  navSaveIdle: { color: colors.muted, fontWeight: '600' },
+  navMore: { color: colors.primary, fontSize: 22, fontWeight: '700', paddingHorizontal: 6 },
+  metaRow: {
+    backgroundColor: colors.background,
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 10,
   },
-  frameMetaLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  frameTitleInput: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    color: colors.text,
+  metaSeg: { flex: 1 },
+  metaSegCompact: { flex: 0.85 },
+  canvasWrap: {
+    backgroundColor: '#062816',
     flex: 1,
-    fontSize: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minHeight: 0,
+    overflow: 'hidden',
+    position: 'relative',
   },
-  frameActions: { flexDirection: 'row', gap: 6 },
-  frameActionBtn: {
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: 'center',
-    minWidth: 32,
-  },
-  frameActionDisabled: { opacity: 0.35 },
-  frameActionLabel: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  frameDurationRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  frameDurationBtns: { flexDirection: 'row', flex: 1, gap: 6, justifyContent: 'flex-end' },
-  durationBtn: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
+  toolBadge: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderColor: 'rgba(34,197,94,0.35)',
     borderRadius: 999,
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    left: 14,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    position: 'absolute',
+    top: 14,
   },
-  durationBtnSelected: { backgroundColor: '#14381f', borderColor: colors.primary },
-  durationLabel: { color: colors.text, fontSize: 11, fontWeight: '600' },
-  durationLabelSelected: { color: colors.primary, fontWeight: '800' },
-  canvasWrap: { flex: 1, minHeight: 320 },
-  frameBar: { paddingHorizontal: 12 },
-  actions: { gap: 8, padding: 12 },
-  actionsRow: { flexDirection: 'row', gap: 8 },
+  toolBadgeText: {
+    color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  teamPill: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    position: 'absolute',
+    right: 14,
+    top: 14,
+  },
+  teamPillBtn: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  teamPillAtt: { backgroundColor: '#22c55e' },
+  teamPillDef: { backgroundColor: '#ef4444' },
+  teamPillNeu: { backgroundColor: '#f59e0b' },
+  teamPillLabel: { color: colors.muted, fontSize: 10, fontWeight: '800' },
+  teamPillLabelSelected: { color: '#052e16' },
+  teamPillLabelOnDef: { color: '#fff' },
+  seq: {
+    backgroundColor: colors.background,
+    borderTopColor: 'rgba(255,255,255,0.04)',
+    borderTopWidth: 1,
+    paddingBottom: 8,
+    paddingHorizontal: 10,
+    paddingTop: 6,
+  },
+  seqHead: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  seqTitle: { color: colors.text, flex: 1, fontSize: 12, fontWeight: '700', marginRight: 8 },
+  seqCounter: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  seqFrames: { flexDirection: 'row', gap: 6 },
+  seqFrame: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: 6,
+  },
+  seqFrameActive: {
+    backgroundColor: 'rgba(34,197,94,0.08)',
+    borderColor: colors.primary,
+  },
+  seqFrameNum: { color: colors.muted, fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  seqFrameName: { color: colors.muted, fontSize: 10, marginTop: 1, textAlign: 'center' },
+  seqFrameTextActive: { color: colors.text },
+  seqTools: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  seqGhost: {
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 6,
+  },
+  seqGhostPrimary: { borderColor: 'rgba(34,197,94,0.35)' },
+  seqGhostDisabled: { opacity: 0.35 },
+  seqGhostLabel: { color: colors.muted, fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  seqGhostPrimaryLabel: { color: colors.primary, fontWeight: '700' },
+  saveError: { paddingHorizontal: 12, paddingTop: 4 },
   popoverOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
