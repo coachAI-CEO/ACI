@@ -39,7 +39,15 @@ export function BoardCard({ board, onLongPress }: Props) {
       : null;
 
   function openDetail() {
+    if (board.canEdit) {
+      router.push({ pathname: '/boards/[id]/edit', params: { id: board.id } });
+      return;
+    }
     router.push({ pathname: '/boards/[id]', params: { id: board.id } });
+  }
+
+  function openEditor() {
+    router.push({ pathname: '/boards/[id]/edit', params: { id: board.id } });
   }
 
   return (
@@ -82,9 +90,23 @@ export function BoardCard({ board, onLongPress }: Props) {
           >
             <Text style={styles.editBtnLabel}>Edit on web</Text>
           </Pressable>
-          <Link href={{ pathname: '/boards/[id]', params: { id: board.id } }} style={styles.editLink}>
-            Open →
-          </Link>
+          {board.canEdit ? (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Edit ${board.title || 'Untitled'} in the editor`}
+              style={({ pressed }) => [styles.editLink, pressed ? styles.editLinkPressed : null]}
+              onPress={openEditor}
+            >
+              Edit →
+            </Pressable>
+          ) : (
+            <Link
+              href={{ pathname: '/boards/[id]', params: { id: board.id } }}
+              style={styles.editLink}
+            >
+              Open →
+            </Link>
+          )}
         </View>
       </View>
     </Pressable>
@@ -125,4 +147,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     paddingVertical: 8,
   },
+  editLinkPressed: { opacity: 0.7 },
 });

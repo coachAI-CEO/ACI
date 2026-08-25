@@ -252,7 +252,7 @@ export default function BoardsHomeScreen() {
         onClose={() => setCreateOpen(false)}
         onCreated={(boardId) => {
           setCreateOpen(false);
-          router.push({ pathname: '/boards/[id]', params: { id: boardId } });
+          router.push({ pathname: '/boards/[id]/edit', params: { id: boardId } });
         }}
       />
     </SafeAreaView>
