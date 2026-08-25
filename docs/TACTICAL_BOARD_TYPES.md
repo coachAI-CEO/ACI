@@ -36,7 +36,7 @@ All coordinates are **0–100 normalized**. `pitch.orientation` decides the axis
 | `apps/web` | `import type { DiagramV1 } from '@/types/diagram'` | `apps/web/src/types/diagram.ts` re-exports `@aci/shared` under the legacy `Diagram*` names so the existing 2,800-line editor keeps working without a big refactor |
 | `apps/api` | `import type { WebDiagramV1 } from './services/web-diagram-v1'` | `apps/api/src/services/web-diagram-v1.ts` re-exports from `@aci/shared`. The API also keeps the **normalize pipeline** (`toWebDiagramV1`, formation presets, session/board axis remap) local — those are runtime logic, not types |
 | `apps/api/src/services/board-diagram-schema.ts` | `WebDiagramV1Schema` (Zod) | **stays in the API**. Runtime validation is a backend concern. The inferred TS type comes from the Zod schema, which mirrors `WebDiagramV1` field-by-field. |
-| `apps/mobile` (Phase A+) | `import type { WebDiagramV1 } from '@aci/shared'` | Will be the consumer when the native mobile editor lands (see `docs/TACTICAL_BOARD_MOBILE_PLAN.md`) |
+| `apps/mobile` | `import type { WebDiagramV1 } from '@aci/shared'` | Live consumer. `BoardPreview`, `BoardCanvas`, `boards.service`, and the editor all use the shared type. Mobile defaults pitch orientation to `VERTICAL` for portrait fill (see Phase G.5). |
 
 ## Why the type was hoisted
 
@@ -45,12 +45,13 @@ Before this sync:
 - `apps/api/src/services/web-diagram-v1.ts` declared a near-duplicate `WebDiagramV1` (API store shape)
 - `apps/api/src/services/board-diagram-schema.ts` mirrored the API shape in Zod
 
-The two TS types drifted independently. Adding `facingAngle` to the web type, for example, required two edits. When the native mobile editor lands it'll be a third copy unless we hoist it now.
+The two TS types drifted independently. Adding `facingAngle` to the web type, for example, required two edits. Hoisting into `@aci/shared` before the native editor meant mobile never needed a third copy.
 
 After this sync:
 - One declaration in `@aci/shared`
 - Three re-exports (`apps/web/src/types/diagram.ts`, `apps/api/src/services/web-diagram-v1.ts`, and the API Zod schema which still lives in the API but infers the same shape)
 - One canonical wire format
+- Mobile, web, and API all resolve to the same interfaces for `WebDiagramV1` and the board helpers (`pitch-formats`, `elements`, `lines`, `player-spacing`, `sequence`)
 
 ## How to add a new field
 

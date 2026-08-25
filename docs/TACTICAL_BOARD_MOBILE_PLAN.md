@@ -4,16 +4,21 @@ Make the tactical board first-class on the mobile app. Phases are sized
 so each one ships as a working release — a coach can stop at any phase and
 already have something useful.
 
-> **Status (2026-08-24)**: Phases A → G are **all shipped**. The native
-> editor matches the web's read + edit + AI flows, including:
+> **Status (2026-08-25)**: Phases A → G.5 are **all shipped**, including
+> the post-G layout reconciliation. The native editor matches the agreed
+> TACTICAL_BOARD_INTERACTIVE_MOCK:
 >
-> - Frame timeline (add / duplicate / delete / rename / duration /
->   playback with `interpolateLayers`).
+> - Frame timeline (add / duplicate / delete / rename / playback with
+>   `interpolateLayers`).
 > - Player popover (number / role / team / delete).
 > - AI chat sheet (text-only, `applied` preview, Apply mutates the
 >   diagram; in read mode it pops a preview overlay so the coach can
 >   confirm before committing).
-> - Editor overflow menu (Private / Club toggle, Edit on web, Delete).
+> - Editor overflow menu (AI / Private↔Club / Orientation / Edit on web
+>   / Delete).
+> - Owned boards open straight into the editor — no read-only detail
+>   hop (`BoardCard` and post-create flow push `/boards/[id]/edit`
+>   when `canEdit`).
 > - Client-side `features.tacticalBoardV1` gate — disabled accounts
 >   see a "Boards are coming soon" empty state and a muted Quick
 >   Actions tile.
@@ -457,16 +462,74 @@ GET.
   through. On view-only boards: a preview overlay appears with the AI's
   diagram + reply and the coach can Apply (mutates via PATCH) or
   Discard.
-- F4 ✅ In the editor, "AI coach" sits next to Undo/Redo. On Apply the
-  updated diagram is committed via `commit()` so it lands in the active
-  frame's layers (via the same `syncActiveFrame()` path drag/drop
-  uses); the next save flushes through `patchBoard`.
+- F4 ✅ In the editor, "AI coach" lives in the overflow menu (⋯) after
+  the G.5 layout reconcile — it no longer sits in a stacked action row
+  under the pitch. On Apply the updated diagram is committed via
+  `commit()` so it lands in the active frame's layers (via the same
+  `syncActiveFrame()` path drag/drop uses); the next save flushes
+  through `patchBoard`.
 
 **Pending for v2**: F5 welcome message, F7 read-only composer gating,
 F6 optimistic insertion with immediate user bubble (current order:
 user → assistant in one mutation cycle). F4 (sessionBridge deep-link
 CTA) is parked — `hydrateFromHref` already supports it but the coach
 context hasn't been wired in the mobile editor yet.
+
+---
+
+## Phase G.5 — Editor layout reconciliation ✅ SHIPPED (2026-08-25)
+
+**Goal**: bring the shipped editor back in line with the agreed
+`TACTICAL_BOARD_INTERACTIVE_MOCK` after it drifted toward a stacked
+web-style chrome.
+
+**Shipped (commits `928dafe`, `da5b162` on `codex/mobile-app`)**.
+
+G.5.1. **Nav chrome** — header is now `[↶ ↷] · Edit board · [Save] [⋯]`.
+    - Left side is Undo / Redo (icon buttons, disabled when history or
+      future is empty).
+    - Right side is Save (text label, primary colour when dirty, muted
+      "Saved" when clean) and the overflow menu.
+    - Subtitle and per-screen "Back" button removed from the header.
+G.5.2. **Compact meta row** — single strip under the nav with
+    `Format · Zoom` only. Orientation moved into the overflow menu
+    (the previous toolbar took two rows for chrome that doesn't need
+    to live above the pitch).
+G.5.3. **Canvas-first composition** — the pitch fills the available
+    space. Two overlays sit on top of it:
+    - Top-left: tool-hint badge ("Move · drag players", "Arrow · drag
+      to draw", etc.) via the new `toolHint(tool)` helper.
+    - Top-right: ATT / DEF / NEU pill (the team selector moved out of
+      the tool tray).
+G.5.4. **Frame bar under the pitch** — chips for every frame
+    (`Number + name`), with `+ Frame / Duplicate / Delete / Play` as
+    ghost buttons. Long-pressing a frame on iOS prompts to rename.
+G.5.5. **Five-tool bottom tray** — Move / Player / Arrow / Ball /
+    Erase. `Shape` and `Label` are still reachable via the overflow
+    menu and route through the same selection machinery.
+G.5.6. **Open board straight to the editor** — `BoardCard` and the
+    post-create flow both push `/boards/[id]/edit` when `canEdit`,
+    skipping the read-only detail screen. Read-only boards
+    (`!canEdit`) still go to `/boards/[id]`.
+
+**Implementation notes**
+- `toolHint` lives alongside `Tool` in `BoardToolPalette.tsx` so the
+  editor imports the same source of truth.
+- The ATT / DEF / NEU pill uses the brand colours
+  (`#22c55e` / `#ef4444` / `#f59e0b`) so the chip on the field reads
+  at a glance, the same as the mock.
+- The nav Save button reflects `saveMutation.isPending` ("Saving…")
+  so the coach sees a clear write indicator without losing the layout.
+
+**Verify**
+```bash
+cd apps/mobile && pnpm run typecheck                              # ✓
+# Simulator: open a board → lands in the editor with the new
+# layout. Tap a tool → tool-hint badge updates. Tap ATT / DEF / NEU
+# → active team pill changes. Long-press a frame chip → rename
+# prompt. Pull-to-dismiss or hardware back → navAway guard fires
+# only when dirty.
+```
 
 ---
 
@@ -581,6 +644,71 @@ Not required for v1, but worth tracking once the editor ships.
 - Team picker (Phase I of the Coach Center plan) — boards listing should
   also filter by team when there is more than one.
 
+### Also parked (F v2 / editor polish)
+
+- **F5** — `welcomeForFormat(format)` on first open of the AI sheet.
+- **F6** — optimistic user bubble + "CoachAI thinking…" row.
+- **F7** — hide the composer on read-only boards.
+- **F4 sessionBridge** — "Build this into a session" CTA (plumbing
+  exists via `hydrateFromHref`; coach context not wired yet).
+- Arrow endpoint reshape / area resize handles (still desktop-only).
+- Image / PDF attach for AI chat (`expo-image-picker` /
+  `expo-document-picker`).
+
+---
+
+## Branch + worktree notes (2026-08-25)
+
+| Path | Branch | Role |
+|---|---|---|
+| `…/aci-mobile-dev` | `codex/mobile-app` | **Active mobile worktree** — Metro, editor, docs |
+| `…/aci-mobile` | often `fix/*` or stale | Do not assume mobile source is here |
+
+- Mobile feature work lands on `codex/mobile-app` (57+ commits ahead of
+  `main` as of 2026-08-25).
+- Render auto-deploys the API from `main`. Hotfixes that must reach
+  production (e.g. `GAME_MODEL_REQUIRED`) are cherry-picked / re-applied
+  onto a short `fix/*` branch from `main`, then merged via PR.
+- Expo needs `apps/mobile/.env` with `EXPO_PUBLIC_API_URL` pointing at
+  Render (`https://tacticaledge-api.onrender.com`). A worktree without
+  that file falls back to `http://localhost:4000` and looks "API down".
+
+**Merge debt**: `codex/mobile-app` and `main` both carry the blank-board
+game-model fix as different commits (`d67929d` vs `b42fddf`). Resolving
+that is a no-op when mobile lands on `main`.
+
+---
+
+## Hotfix — BLANK board `GAME_MODEL_REQUIRED` (2026-08-25)
+
+**Goal**: stop the + New → Blank flow from 400-ing on non-club coaches
+when the board has no FORK source and no client-supplied model.
+
+**Shipped**: PR #9 on `main` (commit `b42fddf`); also lives as
+`d67929d` on `codex/mobile-app`.
+
+- `resolveCreateGameModel` now takes `allowFallbackDefault?: boolean`.
+  When set, a missing model resolves to `GameModelId.COACHAI` instead
+  of throwing `GAME_MODEL_REQUIRED`.
+- `createBlankBoard` opts in (`allowFallbackDefault: true`) and
+  additionally soft-downgrades `shareMode: CLUB` to `PRIVATE` if the
+  caller has no club, instead of returning `CLUB_REQUIRED`.
+- The corresponding authz test now asserts the downgraded contract
+  (`shareMode: PRIVATE`) instead of the prior 400.
+
+**Why two commits**
+The fix originated on `codex/mobile-app` (`d67929d`). The same change
+was re-applied to a fresh `fix/gm-required-blank` branched from
+`origin/main` (`eb4e55f` → `b42fddf` via PR #9) so Render — which
+auto-deploys from `main` — picked it up immediately. When
+`codex/mobile-app` merges into `main`, the second copy will need to
+resolve as a no-op (same file, same intent).
+
+**Mobile side is unchanged** — the toast was purely an API rejection.
+The `+ New` flow on mobile sends `shareMode: PRIVATE` by default and
+no `gameModelId`, so the fix is enough to unblock both the web and
+mobile callers.
+
 ---
 
 ## Open questions for review
@@ -596,10 +724,11 @@ Not required for v1, but worth tracking once the editor ships.
    follow-up or include in Phase F? Image upload needs
    `expo-image-picker` (already in the bundle). PDF needs
    `expo-document-picker`.
-4. **What to call "view mode" vs "edit mode"**: web treats the board page
-   as both view + edit (the toolbar is always visible). Mobile splits
-   them across two routes. Stick with that, or collapse into a single
-   route with a "Done" button?
+4. **What to call "view mode" vs "edit mode"**: **Decided for v1** —
+   mobile keeps two routes. Owned boards (`canEdit`) open straight into
+   `/boards/[id]/edit`. Read-only boards stay on `/boards/[id]`. The
+   web still treats view+edit as one page; mobile will not collapse
+   them unless a later UX review asks for it.
 5. **Coach-level gating**: the web `BoardAiReply` already uses
    `coachLevel` / `playerLevel` to tune the AI voice. Mobile should
    surface those on the chat sheet, but should we show them inline as a
@@ -616,9 +745,10 @@ Not required for v1, but worth tracking once the editor ships.
 - **E** (sequence + playback): 0.5–1 day
 - **F** (AI chat): 1 day
 - **G** (polish): 1 day
+- **G.5** (mockup layout reconcile): 0.5 day
 
-Total: ~7–9 working days, depending on how much polish we want. Each
-phase is shippable on its own.
+Total: ~7.5–9.5 working days. Each phase is shippable on its own.
+Phase H and F v2 are follow-ups, not part of the original estimate.
 
 ---
 
