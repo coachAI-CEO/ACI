@@ -1,5 +1,16 @@
 # ACI Training Platform - Complete Documentation
 
+> **Stale (Feb 2026).** This file predates `apps/mobile` and the tactical-board
+> / Coach Center mobile tracks. Prefer:
+>
+> - [`docs/mobile/README.md`](docs/mobile/README.md) — Expo app master plan
+> - [`docs/TACTICAL_BOARD_MOBILE_PLAN.md`](docs/TACTICAL_BOARD_MOBILE_PLAN.md) — boards
+> - [`docs/COACH_CENTER_IMPLEMENTATION_PLAN.md`](docs/COACH_CENTER_IMPLEMENTATION_PLAN.md) — Coach Center
+> - [`docs/release-process.md`](docs/release-process.md) — staging / Render / Expo `.env`
+>
+> A full rewrite of this document is tracked as docs debt (do not treat the
+> monorepo tree or feature list below as current).
+
 **Last Updated:** February 4, 2026  
 **Version:** 1.10.0
 

@@ -22,16 +22,17 @@
 
 ## Overview
 
-The TacticalEdge mobile app brings the full coaching platform to iOS and Android. Coaches can generate sessions, run video analysis from the sideline, browse their vault, and manage their training calendar — all from their phone.
+The TacticalEdge mobile app brings the full coaching platform to iOS and Android. Coaches can generate sessions, run video analysis from the sideline, browse their vault, manage Coach Center, and edit tactical boards — all from their phone.
 
-**Backend**: Zero changes to the existing Express API. The mobile app is a pure REST consumer calling the same endpoints as the web app.
+**Backend**: Same Express API as web (`apps/api`). Mobile is a REST consumer; board create and Coach Center use endpoints that also serve web (occasional API fixes land for mobile, e.g. blank-board `GAME_MODEL_REQUIRED`).
 
 **Key differentiators vs web:**
 - Sideline Mode (stripped UI for pitch use)
 - Camera-native video analysis
-- Offline vault caching
+- Offline vault + boards caching
 - Push notifications for scheduled sessions
 - Native share sheet for player plan PDFs
+- Native tactical-board editor (create, draw, sequence, AI text chat)
 
 ### Expo constraints (web handoff)
 
@@ -40,9 +41,12 @@ Pitch-day and daily coach loops stay native. Dense authoring and billing checkou
 | Native | Web handoff (`webPath()`) |
 |--------|---------------------------|
 | Generate, vault, sideline, calendar, video, player plans | Doc Hub, `/admin/*` |
-| Coach Center consume (week, game day, recap) | Curriculum edit, coach chat, team settings |
-| Boards multi-slide viewer + favorites | Board editor / Board AI |
+| Coach Center (week, game day, recap, curriculum view, next sessions, season chat) | Curriculum edit, team settings, full DOC Hub |
+| Boards list + **native editor** + AI chat (text) + offline read | Desktop drawing extras, PDF export, principles panel |
 | Upgrade CTA → `/pricing`, billing portal | Stripe checkout UI / IAP (not in app) |
+
+Canonical board docs: [`docs/TACTICAL_BOARD_MOBILE_PLAN.md`](../TACTICAL_BOARD_MOBILE_PLAN.md), [`docs/TACTICAL_BOARD_MOBILE_INVENTORY.md`](../TACTICAL_BOARD_MOBILE_INVENTORY.md).
+Coach Center: [`docs/COACH_CENTER_IMPLEMENTATION_PLAN.md`](../COACH_CENTER_IMPLEMENTATION_PLAN.md).
 
 ---
 
@@ -144,13 +148,15 @@ packages:
 │  │   - vault.service.ts                            │ │
 │  │   - video.service.ts                            │ │
 │  │   - calendar.service.ts                         │ │
+│  │   - boards.service.ts                           │ │
+│  │   - coach-center.service.ts                     │ │
 │  └───────────────────┬────────────────────────────┘ │
 └──────────────────────┼─────────────────────────────┘
                        │ HTTPS REST
                        ▼
           ┌────────────────────────┐
           │  Existing Express API  │
-          │  (apps/api — unchanged)│
+          │  (apps/api)            │
           └────────────────────────┘
 ```
 
@@ -166,6 +172,14 @@ packages:
 | 4 | Video Analysis (upload, results, save) | Week 8–9 | [PHASE_4.md](./PHASE_4.md) |
 | 5 | Calendar, Player Plans, PDF export | Week 10–11 | [PHASE_5.md](./PHASE_5.md) |
 | 6 | Sideline Mode, Offline cache, Push notifications | Week 12–13 | [PHASE_6.md](./PHASE_6.md) |
+
+**Follow-on feature tracks** (separate from the numbered phases above):
+
+| Track | Status | Doc |
+|---|---|---|
+| Tactical boards (native editor A→G.5) | **Shipped** on `codex/mobile-app` | [`../TACTICAL_BOARD_MOBILE_PLAN.md`](../TACTICAL_BOARD_MOBILE_PLAN.md) |
+| Coach Center (types + team surfaces A→E) | **Shipped** | [`../COACH_CENTER_IMPLEMENTATION_PLAN.md`](../COACH_CENTER_IMPLEMENTATION_PLAN.md) |
+| Calendar full read surfaces | Shipped (Phase B1–B5) | [`../CALENDAR_MOBILE_INVENTORY.md`](../CALENDAR_MOBILE_INVENTORY.md) |
 
 ---
 
@@ -193,16 +207,17 @@ npx expo start
 
 ### Environment Variables
 
-Create `apps/mobile/.env`:
+Create `apps/mobile/.env` (required — without it the client falls back to
+`http://localhost:4000` and looks like the API is down):
 
 ```env
-EXPO_PUBLIC_API_URL=https://api.tacticaledge.app
-# For local dev:
+EXPO_PUBLIC_API_URL=https://tacticaledge-api.onrender.com
+EXPO_PUBLIC_WEB_URL=https://tacticaledge.app
+# For a local API instead:
 # EXPO_PUBLIC_API_URL=http://localhost:4000
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
 ```
 
-Variables prefixed `EXPO_PUBLIC_` are inlined at build time and safe for client use. Never put secrets here.
+Variables prefixed `EXPO_PUBLIC_` are inlined at build time and safe for client use. Never put secrets here. After changing `.env`, restart Metro with `--reset-cache`.
 
 ---
 

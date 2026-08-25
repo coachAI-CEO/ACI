@@ -42,3 +42,18 @@ may no longer match. To reset all three without opening Render shell:
 
 Set `ENABLE_DEV_SEED_ROUTES=0` (or remove the var) when you're done — the
 endpoint should not be left enabled in any environment that holds real data.
+
+## Mobile Expo against staging / Render
+
+Active mobile work lives on `codex/mobile-app` (often in worktree
+`aci-mobile-dev`). Metro needs `apps/mobile/.env` or it defaults to
+`http://localhost:4000` and looks like the API is down:
+
+```env
+EXPO_PUBLIC_API_URL=https://tacticaledge-api.onrender.com
+EXPO_PUBLIC_WEB_URL=https://tacticaledge.app
+```
+
+Restart Metro with `--reset-cache` after changing `.env`. Board + Coach Center
+docs: `docs/mobile/README.md`, `docs/TACTICAL_BOARD_MOBILE_PLAN.md`,
+`docs/COACH_CENTER_IMPLEMENTATION_PLAN.md`.

@@ -89,10 +89,11 @@ All four packages typecheck and the diagram schema tests pass. The HTTP test (wh
 
 ## Related docs
 
-- `docs/TACTICAL_BOARD_MOBILE_INVENTORY.md` — what the mobile app, web app, and API look like *before* Phase A. Read this to see why we hoist.
-- `docs/TACTICAL_BOARD_MOBILE_PLAN.md` — the 8-phase native-mobile roadmap. Phase A is shipped; **Phase A.5** is the next thing to do.
+- `docs/TACTICAL_BOARD_MOBILE_INVENTORY.md` — current mobile/web/API board surfaces (native editor shipped through G.5).
+- `docs/TACTICAL_BOARD_MOBILE_PLAN.md` — roadmap. **A→G.5 shipped** on `codex/mobile-app`; Phase H / F v2 parked.
 
 ## History
 
+- **2026-08-25** — Mobile is a live consumer of shared board types + editor through G.5.
 - **2026-08-24** — Hoisted `WebDiagramV1` out of `apps/api/src/services/web-diagram-v1.ts` and the web's `DiagramV1` into `packages/shared/src/types/tactical-board.ts`. The web `Diagram*` names and the API `WebDiagram*` names are now re-exports.
-- **2026-08-24** — Identified that **3 more web libs** (`pitch-formats.ts`, `board-elements.ts`, `board-lines.ts`, `board-player-spacing.ts`, `board-sequence.ts`) are pure functions on `WebDiagramV1` and need to follow the same pattern. Captured as Phase A.5 in the plan.
+- **2026-08-24** — Identified that more web libs (`pitch-formats.ts`, `board-elements.ts`, `board-lines.ts`, `board-player-spacing.ts`, `board-sequence.ts`) are pure functions on `WebDiagramV1` and need to follow the same pattern. Captured as Phase A.5 (now shipped).
