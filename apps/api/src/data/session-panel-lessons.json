@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T18:25:08.079Z",
+  "updatedAt": "2026-08-26T19:08:17.720Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
@@ -11,10 +11,10 @@
       "source": "gate",
       "scope": {},
       "seen": 6,
-      "helped": 25,
-      "failed": 5,
+      "helped": 28,
+      "failed": 6,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:topic-tactical",
@@ -25,24 +25,24 @@
       "source": "gate",
       "scope": {},
       "seen": 9,
-      "helped": 25,
-      "failed": 7,
+      "helped": 28,
+      "failed": 8,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:topic-game",
       "status": "active",
       "kind": "must",
       "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
-      "because": "Conditioned game does not force topic \"Pressing as a Unit\" via scoring or constraints",
+      "because": "Conditioned game does not force topic \"Compactness Between Lines\" via scoring or constraints",
       "source": "gate",
       "scope": {},
-      "seen": 12,
-      "helped": 26,
-      "failed": 8,
+      "seen": 14,
+      "helped": 29,
+      "failed": 11,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -53,10 +53,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 19,
-      "failed": 4,
+      "helped": 22,
+      "failed": 5,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:setup-matches-title",
@@ -67,10 +67,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 19,
-      "failed": 4,
+      "helped": 22,
+      "failed": 5,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:variety-clone:rest-defense-shape",
@@ -97,38 +97,38 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 20,
-      "failed": 4,
+      "helped": 23,
+      "failed": 5,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:second-group",
       "status": "active",
       "kind": "must",
-      "rule": "If the squad is bigger than one working group, TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
-      "because": "Designer: technical was 7 shirts on 35x40 with a 22-player squad idle. Realism 2.",
+      "rule": "TECHNICAL with a small ADVANCED group must literally say what the rest of the squad does — a second station or parallel activity, never left unaccounted for.",
+      "because": "2026-08-26: idle-squad missed twice in a row, both on brand-new ADVANCED cells (U15, U18) — playerLevel scaling means ADVANCED is now the only tier that still uses a small technical group, concentrating this risk there.",
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 20,
-      "failed": 4,
+      "helped": 23,
+      "failed": 5,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:idle-squad",
       "status": "active",
       "kind": "must",
       "rule": "If the squad is bigger than one working group, WARMUP/TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
-      "because": "TECHNICAL shows 6 working vs squad 22; setupSteps must name a second group, not idle spectators",
+      "because": "TECHNICAL shows 8 working vs squad 22; setupSteps must name a second group, not idle spectators",
       "source": "gate",
       "scope": {},
-      "seen": 6,
-      "helped": 20,
-      "failed": 7,
+      "seen": 9,
+      "helped": 23,
+      "failed": 11,
       "createdAt": "2026-08-26T03:29:17.646Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:game-score-not-prior",
@@ -171,10 +171,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 13,
-      "failed": 4,
+      "helped": 16,
+      "failed": 5,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:differ-from-prior-hour",
@@ -185,10 +185,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 10,
-      "failed": 1,
+      "helped": 13,
+      "failed": 2,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:beginner-touch:BEGINNER",
@@ -215,10 +215,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 9,
-      "failed": 0,
+      "helped": 12,
+      "failed": 1,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "human:formation-math-consistent",
@@ -230,9 +230,9 @@
       "scope": {},
       "seen": 0,
       "helped": 4,
-      "failed": 0,
+      "failed": 1,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T18:18:52.510Z"
+      "updatedAt": "2026-08-26T19:08:17.720Z"
     },
     {
       "id": "gate:c-jargon:USSF_C",
@@ -245,10 +245,10 @@
         "coachLevel": "USSF_C"
       },
       "seen": 2,
-      "helped": 1,
+      "helped": 4,
       "failed": 1,
       "createdAt": "2026-08-26T18:18:52.511Z",
-      "updatedAt": "2026-08-26T18:25:08.078Z"
+      "updatedAt": "2026-08-26T18:55:39.314Z"
     }
   ]
 }

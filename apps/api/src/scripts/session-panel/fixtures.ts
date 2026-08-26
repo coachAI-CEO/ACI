@@ -304,6 +304,163 @@ export const PANEL_FIXTURES: PanelFixture[] = [
       /force (a )?mistake/i,
     ],
   },
+  {
+    id: "u18-b-zonal-defending",
+    label: "U18 B+ · Zonal Defending (4-4-2)",
+    input: {
+      gameModelId: "PRESSING",
+      ageGroup: "U18",
+      phase: "DEFENDING",
+      zone: "DEFENSIVE_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "4-4-2",
+      formationDefending: "4-4-2",
+      playerLevel: "ADVANCED",
+      coachLevel: "USSF_B_PLUS",
+      topic: "Zonal Defending",
+    },
+    topicMeaning:
+      "Defend by covering your zone and shifting as a block, not by chasing the ball around the pitch. The last uncovered phase+zone in this matrix -- deep defending, not pressing.",
+    topicSignals: [
+      /zonal(ly)? defend/i,
+      /defend(ing)? (by |your )?zone/i,
+      /cover (your |the )?(area|zone|space)/i,
+      /shift (as a|together|the) (block|line)/i,
+      /(don't|do not) chase the ball/i,
+      /stay in (your |the )?zone/i,
+    ],
+  },
+  {
+    id: "u12-c-half-space",
+    label: "U12 C · Half-Space Occupation (3-3-2)",
+    input: {
+      gameModelId: "POSSESSION",
+      ageGroup: "U12",
+      phase: "ATTACKING",
+      zone: "MIDDLE_THIRD",
+      numbersMin: 12,
+      numbersMax: 16,
+      goalsAvailable: 1,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "3-3-2",
+      formationDefending: "3-3-2",
+      playerLevel: "INTERMEDIATE",
+      coachLevel: "USSF_C",
+      topic: "Half-Space Occupation",
+    },
+    topicMeaning:
+      "Occupy the channel between the wide player and the center to open passing lanes -- not standing directly wide or directly central. A different formation (3-3-2) from the other 9v9 cells to check the system isn't just tuned to one shape.",
+    topicSignals: [
+      /half[- ]?spaces?/i,
+      /between (the )?(wing|winger|full[- ]?back|touchline) and (the )?(center|centre|middle)/i,
+      /channel(s)? (between|next to)/i,
+      /inside channel/i,
+      /wide (channel|lane)/i,
+    ],
+  },
+  {
+    id: "u16-c-gk-distribution",
+    label: "U16 C · GK Distribution Options (4-2-3-1)",
+    input: {
+      gameModelId: "POSSESSION",
+      ageGroup: "U16",
+      phase: "ATTACKING",
+      zone: "DEFENSIVE_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "4-2-3-1",
+      formationDefending: "4-2-3-1",
+      playerLevel: "INTERMEDIATE",
+      coachLevel: "USSF_C",
+      topic: "GK Distribution Options",
+    },
+    topicMeaning:
+      "The goalkeeper has more than one safe way to start play -- short to a center back, wide to a fullback, or longer to a target -- not one predictable pattern every time. A third formation (4-2-3-1) at 11v11, distinct from the 4-3-3 used elsewhere.",
+    topicSignals: [
+      /goalkeeper('s)? (distribution|options)/i,
+      /(gk|keeper) (plays?|distributes?|starts?|picks?) (to|from|an? option)/i,
+      /multiple (safe )?options? (to|for) (the )?(gk|keeper|goalkeeper)/i,
+      /short (to|pass to) (the )?(center|centre) back/i,
+      /(gk|keeper) reads? (the )?press/i,
+    ],
+  },
+  {
+    id: "u15-b-compactness-lines",
+    label: "U15 B+ · Compactness Between Lines (3-4-3)",
+    input: {
+      gameModelId: "PRESSING",
+      ageGroup: "U15",
+      phase: "DEFENDING",
+      zone: "MIDDLE_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "3-4-3",
+      formationDefending: "3-4-3",
+      playerLevel: "ADVANCED",
+      coachLevel: "USSF_B_PLUS",
+      topic: "Compactness Between Lines",
+    },
+    topicMeaning:
+      "Keep the defensive and midfield lines close together vertically so there's no gap to play through -- a systemic, connected idea, not a single line standing in place. A fourth formation (3-4-3), distinct from every other 11v11 cell.",
+    topicSignals: [
+      /compact(ness)? (between|across) (the )?lines/i,
+      /close(r)? (together|the gap) between (the )?lines/i,
+      /(no )?gaps? between (the )?lines/i,
+      /lines? (stay(ing)?|staying) close/i,
+      /distance between (the )?lines/i,
+      // Observed live phrasing (2026-08-26, 3 attempts): a model can enforce
+      // this topic as a hard numeric block distance/compactness constraint
+      // instead of literally saying "between the lines" -- e.g. "defensive
+      // block must maintain vertical compactness under 12 yards" or
+      // "vertically separated by more than twelve yards" (spelled-out
+      // number, not a digit). Two tight-adjacency patterns both missed real
+      // hits here -- match the concept pair loosely instead of requiring
+      // "block"/a digit right next to the compactness word.
+      /vertical(ly)? (compact(ness)?|separat(ed|ion))/i,
+      /block[\s\S]{0,100}(compact|distance|separat)/i,
+    ],
+  },
+  {
+    id: "u13-c-fast-break",
+    label: "U13 C · Fast Break Attacks (3-5-2)",
+    input: {
+      gameModelId: "TRANSITION",
+      ageGroup: "U13",
+      phase: "TRANSITION",
+      zone: "ATTACKING_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "3-5-2",
+      formationDefending: "3-5-2",
+      playerLevel: "INTERMEDIATE",
+      coachLevel: "USSF_C",
+      topic: "Fast Break Attacks",
+    },
+    topicMeaning:
+      "The moment we win the ball back near their goal, attack immediately and directly before they can recover their shape -- speed over patience. A fifth formation (3-5-2) to keep the matrix from tuning to one shape.",
+    topicSignals: [
+      /fast break/i,
+      /quick(ly)? (attack|counter)/i,
+      /attack (immediately|directly|quickly)/i,
+      /before they (can )?recover/i,
+      /speed over patience/i,
+      /break (quickly|fast)/i,
+    ],
+  },
 ];
 
 export function fixtureById(id: string): PanelFixture | undefined {
