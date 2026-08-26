@@ -1,4 +1,5 @@
 import { FIELD_SPECS, type FieldFormat as RealFieldFormat } from "../data/field-dimensions";
+import { formatLessonsForPrompt } from "../services/session-lessons";
 
 export type ClubPhilosophyPromptInput = {
   attackingOrganization?: string | null;
@@ -32,6 +33,19 @@ export interface SessionPromptInput {
 
   /** Club-authored 4-moment DNA from DOC Hub; preferred over hardcoded model profiles. */
   clubPhilosophy?: ClubPhilosophyPromptInput | null;
+
+  /**
+   * Panel playbook injection. undefined = load matching active lessons from
+   * session-panel-lessons.json. null = skip (baseline eval). string[] = exact
+   * rules for tests / a single eval cell.
+   */
+  panelLessons?: string[] | null;
+
+  /**
+   * Compact PRIOR practice-form card (panel / vault). Injects VARIETY LOCK so
+   * the next hour on the same topic is a different grid, scoring, and constraints.
+   */
+  panelPriorCard?: string | null;
 }
 
 export type GameFormat = "7v7" | "9v9" | "11v11";
@@ -278,6 +292,17 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     ? gameFormat
     : `${Math.max(2, Math.floor(requestedMaxPlayers / 2))}v${Math.max(2, Math.floor(requestedMaxPlayers / 2))} conditioned game`;
   const spaceDims = getSpaceConstraintDimensions(gameFormat, input.spaceConstraint);
+  // Warmup/technical space scales with playerLevel too -- a BEGINNER full-squad
+  // free-play game needs real room, not the tight quarter-field an ADVANCED
+  // precision group uses. Keep in sync with the WARMUP/TECHNICAL GROUP SIZE LOCK.
+  const warmupSpaceTarget = isBeginner ? spaceDims.half : isIntermediate ? spaceDims.third : spaceDims.quarter;
+  // Was flat (isBeginner ? half : third), collapsing INTERMEDIATE and
+  // ADVANCED to the same space -- while the matching player-count ceiling
+  // in frozen-gates.ts's techCeiling already gives them distinct values
+  // (16 vs 12). Mirror warmupSpaceTarget's three-tier shape so the two
+  // "keep in sync" dial tables actually agree on how ADVANCED differs from
+  // INTERMEDIATE, not just from BEGINNER.
+  const technicalSpaceTarget = isBeginner ? spaceDims.half : isIntermediate ? spaceDims.third : spaceDims.quarter;
   const sessionDuration = input.durationMin || 90;
   const is60Min = sessionDuration === 60;
   
@@ -334,11 +359,18 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
           "- BANNED CONSTRAINTS for BEGINNER (never write these): '1-touch', 'one-touch', '2-touch', 'two-touch', 'maximum N touches', 'strictly N touches', any touch limit below 3; multi-zone tactical structures ('three longitudinal channels', 'organized defensive block', named formations like '3-2-3 attacking shape' as a constraint to execute); timed technical windows ('45-second intervals', 'designated windows'); anything requiring players to track more than one instruction at once.",
         ]
       : []),
+    "WARMUP/TECHNICAL GROUP SIZE LOCK (MANDATORY -- scales with playerLevel, not age/format):",
+    "- The size and structure of the warmup/technical working group is a playerLevel decision. A small 4-8 precision group is right for ADVANCED players; it is the WRONG default for BEGINNER or INTERMEDIATE, regardless of ageGroup or 7v7/9v9/11v11 format.",
+    isBeginner
+      ? `- BEGINNER: warmup/technical can use a LARGE group, up to the full squad (numbersMax=${input.numbersMax}) -- free play, tag-style games, keep-away, or general ball mastery are all valid and encouraged. Precision and rep-efficiency are not the point yet; touches, engagement, and enjoyment are. A fun game with no connection to today's topic is a legitimate warmup at this level.`
+      : isIntermediate
+      ? `- INTERMEDIATE: a moderate working group is expected (roughly half the squad, or two groups of that size) -- more purposeful than free play, but not the tight 4-8 precision format either. Some technical intent is fine; full precision demand is not required yet.`
+      : "- ADVANCED: small working group only (4-8 outfield for warmup; up to 10 including a GK for technical). Every rep should be purposeful and technically precise -- this is where rep quality and minimal wasted touches matter most.",
     "AGE/GAME FORMAT LOCK (MANDATORY):",
     `- ageGroup=${input.ageGroup} uses ${gameFormat}.`,
     "- U8-U10 must be 7v7, U11-U12 must be 9v9, U13-U18 must be 11v11.",
     `- The selected active player range is ${input.numbersMin}-${input.numbersMax}. That is the SQUAD at the session, not how many shirts go on every diagram.`,
-    `- WARMUP/TECHNICAL pictures: one working group only (4–8 outfield; warmup max 8, technical max 10 including a GK). If the squad is bigger, say "two groups" in setupSteps. Do not dump numbersMax shirts onto those diagrams.`,
+    `- WARMUP/TECHNICAL pictures: group size per the WARMUP/TECHNICAL GROUP SIZE LOCK above (playerLevel-scaled, not a flat 4-8). If a group is smaller than the full squad, say "two groups" in setupSteps -- do not leave players unaccounted for.`,
     `- TACTICAL/CONDITIONED pictures: one format team per colour (${playersPerTeam}v${playersPerTeam} when a full ${gameFormat} fits), never 16–18 of the same colour.`,
     canRunFullGameFormat
       ? `- If a CONDITIONED_GAME is titled or organized as ${gameFormat}, diagram.players MUST contain exactly ${fullGamePlayerTotal} players: ${playersPerTeam} ATT and ${playersPerTeam} DEF, including one GK on each team.`
@@ -399,6 +431,11 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
           "",
         ]
       : []),
+    ...(() => {
+      const block = formatLessonsForPrompt(input);
+      return block ? [block, ""] : [];
+    })(),
+    ...(input.panelPriorCard ? [input.panelPriorCard, ""] : []),
     "SESSION STRUCTURE FOR " + sessionDuration + "-MINUTE SESSION:",
     "",
     "1. WARMUP (" + warmupDuration + " minutes):",
@@ -406,16 +443,20 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "   - Duration: " + warmupDuration + " minutes",
     "   - RPE: 3-5",
     "   - Focus: High touches, movement patterns, ball work",
-    `   - Space: up to ~${Math.min(spaceDims.quarter.lengthYards, spaceDims.lengthYards)}x${spaceDims.widthYards} yards (small -- never more than the SPACE CONSTRAINT LOCK ceiling above)`,
-    "   - Examples: Rondos, passing patterns, dynamic movements with ball",
-    "   - Picture: ONE working group only (4–8 players: 4v1, 5v2, 8 in a circle). If the squad is bigger, say \"two groups of 8\" in setupSteps. Do not put numbersMax shirts on the warmup diagram.",
+    `   - Space: up to ~${Math.min(warmupSpaceTarget.lengthYards, spaceDims.lengthYards)}x${spaceDims.widthYards} yards (scaled for playerLevel=${input.playerLevel} -- never more than the SPACE CONSTRAINT LOCK ceiling above)`,
+    isBeginner
+      ? "   - Examples: Free play, tag-style games (sharks and minnows, knockout), keep-away, general ball mastery, rondos, passing patterns -- fun and touches matter more than precision at this level."
+      : isIntermediate
+      ? "   - Examples: Rondos, passing patterns, dynamic movements with ball, small possession games with light technical intent."
+      : "   - Examples: Rondos, passing patterns, dynamic movements with ball -- purposeful, technically precise reps.",
+    "   - Picture: group size per the WARMUP/TECHNICAL GROUP SIZE LOCK above. ADVANCED stays to a small 4-8 working group (4v1, 5v2, 8 in a circle); BEGINNER/INTERMEDIATE can use a larger group or the full squad. If any players are left out of the group shown, say \"two groups\" in setupSteps -- do not leave players unaccounted for.",
     "",
     "2. TECHNICAL (" + technicalDuration + " minutes):",
     "   - Purpose: Skill development, repetition, muscle memory",
     "   - Duration: " + technicalDuration + " minutes",
     "   - RPE: 4-6",
     "   - Focus: Specific technique (passing, shooting, first touch, dribbling)",
-    `   - Space: up to ~${Math.min(spaceDims.third.lengthYards, spaceDims.lengthYards)}x${spaceDims.widthYards} yards (never more than the SPACE CONSTRAINT LOCK ceiling above)`,
+    `   - Space: up to ~${Math.min(technicalSpaceTarget.lengthYards, spaceDims.lengthYards)}x${spaceDims.widthYards} yards (scaled for playerLevel=${input.playerLevel} -- never more than the SPACE CONSTRAINT LOCK ceiling above)`,
     "   - Examples: Finishing drills, passing accuracy, first touch exercises",
     "   - Picture: ONE working group (max 8 attackers + GK if a full goal is in play). Not the whole squad.",
     "",

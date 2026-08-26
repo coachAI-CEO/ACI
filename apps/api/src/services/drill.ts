@@ -751,8 +751,15 @@ export async function generateAndReviewDrill(
       rpeMin: processedFields.rpeMin ?? 3,
       rpeMax: processedFields.rpeMax ?? 6,
       
-      goalsAvailable: processedFields.goalsAvailable ?? 0,
-      goalMode: processedFields.goalMode,
+      // Read from jsonForDb, not processedFields -- enforceDiagramGoalAvailability
+      // (called at lines 651-652 and again on jsonForDb at line 708, after
+      // processedFields.goalMode/.goalsAvailable were already captured) mutates
+      // goalMode/goalsAvailable in place. Using the stale processedFields values
+      // here previously wrote a different goalMode to the Drill.goalMode column
+      // than what ended up in Drill.json.goalMode -- same row, two disagreeing
+      // values for the same field.
+      goalsAvailable: jsonForDb.goalsAvailable ?? processedFields.goalsAvailable ?? 0,
+      goalMode: jsonForDb.goalMode ?? processedFields.goalMode,
       
       // --- NEW: Formation & Level fields (from input, validated) ---
       // Store attacking formation in formationUsed for backward compatibility

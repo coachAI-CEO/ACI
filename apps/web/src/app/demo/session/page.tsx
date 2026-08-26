@@ -17,7 +17,7 @@ import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
-import { pickDrillDiagramSvg } from "@/lib/diagram-svg";
+import { pickDrillDiagramSvg, describeDrillGoalSetup, resolveDrillGoalsAvailableForDisplay } from "@/lib/diagram-svg";
 import { SESSION_PDF_REVISION } from "@/lib/pdf-export-revision";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
@@ -85,6 +85,11 @@ type SessionApiResponse = {
     ageGroup?: string;
     durationMin?: number;
     goalsAvailable?: number;
+    numbersMin?: number;
+    numbersMax?: number;
+    playerLevel?: string;
+    spaceConstraint?: string;
+    formationUsed?: string;
     summary?: string;
     drills: SessionDrill[];
     sessionPlan?: {
@@ -183,6 +188,7 @@ type SessionConfig = {
   spaceConstraint: string;
   durationMin: number;
   topic?: string;
+  preserveCoachLevelContext?: boolean;
 };
 
 const gameModelLabel: Record<string, string> = {
@@ -618,6 +624,32 @@ async function fetchSession(
   }
   
   return data;
+}
+
+async function fetchCoachLevelVariant(
+  sessionId: string,
+  coachLevel: string
+): Promise<SessionApiResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(getUserHeaders() as Record<string, string>),
+  };
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+  const res = await fetch(
+    `/api/vault/sessions/${encodeURIComponent(sessionId)}/coach-level-variant`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ coachLevel }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || `API error: ${res.status}`);
+  }
+  return data as SessionApiResponse;
 }
 
 async function fetchProgressiveSeries(
@@ -1216,6 +1248,12 @@ function SessionDemoPageContent() {
                     coachLevel: normalizeCoachLevel(cachedSession.coachLevel || sessionData.coachLevel),
                     ageGroup: cachedSession.ageGroup,
                     durationMin: cachedSession.durationMin,
+                    goalsAvailable: cachedSession.goalsAvailable,
+                    numbersMin: cachedSession.numbersMin,
+                    numbersMax: cachedSession.numbersMax,
+                    playerLevel: cachedSession.playerLevel,
+                    spaceConstraint: cachedSession.spaceConstraint,
+                    formationUsed: cachedSession.formationUsed,
                     summary: sessionData.summary,
                     drills: sessionData.drills || [],
                     sessionPlan: sessionData.sessionPlan,
@@ -1283,6 +1321,12 @@ function SessionDemoPageContent() {
                 coachLevel: normalizeCoachLevel(vaultData.session.coachLevel || sessionData.coachLevel),
                 ageGroup: vaultData.session.ageGroup || "U12",
                 durationMin: vaultData.session.durationMin || undefined,
+                goalsAvailable: vaultData.session.goalsAvailable ?? undefined,
+                numbersMin: vaultData.session.numbersMin ?? undefined,
+                numbersMax: vaultData.session.numbersMax ?? undefined,
+                playerLevel: vaultData.session.playerLevel || undefined,
+                spaceConstraint: vaultData.session.spaceConstraint || undefined,
+                formationUsed: vaultData.session.formationUsed || undefined,
                 summary: sessionData.summary || undefined,
                 drills: Array.isArray(sessionData.drills) ? sessionData.drills : [],
                 sessionPlan: sessionData.sessionPlan || undefined,
@@ -1922,13 +1966,20 @@ function SessionDemoPageContent() {
   const languageLevelBadge = getLanguageLevelBadge(currentCoachLevelKey);
 
   const buildRegenerateConfigForLevel = (targetCoachLevel: string): SessionConfig => ({
-    ...config,
     gameModelId: session?.gameModelId || config.gameModelId,
     ageGroup: session?.ageGroup || config.ageGroup,
     phase: session?.phase || config.phase,
     zone: session?.zone || config.zone,
-    durationMin: session?.durationMin || config.durationMin,
+    formationAttacking: session?.formationUsed || config.formationAttacking,
+    formationDefending: session?.formationUsed || config.formationDefending,
+    playerLevel: session?.playerLevel || config.playerLevel,
     coachLevel: normalizeCoachLevel(targetCoachLevel),
+    numbersMin: session?.numbersMin ?? config.numbersMin,
+    numbersMax: session?.numbersMax ?? config.numbersMax,
+    goalsAvailable: session?.goalsAvailable ?? config.goalsAvailable,
+    spaceConstraint: session?.spaceConstraint || config.spaceConstraint,
+    durationMin: session?.durationMin || config.durationMin,
+    topic: config.topic,
   });
 
   const getCoachVariantBaseKey = (cfg: SessionConfig): string =>
@@ -1972,8 +2023,28 @@ function SessionDemoPageContent() {
   const runCoachLevelRegeneration = async (nextLevel: string) => {
     const regenerateConfig = buildRegenerateConfigForLevel(nextLevel);
     const cacheKey = getCoachVariantCacheKey(regenerateConfig, nextLevel);
+    const sourceSessionId = resolvedSessionId || data?.session?.id;
 
     try {
+      if (sourceSessionId) {
+        setRegeneratingCoachLevel(nextLevel);
+        setLoading(true);
+        setError(null);
+
+        const result = await fetchCoachLevelVariant(sourceSessionId, nextLevel);
+        const nextVariant: SessionApiResponse = {
+          ...result,
+          session: {
+            ...result.session,
+            coachLevel: result.session?.coachLevel || nextLevel,
+          },
+        };
+        setData(nextVariant);
+        setCoachLevelSessionCache((prev) => ({ ...prev, [cacheKey]: nextVariant }));
+        setDiagramOverrides({});
+        setSeriesData(null);
+        setSessionMode("single");
+      } else {
       const controller = startGenerationAbortController();
       const generationId = createGenerationId();
       generationIdRef.current = generationId;
@@ -1984,7 +2055,12 @@ function SessionDemoPageContent() {
       setShowRecommendations(false);
       setRecommendations([]);
 
-      const result = await fetchSession(regenerateConfig, true, controller.signal, generationId);
+      const result = await fetchSession(
+        { ...regenerateConfig, preserveCoachLevelContext: true },
+        true,
+        controller.signal,
+        generationId
+      );
       const nextVariant: SessionApiResponse = {
         ...result,
         session: {
@@ -1994,10 +2070,12 @@ function SessionDemoPageContent() {
       };
       setData(nextVariant);
       setCoachLevelSessionCache((prev) => ({ ...prev, [cacheKey]: nextVariant }));
+      setDiagramOverrides({});
       setSeriesData(null);
       setSessionMode("single");
       setSkillFocus(result.session?.skillFocus || null);
       recordSessionComboUsage(regenerateConfig);
+      }
     } catch (e: any) {
       if (isAbortError(e)) {
         return;
@@ -2094,11 +2172,11 @@ function SessionDemoPageContent() {
       )}
       <ThemedConfirmModal
         open={confirmCoachLevelModal.open}
-        title="Generate Coach-Level Version"
-        message={`Generate a new ${
+        title="Switch Coach Language"
+        message={`Switch this session to ${
           coachLevelLabel[confirmCoachLevelModal.level || ""] || confirmCoachLevelModal.level || "coach-level"
-        } version for this session context?`}
-        confirmLabel="Generate"
+        } language? The same drills and structure will be kept — only coaching language and diagram detail will change.`}
+        confirmLabel="Switch"
         cancelLabel="Cancel"
         onCancel={() => setConfirmCoachLevelModal({ open: false, level: null })}
         onConfirm={() => {
@@ -3159,6 +3237,19 @@ function SessionDemoPageContent() {
                 <p className="text-sm text-slate-300 leading-relaxed">{humanizeSessionText(session.summary)}</p>
               )}
 
+              {session.goalsAvailable != null && (
+                <p className="text-xs text-slate-400">
+                  Session equipment:{" "}
+                  <span className="text-slate-300">
+                    {session.goalsAvailable === 0
+                      ? "no full-size goals (mini goals only)"
+                      : `${session.goalsAvailable} full-size goal${session.goalsAvailable === 1 ? "" : "s"} available`}
+                  </span>
+                  {" — "}
+                  each drill below shows its own goal setup.
+                </p>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-1 border-t border-slate-700/60">
                 <Link
@@ -3617,7 +3708,7 @@ function SessionDemoPageContent() {
                               : null;
 
                           return (
-                            <div className="w-full max-w-3xl lg:sticky lg:top-28" key={`diagram-${drill.title}-${index}`}>
+                            <div className="w-full max-w-3xl lg:sticky lg:top-28" key={`diagram-${drill.refCode || drill.title}-${index}-${session.coachLevel || "default"}`}>
                               <DrillDiagramCard
                                 title={drill.title}
                                 gameModelId={session.gameModelId}
@@ -3627,11 +3718,10 @@ function SessionDemoPageContent() {
                                 drillId={diagramDrillId}
                                 drillType={drill.drillType}
                                 sessionSummary={session.summary}
-                                goalsAvailable={
-                                  drill.drillType === "WARMUP"
-                                    ? 0
-                                    : session.goalsAvailable ?? config.goalsAvailable
-                                }
+                                goalsAvailable={resolveDrillGoalsAvailableForDisplay(
+                                  drill,
+                                  session.goalsAvailable ?? config.goalsAvailable
+                                )}
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
                                 initialSvg={pickDrillDiagramSvg(drill)}
@@ -3646,6 +3736,11 @@ function SessionDemoPageContent() {
                         <h4 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
                           Drill Details
                         </h4>
+
+                        <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+                          <span className="font-semibold text-slate-200">Goal setup: </span>
+                          {describeDrillGoalSetup(drill, session.goalsAvailable ?? config.goalsAvailable)}
+                        </div>
 
                         {(organizationString || organizationObj) && (
                           <div className="space-y-2">

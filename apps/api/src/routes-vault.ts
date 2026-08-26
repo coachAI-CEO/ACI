@@ -17,6 +17,7 @@ import { SUBSCRIPTION_LIMITS } from "./config/subscription-limits";
 import { getEnforcedClubVaultScope } from "./services/club-game-model-scope";
 import { clubVaultWhere, sessionInClubVaultScope } from "./services/club-session-visibility";
 import { attachStoredDiagramSvgsToSession } from "./services/session-diagram-hydrate";
+import { buildCoachLevelVariantFromSession } from "./services/session";
 
 const r = express.Router();
 
@@ -122,6 +123,43 @@ r.get("/vault/orphaned-sessions", async (req, res) => {
       })),
     });
   } catch (e: any) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+r.post("/vault/sessions/:sessionId/coach-level-variant", authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const coachLevel = String(req.body?.coachLevel || "").trim();
+    if (!coachLevel) {
+      return res.status(400).json({ ok: false, error: "coachLevel is required" });
+    }
+
+    const vaultScope = await getEnforcedClubVaultScope(req.userId);
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({ ok: false, error: "Session not found" });
+    }
+    if (!sessionInClubVaultScope(session, vaultScope)) {
+      return res.status(403).json(outsideClubVaultResponse(vaultScope));
+    }
+
+    const variant = await buildCoachLevelVariantFromSession(session, coachLevel);
+    return res.json({ ok: true, ...variant });
+  } catch (e: any) {
+    console.error("[VAULT] coach-level-variant error:", e);
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
