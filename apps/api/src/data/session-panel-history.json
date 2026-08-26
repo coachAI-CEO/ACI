@@ -325,188 +325,187 @@
     ],
     "u11-d-support-nearby": [
       {
-        "at": "2026-08-26T04:46:49.010Z",
+        "at": "2026-08-26T06:24:50.621Z",
         "verdict": "fail",
         "snapshot": {
-          "title": "Keeping Possession and Connecting with Nearby Teammates in the Middle Third",
+          "title": "Finding Nearby Help to Keep Possession in the Middle Third",
           "drills": [
             {
               "type": "WARMUP",
-              "title": "Short Passing and Movement Activation",
-              "area": "15x15",
+              "title": "Passing Triangles and Support Activation",
+              "area": "20x20",
               "players": 4,
-              "scoring": "Count how many successful connected passes each group completes without a mistake",
+              "scoring": "Each group counts how many clean passes they connect in a row without losing control.",
               "constraints": [
-                "Players must use the inside of their foot for all passes",
-                "Every pass must travel along the ground"
+                "Players must keep their passes on the ground at all times.",
+                "Every player must take at least one look over their shoulder before r…"
               ]
             },
             {
               "type": "TECHNICAL",
-              "title": "Receiving and Supporting Shapes in Channels",
-              "area": "20x10",
+              "title": "Support Angles and Clean Receiving",
+              "area": "25x20",
               "players": 4,
-              "scoring": "Earn one point for every ten successful connected sequences without losing control of the…",
+              "scoring": "Count how many successful four-pass sequences each group completes without losing control…",
               "constraints": [
-                "Must receive the ball across your body before passing back out",
-                "Passes must stay below waist height"
+                "Receiving players must use their back foot to control and direct the …",
+                "Players in support must stay on their toes and adjust their angle if …"
               ]
             },
             {
               "type": "TACTICAL",
-              "title": "Finding a Teammate Nearby to Keep Possession in the Middle Third",
-              "area": "40x55",
-              "players": 12,
-              "scoring": "Attacking team earns one point for completing five consecutive passes and three points fo…",
+              "title": "Finding Nearby Help to Keep Possession in the Middle Third",
+              "area": "35x40",
+              "players": 9,
+              "scoring": "Attackers earn one point for every five consecutive completed passes and three points for…",
               "constraints": [
-                "Attacking players must always have at least two nearby teammates with…",
-                "No long aerial balls allowed; all passes must stay on the ground"
+                "Attackers must complete at least three passes before attempting to sc…",
+                "If the ball carrier is pressured, they must pass to the nearest suppo…"
               ]
             },
             {
               "type": "CONDITIONED_GAME",
-              "title": "Possession and Support Conditioned Game",
+              "title": "Possession and Support Conditioned Match",
               "area": "40x55",
-              "players": 12,
-              "scoring": "Goals scored after completing at least three short passes count as three points. Goals sc…",
+              "players": 11,
+              "scoring": "Goals scored after a sequence of at least four completed passes count as three points, wh…",
               "constraints": [
-                "Players must maintain a supportive shape with at least two nearby pas…",
-                "No player may stand stationary for more than five seconds without mov…"
+                "Players cannot score unless at least three teammates have touched the…",
+                "Defenders must give the ball carrier a yard of space when restarting …"
               ]
             },
             {
               "type": "COOLDOWN",
-              "title": "Team Debrief and Recovery",
-              "area": "40x55",
+              "title": "Team Debrief and Light Recovery",
+              "area": "20x20",
               "players": 0,
-              "scoring": "Non-competitive recovery",
+              "scoring": "None",
+              "constraints": [
+                "Players must keep their gear organized while listening to the coach."
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T06:29:01.883Z",
+        "verdict": "fail",
+        "snapshot": {
+          "title": "Finding Nearby Support to Keep the Ball in the Middle Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Square Passing and Body Shape Activation",
+              "area": "15x15",
+              "players": 5,
+              "scoring": "Each group counts how many clean passes they connect in a row without the ball stopping o…",
+              "constraints": [
+                "Players must check their shoulder to look behind them before every pa…",
+                "Passes must stay on the ground so teammates can control them easily."
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Passing Channels and Nearby Help",
+              "area": "25x15",
+              "players": 4,
+              "scoring": "Each group earns one point for every successful sequence where the ball travels from one …",
+              "constraints": [
+                "Every pass must travel through the central helper before reaching the…",
+                "Players on the outside must stay behind their cone until their partne…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Finding Nearby Help in the Middle Third",
+              "area": "40x35",
+              "players": 9,
+              "scoring": "Attackers earn one point for scoring in the mini-goals after completing a passing sequenc…",
+              "constraints": [
+                "The attacking team must complete at least three passes before attempt…",
+                "Players must maintain reasonable spreading so they are never standing…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Possession Match with Nearby Help Rules",
+              "area": "40x55",
+              "players": 14,
+              "scoring": "Goals scored in the full-size goal count normally, and goals scored after a sequence invo…",
+              "constraints": [
+                "Players must look for a nearby teammate to help before attempting to …",
+                "Every player must touch the ball at least once during a build-up befo…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Team Debrief and Light Wind-Down",
+              "area": "15x15",
+              "players": 0,
+              "scoring": "None.",
               "constraints": []
             }
           ]
         }
       },
       {
-        "at": "2026-08-26T04:49:25.505Z",
+        "at": "2026-08-26T06:32:00.289Z",
         "verdict": "fail",
         "snapshot": {
-          "title": "Keeping Possession and Connecting with Nearby Teammates in the Middle Third",
+          "title": "Keeping Possession and Finding Nearby Help in the Middle Third",
           "drills": [
             {
               "type": "WARMUP",
-              "title": "Passing Triangles and Support Activation",
-              "area": "20x20",
+              "title": "Passing Circles and Shoulder Checks",
+              "area": "12x12",
               "players": 4,
-              "scoring": "Each group counts how many clean passes they can complete in a row without a mistake.",
+              "scoring": "Each group counts how many clean passes they complete in a row without the ball stopping.",
               "constraints": [
-                "Passes must stay on the ground so your teammate can control the ball …",
-                "Players must check their shoulder to look behind them before receivin…"
+                "Passes must stay along the ground at all times.",
+                "Players must use the inside of their foot to receive and pass."
               ]
             },
             {
               "type": "TECHNICAL",
-              "title": "Short Passing and Support Activation",
-              "area": "30x30",
-              "players": 4,
-              "scoring": "Earn one point every time a pair successfully completes ten passes and moves through a ga…",
-              "constraints": [
-                "You must move to a new open space immediately after every pass you ma…",
-                "Your first touch must take the ball away from the cone gate before yo…"
-              ]
-            },
-            {
-              "type": "TACTICAL",
-              "title": "Finding a Teammate Nearby to Keep Possession in the Middle Third",
-              "area": "40x55",
-              "players": 10,
-              "scoring": "The attacking team earns one point for every five consecutive completed passes.",
-              "constraints": [
-                "Attackers must keep the ball moving and cannot stand still for more t…",
-                "Every player with the ball must have at least one teammate within ten…"
-              ]
-            },
-            {
-              "type": "CONDITIONED_GAME",
-              "title": "Possession and Support Conditioned Game",
-              "area": "40x55",
-              "players": 15,
-              "scoring": "Standard goals count as one point; goals scored after completing at least three connected…",
-              "constraints": [
-                "Goals only count as double if the team completes at least three passe…",
-                "Players must stay spread out in their formation zones to provide widt…"
-              ]
-            },
-            {
-              "type": "COOLDOWN",
-              "title": "Session Debrief and Light Wind-Down",
-              "area": "20x20",
-              "players": 0,
-              "scoring": "None",
-              "constraints": [
-                "Players must remain seated and focused during the coach debrief.",
-                "Everyone must help carry equipment back to the bag."
-              ]
-            }
-          ]
-        }
-      },
-      {
-        "at": "2026-08-26T04:56:19.022Z",
-        "verdict": "review",
-        "snapshot": {
-          "title": "Finding Nearby Teammates to Keep Possession in the Middle Third",
-          "drills": [
-            {
-              "type": "WARMUP",
-              "title": "Passing Triangles and Support Activation",
-              "area": "18x18",
+              "title": "Finding Support in Channel Passing Lanes",
+              "area": "25x20",
               "players": 6,
-              "scoring": "Working groups try to reach ten consecutive completed passes without a mistake.",
+              "scoring": "Attackers earn one point every time they pass the ball cleanly through a cone gate to a t…",
               "constraints": [
-                "Players must make eye contact before passing to a teammate nearby.",
-                "Every player needs to take at least two touches before releasing the …"
-              ]
-            },
-            {
-              "type": "TECHNICAL",
-              "title": "Passing and Receiving to Nearby Options",
-              "area": "22x12",
-              "players": 4,
-              "scoring": "Each group counts their total number of clean, successful passing sequences in two minute…",
-              "constraints": [
-                "Players must use their back foot to receive the ball across their bod…",
-                "Passes must stay on the ground and reach the receiver's target foot."
+                "Defenders must stay inside the grid and cannot tackle from behind.",
+                "Attackers must keep their passes below waist height."
               ]
             },
             {
               "type": "TACTICAL",
-              "title": "Finding a Teammate Nearby to Keep Possession",
-              "area": "35x40",
-              "players": 11,
-              "scoring": "Attacking team earns one point for every five consecutive connected passes. Defenders ear…",
+              "title": "Building Through the Middle by Connecting with Nearby Teammates",
+              "area": "45x35",
+              "players": 12,
+              "scoring": "Attackers earn a point for completing six consecutive passes. Scoring in the full-size go…",
               "constraints": [
-                "Attacking players must maintain a distance of at least eight yards fr…",
-                "No player can hold the ball for longer than four seconds without look…"
+                "The team in possession must always have at least one support player c…",
+                "Defenders cannot cross the midfield line until the first pass is comp…"
               ]
             },
             {
               "type": "CONDITIONED_GAME",
-              "title": "Possession and Support Conditioned Game",
-              "area": "40x55",
-              "players": 16,
-              "scoring": "Standard goals scored in the full-size goal count as one point. Goals scored after connec…",
+              "title": "Possession Conditioned Match with Support Rules",
+              "area": "55x40",
+              "players": 11,
+              "scoring": "Goals scored normally count as one point. Goals scored after four consecutive passes coun…",
               "constraints": [
-                "Teams must complete at least four connected passes before attempting …",
-                "If a player holds the ball stationary for more than four seconds with…"
+                "Players cannot stand completely still; everyone must move to support …",
+                "Defenders must allow the goalkeeper a clean roll-out without crowding…"
               ]
             },
             {
               "type": "COOLDOWN",
-              "title": "Session Debrief and Light Wind-Down",
-              "area": "15x15",
+              "title": "Team Debrief and Recovery Walk",
+              "area": "20x20",
               "players": 0,
-              "scoring": "None",
+              "scoring": "None.",
               "constraints": [
-                "Players must remain focused and seated or standing in the circle duri…"
+                "Players must keep moving slowly while stretching to help their muscle…"
               ]
             }
           ]

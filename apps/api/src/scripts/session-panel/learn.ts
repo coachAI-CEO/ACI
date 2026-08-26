@@ -12,11 +12,6 @@ import {
   type PanelLesson,
 } from "../../services/session-lessons";
 
-// D_BANNED has 16 terms — naming all of them blows past RULE_MAX_CHARS (180)
-// once framed as a sentence, and clipRule's ellipsis truncation would cut the
-// list mid-word. Name a representative spread as concrete examples instead;
-// the frozen gate itself still enforces the full list regardless of prompt text.
-const D_BANNED_EXAMPLES = ["overload", "compact", "half-turn", "rest defense", "positional shape", "pressing trigger"].join(", ");
 const C_BANNED_LIST = C_BANNED_SYSTEMIC.map((b) => b.term).join(", ");
 
 const GATE_RULES: Record<string, { rule: string; kind: LessonKind; scopeFrom: Array<"coachLevel" | "playerLevel" | "topic"> }> = {
@@ -38,7 +33,12 @@ const GATE_RULES: Record<string, { rule: string; kind: LessonKind; scopeFrom: Ar
   "d-jargon": {
     kind: "never",
     scopeFrom: ["coachLevel"],
-    rule: `USSF_D: never write textbook terms (e.g. ${D_BANNED_EXAMPLES}). Describe the action in ordinary grass words.`,
+    // Do NOT name the banned words here — repeated fail data (U11, 2026-08-26)
+    // showed Flash Lite reproducing the exact terms listed as "banned examples"
+    // (half-turn, compact) on the very next generation, suggesting the example
+    // list primes rather than suppresses. Describe the constraint positively
+    // instead; the frozen gate still catches every one of the 16 terms.
+    rule: "USSF_D: describe every action in plain grass words a parent on the sideline would understand. No coaching-manual vocabulary, no borrowed tactical labels.",
   },
   "c-jargon": {
     kind: "never",

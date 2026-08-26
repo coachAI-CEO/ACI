@@ -646,7 +646,11 @@ describe("session panel playbook", () => {
     expect(pauseDeadLessons(b)).toHaveLength(0);
   });
 
-  test("d-jargon gate lesson names concrete banned words and stays unclipped", () => {
+  test("d-jargon gate lesson stays unclipped and never names a banned word", () => {
+    // Naming banned words as "examples" primed Flash Lite to reproduce them
+    // (observed live on U11, 2026-08-26: the exact listed examples reappeared
+    // on the next generation). The lesson must describe the constraint
+    // positively instead — the frozen gate is what actually enforces the list.
     const run = {
       fixtureId: u9.id,
       label: u9.label,
@@ -669,7 +673,8 @@ describe("session panel playbook", () => {
     expect(dJargon).toBeDefined();
     expect(dJargon!.rule.length).toBeLessThanOrEqual(RULE_MAX_CHARS);
     expect(dJargon!.rule.endsWith("…")).toBe(false);
-    expect(dJargon!.rule).toContain("compact");
+    expect(dJargon!.rule.toLowerCase()).not.toContain("compact");
+    expect(dJargon!.rule.toLowerCase()).not.toContain("half-turn");
   });
 
   test("a generation-level parse failure (agents never ran) does not punish applied lessons", () => {

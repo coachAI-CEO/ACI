@@ -1,48 +1,48 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T04:58:37.692Z",
+  "updatedAt": "2026-08-26T06:32:00.296Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
       "status": "active",
       "kind": "must",
       "rule": "Tactical and conditioned-game text must teach today's topic in scoring or a constraint, not only in the title.",
-      "because": "Tactical/conditioned text never teaches topic \"Rest defence after we lose it in the middle third\" (title-sticker / generic session)",
+      "because": "Tactical/conditioned text never teaches topic \"Finding a teammate nearby who can help\" (title-sticker / generic session)",
       "source": "gate",
       "scope": {},
-      "seen": 1,
+      "seen": 2,
       "helped": 7,
-      "failed": 0,
+      "failed": 1,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T06:29:01.892Z"
     },
     {
       "id": "gate:topic-tactical",
       "status": "active",
       "kind": "must",
       "rule": "The TACTICAL title and description must be about today's topic, not only the game model.",
-      "because": "Tactical drill does not center topic \"Rest defence after we lose it in the middle third\"",
+      "because": "Tactical drill does not center topic \"Finding a teammate nearby who can help\"",
       "source": "gate",
       "scope": {},
-      "seen": 1,
+      "seen": 3,
       "helped": 7,
-      "failed": 0,
+      "failed": 2,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T06:32:00.296Z"
     },
     {
       "id": "gate:topic-game",
       "status": "active",
       "kind": "must",
       "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
-      "because": "Conditioned game does not force topic \"First pass after we win it\" via scoring or constraints",
+      "because": "Conditioned game does not force topic \"Finding a teammate nearby who can help\" via scoring or constraints",
       "source": "gate",
       "scope": {},
-      "seen": 3,
+      "seen": 5,
       "helped": 8,
-      "failed": 0,
+      "failed": 2,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T06:32:00.296Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -150,17 +150,47 @@
       "id": "gate:d-jargon:USSF_D",
       "status": "active",
       "kind": "never",
-      "rule": "USSF_D: never write textbook terms (e.g. overload, compact, half-turn, rest defense, positional shape, pressing trigger). Describe the action in ordinary grass words.",
-      "because": "USSF_D session contains banned term \"half-turn\"",
+      "rule": "USSF_D: describe every action in plain grass words a parent on the sideline would understand. No coaching-manual vocabulary, no borrowed tactical labels.",
+      "because": "USSF_D session contains banned term \"compact\"",
       "source": "gate",
       "scope": {
         "coachLevel": "USSF_D"
       },
-      "seen": 3,
+      "seen": 4,
       "helped": 1,
-      "failed": 2,
+      "failed": 3,
       "createdAt": "2026-08-26T04:40:36.519Z",
-      "updatedAt": "2026-08-26T04:56:19.026Z"
+      "updatedAt": "2026-08-26T06:24:50.627Z"
+    },
+    {
+      "id": "human:layout-matches-description",
+      "status": "active",
+      "kind": "must",
+      "rule": "TECHNICAL setupSteps must describe only what the diagram/grid actually enables — do not narrate an action the layout cannot produce.",
+      "because": "U11 review: judge flagged a structural mismatch between the technical drill's description and its physical layout.",
+      "source": "human",
+      "scope": {},
+      "seen": 0,
+      "helped": 0,
+      "failed": 0,
+      "createdAt": "2026-08-26T06:23:59.102Z",
+      "updatedAt": "2026-08-26T06:23:59.102Z"
+    },
+    {
+      "id": "human:differ-from-prior-hour",
+      "status": "active",
+      "kind": "must",
+      "rule": "Even without an exact clone, differ meaningfully in practice form from PRIOR — do not reuse the same grid/scoring shape with new labels.",
+      "because": "U11 review: judge scored variety 3/5, several drills closely mirrored the prior hour without tripping the frozen clone gate.",
+      "source": "human",
+      "scope": {
+        "topic": "Finding a teammate nearby who can help"
+      },
+      "seen": 0,
+      "helped": 0,
+      "failed": 0,
+      "createdAt": "2026-08-26T06:23:59.102Z",
+      "updatedAt": "2026-08-26T06:23:59.102Z"
     }
   ]
 }
