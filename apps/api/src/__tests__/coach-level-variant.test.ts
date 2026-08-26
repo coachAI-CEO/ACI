@@ -1,12 +1,3 @@
-// NOTE (2026-08-26): this test cannot currently run under `pnpm --filter api
-// exec jest` -- session.ts (which owns buildCoachLevelVariantFromSession) has
-// a pre-existing, unrelated Prisma-schema-drift type error (`clubId` on
-// Session.create) that ts-jest's type-check trips on for ANY file that
-// imports session.ts, the same issue already blocking ~17 other test suites
-// in this repo. This is not introduced by this change and is out of scope
-// here; this test is written to be correct once that environment issue is
-// resolved separately.
-
 jest.mock("../services/drill-diagram-svg", () => ({
   generateDrillDiagramSvg: jest.fn(),
   omitDiagramSvgFromDrill: jest.fn((drill: any) => drill),

@@ -315,14 +315,21 @@ function parseGoalsAvailable(value: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-/** Session equipment is not "every drill is a two-goal match slice." */
-export function resolveDiagramGoalsAvailable(drill: any, input: GoalAvailabilityInput): number {
+/**
+ * Session equipment is not "every drill is a two-goal match slice." Returns
+ * null (not 0) when neither the request nor the drill states goalsAvailable
+ * and the drillType doesn't force a clamp -- null means "unknown," which
+ * enforceDiagramGoalAvailability treats as "trust whatever the diagram
+ * already drew" (limitKeepersToDrawnFullGoals), not "strip every goal."
+ * Collapsing unknown to 0 here previously discarded a drawn full-size goal
+ * whenever goalsAvailable wasn't explicitly set.
+ */
+export function resolveDiagramGoalsAvailable(drill: any, input: GoalAvailabilityInput): number | null {
   const drillType = String(drill?.drillType || input.drillType || "").toUpperCase();
   if (isWarmupPicture(drillType)) return 0;
-  const sessionGoals =
-    parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable) ?? 0;
+  const sessionGoals = parseGoalsAvailable(input.goalsAvailable) ?? parseGoalsAvailable(drill?.goalsAvailable);
   if (drillType === "TECHNICAL") return 0;
-  if (drillType === "TACTICAL") return Math.min(sessionGoals, 1);
+  if (drillType === "TACTICAL") return sessionGoals === null ? null : Math.min(sessionGoals, 1);
   return sessionGoals;
 }
 
