@@ -47,12 +47,27 @@ const emptyBook = (): LessonBook => ({
   lessons: [],
 });
 
+// buildSessionPrompt (the production session-generation path) calls
+// formatLessonsForPrompt with no book, which falls through to loadLessonBook()
+// -- previously a synchronous fs.readFileSync + JSON.parse on every single
+// request. Cache per-path, invalidated by mtime, so repeated calls in the
+// same process only re-read when the file has actually changed (e.g. a
+// --learn batch run wrote new lessons).
+const bookCache = new Map<string, { mtimeMs: number; book: LessonBook }>();
+
 export function loadLessonBook(filePath: string = LESSONS_PATH): LessonBook {
   try {
+    const mtimeMs = fs.statSync(filePath).mtimeMs;
+    const cached = bookCache.get(filePath);
+    if (cached && cached.mtimeMs === mtimeMs) return cached.book;
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as LessonBook;
-    if (!parsed || !Array.isArray(parsed.lessons)) return emptyBook();
-    return { version: 1, updatedAt: parsed.updatedAt || emptyBook().updatedAt, lessons: parsed.lessons };
+    const book: LessonBook =
+      !parsed || !Array.isArray(parsed.lessons)
+        ? emptyBook()
+        : { version: 1, updatedAt: parsed.updatedAt || emptyBook().updatedAt, lessons: parsed.lessons };
+    bookCache.set(filePath, { mtimeMs, book });
+    return book;
   } catch {
     return emptyBook();
   }
@@ -62,6 +77,14 @@ export function saveLessonBook(book: LessonBook, filePath: string = LESSONS_PATH
   book.updatedAt = new Date().toISOString();
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(book, null, 2) + "\n");
+  // Keep the cache warm with what we just wrote so an immediate subsequent
+  // loadLessonBook() in this same process doesn't stat+re-read the file it
+  // was just given.
+  try {
+    bookCache.set(filePath, { mtimeMs: fs.statSync(filePath).mtimeMs, book });
+  } catch {
+    bookCache.delete(filePath);
+  }
 }
 
 export function clipRule(rule: string): string {

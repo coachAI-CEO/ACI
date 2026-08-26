@@ -306,6 +306,10 @@ function ensureGoals(diagram: any, source: any): any {
       ? source.diagram.miniGoals
       : 0) || 0);
 
+  // Deliberately NOT matching "FULL2" here: that's diagram-goals.ts's label
+  // for "two full-size goals with keepers" (a match setup), a different
+  // scenario from "MINI2" (two small mini-goals, no keepers). goalsAvailable
+  // === 2 already covers the numeric case for either pipeline below.
   const wantsTwoMiniGoals =
     goalMode === "MINI2" || goalsAvailable === 2;
 

@@ -296,7 +296,13 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
   // free-play game needs real room, not the tight quarter-field an ADVANCED
   // precision group uses. Keep in sync with the WARMUP/TECHNICAL GROUP SIZE LOCK.
   const warmupSpaceTarget = isBeginner ? spaceDims.half : isIntermediate ? spaceDims.third : spaceDims.quarter;
-  const technicalSpaceTarget = isBeginner ? spaceDims.half : spaceDims.third;
+  // Was flat (isBeginner ? half : third), collapsing INTERMEDIATE and
+  // ADVANCED to the same space -- while the matching player-count ceiling
+  // in frozen-gates.ts's techCeiling already gives them distinct values
+  // (16 vs 12). Mirror warmupSpaceTarget's three-tier shape so the two
+  // "keep in sync" dial tables actually agree on how ADVANCED differs from
+  // INTERMEDIATE, not just from BEGINNER.
+  const technicalSpaceTarget = isBeginner ? spaceDims.half : isIntermediate ? spaceDims.third : spaceDims.quarter;
   const sessionDuration = input.durationMin || 90;
   const is60Min = sessionDuration === 60;
   

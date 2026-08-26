@@ -350,7 +350,15 @@ export function enforcePracticeArea(drill: any, input: GoalAvailabilityInput) {
 export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabilityInput) {
   if (!drill) return;
   const goalsAvailable = resolveDiagramGoalsAvailable(drill, input);
-  enforcePracticeArea(drill, { ...input, goalsAvailable, drillType: drill?.drillType ?? input.drillType });
+  // Do NOT pass the drillType-clamped `goalsAvailable` to enforcePracticeArea --
+  // resolveDiagramGoalsAvailable forces 0 for TECHNICAL/WARMUP regardless of
+  // the coach's real equipment, but the practice-area size lock is about how
+  // much FIELD the coach actually has, not whether THIS drill draws a goal.
+  // Passing the clamped value here previously silently disabled the
+  // TECHNICAL size lock (shouldLockPracticeArea requires goalsAvailable>=1)
+  // even when the session genuinely had a goal available. Let
+  // enforcePracticeArea read the real input/drill goalsAvailable itself.
+  enforcePracticeArea(drill, { ...input, drillType: drill?.drillType ?? input.drillType });
   if (!drill.diagram) return;
   const warmup = isWarmupPicture(input.drillType || drill?.drillType);
 

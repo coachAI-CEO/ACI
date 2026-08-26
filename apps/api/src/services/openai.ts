@@ -33,9 +33,16 @@ export async function generateTextWithMetrics(
   // read (headers can return promptly while the body itself never
   // completes). Race the whole call against an independent timer so a
   // hang can never again silently eat an entire batch run.
-  const hardTimeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error("OPENAI_HARD_TIMEOUT")), timeout + 15000)
-  );
+  // The hard timeout also calls controller.abort() itself (not just the
+  // normal `timer`) so the underlying fetch is actually cut off, not just
+  // abandoned by the caller while it keeps running in the background.
+  let hardTimer: ReturnType<typeof setTimeout>;
+  const hardTimeout = new Promise<never>((_, reject) => {
+    hardTimer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("OPENAI_HARD_TIMEOUT"));
+    }, timeout + 15000);
+  });
 
   const attempt = (async () => {
     try {
@@ -77,6 +84,10 @@ export async function generateTextWithMetrics(
       throw e;
     }
   })();
+  // If hardTimeout wins the race, `attempt`'s eventual rejection (from the
+  // abort() above) would otherwise be an unhandled promise rejection since
+  // nothing is left awaiting it.
+  attempt.catch(() => {});
 
   try {
     return await Promise.race([attempt, hardTimeout]);
@@ -85,5 +96,6 @@ export async function generateTextWithMetrics(
     throw e;
   } finally {
     clearTimeout(timer);
+    clearTimeout(hardTimer!);
   }
 }

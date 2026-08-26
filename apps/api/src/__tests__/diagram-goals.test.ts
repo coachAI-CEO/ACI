@@ -168,7 +168,13 @@ test("drawer mapper does not paint GK tokens when every goal is mini", () => {
   expect(params.goals.every((g) => g.type === "mini")).toBe(true);
 });
 
-test("one-goal drill moves the attacking GK to the mini-goal end", () => {
+test("one-goal drill keeps only one GK on the full-size net, no dedicated mini-end keeper", () => {
+  // Per limitKeepersToDrawnFullGoals's docstring: "1 full goal + opposite
+  // minis -> GK only on the full-size net (mini-goals are outfield restarts,
+  // no dedicated keeper)". pickPugGoalkeeper (which used to reposition a
+  // second GK-role player to the mini-goal end) was deliberately removed --
+  // a second GK-role player on a one-goal drill is now demoted/discarded,
+  // not repositioned.
   const drill = {
     goalsAvailable: 1,
     diagram: {
@@ -183,9 +189,9 @@ test("one-goal drill moves the attacking GK to the mini-goal end", () => {
   };
   enforceDiagramGoalAvailability(drill, { goalsAvailable: 1 });
   const keepers = drill.diagram.players.filter((p: any) => p.role === "GK");
-  expect(keepers).toHaveLength(2);
-  expect(keepers.some((p: any) => p.id === "att_gk" && Number(p.x) < 20)).toBe(true);
-  expect(keepers.some((p: any) => p.id === "def_gk" && Number(p.x) > 80)).toBe(true);
+  expect(keepers).toHaveLength(1);
+  // The kept keeper defends the drawn full-size goal.
+  expect(Number(keepers[0].x)).toBeGreaterThan(80);
 });
 
 test("one-goal drill turns a leftover in the net into the mini-end GK", () => {
