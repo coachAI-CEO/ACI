@@ -544,7 +544,7 @@ describe("session panel verdict", () => {
 describe("session packet type export", () => {
   test("strip preserves topic from fixture when session omits it", () => {
     const packet: SessionPacket = stripSessionToPacket({ drills: [] }, u9);
-    expect(packet.topic).toBe("Passing to the open teammate");
+    expect(packet.topic).toBe(u9.input.topic);
   });
 });
 

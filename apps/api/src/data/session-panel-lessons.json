@@ -1,48 +1,48 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T06:32:00.296Z",
+  "updatedAt": "2026-08-26T16:49:35.161Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
       "status": "active",
       "kind": "must",
       "rule": "Tactical and conditioned-game text must teach today's topic in scoring or a constraint, not only in the title.",
-      "because": "Tactical/conditioned text never teaches topic \"Finding a teammate nearby who can help\" (title-sticker / generic session)",
+      "because": "Tactical/conditioned text never teaches topic \"Breaking Press Triggers\" (title-sticker / generic session)",
       "source": "gate",
       "scope": {},
-      "seen": 2,
-      "helped": 7,
-      "failed": 1,
+      "seen": 6,
+      "helped": 15,
+      "failed": 5,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T06:29:01.892Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "gate:topic-tactical",
       "status": "active",
       "kind": "must",
       "rule": "The TACTICAL title and description must be about today's topic, not only the game model.",
-      "because": "Tactical drill does not center topic \"Finding a teammate nearby who can help\"",
+      "because": "Tactical drill does not center topic \"Breaking Press Triggers\"",
       "source": "gate",
       "scope": {},
-      "seen": 3,
-      "helped": 7,
-      "failed": 2,
+      "seen": 8,
+      "helped": 15,
+      "failed": 6,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T06:32:00.296Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "gate:topic-game",
       "status": "active",
       "kind": "must",
       "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
-      "because": "Conditioned game does not force topic \"Finding a teammate nearby who can help\" via scoring or constraints",
+      "because": "Conditioned game does not force topic \"Breaking Press Triggers\" via scoring or constraints",
       "source": "gate",
       "scope": {},
-      "seen": 5,
-      "helped": 8,
-      "failed": 2,
+      "seen": 11,
+      "helped": 16,
+      "failed": 7,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T06:32:00.296Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -53,10 +53,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 6,
-      "failed": 0,
+      "helped": 9,
+      "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:setup-matches-title",
@@ -67,26 +67,26 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 6,
-      "failed": 0,
+      "helped": 9,
+      "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
-      "id": "gate:variety-clone:rest-defence-after-we-lose-it-in-the-mid",
+      "id": "gate:variety-clone:rest-defense-shape",
       "status": "active",
       "kind": "never",
       "rule": "Do not reuse PRIOR grids or scoring stems. Change activity type (not a retitled rondo). New score must still force today's topic.",
       "because": "Practice form is 85% the same as a prior session on this topic (grid/numbers/scoring/constraints). Change the form.",
       "source": "gate",
       "scope": {
-        "topic": "Rest defence after we lose it in the middle third"
+        "topic": "Rest Defense Shape"
       },
       "seen": 1,
-      "helped": 0,
+      "helped": 3,
       "failed": 0,
       "createdAt": "2026-08-26T02:44:13.541Z",
-      "updatedAt": "2026-08-26T03:32:00.000Z"
+      "updatedAt": "2026-08-26T16:17:24.016Z"
     },
     {
       "id": "human:tactical-not-match",
@@ -97,10 +97,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 7,
-      "failed": 0,
+      "helped": 10,
+      "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:second-group",
@@ -111,24 +111,24 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 7,
-      "failed": 0,
+      "helped": 10,
+      "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "gate:idle-squad",
       "status": "active",
       "kind": "must",
       "rule": "If the squad is bigger than one working group, WARMUP/TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
-      "because": "TECHNICAL shows 6 working vs squad 22; setupSteps must name a second group, not idle spectators",
+      "because": "TECHNICAL shows 4 working vs squad 22; setupSteps must name a second group, not idle spectators",
       "source": "gate",
       "scope": {},
-      "seen": 3,
-      "helped": 7,
-      "failed": 0,
+      "seen": 5,
+      "helped": 10,
+      "failed": 6,
       "createdAt": "2026-08-26T03:29:17.646Z",
-      "updatedAt": "2026-08-26T04:58:37.691Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:game-score-not-prior",
@@ -138,13 +138,13 @@
       "because": "Development: U16 game reused 6-second middle-third counterpress = 3 points from the prior hour. Variety 3.",
       "source": "human",
       "scope": {
-        "topic": "Rest defence after we lose it in the middle third"
+        "topic": "Rest Defense Shape"
       },
       "seen": 1,
-      "helped": 1,
+      "helped": 4,
       "failed": 0,
       "createdAt": "2026-08-26T03:32:00.000Z",
-      "updatedAt": "2026-08-26T03:32:00.000Z"
+      "updatedAt": "2026-08-26T16:17:24.016Z"
     },
     {
       "id": "gate:d-jargon:USSF_D",
@@ -156,11 +156,11 @@
       "scope": {
         "coachLevel": "USSF_D"
       },
-      "seen": 4,
+      "seen": 6,
       "helped": 1,
-      "failed": 3,
+      "failed": 6,
       "createdAt": "2026-08-26T04:40:36.519Z",
-      "updatedAt": "2026-08-26T06:24:50.627Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:layout-matches-description",
@@ -171,10 +171,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 0,
-      "failed": 0,
+      "helped": 3,
+      "failed": 4,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T06:23:59.102Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
     },
     {
       "id": "human:differ-from-prior-hour",
@@ -184,13 +184,29 @@
       "because": "U11 review: judge scored variety 3/5, several drills closely mirrored the prior hour without tripping the frozen clone gate.",
       "source": "human",
       "scope": {
-        "topic": "Finding a teammate nearby who can help"
+        "topic": "Combination Play"
       },
       "seen": 0,
       "helped": 0,
-      "failed": 0,
+      "failed": 1,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T06:23:59.102Z"
+      "updatedAt": "2026-08-26T16:49:35.156Z"
+    },
+    {
+      "id": "gate:beginner-touch:BEGINNER",
+      "status": "paused",
+      "kind": "never",
+      "rule": "BEGINNER: no 1-touch or 2-touch limits. Players need time on the ball.",
+      "because": "BEGINNER session uses a tight touch limit (/\\bone[- ]touch\\b/i)",
+      "source": "gate",
+      "scope": {
+        "playerLevel": "BEGINNER"
+      },
+      "seen": 2,
+      "helped": 0,
+      "failed": 3,
+      "createdAt": "2026-08-26T09:27:39.581Z",
+      "updatedAt": "2026-08-26T16:49:35.157Z"
     }
   ]
 }
