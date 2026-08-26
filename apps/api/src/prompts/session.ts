@@ -1,4 +1,5 @@
 import { FIELD_SPECS, type FieldFormat as RealFieldFormat } from "../data/field-dimensions";
+import { formatLessonsForPrompt } from "../services/session-lessons";
 
 export type ClubPhilosophyPromptInput = {
   attackingOrganization?: string | null;
@@ -32,6 +33,19 @@ export interface SessionPromptInput {
 
   /** Club-authored 4-moment DNA from DOC Hub; preferred over hardcoded model profiles. */
   clubPhilosophy?: ClubPhilosophyPromptInput | null;
+
+  /**
+   * Panel playbook injection. undefined = load matching active lessons from
+   * session-panel-lessons.json. null = skip (baseline eval). string[] = exact
+   * rules for tests / a single eval cell.
+   */
+  panelLessons?: string[] | null;
+
+  /**
+   * Compact PRIOR practice-form card (panel / vault). Injects VARIETY LOCK so
+   * the next hour on the same topic is a different grid, scoring, and constraints.
+   */
+  panelPriorCard?: string | null;
 }
 
 export type GameFormat = "7v7" | "9v9" | "11v11";
@@ -399,6 +413,11 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
           "",
         ]
       : []),
+    ...(() => {
+      const block = formatLessonsForPrompt(input);
+      return block ? [block, ""] : [];
+    })(),
+    ...(input.panelPriorCard ? [input.panelPriorCard, ""] : []),
     "SESSION STRUCTURE FOR " + sessionDuration + "-MINUTE SESSION:",
     "",
     "1. WARMUP (" + warmupDuration + " minutes):",

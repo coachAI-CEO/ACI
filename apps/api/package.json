@@ -19,6 +19,7 @@
     "vault:redraw-diagrams": "ts-node --project tsconfig.json src/scripts/redraw-vault-diagrams.ts",
     "sandbox:first-pass:until": "ts-node --project tsconfig.json src/scripts/first-pass-diagrams/run.ts -- --visual --until-confidence 75 --max-rounds 3",
     "sandbox:session-quality": "ts-node --project tsconfig.json src/scripts/session-quality-sandbox.ts",
+    "sandbox:session-panel": "ts-node --project tsconfig.json src/scripts/session-panel/run.ts",
     "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",
     "sandbox:models:report": "ts-node --project tsconfig.json src/scripts/model-sandbox/report.ts",
     "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts",

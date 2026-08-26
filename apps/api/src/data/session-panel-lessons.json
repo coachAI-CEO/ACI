@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "updatedAt": "2026-08-26T03:52:09.392Z",
+  "lessons": [
+    {
+      "id": "gate:topic-signal",
+      "status": "active",
+      "kind": "must",
+      "rule": "Tactical and conditioned-game text must teach today's topic in scoring or a constraint, not only in the title.",
+      "because": "Tactical/conditioned text never teaches topic \"Rest defence after we lose it in the middle third\" (title-sticker / generic session)",
+      "source": "gate",
+      "scope": {},
+      "seen": 1,
+      "helped": 4,
+      "failed": 0,
+      "createdAt": "2026-08-26T00:50:15.324Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "gate:topic-tactical",
+      "status": "active",
+      "kind": "must",
+      "rule": "The TACTICAL title and description must be about today's topic, not only the game model.",
+      "because": "Tactical drill does not center topic \"Rest defence after we lose it in the middle third\"",
+      "source": "gate",
+      "scope": {},
+      "seen": 1,
+      "helped": 4,
+      "failed": 0,
+      "createdAt": "2026-08-26T00:50:15.324Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "gate:topic-game",
+      "status": "active",
+      "kind": "must",
+      "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
+      "because": "Conditioned game does not force topic \"First pass after we win it\" via scoring or constraints",
+      "source": "gate",
+      "scope": {},
+      "seen": 3,
+      "helped": 5,
+      "failed": 0,
+      "createdAt": "2026-08-26T00:50:15.324Z",
+      "updatedAt": "2026-08-26T03:52:09.392Z"
+    },
+    {
+      "id": "human:warmup-tech-are-topic",
+      "status": "active",
+      "kind": "must",
+      "rule": "WARMUP and TECHNICAL must teach today's topic via scoring or a constraint. No generic rondo or 3v3 with the topic only in the title.",
+      "because": "Instructor: U16 rest-defence warmup was a perimeter rondo; technical was 3v3 duels. Topic lived only in tactical/game (scores stuck at 4).",
+      "source": "human",
+      "scope": {},
+      "seen": 1,
+      "helped": 3,
+      "failed": 0,
+      "createdAt": "2026-08-26T01:22:00.000Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "human:setup-matches-title",
+      "status": "active",
+      "kind": "must",
+      "rule": "If a title names a layout (channels, middle third, rest-defence shape), setupSteps must mark it. Waiting players are a second group or in the topic, never idle.",
+      "because": "Designer/instructor: 'channels' with no channels marked; 3v3x2 left ~10 idle; tactical said middle third on a full 120x80.",
+      "source": "human",
+      "scope": {},
+      "seen": 1,
+      "helped": 3,
+      "failed": 0,
+      "createdAt": "2026-08-26T01:22:00.000Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "gate:variety-clone:rest-defence-after-we-lose-it-in-the-mid",
+      "status": "active",
+      "kind": "never",
+      "rule": "Do not reuse PRIOR grids or scoring stems. Change activity type (not a retitled rondo). New score must still force today's topic.",
+      "because": "Practice form is 85% the same as a prior session on this topic (grid/numbers/scoring/constraints). Change the form.",
+      "source": "gate",
+      "scope": {
+        "topic": "Rest defence after we lose it in the middle third"
+      },
+      "seen": 1,
+      "helped": 0,
+      "failed": 0,
+      "createdAt": "2026-08-26T02:44:13.541Z",
+      "updatedAt": "2026-08-26T03:32:00.000Z"
+    },
+    {
+      "id": "human:tactical-not-match",
+      "status": "active",
+      "kind": "never",
+      "rule": "TACTICAL is a reduced problem grid, not a second full-format match. Only CONDITIONED_GAME is 11v11 on the full pitch.",
+      "because": "Designer: U16 rest-defence tactical was a second 120x80 11v11. Realism 2. Isolate middle third on a reduced grid.",
+      "source": "human",
+      "scope": {},
+      "seen": 1,
+      "helped": 4,
+      "failed": 0,
+      "createdAt": "2026-08-26T03:25:00.000Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "human:second-group",
+      "status": "active",
+      "kind": "must",
+      "rule": "If the squad is bigger than one working group, TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
+      "because": "Designer: technical was 7 shirts on 35x40 with a 22-player squad idle. Realism 2.",
+      "source": "human",
+      "scope": {},
+      "seen": 1,
+      "helped": 4,
+      "failed": 0,
+      "createdAt": "2026-08-26T03:25:00.000Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "gate:idle-squad",
+      "status": "active",
+      "kind": "must",
+      "rule": "If the squad is bigger than one working group, WARMUP/TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
+      "because": "TECHNICAL shows 6 working vs squad 22; setupSteps must name a second group, not idle spectators",
+      "source": "gate",
+      "scope": {},
+      "seen": 3,
+      "helped": 4,
+      "failed": 0,
+      "createdAt": "2026-08-26T03:29:17.646Z",
+      "updatedAt": "2026-08-26T03:46:33.782Z"
+    },
+    {
+      "id": "human:game-score-not-prior",
+      "status": "active",
+      "kind": "never",
+      "rule": "CONDITIONED_GAME scoring must not copy PRIOR's time-bonus (no same N-second counterpress multiplier). Score rest-defence shape a new way.",
+      "because": "Development: U16 game reused 6-second middle-third counterpress = 3 points from the prior hour. Variety 3.",
+      "source": "human",
+      "scope": {
+        "topic": "Rest defence after we lose it in the middle third"
+      },
+      "seen": 1,
+      "helped": 1,
+      "failed": 0,
+      "createdAt": "2026-08-26T03:32:00.000Z",
+      "updatedAt": "2026-08-26T03:32:00.000Z"
+    }
+  ]
+}
