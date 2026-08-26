@@ -1819,6 +1819,537 @@
           ]
         }
       }
+    ],
+    "u9-b-positional-play": [
+      {
+        "at": "2026-08-26T19:23:31.009Z",
+        "verdict": "fail",
+        "snapshot": {
+          "title": "Positional Play and Circulatory Dominance in the Middle Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Positional Rondo Activation and Scanning",
+              "area": "14x14",
+              "players": 6,
+              "scoring": "Attackers score 1 point for every 5 consecutive completed passes; defenders score 1 point…",
+              "constraints": [
+                "Maximum 2 touches per player on every possession",
+                "Passes must travel along the floor and through the central sector",
+                "Defenders cannot leave the central grid until the ball is played"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Line-Breaking Passing and Receiving Circuits",
+              "area": "35x16",
+              "players": 6,
+              "scoring": "Complete 10 flawless passing sequences without a misplaced ball or heavy touch to earn a …",
+              "constraints": [
+                "Maximum 2 touches for all interior players receiving line-breaking ba…",
+                "Passes must travel on the floor with sufficient pace to bypass virtua…",
+                "Receiving players must take their first touch across their body into …"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Positional Play (Possession) in Middle-Third Corridors",
+              "area": "45x16",
+              "players": 10,
+              "scoring": "Complete 6 consecutive successful passes leading to a line-breaking pass through the cent…",
+              "constraints": [
+                "Maximum 3 touches per player during build-up phases in the deep middl…",
+                "Rest defense must maintain at least 2 players behind the ball before …",
+                "All line-breaking passes must travel along the ground through marked …"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Positional Play Conditioned 7v7 Match",
+              "area": "45x16",
+              "players": 14,
+              "scoring": "Standard goal in full-size goal = 1 point; goals preceded by a zone switch and 5+ complet…",
+              "constraints": [
+                "Maximum 3 touches per player in the defensive half to encourage rapid…",
+                "Must complete at least 5 passes before launching a shot on the full-s…",
+                "Rest defense requires at least two outfield players to remain behind …"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief and Circulatory Wind-Down",
+              "area": "20x20",
+              "players": 0,
+              "scoring": "Non-scoring recovery phase.",
+              "constraints": [
+                "Players must maintain low-intensity movement during the initial stret…",
+                "Active listening and respectful engagement during tactical debrief qu…"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T19:30:07.866Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Positional Play and Circulatory Dominance in the Middle Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Positional Rondo Activation and Scanning",
+              "area": "15x15",
+              "players": 5,
+              "scoring": "Attackers earn 1 point for every completed sequence of 6 consecutive passes; defenders ea…",
+              "constraints": [
+                "Maximum two touches per player on all possessions.",
+                "Passes must travel below waist height along the ground.",
+                "Defenders cannot tackle until the receiving player has taken their fi…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Line-Breaking Passing and Receiving Circuits",
+              "area": "40x16",
+              "players": 5,
+              "scoring": "Complete 10 flawless passing sequences without a misplaced touch to earn a team bonus poi…",
+              "constraints": [
+                "Maximum two touches for all central receiving players.",
+                "All passes must break through the designated central gates.",
+                "Receiving players must show an active check away before coming to mee…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Positional Play and Circulatory Dominance in the Middle Third",
+              "area": "45x16",
+              "players": 10,
+              "scoring": "Attackers score 1 point for scoring in a mini-goal following a line-breaking pass; defend…",
+              "constraints": [
+                "Attackers must complete 4 circulatory passes before attacking the min…",
+                "Maximum three touches per player to encourage quick ball movement.",
+                "At least two attacking players must maintain rest-defense depth behin…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Positional Play Conditioned Scrimmage",
+              "area": "45x16",
+              "players": 12,
+              "scoring": "Teams earn 3 points for scoring following a 6-pass circulatory sequence; 1 point for a st…",
+              "constraints": [
+                "A team must complete at least 5 consecutive passes before launching a…",
+                "All players must remain within their tactical zones during the initia…",
+                "Defenders must maintain a compact block and cannot press past the hal…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief and Circulatory Wind-Down",
+              "area": "45x16",
+              "players": 0,
+              "scoring": "None.",
+              "constraints": [
+                "Keep physical activity at a low recovery jog or walk.",
+                "Active listening required during the tactical review."
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T19:35:33.222Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Positional Play and Circulatory Dominance in the Middle Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Positional Rondo Activation and Scanning",
+              "area": "14x12",
+              "players": 8,
+              "scoring": "Attackers earn 1 point for every 6 consecutive completed passes. Defenders earn 1 point f…",
+              "constraints": [
+                "Maximum two touches for all perimeter players at all times.",
+                "Passes must travel strictly below knee height to ensure reception qua…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Line-Breaking Passing and Receiving Circuits",
+              "area": "30x22",
+              "players": 8,
+              "scoring": "Complete 10 flawless passing sequences that successfully penetrate the central gates with…",
+              "constraints": [
+                "Players are limited to a maximum of two touches per reception.",
+                "All penetrating passes must travel through the central gate rather th…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Positional Play and Circulatory Dominance in the Middle Third",
+              "area": "33x45",
+              "players": 14,
+              "scoring": "Attackers earn 3 points for scoring following a 6-phase possession sequence; 1 point for …",
+              "constraints": [
+                "Attackers must complete at least 4 passes in the middle third before …",
+                "Rest-defense structure requires at least two players to remain behind…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Positional Play Conditioned 7v7 Match",
+              "area": "33x45",
+              "players": 14,
+              "scoring": "Goals scored following a 6-phase possession sequence = 3 points. Standard goals = 1 point.",
+              "constraints": [
+                "Direct long-ball clearances resulting in loss of possession incur an …",
+                "All players must remain aware of rest-defense positioning; leaving fe…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief and Circulatory Wind-Down",
+              "area": "33x45",
+              "players": 5,
+              "scoring": "None",
+              "constraints": []
+            }
+          ]
+        }
+      }
+    ],
+    "u18-d-1v1-defending": [
+      {
+        "at": "2026-08-26T19:24:58.535Z",
+        "verdict": "fail",
+        "snapshot": {
+          "title": "Keeping Possession by Winning 1v1 Battles in Our Defensive Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Support and Steal Tag Activation",
+              "area": "40x40",
+              "players": 16,
+              "scoring": "Attackers earn one point for every thirty seconds they keep their ball safe without being…",
+              "constraints": [
+                "Players must keep their ball within the boundary lines at all times.",
+                "Taggers must use controlled movements and soft touches only."
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Shadow Footwork and Ball Steal Drill",
+              "area": "15x10",
+              "players": 6,
+              "scoring": "Defender earns one point for winning the ball and passing it out of the channel. Attacker…",
+              "constraints": [
+                "Defenders must stay on their feet and avoid sliding or lunging reckle…",
+                "Attackers must keep the ball moving forward within the channel bounda…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Defensive Third 1v1 Channel Lock",
+              "area": "40x30",
+              "players": 8,
+              "scoring": "Defenders earn one point for winning the ball and passing into a mini-goal. Attackers ear…",
+              "constraints": [
+                "Defenders must stay between the attacker and the goal at all times.",
+                "Passes out after winning the ball must be completed on the ground."
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Half-Field 11v11 Defensive Battle Game",
+              "area": "60x80",
+              "players": 22,
+              "scoring": "Standard goals scored in the opponent's net count as one point. Defending team earns two …",
+              "constraints": [
+                "Defenders must stay organized in their 4-4-2 shape and avoid leaving …",
+                "When the defensive team wins the ball, they must complete at least on…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Team Debrief and Recovery Wind-Down",
+              "area": "20x20",
+              "players": 0,
+              "scoring": "None",
+              "constraints": [
+                "Players must remain seated or standing in the circle during the discu…",
+                "Active listening required from all squad members."
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T19:31:05.783Z",
+        "verdict": "fail",
+        "snapshot": {
+          "title": "Defending Our Goal in Our Own End",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Quick Feet and Tag Activation",
+              "area": "40x40",
+              "players": 22,
+              "scoring": "No score kept; focus is on movement, touches, and staying away from taggers",
+              "constraints": [
+                "Keep the ball close to your feet at all times",
+                "Look up before changing direction to avoid other players"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Footwork and Shadow Containment",
+              "area": "10x10",
+              "players": 2,
+              "scoring": "Defender earns one point for every successful containment without getting beaten",
+              "constraints": [
+                "Defenders must stay on their feet and cannot slide tackle",
+                "Attackers must keep the ball moving at a walking or jogging pace"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Two-Versus-Two Defending in Our Penalty Area",
+              "area": "30x40",
+              "players": 5,
+              "scoring": "Defenders earn two points for winning the ball and passing it out safely. Attackers earn …",
+              "constraints": [
+                "Defenders must communicate loudly before each attack starts",
+                "No slide tackling inside the penalty area zone"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Half-Field Defensive Battle Game",
+              "area": "60x80",
+              "players": 22,
+              "scoring": "Standard goals scored by attackers count normally. Defending team earns three bonus point…",
+              "constraints": [
+                "Defenders must stay compact and cannot chase opponents across the ent…",
+                "Attacking team must complete at least two passes in the defensive hal…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Team Debrief and Wind Down",
+              "area": "20x20",
+              "players": 0,
+              "scoring": "None",
+              "constraints": [
+                "Keep moving slowly while stretching to cool down muscles safely",
+                "Listen respectfully while teammates share their thoughts"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T19:36:35.716Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Winning the Ball Back in Our Defensive Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Quick Reaction Tag and Steal",
+              "area": "20x20",
+              "players": 5,
+              "scoring": "Award one point for every successful ball clearance by a tagger",
+              "constraints": [
+                "Keep the ball within the marked cones at all times",
+                "No use of hands or dangerous tackles allowed"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Shadow Footwork and Ball Steal Stations",
+              "area": "10x10",
+              "players": 2,
+              "scoring": "Defenders earn one point for every clean ball win that stays inside the grid",
+              "constraints": [
+                "Defenders must stay on their feet and avoid sliding tackles",
+                "Attackers must keep the ball moving rather than standing still"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Defensive Third 1v1 Duels and Recovery",
+              "area": "25x25",
+              "players": 2,
+              "scoring": "Defender earns two points for winning the ball and passing through a target gate; attacke…",
+              "constraints": [
+                "Defenders must not commit to a tackle until the attacker exposes the …",
+                "Attackers must try to dribble past the defender within five seconds o…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Half-Field 11v11 Defensive Battle Game",
+              "area": "60x80",
+              "players": 22,
+              "scoring": "Standard goals in the main net count normally; defenders earn three points every time the…",
+              "constraints": [
+                "Defenders must actively engage attackers rather than backing off into…",
+                "Attacking team must build up through passes rather than long balls ov…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Team Debrief and Recovery Jog",
+              "area": "60x80",
+              "players": 0,
+              "scoring": "No scoring",
+              "constraints": [
+                "Keep movement at a gentle jogging pace",
+                "Focus on deep breathing during stretches"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "u16-b-managing-switches-tight": [
+      {
+        "at": "2026-08-26T19:16:57.703Z",
+        "verdict": "fail",
+        "snapshot": {
+          "title": "Coordinated Middle-Third Pressing & Managing Switches",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "High-Intensity Directional Pressing & Shadow Rondo",
+              "area": "12x12",
+              "players": 6,
+              "scoring": "Attackers score 1 point for every 8 consecutive completed passes. Defenders score 1 point…",
+              "constraints": [
+                "Maximum two touches for all perimeter attackers.",
+                "Pressing defender must angle their approach to eliminate the direct d…",
+                "Cover defender must maintain a strict 3-yard distance behind the pres…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Sliding Defensive Block & Switch Tracking Mechanics",
+              "area": "30x25",
+              "players": 10,
+              "scoring": "Defenders earn 1 point for every successful interception or forcing a backward pass upon …",
+              "constraints": [
+                "Defensive block must maintain horizontal compactness under 18 yards a…",
+                "When the ball travels in the air on a switch, defenders must complete…",
+                "No tackling from behind; pressure must be side-on and square."
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Managing Switches & Pressing Shifts in the Middle Third",
+              "area": "80x30",
+              "players": 22,
+              "scoring": "Attackers score 1 point for successfully completing a cross-field switch that penetrates …",
+              "constraints": [
+                "Attacking team must complete at least 3 passes on one side before exe…",
+                "Defensive block must maintain horizontal compactness under 22 yards; …",
+                "Rest-defense structure (2 central defenders + 1 holding midfielder) m…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Full 11v11 Conditioned Pressing & Switch Management Match",
+              "area": "80x30",
+              "players": 22,
+              "scoring": "Standard goals scored in the opponent's goal worth 1 point. Defending team earns 3 points…",
+              "constraints": [
+                "Defensive block must maintain vertical and horizontal compactness; if…",
+                "Attacking team must complete at least 4 passes before attempting a cr…",
+                "Maximum two touches for all midfielders during central build-up phase…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief & Physical Wind-Down",
+              "area": "30x80",
+              "players": 0,
+              "scoring": "None.",
+              "constraints": [
+                "Players must maintain active mobility during the tactical review.",
+                "All players must contribute at least one observation regarding weak-s…"
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T19:26:17.042Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Coordinated Middle-Third Pressing & Shift Management",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Pressing Footwork & Cover Shadow Activation",
+              "area": "20x20",
+              "players": 6,
+              "scoring": "Attackers earn one point for completing eight consecutive passes; the defender earns two …",
+              "constraints": [
+                "All perimeter attackers are restricted to a maximum of two touches to…",
+                "The central defender must initiate the press using a curved angle tha…",
+                "Attackers are strictly prohibited from playing blind balls directly a…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Sliding Block Compactness & Line-Distance Maintenance",
+              "area": "25x15",
+              "players": 8,
+              "scoring": "Defenders earn two points for any interception or forced turnover; attackers earn one poi…",
+              "constraints": [
+                "Defenders must maintain a strict 8-yard maximum distance between the …",
+                "Perimeter attackers must execute at least one aerial switch of play e…",
+                "Defenders are prohibited from tackling as individuals; they must pres…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Managing Switches & Middle-Third Pressing Shifts",
+              "area": "30x80",
+              "players": 22,
+              "scoring": "Defenders earn 3 points for winning possession and successfully circulating three passes;…",
+              "constraints": [
+                "The defending block must execute a complete sliding shift within 2.5 …",
+                "Attacking players are restricted to a maximum of three touches when r…",
+                "The defending central midfielders must maintain vertical compactness,…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "11v11 Conditioned Match: Managing Switches & Pressing Regains",
+              "area": "30x80",
+              "players": 22,
+              "scoring": "Standard goals scored in the opponent's goal count as 1 point; however, any goal scored w…",
+              "constraints": [
+                "Defensive block must maintain a maximum distance of 10 yards between …",
+                "When the opponent switches play across flanks, the defending team mus…",
+                "All players must operate within their designated tactical functional …"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief & Physical Wind-Down",
+              "area": "30x80",
+              "players": 0,
+              "scoring": "None",
+              "constraints": [
+                "Players must maintain active engagement during the tactical review.",
+                "Stretching must be executed with controlled breathing."
+              ]
+            }
+          ]
+        }
+      }
     ]
   }
 }

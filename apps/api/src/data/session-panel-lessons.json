@@ -1,48 +1,48 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T19:08:17.720Z",
+  "updatedAt": "2026-08-26T19:36:35.734Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
       "status": "active",
       "kind": "must",
       "rule": "Tactical and conditioned-game text must teach today's topic in scoring or a constraint, not only in the title.",
-      "because": "Tactical/conditioned text never teaches topic \"Breaking Press Triggers\" (title-sticker / generic session)",
+      "because": "Tactical/conditioned text never teaches topic \"1v1 Defending\" (title-sticker / generic session)",
       "source": "gate",
       "scope": {},
-      "seen": 6,
-      "helped": 28,
-      "failed": 6,
+      "seen": 7,
+      "helped": 32,
+      "failed": 9,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:topic-tactical",
       "status": "active",
       "kind": "must",
       "rule": "The TACTICAL title and description must be about today's topic, not only the game model.",
-      "because": "Tactical drill does not center topic \"Exit Under Pressure\"",
+      "because": "Tactical drill does not center topic \"1v1 Defending\"",
       "source": "gate",
       "scope": {},
-      "seen": 9,
-      "helped": 28,
-      "failed": 8,
+      "seen": 11,
+      "helped": 32,
+      "failed": 12,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:topic-game",
       "status": "active",
       "kind": "must",
       "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
-      "because": "Conditioned game does not force topic \"Compactness Between Lines\" via scoring or constraints",
+      "because": "Conditioned game does not force topic \"1v1 Defending\" via scoring or constraints",
       "source": "gate",
       "scope": {},
-      "seen": 14,
-      "helped": 29,
-      "failed": 11,
+      "seen": 17,
+      "helped": 33,
+      "failed": 16,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -53,10 +53,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 22,
-      "failed": 5,
+      "helped": 26,
+      "failed": 7,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:setup-matches-title",
@@ -67,10 +67,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 22,
-      "failed": 5,
+      "helped": 26,
+      "failed": 7,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:variety-clone:rest-defense-shape",
@@ -97,10 +97,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 23,
-      "failed": 5,
+      "helped": 27,
+      "failed": 7,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:second-group",
@@ -111,24 +111,24 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 23,
-      "failed": 5,
+      "helped": 27,
+      "failed": 7,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:idle-squad",
       "status": "active",
       "kind": "must",
       "rule": "If the squad is bigger than one working group, WARMUP/TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
-      "because": "TECHNICAL shows 8 working vs squad 22; setupSteps must name a second group, not idle spectators",
+      "because": "TECHNICAL shows 4 working vs squad 22; setupSteps must name a second group, not idle spectators",
       "source": "gate",
       "scope": {},
-      "seen": 9,
-      "helped": 23,
-      "failed": 11,
+      "seen": 10,
+      "helped": 27,
+      "failed": 14,
       "createdAt": "2026-08-26T03:29:17.646Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:game-score-not-prior",
@@ -156,11 +156,11 @@
       "scope": {
         "coachLevel": "USSF_D"
       },
-      "seen": 8,
-      "helped": 5,
-      "failed": 7,
+      "seen": 11,
+      "helped": 6,
+      "failed": 10,
       "createdAt": "2026-08-26T04:40:36.519Z",
-      "updatedAt": "2026-08-26T18:18:52.511Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:layout-matches-description",
@@ -171,10 +171,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 16,
-      "failed": 5,
+      "helped": 20,
+      "failed": 7,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:differ-from-prior-hour",
@@ -185,10 +185,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 13,
-      "failed": 2,
+      "helped": 17,
+      "failed": 4,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:beginner-touch:BEGINNER",
@@ -215,10 +215,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 12,
-      "failed": 1,
+      "helped": 15,
+      "failed": 3,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "human:formation-math-consistent",
@@ -229,10 +229,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 4,
-      "failed": 1,
+      "helped": 7,
+      "failed": 3,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T19:08:17.720Z"
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     },
     {
       "id": "gate:c-jargon:USSF_C",
@@ -249,6 +249,22 @@
       "failed": 1,
       "createdAt": "2026-08-26T18:18:52.511Z",
       "updatedAt": "2026-08-26T18:55:39.314Z"
+    },
+    {
+      "id": "human:1v1-stays-isolated",
+      "status": "active",
+      "kind": "must",
+      "rule": "Keep 1v1 Defending as true 1v1 -- one defender vs one attacker in isolation. Do not upgrade to 2v2 cover-and-support team defending.",
+      "because": "U18 review, 2026-08-26: the model wrote a 'Two-Versus-Two Defending' drill twice for a topic that specifically asks for 1v1 -- a related but genuinely different defending concept (cover/support vs isolated 1v1).",
+      "source": "human",
+      "scope": {
+        "topic": "1v1 Defending"
+      },
+      "seen": 0,
+      "helped": 1,
+      "failed": 0,
+      "createdAt": "2026-08-26T19:33:26.749Z",
+      "updatedAt": "2026-08-26T19:36:35.733Z"
     }
   ]
 }

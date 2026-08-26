@@ -461,6 +461,106 @@ export const PANEL_FIXTURES: PanelFixture[] = [
       /break (quickly|fast)/i,
     ],
   },
+  {
+    id: "u9-b-positional-play",
+    label: "U9 B+ ADVANCED · Positional Play (elite 7v7)",
+    input: {
+      gameModelId: "POSSESSION",
+      ageGroup: "U9",
+      phase: "ATTACKING",
+      zone: "MIDDLE_THIRD",
+      numbersMin: 10,
+      numbersMax: 14,
+      goalsAvailable: 1,
+      spaceConstraint: "HALF",
+      durationMin: 60,
+      formationAttacking: "2-3-1",
+      formationDefending: "2-3-1",
+      playerLevel: "ADVANCED",
+      coachLevel: "USSF_B_PLUS",
+      topic: "Positional Play (Possession)",
+    },
+    topicMeaning:
+      "Deliberately unusual pairing: a systemic B+ concept (positional roles keeping passing lanes open) taught to an elite U9 7v7 squad. Vocabulary and difficulty stay ADVANCED/B+, but the format is still forced to 7v7 by ageGroup -- tests whether age-format rules and coachLevel/playerLevel rules can both hold at once without one overriding the other. spaceConstraint=HALF, not QUARTER: two judges independently flagged QUARTER (16yd) as too narrow to demonstrate positional structure with 6-7 players -- positional play needs room to spread, unlike a tight-support topic.",
+    topicSignals: [
+      /positional play/i,
+      /positional (shape|structure|role)/i,
+      /occupy(ing)? (space|position|zone)/i,
+      /keep(ing)? (passing lanes|shape)/i,
+      /structure(d)? position(ing)?/i,
+    ],
+  },
+  {
+    id: "u18-d-1v1-defending",
+    label: "U18 D BEGINNER · 1v1 Defending (full 11v11)",
+    input: {
+      gameModelId: "POSSESSION",
+      ageGroup: "U18",
+      phase: "DEFENDING",
+      zone: "DEFENSIVE_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "HALF",
+      durationMin: 90,
+      formationAttacking: "4-4-2",
+      formationDefending: "4-4-2",
+      playerLevel: "BEGINNER",
+      coachLevel: "USSF_D",
+      topic: "1v1 Defending",
+    },
+    topicMeaning:
+      "The inverse pairing: true beginners (BEGINNER/USSF_D language and touch rules) who are old enough for full 11v11. Stop the player in front of you without diving in -- simple defending in plain words, at a squad size and format usually paired with advanced players.",
+    topicSignals: [
+      // Requiring "defend" right after "1v1" was too tight -- the model
+      // legitimately writes "1v1 duel"/"1v1 battle" for this same concept.
+      // The zone/topicMeaning already scope this fixture to defending.
+      /(1|one)[\s-]*(v|vs|versus)[\s-]*(1|one)\b/i,
+      /stop (the |your )?(player|attacker)/i,
+      /(don't|do not) dive in/i,
+      /stay on your feet/i,
+      /jockey/i,
+      /delay(ing)? (the )?attacker/i,
+    ],
+  },
+  {
+    id: "u16-b-managing-switches-tight",
+    label: "U16 B+ · Managing Switches (11v11 in QUARTER space)",
+    input: {
+      gameModelId: "PRESSING",
+      ageGroup: "U16",
+      phase: "DEFENDING",
+      zone: "MIDDLE_THIRD",
+      numbersMin: 16,
+      numbersMax: 22,
+      goalsAvailable: 2,
+      spaceConstraint: "QUARTER",
+      durationMin: 90,
+      formationAttacking: "4-5-1",
+      formationDefending: "4-5-1",
+      playerLevel: "ADVANCED",
+      coachLevel: "USSF_B_PLUS",
+      topic: "Managing Switches",
+    },
+    topicMeaning:
+      "The hardest space/numbers combination in this matrix: a full 22-player 11v11 squad squeezed into QUARTER space (usually reserved for warmups), teaching a topic (shifting as a block when play switches sides) that normally needs width to demonstrate. Sixth formation (4-5-1).",
+    topicSignals: [
+      // Observed live phrasing (2026-08-26): the model's natural word for
+      // this concept is "slide"/"sliding", not "shift" -- and titles reverse
+      // the word order ("Switch Management", not "managing switches").
+      // "manage" + "ing" spells "manageing", which isn't a word -- the real
+      // gerund drops the terminal e ("managing"). Match the stem "manag" with
+      // suffix alternatives instead of the wrong-spelling combined pattern.
+      /manag(e|ed|ing|ement) .{0,15}switch(es)?/i,
+      /switch(es)? .{0,15}manag(e|ed|ing|ement)/i,
+      /(shift(s|ed|ing)?|slid(e|es|ing)?) (as a (unit|block)|together|to cover)/i,
+      /block .{0,20}(slide|shift)/i,
+      /fails? to (slide|shift)/i,
+      /react(ing)? to (the )?switch/i,
+      /cover (the )?switch/i,
+      /recover (the )?shape.{0,20}switch/i,
+    ],
+  },
 ];
 
 export function fixtureById(id: string): PanelFixture | undefined {

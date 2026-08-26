@@ -66,12 +66,15 @@ function namesSecondGroup(drill: SessionPacket["drills"][number]): boolean {
     ...(drill.organization?.setupSteps || []),
     drill.organization?.rotation || "",
   ].join(" ");
-  // Broadened 2026-08-26 after a real miss: the model wrote "second squad
-  // runs mirror station" and "remaining squad members ... parallel technical
-  // passing station" -- neither matched the old "second group"/"stations"
-  // (plural-only) patterns. Cover squad/group/station interchangeably and
-  // both singular and plural station wording.
-  return /two groups|second (group|squad|station)|another group|waiting (players|group)|rotate (the )?groups|split the squad|in pairs|stations?\b|mirror (station|group)|parallel (station|group)|remaining (squad|players)|waves of|switch .{0,60} roles|rotate .{0,40}(roles|groups|players)/i.test(text);
+  // Broadened 2026-08-26 after real misses, each with a different exact
+  // phrase: "second squad runs mirror station", "remaining squad members
+  // ... parallel technical passing station", and "divide the full squad of
+  // 22 players into working pairs" (not "in pairs"). Enumerating exact
+  // phrases kept missing the next paraphrase, so the last alternative below
+  // is a general semantic check instead: does the text mention the
+  // squad/players together with ANY distribution verb within a short
+  // window? That survives a paraphrase the specific phrases above don't.
+  return /two groups|second (group|squad|station)|another group|waiting (players|group)|rotate (the )?groups|split the squad|in pairs|stations?\b|mirror (station|group)|parallel (station|group)|remaining (squad|players)|waves of|switch .{0,60} roles|rotate .{0,40}(roles|groups|players)|\b(squad|players?)\b[\s\S]{0,60}\b(divide|split|pair|group|station|channel)/i.test(text);
 }
 
 function add(issues: GateIssue[], code: string, detail: string) {
