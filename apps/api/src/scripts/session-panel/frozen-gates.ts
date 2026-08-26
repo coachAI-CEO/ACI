@@ -29,7 +29,7 @@ const D_BANNED: Array<{ pattern: RegExp; term: string }> = [
   { pattern: /\bstaggered\b/i, term: "staggered" },
 ];
 
-const C_BANNED_SYSTEMIC: Array<{ pattern: RegExp; term: string }> = [
+export const C_BANNED_SYSTEMIC: Array<{ pattern: RegExp; term: string }> = [
   { pattern: /rest[- ]defen[cs]e/i, term: "rest defense" },
   { pattern: /cover shadow/i, term: "cover shadow" },
   { pattern: /blindside run/i, term: "blindside run" },

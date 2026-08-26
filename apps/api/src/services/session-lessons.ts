@@ -193,6 +193,7 @@ const RANK: Record<string, number> = { proud: 2, review: 1, fail: 0 };
 export function recordLessonOutcomes(
   book: LessonBook,
   runs: Array<{
+    error?: string | null;
     appliedLessonIds?: string[] | null;
     panel?: { verdict?: string } | null;
     agents?: Array<{ parseError?: string | null; wouldRun?: string | null }> | null;
@@ -201,6 +202,11 @@ export function recordLessonOutcomes(
 ): void {
   const now = new Date().toISOString();
   for (const run of runs) {
+    // A generation-level failure (e.g. Gemini returned non-JSON before judging
+    // ever ran) leaves agents: [] — that's not a football failure, don't blame
+    // the applied lessons for it. Judge-level parseError is the other half of
+    // this same "don't penalize a parse failure" rule.
+    if (run.error) continue;
     if ((run.agents || []).some((a) => a.parseError)) continue;
     const idsAll = run.appliedLessonIds || [];
     const rank = RANK[run.panel?.verdict || "fail"] ?? 0;

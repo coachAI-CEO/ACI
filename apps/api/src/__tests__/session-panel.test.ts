@@ -5,7 +5,7 @@ import { parseAgentReview, AGENT_SPECS, buildAgentPrompt, panelJudgeInputTokens 
 import { aggregatePanel } from "../scripts/session-panel/verdict";
 import type { AgentReview, SessionPacket } from "../scripts/session-panel/types";
 import { buildSessionPrompt } from "../prompts/session";
-import { formatLessonsForPrompt, matchingActiveLessons, recordLessonOutcomes, pauseDeadLessons, type LessonBook } from "../services/session-lessons";
+import { formatLessonsForPrompt, matchingActiveLessons, recordLessonOutcomes, pauseDeadLessons, RULE_MAX_CHARS, type LessonBook } from "../services/session-lessons";
 import { gateLessonsFromRuns, learnFromPanelRuns } from "../scripts/session-panel/learn";
 import { buildPreviewRuns } from "../scripts/session-panel/preview-data";
 import {
@@ -644,6 +644,59 @@ describe("session panel playbook", () => {
     recordLessonOutcomes(b, [{ appliedLessonIds: ["x"], panel: { verdict: "fail" } }]);
     expect(b.lessons[0].status).toBe("paused");
     expect(pauseDeadLessons(b)).toHaveLength(0);
+  });
+
+  test("d-jargon gate lesson names concrete banned words and stays unclipped", () => {
+    const run = {
+      fixtureId: u9.id,
+      label: u9.label,
+      generateModel: "test",
+      judgeModel: "test",
+      sampleIdx: 0,
+      latencyMs: null,
+      error: null,
+      title: "t",
+      packet: null,
+      gates: { ok: false, issues: [{ code: "d-jargon", detail: 'USSF_D session contains banned term "compact"' }] },
+      agents: [],
+      panel: { verdict: "fail" as const, reasons: [], disagreement: false },
+      judgeInputTokensApprox: null,
+      appliedLessonIds: [],
+      varietySim: null,
+    };
+    const lessons = gateLessonsFromRuns([run as any], () => ({ ...u9, input: { ...u9.input, coachLevel: "USSF_D" } }));
+    const dJargon = lessons.find((l) => l.id.startsWith("gate:d-jargon"));
+    expect(dJargon).toBeDefined();
+    expect(dJargon!.rule.length).toBeLessThanOrEqual(RULE_MAX_CHARS);
+    expect(dJargon!.rule.endsWith("…")).toBe(false);
+    expect(dJargon!.rule).toContain("compact");
+  });
+
+  test("a generation-level parse failure (agents never ran) does not punish applied lessons", () => {
+    const b = book();
+    b.lessons.push({
+      id: "gate:topic-game",
+      status: "active",
+      kind: "must",
+      rule: "Game must force the topic.",
+      because: "t",
+      source: "gate",
+      scope: {},
+      seen: 1,
+      helped: 1,
+      failed: 0,
+      createdAt: "",
+      updatedAt: "",
+    });
+    recordLessonOutcomes(b, [
+      {
+        appliedLessonIds: ["gate:topic-game"],
+        panel: { verdict: "fail" },
+        agents: [],
+        error: "Generation returned non-JSON (dumped /tmp/session-panel-failure-1.txt)",
+      },
+    ]);
+    expect(b.lessons[0].failed).toBe(0);
   });
 
   test("a variety-clone-only fail does not punish unrelated lessons", () => {

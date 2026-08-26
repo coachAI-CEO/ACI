@@ -1,4 +1,5 @@
 import { parseJsonSafe } from "./packet";
+import { C_BANNED_SYSTEMIC } from "./frozen-gates";
 import type { PanelFixture, SampleRun } from "./types";
 import {
   clipRule,
@@ -10,6 +11,13 @@ import {
   type LessonSource,
   type PanelLesson,
 } from "../../services/session-lessons";
+
+// D_BANNED has 16 terms — naming all of them blows past RULE_MAX_CHARS (180)
+// once framed as a sentence, and clipRule's ellipsis truncation would cut the
+// list mid-word. Name a representative spread as concrete examples instead;
+// the frozen gate itself still enforces the full list regardless of prompt text.
+const D_BANNED_EXAMPLES = ["overload", "compact", "half-turn", "rest defense", "positional shape", "pressing trigger"].join(", ");
+const C_BANNED_LIST = C_BANNED_SYSTEMIC.map((b) => b.term).join(", ");
 
 const GATE_RULES: Record<string, { rule: string; kind: LessonKind; scopeFrom: Array<"coachLevel" | "playerLevel" | "topic"> }> = {
   "topic-signal": {
@@ -30,12 +38,12 @@ const GATE_RULES: Record<string, { rule: string; kind: LessonKind; scopeFrom: Ar
   "d-jargon": {
     kind: "never",
     scopeFrom: ["coachLevel"],
-    rule: "USSF_D: never write textbook terms. Describe the action in ordinary words a D coach would say on the grass.",
+    rule: `USSF_D: never write textbook terms (e.g. ${D_BANNED_EXAMPLES}). Describe the action in ordinary grass words.`,
   },
   "c-jargon": {
     kind: "never",
     scopeFrom: ["coachLevel"],
-    rule: "USSF_C: do not write rest defense, cover shadow, or blindside run. Name one concept, explain it in the next sentence.",
+    rule: `USSF_C: never write any of these words — ${C_BANNED_LIST}. Name one concept, explain it in the next sentence.`,
   },
   "beginner-touch": {
     kind: "never",
