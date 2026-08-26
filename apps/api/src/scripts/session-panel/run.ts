@@ -136,7 +136,16 @@ async function generateForModel(model: string, prompt: string, timeout: number, 
     return (await generateMinimax(prompt, { model, timeout })).text;
   }
   if (model.startsWith("gpt-")) {
-    return (await generateOpenAI(prompt, { model, timeout })).text;
+    // GPT-5 family are reasoning models -- without an explicit effort level
+    // they default to a higher tier and can burn the entire timeout on
+    // invisible reasoning tokens before ever emitting the JSON, especially
+    // on this prompt's size (~30k chars). "low" matches the fast, single-shot
+    // structured-generation task this actually is. Even at "low", the
+    // INTERMEDIATE/ADVANCED prompt variants (longer vocabulary-ceiling and
+    // constraint blocks) timed out at 150s live-tested 2026-08-26 while
+    // BEGINNER ones didn't -- give gpt- models real headroom rather than
+    // reuse Gemini's tighter budget.
+    return (await generateOpenAI(prompt, { model, timeout: Math.max(timeout, 280000), reasoningEffort: "low" })).text;
   }
   return generateText(prompt, {
     model,
