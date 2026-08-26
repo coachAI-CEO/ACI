@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T17:48:13.791Z",
+  "updatedAt": "2026-08-26T18:25:08.079Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
@@ -11,38 +11,38 @@
       "source": "gate",
       "scope": {},
       "seen": 6,
-      "helped": 18,
+      "helped": 25,
       "failed": 5,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "gate:topic-tactical",
       "status": "active",
       "kind": "must",
       "rule": "The TACTICAL title and description must be about today's topic, not only the game model.",
-      "because": "Tactical drill does not center topic \"Breaking Press Triggers\"",
+      "because": "Tactical drill does not center topic \"Exit Under Pressure\"",
       "source": "gate",
       "scope": {},
-      "seen": 8,
-      "helped": 18,
-      "failed": 6,
+      "seen": 9,
+      "helped": 25,
+      "failed": 7,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "gate:topic-game",
       "status": "active",
       "kind": "must",
       "rule": "CONDITIONED_GAME scoring or a constraint must be false if you swapped today's topic for a different subject.",
-      "because": "Conditioned game does not force topic \"Breaking Press Triggers\" via scoring or constraints",
+      "because": "Conditioned game does not force topic \"Pressing as a Unit\" via scoring or constraints",
       "source": "gate",
       "scope": {},
-      "seen": 11,
-      "helped": 19,
-      "failed": 7,
+      "seen": 12,
+      "helped": 26,
+      "failed": 8,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -53,10 +53,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 12,
+      "helped": 19,
       "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:setup-matches-title",
@@ -67,10 +67,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 12,
+      "helped": 19,
       "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "gate:variety-clone:rest-defense-shape",
@@ -83,10 +83,10 @@
         "topic": "Rest Defense Shape"
       },
       "seen": 1,
-      "helped": 3,
+      "helped": 4,
       "failed": 0,
       "createdAt": "2026-08-26T02:44:13.541Z",
-      "updatedAt": "2026-08-26T16:17:24.016Z"
+      "updatedAt": "2026-08-26T18:04:02.206Z"
     },
     {
       "id": "human:tactical-not-match",
@@ -97,10 +97,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 13,
+      "helped": 20,
       "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:second-group",
@@ -111,24 +111,24 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 13,
+      "helped": 20,
       "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "gate:idle-squad",
       "status": "active",
       "kind": "must",
       "rule": "If the squad is bigger than one working group, WARMUP/TECHNICAL setupSteps name a second group on the same score. No idle spectators.",
-      "because": "TECHNICAL shows 4 working vs squad 22; setupSteps must name a second group, not idle spectators",
+      "because": "TECHNICAL shows 6 working vs squad 22; setupSteps must name a second group, not idle spectators",
       "source": "gate",
       "scope": {},
-      "seen": 5,
-      "helped": 13,
-      "failed": 6,
+      "seen": 6,
+      "helped": 20,
+      "failed": 7,
       "createdAt": "2026-08-26T03:29:17.646Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:game-score-not-prior",
@@ -141,10 +141,10 @@
         "topic": "Rest Defense Shape"
       },
       "seen": 1,
-      "helped": 4,
+      "helped": 5,
       "failed": 0,
       "createdAt": "2026-08-26T03:32:00.000Z",
-      "updatedAt": "2026-08-26T16:17:24.016Z"
+      "updatedAt": "2026-08-26T18:04:02.206Z"
     },
     {
       "id": "gate:d-jargon:USSF_D",
@@ -156,11 +156,11 @@
       "scope": {
         "coachLevel": "USSF_D"
       },
-      "seen": 7,
-      "helped": 3,
-      "failed": 6,
+      "seen": 8,
+      "helped": 5,
+      "failed": 7,
       "createdAt": "2026-08-26T04:40:36.519Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:18:52.511Z"
     },
     {
       "id": "human:layout-matches-description",
@@ -171,10 +171,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 6,
+      "helped": 13,
       "failed": 4,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:differ-from-prior-hour",
@@ -185,10 +185,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 3,
+      "helped": 10,
       "failed": 1,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "gate:beginner-touch:BEGINNER",
@@ -215,10 +215,10 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 3,
+      "helped": 9,
       "failed": 0,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T17:48:13.791Z"
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     },
     {
       "id": "human:formation-math-consistent",
@@ -229,10 +229,26 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 1,
+      "helped": 4,
       "failed": 0,
       "createdAt": "2026-08-26T16:58:12.961Z",
-      "updatedAt": "2026-08-26T17:04:53.850Z"
+      "updatedAt": "2026-08-26T18:18:52.510Z"
+    },
+    {
+      "id": "gate:c-jargon:USSF_C",
+      "status": "active",
+      "kind": "never",
+      "rule": "USSF_C: never write any of these words — rest defense, cover shadow, blindside run. Name one concept, explain it in the next sentence.",
+      "because": "USSF_C session uses B+ systemic term \"rest defense\"",
+      "source": "gate",
+      "scope": {
+        "coachLevel": "USSF_C"
+      },
+      "seen": 2,
+      "helped": 1,
+      "failed": 1,
+      "createdAt": "2026-08-26T18:18:52.511Z",
+      "updatedAt": "2026-08-26T18:25:08.078Z"
     }
   ]
 }
