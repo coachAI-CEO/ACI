@@ -155,6 +155,14 @@ export function runFrozenGates(
     }
   }
 
+  // Warmup/technical group size is a playerLevel decision, not a flat cap --
+  // BEGINNER free play can legitimately use the whole squad; ADVANCED stays
+  // to a small, precise working group. Keep in sync with the WARMUP/TECHNICAL
+  // GROUP SIZE LOCK in prompts/session.ts.
+  const squadMax = fixture.input.numbersMax || 0;
+  const warmupCeiling = player === "BEGINNER" ? Math.max(squadMax, 10) : player === "INTERMEDIATE" ? 14 : 10;
+  const techCeiling = player === "BEGINNER" ? Math.max(squadMax, 12) : player === "INTERMEDIATE" ? 16 : 12;
+
   for (const drill of packet.drills) {
     if (/COOLDOWN/i.test(drill.drillType)) continue;
     if (drill.constraints.length === 0) {
@@ -163,11 +171,11 @@ export function runFrozenGates(
     if (drill.coachingPoints.length < 3) {
       add(issues, "points", `${drill.drillType} "${drill.title}" has ${drill.coachingPoints.length} coaching points`);
     }
-    if (/WARMUP/i.test(drill.drillType) && drill.diagramCounts.players > 10) {
-      add(issues, "warmup-crowd", `Warmup diagram has ${drill.diagramCounts.players} shirts; working group should be ~8`);
+    if (/WARMUP/i.test(drill.drillType) && drill.diagramCounts.players > warmupCeiling) {
+      add(issues, "warmup-crowd", `Warmup diagram has ${drill.diagramCounts.players} shirts; ceiling for playerLevel=${player || "ADVANCED"} is ~${warmupCeiling}`);
     }
-    if (/TECHNICAL/i.test(drill.drillType) && drill.diagramCounts.players > 12) {
-      add(issues, "tech-crowd", `Technical diagram has ${drill.diagramCounts.players} shirts; working group should be ~8–10`);
+    if (/TECHNICAL/i.test(drill.drillType) && drill.diagramCounts.players > techCeiling) {
+      add(issues, "tech-crowd", `Technical diagram has ${drill.diagramCounts.players} shirts; ceiling for playerLevel=${player || "ADVANCED"} is ~${techCeiling}`);
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-26T16:49:35.161Z",
+  "updatedAt": "2026-08-26T17:48:13.791Z",
   "lessons": [
     {
       "id": "gate:topic-signal",
@@ -11,10 +11,10 @@
       "source": "gate",
       "scope": {},
       "seen": 6,
-      "helped": 15,
+      "helped": 18,
       "failed": 5,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "gate:topic-tactical",
@@ -25,10 +25,10 @@
       "source": "gate",
       "scope": {},
       "seen": 8,
-      "helped": 15,
+      "helped": 18,
       "failed": 6,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "gate:topic-game",
@@ -39,10 +39,10 @@
       "source": "gate",
       "scope": {},
       "seen": 11,
-      "helped": 16,
+      "helped": 19,
       "failed": 7,
       "createdAt": "2026-08-26T00:50:15.324Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:warmup-tech-are-topic",
@@ -53,10 +53,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 9,
+      "helped": 12,
       "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:setup-matches-title",
@@ -67,10 +67,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 9,
+      "helped": 12,
       "failed": 4,
       "createdAt": "2026-08-26T01:22:00.000Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "gate:variety-clone:rest-defense-shape",
@@ -97,10 +97,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 10,
+      "helped": 13,
       "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:second-group",
@@ -111,10 +111,10 @@
       "source": "human",
       "scope": {},
       "seen": 1,
-      "helped": 10,
+      "helped": 13,
       "failed": 4,
       "createdAt": "2026-08-26T03:25:00.000Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "gate:idle-squad",
@@ -125,10 +125,10 @@
       "source": "gate",
       "scope": {},
       "seen": 5,
-      "helped": 10,
+      "helped": 13,
       "failed": 6,
       "createdAt": "2026-08-26T03:29:17.646Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:game-score-not-prior",
@@ -156,11 +156,11 @@
       "scope": {
         "coachLevel": "USSF_D"
       },
-      "seen": 6,
-      "helped": 1,
+      "seen": 7,
+      "helped": 3,
       "failed": 6,
       "createdAt": "2026-08-26T04:40:36.519Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:layout-matches-description",
@@ -171,26 +171,24 @@
       "source": "human",
       "scope": {},
       "seen": 0,
-      "helped": 3,
+      "helped": 6,
       "failed": 4,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "human:differ-from-prior-hour",
       "status": "active",
       "kind": "must",
       "rule": "Even without an exact clone, differ meaningfully in practice form from PRIOR — do not reuse the same grid/scoring shape with new labels.",
-      "because": "U11 review: judge scored variety 3/5, several drills closely mirrored the prior hour without tripping the frozen clone gate.",
+      "because": "U11 + U9 review, 2026-08-26: same clone pattern hit two different topics — promoted from topic-scoped to global.",
       "source": "human",
-      "scope": {
-        "topic": "Combination Play"
-      },
+      "scope": {},
       "seen": 0,
-      "helped": 0,
+      "helped": 3,
       "failed": 1,
       "createdAt": "2026-08-26T06:23:59.102Z",
-      "updatedAt": "2026-08-26T16:49:35.156Z"
+      "updatedAt": "2026-08-26T17:48:13.791Z"
     },
     {
       "id": "gate:beginner-touch:BEGINNER",
@@ -207,6 +205,34 @@
       "failed": 3,
       "createdAt": "2026-08-26T09:27:39.581Z",
       "updatedAt": "2026-08-26T16:49:35.157Z"
+    },
+    {
+      "id": "human:space-fits-activity",
+      "status": "active",
+      "kind": "must",
+      "rule": "Grid/space dimensions must fit the stated activity and player count — not too long for a rondo, not too narrow for a scrimmage.",
+      "because": "U9 review, 2026-08-26: development judge flagged 45x16yd as far too long for a 4v2 rondo and far too narrow for a 5v5 scrimmage in the same session.",
+      "source": "human",
+      "scope": {},
+      "seen": 0,
+      "helped": 3,
+      "failed": 0,
+      "createdAt": "2026-08-26T16:58:12.961Z",
+      "updatedAt": "2026-08-26T17:48:13.791Z"
+    },
+    {
+      "id": "human:formation-math-consistent",
+      "status": "active",
+      "kind": "must",
+      "rule": "If you name a formation shape (e.g. 3-2-3), the stated player count for that side must equal the shape's digit sum.",
+      "because": "U12 review, 2026-08-26: designer flagged \"6 defending players\" stated right next to \"a matching 3-2-3 shape\" (3-2-3 sums to 8, not 6).",
+      "source": "human",
+      "scope": {},
+      "seen": 0,
+      "helped": 1,
+      "failed": 0,
+      "createdAt": "2026-08-26T16:58:12.961Z",
+      "updatedAt": "2026-08-26T17:04:53.850Z"
     }
   ]
 }

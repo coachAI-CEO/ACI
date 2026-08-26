@@ -196,130 +196,6 @@
     ],
     "u9-d-open-teammate": [
       {
-        "at": "2026-08-26T16:13:34.852Z",
-        "verdict": "fail",
-        "snapshot": {
-          "title": "Keeping Possession and Finding Open Teammates in the Middle of the Field",
-          "drills": [
-            {
-              "type": "WARMUP",
-              "title": "Passing Around the Circle to Keep Possession",
-              "area": "12x45",
-              "players": 5,
-              "scoring": "Attackers get one point for every five completed passes in a row",
-              "constraints": [
-                "Attackers must stay on their feet and cannot use hands",
-                "The defender in the middle must stay inside the grid at all times"
-              ]
-            },
-            {
-              "type": "TECHNICAL",
-              "title": "Passing Through Gates to Find Open Space",
-              "area": "16x45",
-              "players": 4,
-              "scoring": "Count how many successful passes through gates partners can make in two minutes",
-              "constraints": [
-                "Players must use the inside of their foot to pass the ball accurately",
-                "Receiving players must take at least one touch to control before pass…"
-              ]
-            },
-            {
-              "type": "TACTICAL",
-              "title": "Building Up Through the Middle with Good Support Angles",
-              "area": "16x45",
-              "players": 8,
-              "scoring": "Attackers earn one point for completing six passes, and three points for passing through …",
-              "constraints": [
-                "Players cannot stand still; everyone must adjust their position when …",
-                "No player is allowed to kick the ball out of bounds intentionally"
-              ]
-            },
-            {
-              "type": "CONDITIONED_GAME",
-              "title": "Possession Scrimmage with Scoring Gates",
-              "area": "16x45",
-              "players": 8,
-              "scoring": "Passing through a gate after four connected passes is worth two points; standard goals ar…",
-              "constraints": [
-                "Players must keep the ball within the marked cone boundaries",
-                "Goals only count if the attacking team completed at least four passes…"
-              ]
-            },
-            {
-              "type": "COOLDOWN",
-              "title": "Team Debrief and Light Stretching",
-              "area": "10x10",
-              "players": 0,
-              "scoring": "None",
-              "constraints": [
-                "Players must sit quietly and listen while their teammates or coach ar…"
-              ]
-            }
-          ]
-        }
-      },
-      {
-        "at": "2026-08-26T16:18:11.789Z",
-        "verdict": "fail",
-        "snapshot": {
-          "title": "Keeping Possession by Giving Teammates Open Passing Angles in the Middle",
-          "drills": [
-            {
-              "type": "WARMUP",
-              "title": "Passing Grid and Movement Warmup",
-              "area": "15x15",
-              "players": 6,
-              "scoring": "Attackers earn one point for every five completed passes in a row without the defenders t…",
-              "constraints": [
-                "Outside players must stay on their assigned side of the grid lines.",
-                "Defenders must stay inside the square at all times."
-              ]
-            },
-            {
-              "type": "TECHNICAL",
-              "title": "Passing Triangle and Body Shape Practice",
-              "area": "14x14",
-              "players": 4,
-              "scoring": "Count how many times the group completes the full triangle passing circuit without losing…",
-              "constraints": [
-                "Players must use the foot furthest from the incoming ball to receive …",
-                "Passes must stay rolling smoothly along the grass."
-              ]
-            },
-            {
-              "type": "TACTICAL",
-              "title": "Finding Open Passing Angles to Keep Possession in the Middle",
-              "area": "16x45",
-              "players": 6,
-              "scoring": "Attackers earn one point every time they complete five passes in a row without losing pos…",
-              "constraints": [
-                "Attackers must not stand directly behind each other in a straight lin…",
-                "Defenders are not allowed to tackle from behind."
-              ]
-            },
-            {
-              "type": "CONDITIONED_GAME",
-              "title": "Small-Sided Possession Game with Mini-Goal Scoring Gates",
-              "area": "16x45",
-              "players": 10,
-              "scoring": "Teams earn one point for completing three passes and then passing the ball cleanly throug…",
-              "constraints": [
-                "Players cannot score through a gate unless their team has completed a…",
-                "Defenders must give the player taking a sideline restart three yards …"
-              ]
-            },
-            {
-              "type": "COOLDOWN",
-              "title": "Coach Debrief and Light Recovery Walk",
-              "area": "15x15",
-              "players": 0,
-              "scoring": "None.",
-              "constraints": []
-            }
-          ]
-        }
-      },
-      {
         "at": "2026-08-26T16:47:41.851Z",
         "verdict": "fail",
         "snapshot": {
@@ -382,72 +258,136 @@
             }
           ]
         }
-      }
-    ],
-    "u11-d-support-nearby": [
+      },
       {
-        "at": "2026-08-26T16:14:19.459Z",
+        "at": "2026-08-26T17:01:40.401Z",
         "verdict": "fail",
         "snapshot": {
-          "title": "Keeping Possession and Connecting Passes in the Middle of the Field",
+          "title": "Building Confidence and Support Angles in the Middle",
           "drills": [
             {
               "type": "WARMUP",
-              "title": "Passing Activation and Movement in Pairs",
-              "area": "20x20",
-              "players": 8,
-              "scoring": "Pairs count how many clean passes they can complete in two minutes without dropping the b…",
+              "title": "Passing Triangle Activation and Movement",
+              "area": "12x12",
+              "players": 5,
+              "scoring": "Attackers earn one point every time they complete five passes in a row without a mistake",
               "constraints": [
-                "Players must use the inside of their foot to pass and receive.",
-                "No stationary passing allowed -- everyone must keep moving."
+                "Players must use the inside of their foot when passing to a teammate",
+                "The defender must stay on their feet and cannot slide tackle"
               ]
             },
             {
               "type": "TECHNICAL",
-              "title": "Passing Triangles and Receiving Across the Middle",
-              "area": "25x30",
-              "players": 6,
-              "scoring": "Each group counts how many full trips around the triangle they can complete without losin…",
+              "title": "Passing Gates and Body Shape Practice",
+              "area": "14x14",
+              "players": 4,
+              "scoring": "Each pair earns one point for every clean pass that goes through any gate",
               "constraints": [
-                "Players must check their shoulder with a head turn before receiving e…",
-                "Receiving players must use their back foot to control the ball toward…"
+                "Players must receive the ball across their body before passing it back",
+                "Passes must stay on the ground at all times"
               ]
             },
             {
               "type": "TACTICAL",
-              "title": "Passing Around Defenders in the Central Channel",
-              "area": "35x30",
-              "players": 8,
-              "scoring": "Attackers earn one point for every five consecutive successful passes they string togethe…",
+              "title": "Finding Open Passing Angles to Keep Possession in the Middle",
+              "area": "35x16",
+              "players": 6,
+              "scoring": "Attackers earn one point every time they complete six passes in a row without losing the …",
               "constraints": [
-                "Defenders cannot tackle the ball carrier from behind; they must wait …",
-                "Attacking players stationed on the outside lines must keep one foot o…"
+                "Attackers must not stand still and must keep adjusting their position…",
+                "Defenders must work together and cannot leave the grid boundaries"
               ]
             },
             {
               "type": "CONDITIONED_GAME",
-              "title": "Possession Scrimmage with Mini-Goals and One Goalkeeper",
-              "area": "40x55",
-              "players": 17,
-              "scoring": "Passing through mini-goals equals 1 point; scoring past the goalkeeper in the full-size g…",
+              "title": "Small-Sided Possession Scrimmage with Mini-Goals",
+              "area": "45x16",
+              "players": 8,
+              "scoring": "Teams earn one point for passing through a mini-goal, and three bonus points if they comp…",
               "constraints": [
-                "Players must complete at least three passes before they are allowed t…",
-                "No player is allowed to stand inside the goal crease area waiting for…"
+                "Players cannot score unless their team completes at least two passes …",
+                "Defenders must give the ball carrier room to pass and cannot crowd th…"
               ]
             },
             {
               "type": "COOLDOWN",
-              "title": "Team Debrief and Light Stretching",
-              "area": "20x20",
+              "title": "Team Debrief and Light Recovery",
+              "area": "10x10",
               "players": 0,
-              "scoring": "None",
+              "scoring": "No scoring or competition during the cooldown",
               "constraints": [
-                "Players must listen quietly while teammates and the coach are speakin…"
+                "Players must sit or stand quietly while the coach is speaking",
+                "Everyone must help pack up at least one piece of equipment"
               ]
             }
           ]
         }
       },
+      {
+        "at": "2026-08-26T17:48:13.781Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Keeping Possession and Finding Open Teammates in the Middle Third",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Four-Corner Possession Keep-Away",
+              "area": "40x15",
+              "players": 12,
+              "scoring": "Attackers earn one point for every five completed passes in a row without the defenders t…",
+              "constraints": [
+                "Players must keep their passes on the ground so teammates can control…",
+                "Defenders are not allowed to tackle aggressively or slide on the gras…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Passing Triangles and Body Shape Practice",
+              "area": "15x25",
+              "players": 6,
+              "scoring": "Count how many successful triangle rotations each group can complete without the ball sto…",
+              "constraints": [
+                "Players must use the foot furthest away from the incoming ball to rec…",
+                "No player is allowed to stand directly behind a cone blocking their t…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Middle-Third Passing and Support Angles Game",
+              "area": "45x16",
+              "players": 10,
+              "scoring": "Attackers earn one point every time they successfully pass the ball from one end zone to …",
+              "constraints": [
+                "Attackers must complete at least three passes in the middle grid befo…",
+                "Defenders cannot enter the end zones until an attacker has successful…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Middle-Third Mini-Goal Possession Match",
+              "area": "45x16",
+              "players": 12,
+              "scoring": "Normal goals count for 1 point, but any goal scored after five consecutive passes counts …",
+              "constraints": [
+                "Players cannot score directly from inside their own defensive half of…",
+                "Defenders must give the ball carrier space and cannot crowd within tw…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Team Debrief and Wind-Down",
+              "area": "15x15",
+              "players": 0,
+              "scoring": "Non-scoring reflective wind-down.",
+              "constraints": [
+                "Players must remain seated or standing calmly while listening to the …"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "u11-d-support-nearby": [
       {
         "at": "2026-08-26T16:19:21.663Z",
         "verdict": "fail",
@@ -572,72 +512,73 @@
             }
           ]
         }
-      }
-    ],
-    "u12-c-around-press": [
+      },
       {
-        "at": "2026-08-26T16:15:11.622Z",
-        "verdict": "fail",
+        "at": "2026-08-26T17:03:43.922Z",
+        "verdict": "proud",
         "snapshot": {
-          "title": "Possession-Based Attacking Session - Breaking Press Triggers",
+          "title": "Middle-Third Combination Play and Ball Security",
           "drills": [
             {
               "type": "WARMUP",
-              "title": "Possession Triangle Activation and Support Angles",
-              "area": "20x20",
-              "players": 8,
-              "scoring": "Attackers earn 1 point for every completed sequence of 5 consecutive passes.",
+              "title": "Passing Pairs and Moving Together",
+              "area": "15x15",
+              "players": 5,
+              "scoring": "Count how many clean passes your group can complete in a row without losing control",
               "constraints": [
-                "Maximum 2 touches per player to encourage quick decisions.",
-                "Passes must remain on the ground to maintain ball security."
+                "Keep the ball moving at a steady pace",
+                "Use both feet when passing and receiving"
               ]
             },
             {
               "type": "TECHNICAL",
-              "title": "Passing Combination and Receiving Across Channels",
-              "area": "25x15",
-              "players": 6,
-              "scoring": "Attackers score 1 point for successfully connecting a 4-pass combination and reaching the…",
+              "title": "Passing Gates and Quick Give-and-Gos",
+              "area": "25x20",
+              "players": 5,
+              "scoring": "Each successful pass through a gate that is cleanly received on the other side counts as …",
               "constraints": [
-                "Maximum 3 touches per player inside the central channel.",
-                "All passes must remain below head height."
+                "Passes must stay on the ground through the gates",
+                "Receive the ball across your body before making the return pass"
               ]
             },
             {
               "type": "TACTICAL",
-              "title": "Breaking Press Triggers in the Defensive Third",
-              "area": "40x55",
-              "players": 16,
-              "scoring": "Attackers earn 1 point for breaking the press into the midfield zone, and 3 points for sc…",
+              "title": "Middle-Zone Passing Combinations and Ball Security",
+              "area": "35x40",
+              "players": 12,
+              "scoring": "Attackers earn one point for completing five passes in a row, and two points for passing …",
               "constraints": [
-                "All players must stay within their assigned tactical zones during the…",
-                "The goalkeeper must play within 4 seconds of securing the ball."
+                "Attackers must use at least three different players before trying to …",
+                "Players must stay spread out and avoid bunching up around the ball"
               ]
             },
             {
               "type": "CONDITIONED_GAME",
-              "title": "Conditioned Game: Breaking Press Triggers in Possession",
+              "title": "Possession Scrimmage with Gate Scoring",
               "area": "40x55",
               "players": 16,
-              "scoring": "Standard goals scored in the full-size goal are worth 1 point. Goals resulting from break…",
+              "scoring": "Goals scored after passing through a middle gate are worth 3 points; normal goals are wor…",
               "constraints": [
-                "Players must complete at least 3 passes in the defensive third before…",
-                "Maximum 3 touches per player inside the defensive third zone."
+                "Your team must complete at least three passes in the middle zone befo…",
+                "Every outfield player must touch the ball at least once during an att…"
               ]
             },
             {
               "type": "COOLDOWN",
-              "title": "Debrief and Tactical Wind-Down",
+              "title": "Review and Cool Down",
               "area": "20x20",
               "players": 0,
               "scoring": "None",
               "constraints": [
-                "Players must maintain light physical movement during the discussion."
+                "Walk or jog slowly",
+                "Listen quietly while teammates share their thoughts"
               ]
             }
           ]
         }
-      },
+      }
+    ],
+    "u12-c-around-press": [
       {
         "at": "2026-08-26T16:20:31.640Z",
         "verdict": "fail",
@@ -761,6 +702,69 @@
               "constraints": [
                 "Players must maintain a relaxed recovery pace during jogging.",
                 "Active listening during coach debrief."
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "at": "2026-08-26T17:04:53.828Z",
+        "verdict": "proud",
+        "snapshot": {
+          "title": "Possession-Based Attacking Session - Breaking Press Triggers",
+          "drills": [
+            {
+              "type": "WARMUP",
+              "title": "Defensive Third Triangle Activation",
+              "area": "20x15",
+              "players": 5,
+              "scoring": "Attackers earn 1 point for every 6 consecutive completed passes without a defensive touch.",
+              "constraints": [
+                "Maximum two touches per player for all outfield participants.",
+                "Defender must remain inside the central third until the ball enters t…"
+              ]
+            },
+            {
+              "type": "TECHNICAL",
+              "title": "Receiving Under Pressure and First Touch",
+              "area": "25x20",
+              "players": 7,
+              "scoring": "Attackers earn 1 point for successfully playing out to the opposite baseline player under…",
+              "constraints": [
+                "First touch must direct the ball laterally or forward away from the o…",
+                "Receiving players must check their shoulder prior to receiving the pa…"
+              ]
+            },
+            {
+              "type": "TACTICAL",
+              "title": "Breaking Press Triggers in the Defensive Third",
+              "area": "40x55",
+              "players": 14,
+              "scoring": "Attackers earn 2 points for successfully breaking the press and scoring in the full-size …",
+              "constraints": [
+                "Attackers must complete at least 3 passes in the defensive third befo…",
+                "Defenders cannot press until the first pass is received by the wide f…"
+              ]
+            },
+            {
+              "type": "CONDITIONED_GAME",
+              "title": "Conditioned Game: Breaking Press Triggers",
+              "area": "40x55",
+              "players": 16,
+              "scoring": "Goals scored normally in the full-size goal are worth 1 point; goals scored immediately f…",
+              "constraints": [
+                "Goals only count if every defensive third outfield player touches the…",
+                "Defending team must maintain their defensive block until the ball cro…"
+              ]
+            },
+            {
+              "type": "COOLDOWN",
+              "title": "Tactical Debrief and Wind-Down",
+              "area": "20x20",
+              "players": 0,
+              "scoring": "None",
+              "constraints": [
+                "Players must maintain light physical movement while participating in …"
               ]
             }
           ]
