@@ -7,7 +7,7 @@ import { SessionPromptInput } from "../prompts/session";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
-import { enforceDiagramGoalAvailability } from "./diagram-goals";
+import { enforceDiagramGoalAvailability, resolveDiagramGoalsAvailable } from "./diagram-goals";
 import { generateDrillDiagramSvg, omitDiagramSvgFromDrill } from "./drill-diagram-svg";
 import { isWarmupPicture } from "../data/field-dimensions";
 import { resolveSessionClubId } from "./club-philosophy";
@@ -291,7 +291,11 @@ async function generateSingleProgressiveSession(
           const formatLabel = enforceConditionedGameFormatDiagram(drill, input);
           if (formatLabel) conditionedGameFormatLabel = formatLabel;
           enforceDiagramPlayerLimit(drill, input.numbersMax);
-          enforceDiagramGoalAvailability(drill, input);
+          enforceDiagramGoalAvailability(drill, {
+            ...input,
+            goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+            drillType: drill.drillType,
+          });
           normalizeGoalkeeperPositions(drill.diagram);
           applyCoachLevelDiagramProfile(drill, input.coachLevel);
         }
@@ -502,7 +506,7 @@ export async function generateProgressiveSessionSeries(
               title: drill.title || "Drill",
               json: {
                 ...drill,
-                goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (baseInput.goalsAvailable ?? drill.goalsAvailable ?? 0),
+                goalsAvailable: resolveDiagramGoalsAvailable(drill, baseInput),
               },
               drillType: drill.drillType || "TECHNICAL",
               durationMin: drill.durationMin ?? baseInput.durationMin ?? 25,
