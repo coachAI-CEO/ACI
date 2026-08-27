@@ -26,7 +26,7 @@ import {
 } from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
-import { getActivePriorityForCurrentWeek } from "./training-priority";
+import { getActivePriorityForCurrentWeek, resolveTrainingPriorityMatchForTopic } from "./training-priority";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -1160,24 +1160,13 @@ export async function generateAndReviewSession(
   // toward that team's adherence tracking and future recommendation
   // scoring); a mismatch surfaces a non-blocking deviationWarning instead
   // of failing the request -- enforcement stays a DOC/coach conversation,
-  // not a system gate.
-  let targetSubprincipleId: string | undefined;
-  let trainingPriorityIdForSession: string | undefined;
-  let deviationWarning: { assignedTrigger: string; providedTopic: string | null } | null = null;
-
-  if (input.teamId) {
-    const activePriority = await getActivePriorityForCurrentWeek(input.teamId);
-    if (activePriority) {
-      const providedTopic = (input.topic || "").trim();
-      const assignedTrigger = activePriority.subprinciple.trigger.trim();
-      if (providedTopic && providedTopic.toLowerCase() === assignedTrigger.toLowerCase()) {
-        targetSubprincipleId = activePriority.subprinciple.id;
-        trainingPriorityIdForSession = activePriority.id;
-      } else {
-        deviationWarning = { assignedTrigger, providedTopic: providedTopic || null };
-      }
-    }
-  }
+  // not a system gate. See resolveTrainingPriorityMatchForTopic for the
+  // (independently unit-tested) decision logic.
+  const activePriority = input.teamId ? await getActivePriorityForCurrentWeek(input.teamId) : null;
+  const priorityMatch = resolveTrainingPriorityMatchForTopic(input.topic, activePriority);
+  const targetSubprincipleId = priorityMatch.targetSubprincipleId;
+  const trainingPriorityIdForSession = priorityMatch.trainingPriorityId;
+  const deviationWarning = priorityMatch.deviationWarning;
 
   // Persist session with all fields
   const created = await prisma.session.create({

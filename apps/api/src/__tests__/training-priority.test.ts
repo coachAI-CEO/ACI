@@ -19,6 +19,7 @@ import {
   getTrainingPriorityForClub,
   listTrainingPrioritiesForTeam,
   resolveTrainingPriority,
+  resolveTrainingPriorityMatchForTopic,
   SubprincipleNotEligibleError,
   TrainingPriorityError,
 } from "../services/training-priority";
@@ -283,5 +284,59 @@ describe("getActivePriorityForCurrentWeek", () => {
 
     expect(result).toBeNull();
     expect(mockPriorityFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveTrainingPriorityMatchForTopic", () => {
+  const activePriority = {
+    id: "priority-1",
+    rationale: "test",
+    subprinciple: {
+      id: "sub-1",
+      trigger: "Opponent presses out wide and isolates our fullback",
+      response: "Play through the pivot",
+      antiPattern: null,
+      principle: { moment: "ATTACKING_ORGANIZATION" },
+    },
+  } as any;
+
+  test("no active priority -> no tag, no warning", () => {
+    const result = resolveTrainingPriorityMatchForTopic("Anything the coach typed", null);
+    expect(result).toEqual({
+      targetSubprincipleId: undefined,
+      trainingPriorityId: undefined,
+      deviationWarning: null,
+    });
+  });
+
+  test("exact match (case-insensitive) tags the session, no warning", () => {
+    const result = resolveTrainingPriorityMatchForTopic(
+      "opponent presses out wide and isolates our fullback",
+      activePriority
+    );
+    expect(result.targetSubprincipleId).toBe("sub-1");
+    expect(result.trainingPriorityId).toBe("priority-1");
+    expect(result.deviationWarning).toBeNull();
+  });
+
+  test("mismatched topic -> no tag, returns deviationWarning with both values", () => {
+    const result = resolveTrainingPriorityMatchForTopic("Finishing in the box", activePriority);
+    expect(result.targetSubprincipleId).toBeUndefined();
+    expect(result.trainingPriorityId).toBeUndefined();
+    expect(result.deviationWarning).toEqual({
+      assignedTrigger: "Opponent presses out wide and isolates our fullback",
+      providedTopic: "Finishing in the box",
+    });
+  });
+
+  // Regression guard: an empty/missing topic must still surface the warning
+  // (with providedTopic: null) rather than being silently treated as a match.
+  test("empty topic -> no tag, deviationWarning has providedTopic: null", () => {
+    const result = resolveTrainingPriorityMatchForTopic("", activePriority);
+    expect(result.targetSubprincipleId).toBeUndefined();
+    expect(result.deviationWarning).toEqual({
+      assignedTrigger: "Opponent presses out wide and isolates our fullback",
+      providedTopic: null,
+    });
   });
 });

@@ -181,6 +181,47 @@ export async function getActivePriorityForCurrentWeek(teamId: string) {
   return getActiveTrainingPriorityForTeamWeek(teamId, weekStart);
 }
 
+export type TrainingPriorityMatch = {
+  targetSubprincipleId: string | undefined;
+  trainingPriorityId: string | undefined;
+  deviationWarning: { assignedTrigger: string; providedTopic: string | null } | null;
+};
+
+/**
+ * Pure decision logic for generateAndReviewSession: given the topic a coach
+ * generated with and the team's active TrainingPriority (if any), decide
+ * whether to tag the new Session or return a deviationWarning instead.
+ * Extracted so this exact-match/mismatch branch is unit-testable without
+ * pulling in session.ts's full gemini/diagram/description-enrichment
+ * dependency chain -- session.ts should only need to call this and act on
+ * the result.
+ */
+export function resolveTrainingPriorityMatchForTopic(
+  topic: string | undefined | null,
+  activePriority: NonNullable<Awaited<ReturnType<typeof getActiveTrainingPriorityForTeamWeek>>> | null
+): TrainingPriorityMatch {
+  if (!activePriority) {
+    return { targetSubprincipleId: undefined, trainingPriorityId: undefined, deviationWarning: null };
+  }
+
+  const providedTopic = (topic || "").trim();
+  const assignedTrigger = activePriority.subprinciple.trigger.trim();
+
+  if (providedTopic && providedTopic.toLowerCase() === assignedTrigger.toLowerCase()) {
+    return {
+      targetSubprincipleId: activePriority.subprinciple.id,
+      trainingPriorityId: activePriority.id,
+      deviationWarning: null,
+    };
+  }
+
+  return {
+    targetSubprincipleId: undefined,
+    trainingPriorityId: undefined,
+    deviationWarning: { assignedTrigger, providedTopic: providedTopic || null },
+  };
+}
+
 /**
  * Close the loop on a TrainingPriority: record whether the team actually
  * improved (RARELY/SOMETIMES/CONSISTENTLY) after training on it, and mark it
