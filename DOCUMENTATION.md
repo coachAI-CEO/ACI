@@ -13,7 +13,7 @@ This file is the engineering map of what is in the repo now. It is not a January
 
 ## Overview
 
-TacticalEdge is a soccer coaching OS. Coaches run a season from **Coach Center**, generate drills and sessions with tactical diagrams, teach on **Tactical Board**, and export session PDFs. Directors run philosophy and staff oversight from the **DOC Console**.
+TacticalEdge is a soccer coaching OS. Coaches run a season from **Coach Center**, generate drills and sessions with tactical diagrams, teach on **Tactical Board**, and export session PDFs. Directors of Coaching author the club game model (principles, subprinciples, age-group defaults), assign a weekly training priority to each team, and track coach adherence from the **DOC Console**. A React Native app (`apps/mobile`, Expo) mirrors the board editor and Coach Center; it is in active development, not yet a store release.
 
 **Stack**
 
@@ -31,16 +31,18 @@ TacticalEdge is a soccer coaching OS. Coaches run a season from **Coach Center**
 
 ```
 aci-features/
-├── apps/api/          Express API (generation, vault, Coach Center, DOC Hub, boards, PDFs)
+├── apps/api/          Express API (generation, vault, Coach Center, DOC Hub, game model, boards, PDFs)
 ├── apps/web/          Next.js app (marketing + authenticated product)
-├── docs/              Board design contract, mobile plan (mobile is not shipped)
+├── apps/mobile/       Expo / React Native app (board editor + Coach Center; in development)
+├── packages/shared/   @aci/shared — board libs (WebDiagramV1, formations, setup phases)
+├── docs/              Board design contract, mobile plan + inventories, game-model template
 ├── pitch-deck-*.html  Audience decks (source of truth is the product report)
 └── CLAUDE.md          Agent routing
 ```
 
 Data flow: browser → Next.js (`/api/*` proxies) → Express → Gemini / Prisma → PostgreSQL.
 
-Mounted API routers (`apps/api/src/app.ts`): auth, drills, sessions, vault, favorites, calendar, billing, video analysis, DOC Hub, Coach Center, boards, diagram SVG, admin, player plans, skill focus.
+Mounted API routers (`apps/api/src/app.ts`): auth, drills, sessions, vault, favorites, calendar, billing, video analysis, DOC Hub, game model (principles / training priorities / adherence / age-group defaults), Coach Center, boards, diagram SVG, admin, player plans, skill focus.
 
 ---
 
@@ -56,7 +58,7 @@ Mounted API routers (`apps/api/src/app.ts`): auth, drills, sessions, vault, favo
 | Calendar | `/calendar` | Personal schedule |
 | Tactical Board | `/boards`, `/board/[id]` | Flag `tacticalBoardV1` (on by default) |
 | Video analysis | `/video-analysis` | Beta |
-| DOC Console | `/doc-hub` | DOC / section director / super admin |
+| DOC Console | `/doc-hub` | DOC / section director / super admin. Own sidebar: **Game Model** (Philosophy, Principles & Subprinciples, Age Group Defaults) · **Coaching Ops** (Attention, Coaches, Teams, Training Priorities, Adherence, Calendar) |
 | Player plans | `/player-plans` | Team session → solo homework PDF |
 | Admin | `/admin/*` | Platform staff |
 
@@ -72,7 +74,12 @@ Logged-in sidebar order: Coach Center → Session Builder → Vault → Favorite
 
 **Tactical Board** — live pitch, drawing, formation × phase chassis, principles library (v2 JSON), AI chat, session fork, PDF import. Design contract: `docs/tactical-board-phase-positioning.md`.
 
-**DOC Console** — club philosophy, coach usage, Club Attention, teams, calendar assign / auto-populate / reassign. Phases 1–3 are live. Phase 4 (alerts, topic board, AI monitoring) is still deferred. The August 11 file `DOC_HUB_HANDOFF.md` is a Phase 0 snapshot, not current status.
+**DOC Console** — the club's game-model workspace plus coaching oversight.
+- *Game model*: one club philosophy / DNA, then a structured library of **principles → subprinciples** (trigger / response / what-not-to-do) across the four moments of the game. **Age Group Defaults** hold per-club maturity notes and a readiness ceiling (formation complexity per age, sub-banded U13–14 vs U15–18) so U13–U18 stop generating identically. The structured model feeds a chained generation pipeline.
+- *Coaching Ops*: **Training Priorities** — the DOC assigns a team's subprinciple for the week and it lands in that team's Coach Center curriculum; coaches see it read-only. **Adherence** ranks coaches on how closely their sessions track the assigned priorities, with advisory deviation warnings. Plus Club Attention, coach usage, team catalog, and calendar assign / auto-populate / reassign.
+- Role-gated (DOC / section director / super admin). `DOC_HUB_HANDOFF.md` is an August 11 Phase 0 snapshot, not current status.
+
+**Mobile app** (`apps/mobile`) — Expo / React Native. Tactical board native editor (list, create, read-only fidelity, native editor, frame timeline + playback, AI chat with photo attachment, device-driven pitch orientation) and Coach Center. Shares `@aci/shared` board libs with web. In development; not a store release. Changelog: `CHANGELOG.md`.
 
 **Vault, calendar, player plans, video analysis (beta)** — still present. Video is not the newest flagship.
 
@@ -111,7 +118,7 @@ Then `/login` and `/coach-center`, not only `/demo/drill`.
 | Path | What it is |
 |---|---|
 | `apps/api/*.md` | Dec 2025 prompt/QA scratch. Paths still mention `/Users/macbook/Projects/aci`. |
-| `docs/mobile/` | Unbuilt React Native plan. |
+| `docs/mobile/`, `docs/*_MOBILE_*.md` | Planning + inventory for `apps/mobile` (the app itself is real and in the repo). |
 | `apps/web/README.md` | create-next-app boilerplate. |
 | `TacticalEdge_*Pitch*.html` | Older 2 MB archive decks. Use `pitch-deck-*.html`. |
 
@@ -121,7 +128,9 @@ Then `/login` and `/coach-center`, not only `/demo/drill`.
 
 - Product + UI brief: `TACTICALEDGE_UI_PRODUCT_REPORT.md`
 - Board principles: `docs/tactical-board/formation-principles-v2.md`
+- Game-model authoring: `docs/game-model-template.md` (worked example: `docs/game-models/rocklin-fc.md`)
 - Video MVP spec (historical; feature is beta): `SHORT_VIDEO_ANALYSIS_FEATURE_SPEC.md`
+- Release process + version: `docs/release-process.md`, `CHANGELOG.md`, `VERSION`
 
 ---
 

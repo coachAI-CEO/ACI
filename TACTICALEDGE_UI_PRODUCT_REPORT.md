@@ -1,10 +1,10 @@
 # TacticalEdge Product + UI Report (for landing page and pitch decks)
 
-**Last updated:** 27 August 2026  
+**Last updated:** 27 August 2026 (rev 2 — structured game model + mobile)  
 **Audience:** landing-page specialist, deck editor, anyone selling the product  
 **Source of truth for:** `pitch-deck.html`, `pitch-deck-coach.html`, `pitch-deck-club.html`, `pitch-deck-tech.html`, `apps/web/src/app/landing/page.jsx`
 
-Do not copy older API scratch notes under `apps/api/*.md` or the unbuilt mobile plan in `docs/mobile/`. Those are not product messaging.
+Do not copy older API scratch notes under `apps/api/*.md`. The mobile app (`apps/mobile`) is real and in the repo but not a store release — see "Mobile" below before selling it.
 
 ---
 
@@ -13,7 +13,7 @@ Do not copy older API scratch notes under `apps/api/*.md` or the unbuilt mobile 
 **Product name:** TacticalEdge (legacy label “ACI Training Platform” still appears in a few internal docs)
 
 **What it is:**
-A soccer coaching OS for youth and academy clubs. Coaches run a season from **Coach Center**. They generate age-appropriate drills and sessions with tactical diagrams. They teach on a live **Tactical Board**. Directors run philosophy and staff oversight from the **Director of Coaching (DOC) Console**.
+A soccer coaching OS for youth and academy clubs. Coaches run a season from **Coach Center**. They generate age-appropriate drills and sessions with tactical diagrams. They teach on a live **Tactical Board**. Directors of Coaching author the club game model and drive it into every coach's week from the **Director of Coaching (DOC) Console** — the DOC sets a weekly training priority per team, it lands on the coach's plan, and adherence is tracked.
 
 **Naming:** spell it **Director of Coaching (DOC) Console** on first mention in any surface, **DOC Console** after that. Do not use "Technical Director" or "TD" — that label is retired (archive decks `Tactical-Edge Club Pitch.html` and `TacticalEdge_Coach_Pitch_v2.html` still carry it; they are frozen, do not edit).
 
@@ -34,8 +34,10 @@ Turn club philosophy + this week’s theme + the next match into field-ready ses
 **Do not claim:**
 - A 7-day free trial on production. Signup is paused unless `TRIALS_ENABLED=true` (API) and `NEXT_PUBLIC_TRIALS_ENABLED=true` (web). Landing already says “View Plans.”
 - “Player Focus & Wellbeing.” That copy exists only on the old landing feature grid. There is no product behind it.
-- A shipped mobile app. `docs/mobile/` is a plan, not a release.
+- A downloadable / App Store mobile app. `apps/mobile` (Expo) is in active development — the board editor and Coach Center run on the phone, but it is not a public release. "Mobile companion, in development" is fair; "download the app" is not.
 - Video analysis as the newest flagship. It is live as **beta**. Coach Center, Tactical Board, and DOC Console shipped after it.
+
+**Mobile:** the Expo app mirrors the tactical board editor (list / create / native editor / frame timeline + playback / AI chat with photo) and Coach Center, sharing the `@aci/shared` board libs with web. Latest: `CHANGELOG.md` 1.12.0 "board editor parity". Sell it only as a companion that is coming, not a shipped download.
 
 ---
 
@@ -70,16 +72,29 @@ Live pitch with drawing tools, formation × phase chassis (7v7 / 9v9 / 11v11), p
 
 ### D. DOC Console (`/doc-hub`) — club leadership
 
-Role-gated (DOC, section director, super admin). Not a generic admin analytics page.
+Role-gated (DOC, section director, super admin). Not a generic admin analytics page. Its own sidebar, two groups:
+
+**Game Model**
 
 | Area | Route | What the director gets |
 |---|---|---|
 | Overview | `/doc-hub` | Coaches managed, weekly AI sessions, empty weeks, high-attention items |
-| Game Model | `/doc-hub/game-model` | Club philosophy / DNA, one game model per club |
+| Philosophy | `/doc-hub/game-model` | Club philosophy / DNA, one game model per club |
+| Principles & Subprinciples | `/doc-hub/principles` | The game model as a structured library: principles grouped by the four moments of the game, each with subprinciples (trigger / response / what-not-to-do). This is what the generator reads. |
+| Age Group Defaults | `/doc-hub/age-group-defaults` | Per-club maturity notes + a readiness ceiling (how much formation complexity each age can handle, sub-banded U13–14 vs U15–18) so U13–U18 stop generating identical sessions |
+
+**Coaching Ops**
+
+| Area | Route | What the director gets |
+|---|---|---|
 | Attention | `/doc-hub/attention` | Club Attention: who needs a look this week |
 | Coaches | `/doc-hub/coaches` | Usage snapshot |
 | Teams | `/doc-hub/teams` | Team catalog |
+| Training Priorities | `/doc-hub/training-priorities` | Assign a subprinciple to a team for the week; it flows into that team's Coach Center curriculum. Coaches see it read-only. List + resolve. |
+| Adherence | `/doc-hub/adherence` | Ranks coaches on how closely their sessions track the assigned priorities, with advisory deviation warnings |
 | Calendar | `/doc-hub/calendar` | Assign / auto-populate / reassign sessions onto coach calendars |
+
+**The club loop to sell:** DOC authors the game model → assigns this week's priority per team → it lands on each coach's plan → sessions get generated against it → adherence shows who's on model. One philosophy, enforced, not just published.
 
 ### E. Content and planning
 
@@ -124,8 +139,11 @@ Coach Center and DOC Console use their own sidebars. Public marketing routes (`/
 **Typical director week:**
 1. Open DOC Console
 2. Check Attention + empty weeks
-3. Confirm philosophy is on the club game model
-4. Assign or reassign calendar coverage
+3. Assign this week's training priority to each team (a subprinciple from the game model)
+4. Scan Adherence — who drifted off the assigned priority
+5. Assign or reassign calendar coverage
+
+The game model itself (principles, subprinciples, age-group defaults) is a one-time director-level authoring pass, then edited as the club evolves — not a weekly task.
 
 ---
 
@@ -144,8 +162,10 @@ Keep: direct, coaching-oriented, time-to-field.
 
 Headline directions that still work:
 - Coaches: “Built around how you actually coach.”
-- Clubs: “One philosophy. Every coach. Every age group.”
+- Clubs: “One philosophy. Every coach. Every age group.” — now literally true: the DOC assigns it, coaches run it, adherence proves it.
 - General: “Session planning built for serious coaches.”
+
+Club angle to push (new since the game-model work): most platforms let a director *publish* a philosophy. TacticalEdge *routes* it — the weekly priority lands on the coach's plan and the session is generated against it. That is the difference between a PDF nobody opens and a game model that actually shows up on the field.
 
 Supporting line names the season workspace, not only generation (this is the live landing copy):
 
@@ -175,7 +195,10 @@ The plan bullets still read generically and predate the flagship products. They 
 - AI: Google Gemini for generation, chat parse, QA, board talk
 - Session PDF: `pdf-export.ts` full runsheet + compact Coach’s Sheet; diagrams via stored SVG rasterization (`pdf-diagram-image.ts`, `fit-diagram-viewbox.ts`)
 - Board layout: TypeScript chassis + principles JSON (`apps/api/src/data/formation-principles-v2.json`), not raw LLM coordinates for F1–F3 play-out
-- Generation still uses structured constraints, QA grader, fixer, coach-level language transforms
+- Generation uses structured constraints, QA grader, fixer, coach-level language transforms
+- Structured game model: Prisma `Principle` / `Subprinciple` / `TrainingPriority` + a chained generation pipeline (the DOC's assigned priority is a real input to session generation, not a prompt suffix)
+- `@aci/shared` (`packages/shared`): board libs — `WebDiagramV1`, formations, setup phases — consumed by both `apps/web` and `apps/mobile`
+- Mobile: Expo / React Native (`apps/mobile`), same Render API
 
 ---
 
@@ -184,9 +207,9 @@ The plan bullets still read generically and predate the flagship products. They 
 | Deck | Keep | Change |
 |---|---|---|
 | `pitch-deck-coach.html` | Coach-level language, drill-as-runsheet, diagrams, 90-minute session, philosophy, coaching brief | Add Coach Center + Board + session PDF. Drop 7-day trial CTA. |
-| `pitch-deck-club.html` | One philosophy, 5-phase session, vault as club IP | Replace “Admin Analytics Dashboard” with DOC Console. Name Coach Center as the coach daily driver. Drop trial banner. |
-| `pitch-deck.html` | Problem, market, plans | Feature grid: Coach Center, Board, DOC Console. Business model is paid SaaS, not freemium, while trials are paused. |
-| `pitch-deck-tech.html` | QA, fixer, diagram validation, logging | Add session PDF rasterization + board chassis/principles. |
+| `pitch-deck-club.html` | One philosophy, 5-phase session, vault as club IP, DOC Console section | Add the **club loop** slide: DOC authors the game model (principles/subprinciples) → assigns a weekly training priority per team → it lands on each coach's plan → **Adherence** shows who's on model. Add **Age Group Defaults** (U13–U18 stop generating the same session). This is the strongest club story now — lead the DOC section with it. |
+| `pitch-deck.html` | Problem, market, plans, feature grid | Feature grid already has Coach Center / Board / DOC Console. Add one line to the DOC tile: "assign the weekly priority, track adherence". Business model is paid SaaS, not freemium, while trials are paused. |
+| `pitch-deck-tech.html` | QA, fixer, diagram validation, logging | Add session PDF rasterization, board chassis/principles, the **chained game-model generation pipeline** (Principle/Subprinciple → TrainingPriority → session), and `@aci/shared` (board libs shared web + Expo). |
 | `TacticalEdge_Coach_Pitch_v2.html` / `Tactical-Edge Club Pitch.html` | Archive | Do not edit. The four `pitch-deck-*.html` files are current. |
 
 ---
@@ -195,7 +218,11 @@ The plan bullets still read generically and predate the flagship products. They 
 
 - App nav: `apps/web/src/components/AppHeader.tsx`
 - Coach Center: `apps/web/src/app/coach-center/`
-- DOC Console: `apps/web/src/app/doc-hub/`
+- DOC Console: `apps/web/src/app/doc-hub/` (screens: `principles/`, `training-priorities/`, `adherence/`, `age-group-defaults/`, `game-model/`, `attention/`, `coaches/`, `teams/`, `calendar/`)
+- Game-model services: `apps/api/src/services/principles.ts`, `training-priority.ts`, `coach-adherence.ts`, `age-group-maturity.ts`, `game-model-readiness.ts`, `generate-from-priority.ts`
+- Game-model authoring template: `docs/game-model-template.md`
+- Shared board libs: `packages/shared` (`@aci/shared`)
+- Mobile app: `apps/mobile` (Expo); changelog `CHANGELOG.md`
 - Tactical Board list: `apps/web/src/app/boards/page.tsx`
 - Session PDF: `apps/api/src/services/pdf-export.ts`
 - Trials gate: `apps/web/src/lib/trials.ts`, `apps/api/src/config/trials.ts`
@@ -208,4 +235,4 @@ The plan bullets still read generically and predate the flagship products. They 
 
 ## 9) One-line summary
 
-TacticalEdge is a dark, tactical soccer coaching OS: Coach Center runs the season, Session Builder and the vault write the week, Tactical Board teaches the picture, and DOC Console keeps every coach on one club philosophy.
+TacticalEdge is a dark, tactical soccer coaching OS: Coach Center runs the season, Session Builder and the vault write the week, Tactical Board teaches the picture, and the DOC Console turns one club philosophy into the weekly priority on every coach's plan — with adherence to prove it landed.
