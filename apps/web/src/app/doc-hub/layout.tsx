@@ -11,10 +11,9 @@ import {
   ChevronRight,
   Shield,
   Trophy,
-  Layers,
   Target,
   BookOpen,
-  TrendingUp,
+  SlidersHorizontal,
   BarChart3,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
@@ -50,8 +49,7 @@ const NAV_BASE: NavItem[] = [
     items: [
       { label: "Philosophy", href: "/doc-hub/game-model", icon: Compass },
       { label: "Principles & Subprinciples", href: "/doc-hub/principles", icon: BookOpen },
-      { label: "Readiness Ladder", href: "/doc-hub/readiness-ladder", icon: TrendingUp },
-      { label: "Age Group Maturity", href: "/doc-hub/age-group-maturity", icon: Layers },
+      { label: "Age Group Defaults", href: "/doc-hub/age-group-defaults", icon: SlidersHorizontal },
     ],
   },
   {
@@ -75,8 +73,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model", "Philosophy"],
   "/doc-hub/principles": ["DOC Console", "Game Model", "Principles & Subprinciples"],
-  "/doc-hub/readiness-ladder": ["DOC Console", "Game Model", "Readiness Ladder"],
-  "/doc-hub/age-group-maturity": ["DOC Console", "Game Model", "Age Group Maturity"],
+  "/doc-hub/age-group-defaults": ["DOC Console", "Game Model", "Age Group Defaults"],
   "/doc-hub/training-priorities": ["DOC Console", "Coaching Ops", "Training Priorities"],
   "/doc-hub/adherence": ["DOC Console", "Coaching Ops", "Adherence"],
 };
