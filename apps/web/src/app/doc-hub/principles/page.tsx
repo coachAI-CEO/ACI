@@ -31,15 +31,12 @@ const MOMENT_LABEL: Record<string, string> = {
   ATTACKING_TRANSITION: "Attacking Transition",
 };
 
-function momentAnchor(moment: string) {
-  return `moment-${moment.toLowerCase().replace(/_/g, "-")}`;
-}
-
 export default function DocHubPrinciplesPage() {
   const { access, selectedClubId, selectedClub } = useDocHub();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [principles, setPrinciples] = useState<PrincipleWithSubprinciples[]>([]);
+  const [activeMoment, setActiveMoment] = useState<string | null>(null);
 
   const load = useCallback(async (clubId: string) => {
     setLoading(true);
@@ -48,7 +45,9 @@ export default function DocHubPrinciplesPage() {
       const res = await fetch(`/api/doc-hub/clubs/${clubId}/principles`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Failed to load the game model");
-      setPrinciples(data.principles || []);
+      const loaded: PrincipleWithSubprinciples[] = data.principles || [];
+      setPrinciples(loaded);
+      setActiveMoment((prev) => prev || loaded[0]?.moment || null);
     } catch (e: any) {
       setError(e?.message || "Failed to load the game model");
       setPrinciples([]);
@@ -76,6 +75,8 @@ export default function DocHubPrinciplesPage() {
       .map((moment) => ({ moment, principles: groups.get(moment)! }));
   }, [principles]);
 
+  const active = groupedByMoment.find((g) => g.moment === activeMoment) || groupedByMoment[0] || null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -101,82 +102,81 @@ export default function DocHubPrinciplesPage() {
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-slate-500">
-              {principles.length} principles &middot; {totalSubprinciples} subprinciples
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {groupedByMoment.map(({ moment }) => (
-                <a
-                  key={moment}
-                  href={`#${momentAnchor(moment)}`}
-                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300 hover:border-emerald-500/60 hover:text-emerald-300"
-                >
-                  {MOMENT_LABEL[moment] || moment}
-                </a>
-              ))}
-            </div>
-          </div>
+          <p className="text-xs text-slate-500">
+            {principles.length} principles &middot; {totalSubprinciples} subprinciples
+          </p>
 
-          <div className="space-y-10">
-            {groupedByMoment.map(({ moment, principles: momentPrinciples }) => (
-              <section key={moment} id={momentAnchor(moment)} className="scroll-mt-20">
-                <div className="mb-4 flex items-baseline gap-3 border-b border-slate-800 pb-3">
-                  <h2 className="text-lg font-semibold text-emerald-300">{MOMENT_LABEL[moment] || moment}</h2>
-                  <span className="text-xs text-slate-500">
-                    {momentPrinciples.length} principle{momentPrinciples.length === 1 ? "" : "s"} &middot;{" "}
+          <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-4">
+            {groupedByMoment.map(({ moment, principles: momentPrinciples }) => {
+              const isActive = moment === active?.moment;
+              return (
+                <button
+                  key={moment}
+                  type="button"
+                  onClick={() => setActiveMoment(moment)}
+                  className={`rounded-xl border px-4 py-2.5 text-left text-sm transition-colors ${
+                    isActive
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : "border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-600 hover:text-slate-100"
+                  }`}
+                >
+                  <span className="block font-medium">{MOMENT_LABEL[moment] || moment}</span>
+                  <span className={`block text-[11px] ${isActive ? "text-emerald-400/80" : "text-slate-500"}`}>
+                    {momentPrinciples.length} principles &middot;{" "}
                     {momentPrinciples.reduce((sum, p) => sum + p.subprinciples.length, 0)} subprinciples
                   </span>
-                </div>
-
-                <div className="space-y-5">
-                  {momentPrinciples.map((principle) => (
-                    <div key={principle.id} className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-5">
-                      <h3 className="text-base font-semibold text-slate-100">{principle.statement}</h3>
-
-                      <ul className="mt-4 space-y-4">
-                        {principle.subprinciples.map((sub) => (
-                          <li key={sub.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${READINESS_PILL[sub.readiness]}`}
-                            >
-                              {READINESS_LABEL[sub.readiness]}
-                            </span>
-
-                            <div className="mt-3 space-y-2.5">
-                              <p className="text-[15px] leading-relaxed text-slate-100">
-                                <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                                  Trigger
-                                </span>
-                                <br />
-                                {sub.trigger}
-                              </p>
-                              <p className="text-[15px] leading-relaxed text-slate-200">
-                                <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                                  Response
-                                </span>
-                                <br />
-                                {sub.response}
-                              </p>
-                              {sub.antiPattern ? (
-                                <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-sm leading-relaxed text-rose-200/90">
-                                  <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-rose-400/80">
-                                    Anti-pattern
-                                  </span>
-                                  <br />
-                                  {sub.antiPattern}
-                                </p>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
+                </button>
+              );
+            })}
           </div>
+
+          {active ? (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3" style={{ alignItems: "start" }}>
+              {active.principles.map((principle) => (
+                <div key={principle.id} className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-5">
+                  <h3 className="text-base font-semibold text-slate-100">{principle.statement}</h3>
+
+                  <ul className="mt-4 space-y-4">
+                    {principle.subprinciples.map((sub) => (
+                      <li key={sub.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${READINESS_PILL[sub.readiness]}`}
+                        >
+                          {READINESS_LABEL[sub.readiness]}
+                        </span>
+
+                        <div className="mt-3 space-y-2.5">
+                          <p className="text-[15px] leading-relaxed text-slate-100">
+                            <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                              Trigger
+                            </span>
+                            <br />
+                            {sub.trigger}
+                          </p>
+                          <p className="text-[15px] leading-relaxed text-slate-200">
+                            <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                              Response
+                            </span>
+                            <br />
+                            {sub.response}
+                          </p>
+                          {sub.antiPattern ? (
+                            <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-sm leading-relaxed text-rose-200/90">
+                              <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-rose-400/80">
+                                Anti-pattern
+                              </span>
+                              <br />
+                              {sub.antiPattern}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </>
       )}
     </div>
