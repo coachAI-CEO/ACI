@@ -316,42 +316,83 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
     stripMatchLaneZones(areaZones, safeZones, annotations);
   }
   trimToPictureBudget(players, drillType, fieldFormatValue, goals);
-  const laidOutBox = layoutBoxScene({
-    players,
-    goals,
-    drillType,
-    areaZones,
-    safeZones,
-    annotations,
-    formationAttacking,
-    formationDefending,
-  });
-  if (laidOutBox) {
-    arrows.length = 0;
-    stripMatchLaneZones(areaZones, safeZones, annotations);
+  const statedMatchup = parseStatedOutfieldMatchup(
+    drill.title,
+    json,
+    organization,
+    json.description,
+    drill
+  );
+  const homeOutfield = players.filter((player) => player.team === "home").length;
+  const awayOutfield = players.filter((player) => player.team === "away").length;
+  const outfieldTokens = homeOutfield + awayOutfield + players.filter((p) => p.team === "neutral").length;
+  const underfilledMatchup =
+    Boolean(statedMatchup) &&
+    (homeOutfield < (statedMatchup?.home || 0) || awayOutfield < (statedMatchup?.away || 0));
+  // Keep LLM positions when the roster is already complete. If the text
+  // says 8v8 but the model only drew 6v4, expand via the formation layout.
+  // But a "complete" roster whose positions are degenerate (every player in
+  // one lane / on one line) is not a usable picture -- re-lay it out.
+  const spread = (team: "home" | "away", axis: "x" | "y") => {
+    const vals = players.filter((p) => p.team === team).map((p) => p[axis]);
+    return vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : 100;
+  };
+  const degenerateInput =
+    spread("home", "x") < 6 ||
+    spread("home", "y") < 6 ||
+    (awayOutfield > 1 && (spread("away", "x") < 6 || spread("away", "y") < 6));
+  const preserveDrillLayout =
+    outfieldTokens >= 6 &&
+    !underfilledMatchup &&
+    !degenerateInput &&
+    !/CONDITIONED_GAME|FULL_GAME/i.test(drillType);
+  let laidOutBox = false;
+  let laidOutOneGoal = false;
+  let laidOutTwoGoal = false;
+  if (!preserveDrillLayout) {
+    laidOutBox = layoutBoxScene({
+      players,
+      goals,
+      drillType,
+      areaZones,
+      safeZones,
+      annotations,
+      formationAttacking,
+      formationDefending,
+    });
+    if (laidOutBox) {
+      arrows.length = 0;
+      stripMatchLaneZones(areaZones, safeZones, annotations);
+    }
+    laidOutOneGoal = layoutOneGoalScene({
+      players,
+      goals,
+      drillType,
+      fieldFormat: fieldFormatValue,
+      formationAttacking,
+      formationDefending,
+      homeTarget: statedMatchup?.home,
+      awayTarget: statedMatchup?.away,
+    });
+    if (laidOutOneGoal) arrows.length = 0;
+    const phase = stringOr(json.phase, stringOr(drill.phase, ""));
+    const zone = stringOr(json.zone, stringOr(drill.zone, ""));
+    laidOutTwoGoal = layoutTwoGoalScene({
+      players,
+      goals,
+      drillType,
+      fieldFormat: fieldFormatValue,
+      formationAttacking,
+      formationDefending,
+      phase,
+      zone,
+      homeTarget: statedMatchup?.home,
+      awayTarget: statedMatchup?.away,
+    });
+    if (laidOutTwoGoal) arrows.length = 0;
   }
-  const laidOutOneGoal = layoutOneGoalScene({
-    players,
-    goals,
-    drillType,
-    fieldFormat: fieldFormatValue,
-    formationAttacking,
-    formationDefending,
-  });
-  if (laidOutOneGoal) arrows.length = 0;
   const phase = stringOr(json.phase, stringOr(drill.phase, ""));
   const zone = stringOr(json.zone, stringOr(drill.zone, ""));
-  const laidOutTwoGoal = layoutTwoGoalScene({
-    players,
-    goals,
-    drillType,
-    fieldFormat: fieldFormatValue,
-    formationAttacking,
-    formationDefending,
-    phase,
-    zone,
-  });
-  if (laidOutTwoGoal) arrows.length = 0;
 
   if (!laidOutBox) {
     relabelCollapsedUnit(
@@ -380,14 +421,20 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
   pinEndlineGoals(players, goals);
 
   const relaid = laidOutBox || laidOutOneGoal || laidOutTwoGoal;
-  const coachLevel = resolveCoachLevel(drill.coachLevel ?? json.coachLevel, drillType, goals);
+  const rawCoachLevel = drill.coachLevel ?? json.coachLevel;
+  const coachLevelWasExplicit = typeof rawCoachLevel === "string" && rawCoachLevel.trim() !== "";
+  const coachLevel = resolveCoachLevel(rawCoachLevel, drillType, goals);
   const opposed = players.some((player) => player.team === "away");
   const density = densityFor(coachLevel, drillType, goals, opposed);
   if (relaid || arrows.length === 0) {
     const topicArrows = layoutTopicArrows({ players, goals, drillType, phase, zone, density });
     if (topicArrows.length) replaceArray(arrows, topicArrows);
   }
-  if (density !== "d") {
+  // Synthesised concept zones (Support / Press trap / Rest defence) are a
+  // coaching-level teaching layer. Only add them when the drill actually
+  // declares a coach level -- otherwise a plain conditioned game picks up a
+  // "Support" box that then leaks into the drawer prompt (regression-4).
+  if (density !== "d" && coachLevelWasExplicit) {
     const labels = [...areaZones, ...safeZones].map((z) => String(z.label || ""));
     if (!labels.some((label) => /match area/i.test(label))) {
       for (const concept of layoutConceptZones({ players, goals, phase, zone, density })) {
@@ -638,6 +685,52 @@ function deriveFormat(json: Record<string, unknown>, drill: DrillLike): string {
   }
   if (drill.numbersMin && drill.numbersMax) return `${drill.numbersMin}-${drill.numbersMax} players`;
   return "";
+}
+
+/** Read "8v8", "8v8+GK", "8v8 plus goalkeeper", "11v11" as outfield-per-side counts.
+ * Classic match formats (7v7 / 9v9 / 11v11) include the GK in N — so outfield is N-1.
+ * Explicit "+GK" / "plus goalkeeper" means N is already outfield. */
+function parseStatedOutfieldMatchup(...sources: unknown[]): { home: number; away: number } | null {
+  const chunks: string[] = [];
+  for (const source of sources) {
+    if (typeof source === "string" && source.trim()) chunks.push(source);
+    else if (Array.isArray(source)) {
+      for (const item of source) {
+        if (typeof item === "string" && item.trim()) chunks.push(item);
+      }
+    } else if (source && typeof source === "object") {
+      const record = source as Record<string, unknown>;
+      for (const key of ["description", "title", "organization", "summary"]) {
+        const value = record[key];
+        if (typeof value === "string") chunks.push(value);
+      }
+      const org = asRecord(record.organization);
+      if (Array.isArray(org.setupSteps)) {
+        for (const step of org.setupSteps) if (typeof step === "string") chunks.push(step);
+      }
+    }
+  }
+  const text = chunks.join("\n");
+  const withKeeper = text.match(
+    /(\d+)\s*[vVx×]\s*(\d+)\s*(?:\+|plus)\s*(?:a\s+)?(?:goalkeepers?|gks?)/i
+  );
+  if (withKeeper) {
+    const home = Number(withKeeper[1]);
+    const away = Number(withKeeper[2]);
+    if (![home, away].every((n) => Number.isFinite(n) && n >= 3 && n <= 11)) return null;
+    return { home, away };
+  }
+  const match = text.match(/(\d+)\s*[vVx×]\s*(\d+)/i);
+  if (!match) return null;
+  let home = Number(match[1]);
+  let away = Number(match[2]);
+  if (![home, away].every((n) => Number.isFinite(n) && n >= 3 && n <= 11)) return null;
+  // 7v7 / 9v9 / 11v11 = total players per side including GK
+  if (home === away && (home === 7 || home === 9 || home === 11)) {
+    home -= 1;
+    away -= 1;
+  }
+  return { home, away };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1151,15 +1244,28 @@ function layoutOneGoalScene(args: {
   fieldFormat: FieldFormat;
   formationAttacking: string;
   formationDefending: string;
+  homeTarget?: number;
+  awayTarget?: number;
 }): boolean {
-  const { players, goals, drillType, fieldFormat, formationAttacking, formationDefending } = args;
-  if (!/TACTICAL|CONDITIONED_GAME|FULL_GAME|TECHNICAL/i.test(drillType)) return false;
+  const {
+    players,
+    goals,
+    drillType,
+    fieldFormat,
+    formationAttacking,
+    formationDefending,
+    homeTarget,
+    awayTarget,
+  } = args;
+  if (!/TACTICAL|CONDITIONED_GAME|FULL_GAME/i.test(drillType)) return false;
   const full = goals.filter((goal) => goal.type === "full");
   if (full.length !== 1) return false;
   const opposed = players.some((player) => player.team === "away");
-    if (opposed || !/TECHNICAL/i.test(drillType)) {
-    fitOutfield(players, "home", outfieldTarget(fieldFormat, formationAttacking), formationAttacking, 40);
-    if (opposed) fitOutfield(players, "away", outfieldTarget(fieldFormat, formationDefending), formationDefending, 62);
+  const homeCount = homeTarget ?? outfieldTarget(fieldFormat, formationAttacking);
+  const awayCount = awayTarget ?? outfieldTarget(fieldFormat, formationDefending);
+  if (opposed || !/TECHNICAL/i.test(drillType)) {
+    fitOutfield(players, "home", homeCount, formationAttacking, 40);
+    if (opposed) fitOutfield(players, "away", awayCount, formationDefending, 62);
   }
   const fullOnRight = full[0].x >= 50;
   const attack = players.filter((player) => player.team === "home");
@@ -1168,8 +1274,11 @@ function layoutOneGoalScene(args: {
     open: opposed,
   });
   if (defend.length) {
-    placeFormationLines(defend, formationDefending, fullOnRight ? [88, 72, 58, 44] : [12, 28, 42, 56], !fullOnRight, {
-      open: true,
+    // Back line stays out of the six-yard box (x<78 when the goal is on the
+    // right) so keepers and CBs don't stack on the goal line. The defending
+    // side holds a compact block (open:false), not a touchline-wide shape.
+    placeFormationLines(defend, formationDefending, fullOnRight ? [76, 62, 50, 40] : [24, 38, 50, 60], !fullOnRight, {
+      open: false,
     });
   }
   return true;
@@ -1184,15 +1293,30 @@ function layoutTwoGoalScene(args: {
   formationDefending: string;
   phase: string;
   zone: string;
+  homeTarget?: number;
+  awayTarget?: number;
 }): boolean {
-  const { players, goals, drillType, fieldFormat, formationAttacking, formationDefending, phase, zone } = args;
-  if (!/TACTICAL|CONDITIONED_GAME|FULL_GAME|TECHNICAL/i.test(drillType)) return false;
+  const {
+    players,
+    goals,
+    drillType,
+    fieldFormat,
+    formationAttacking,
+    formationDefending,
+    phase,
+    zone,
+    homeTarget,
+    awayTarget,
+  } = args;
+  if (!/CONDITIONED_GAME|FULL_GAME/i.test(drillType)) return false;
   const full = goals.filter((goal) => goal.type === "full");
   if (full.length !== 2) return false;
   const opposed = players.some((player) => player.team === "away");
-    if (opposed || !/TECHNICAL/i.test(drillType)) {
-    fitOutfield(players, "home", outfieldTarget(fieldFormat, formationAttacking), formationAttacking, 40);
-    if (opposed) fitOutfield(players, "away", outfieldTarget(fieldFormat, formationDefending), formationDefending, 62);
+  const homeCount = homeTarget ?? outfieldTarget(fieldFormat, formationAttacking);
+  const awayCount = awayTarget ?? outfieldTarget(fieldFormat, formationDefending);
+  if (opposed || !/TECHNICAL/i.test(drillType)) {
+    fitOutfield(players, "home", homeCount, formationAttacking, 40);
+    if (opposed) fitOutfield(players, "away", awayCount, formationDefending, 62);
   }
   const defendingOwnThird = /DEFENDING/i.test(phase) && /DEFENSIVE_THIRD/i.test(zone);
   const attack = players.filter((player) => player.team === "home");
@@ -1377,7 +1501,7 @@ function spreadWidth(n: number, kind: LineKind, open = false): number[] {
   if (kind === "wb") return n <= 1 ? [12] : [12, 88];
   if (open) {
     if (n <= 1) return [50];
-    if (n === 2) return kind === "front" ? [34, 66] : [18, 82];
+    if (n === 2) return kind === "front" ? [37, 63] : [18, 82];
     if (n === 3) return kind === "front" ? [16, 50, 84] : [14, 50, 86];
     if (n === 4) return [14, 38, 62, 86];
     return Array.from({ length: n }, (_, i) => 12 + (i / Math.max(1, n - 1)) * 76);

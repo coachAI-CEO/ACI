@@ -249,6 +249,56 @@ export function pickDrillSvgId(source: unknown): string | null {
   return null;
 }
 
+/** Human-readable goal setup for a drill card (distinct from session equipment). */
+export function describeDrillGoalSetup(source: unknown, sessionGoalsAvailable?: number | null): string {
+  if (!source || typeof source !== "object") return "Goal setup not specified";
+  const record = source as Record<string, unknown>;
+  const nested =
+    record.json && typeof record.json === "object"
+      ? (record.json as Record<string, unknown>)
+      : null;
+  const drillType = String(record.drillType || nested?.drillType || "").toUpperCase();
+  if (drillType === "COOLDOWN") return "No diagram";
+  if (drillType === "WARMUP") return "Mini goals only — no full-size goal or GK";
+
+  const drillGoals = Number(record.goalsAvailable ?? nested?.goalsAvailable);
+  const sessionGoals =
+    sessionGoalsAvailable == null || sessionGoalsAvailable === undefined
+      ? null
+      : Number(sessionGoalsAvailable);
+
+  if (drillGoals === 0) return "Mini goals only — no full-size goal or GK";
+  if (drillGoals === 1) {
+    const sessionNote =
+      sessionGoals != null && sessionGoals > 1
+        ? ` (session has ${sessionGoals} full goals available)`
+        : "";
+    return `1 full-size goal with GK + 2 mini-goals opposite${sessionNote}`;
+  }
+  if (drillGoals === 2) return "2 full-size goals with GKs";
+  if (sessionGoals != null) {
+    return `Session equipment: ${sessionGoals} full goal(s) — drill goal count not set`;
+  }
+  return "Goal setup not specified";
+}
+
+export function resolveDrillGoalsAvailableForDisplay(
+  drill: unknown,
+  sessionGoalsAvailable?: number | null
+): number {
+  if (!drill || typeof drill !== "object") return Number(sessionGoalsAvailable ?? 0);
+  const record = drill as Record<string, unknown>;
+  const nested =
+    record.json && typeof record.json === "object"
+      ? (record.json as Record<string, unknown>)
+      : null;
+  const drillType = String(record.drillType || nested?.drillType || "").toUpperCase();
+  if (drillType === "WARMUP" || drillType === "COOLDOWN") return 0;
+  const fromDrill = record.goalsAvailable ?? nested?.goalsAvailable;
+  if (fromDrill != null && Number.isFinite(Number(fromDrill))) return Number(fromDrill);
+  return Number(sessionGoalsAvailable ?? 0);
+}
+
 export function collectDrillSvgIds(drills: unknown): string[] {
   if (!Array.isArray(drills)) return [];
   const ids: string[] = [];

@@ -84,7 +84,10 @@ function getGeometry(params: DrawerParams): Geometry {
     shouldZoomOut(params.widthYards, params.lengthYards, params.fieldFormat) ||
     Boolean(params.hideMatchPitchMarkings);
 
-  const tokenRadius = computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length);
+  const tokenRadius =
+    typeof params.lockTokenRadius === "number" && params.lockTokenRadius > 0
+      ? params.lockTokenRadius
+      : computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length);
 
   return {
     svgWidth: 800,

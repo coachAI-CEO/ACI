@@ -29,6 +29,8 @@ export interface DrawerParams {
   /** One-goal attacking/defending third stretched to fill the field box.
    * Skip match halfway line / center circle -- those describe a full pitch. */
   hideMatchPitchMarkings?: boolean;
+  /** When set, skip area-based token scaling and use this radius (px). */
+  lockTokenRadius?: number;
 }
 
 export interface DrawerCoach {

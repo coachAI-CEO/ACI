@@ -1,5 +1,9 @@
 # Short Video Analysis Implementation Checklist
 
+> **Status (19 August 2026):** Feature is live as beta at `/video-analysis`. Unchecked boxes below are leftover MVP tracking, not a promise that the feature is unbuilt.
+>
+> **Live API:** `POST /ai/video-analysis/run` (sync) and vault save/list/delete. Do not treat the Phase 2 upload/job endpoints as missing production work.
+
 ## Phase 0: Alignment and Constraints
 - [ ] Confirm allowed video formats (suggest: mp4, mov)
 - [ ] Confirm max upload size (suggest: 200MB MVP)

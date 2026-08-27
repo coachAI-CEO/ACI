@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { ClubRole, TeamCoachRole } from '@prisma/client';
+import { ClubRole, SubprincipleReadiness, TeamCoachRole } from '@prisma/client';
 import { requireClubRole, ClubAuthRequest } from './middleware/club-auth';
 import { DOC_HUB_ROLES, listClubMembershipsForUser } from './services/club-memberships';
 import {
@@ -32,6 +32,28 @@ import {
   syncClubTeamCoaches,
   unassignClubTeamCoach,
 } from './services/coach-center';
+import { TrainingPriorityOutcome, TrainingPriorityStatus } from '@prisma/client';
+import {
+  TrainingPriorityError,
+  SubprincipleNotEligibleError,
+  createTrainingPriority,
+  getTrainingPriorityForClub,
+  listTrainingPrioritiesForTeam,
+  resolveTrainingPriority,
+} from './services/training-priority';
+import { generateDrillForTrainingPriority, LlmResponseParseError } from './services/generate-from-priority';
+import { getCoachAdherenceRanking } from './services/coach-adherence';
+import {
+  AgeGroupMaturityError,
+  getAgeGroupMaturityNotesForClub,
+  setAgeGroupMaturityNote,
+} from './services/age-group-maturity';
+import { listPrinciplesForClub } from './services/principles';
+import {
+  ReadinessCeilingOverrideError,
+  getReadinessCeilingsForClub,
+  setReadinessCeilingOverride,
+} from './services/readiness-ceiling-override';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -666,6 +688,329 @@ r.delete(
       return res.json({ ok: true, team });
     } catch (error) {
       return sendTeamError(res, error);
+    }
+  }
+);
+
+function sendTrainingPriorityError(res: express.Response, error: unknown) {
+  if (error instanceof TrainingPriorityError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  if (error instanceof SubprincipleNotEligibleError) {
+    return res.status(400).json({ ok: false, error: 'NOT_ELIGIBLE', message: error.message });
+  }
+  if (error instanceof LlmResponseParseError) {
+    return res.status(502).json({ ok: false, error: 'MODEL_RESPONSE_UNPARSEABLE', message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * GET /doc-hub/clubs/:clubId/principles
+ * The club's full game-model tree (principles by moment, each with its
+ * subprinciples) -- read-only. Feeds the Training Priorities subprinciple
+ * picker; authoring happens via seed scripts today, not this route.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/principles',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const principles = await listPrinciplesForClub(clubId);
+      return res.json({ ok: true, principles });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return res.status(500).json({ ok: false, error: message });
+    }
+  }
+);
+
+const CreateTrainingPrioritySchema = z.object({
+  teamId: z.string().uuid(),
+  subprincipleId: z.string().uuid(),
+  weekStart: z.string().min(1),
+  rationale: z.string().min(1).max(2000),
+});
+
+/**
+ * POST /doc-hub/clubs/:clubId/training-priorities
+ * A DOC (or section director) sets one team's training focus for a week by
+ * picking a game-model subprinciple. Enforces the team's readiness ceiling
+ * and that both team and subprinciple belong to this club.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/training-priorities',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const parsed = CreateTrainingPrioritySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid training priority payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const weekStart = new Date(parsed.data.weekStart);
+      if (Number.isNaN(weekStart.getTime())) {
+        return res.status(400).json({ ok: false, error: 'Invalid weekStart' });
+      }
+
+      const priority = await createTrainingPriority({
+        clubId,
+        teamId: parsed.data.teamId,
+        subprincipleId: parsed.data.subprincipleId,
+        weekStart,
+        rationale: parsed.data.rationale,
+        createdByUserId: req.userId,
+      });
+      return res.status(201).json({ ok: true, priority });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/teams/:teamId/training-priorities?status=ACTIVE
+ * List a team's training priorities, newest week first, with the target
+ * subprinciple's trigger/response/moment for display.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/teams/:teamId/training-priorities',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const statusRaw = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const status =
+        statusRaw && (Object.values(TrainingPriorityStatus) as string[]).includes(statusRaw)
+          ? (statusRaw as TrainingPriorityStatus)
+          : undefined;
+      const priorities = await listTrainingPrioritiesForTeam({ clubId, teamId: req.params.teamId, status });
+      return res.json({ ok: true, priorities });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+const ResolveTrainingPrioritySchema = z.object({
+  outcome: z.nativeEnum(TrainingPriorityOutcome),
+  outcomeNotes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/training-priorities/:priorityId
+ * Close the loop: record whether the team improved after training on this
+ * priority and mark it RESOLVED.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/training-priorities/:priorityId',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const parsed = ResolveTrainingPrioritySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid resolve payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const priority = await resolveTrainingPriority({
+        clubId,
+        trainingPriorityId: req.params.priorityId,
+        outcome: parsed.data.outcome,
+        outcomeNotes: parsed.data.outcomeNotes,
+      });
+      return res.json({ ok: true, priority });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/coaches/adherence
+ * Ranks the club's coaches by how often a DOC-assigned TrainingPriority for
+ * their team actually resulted in a session generated for it. Advisory
+ * only -- nothing in the system enforces the DOC's assignment; this is
+ * visibility into who's staying on the club's game model, not a gate.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/coaches/adherence',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const ranking = await getCoachAdherenceRanking(clubId);
+      return res.json({ ok: true, ranking });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+function sendAgeGroupMaturityError(res: express.Response, error: unknown) {
+  if (error instanceof AgeGroupMaturityError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * GET /doc-hub/clubs/:clubId/age-group-maturity
+ * The editable table behind getAgeGroupMaturityNote -- one row per known
+ * age group, each either the club's own override or the shared default.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/age-group-maturity',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const rows = await getAgeGroupMaturityNotesForClub(clubId);
+      return res.json({ ok: true, rows });
+    } catch (error) {
+      return sendAgeGroupMaturityError(res, error);
+    }
+  }
+);
+
+const SetAgeGroupMaturitySchema = z.object({
+  note: z.string().max(1000).nullable(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/age-group-maturity/:ageGroup
+ * DOC edits one age group's maturity note (or resets it to the shared
+ * default by passing note: null). DOC-only, matching club philosophy edits.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/age-group-maturity/:ageGroup',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) return res.status(401).json({ ok: false, error: 'Authentication required' });
+
+      const parsed = SetAgeGroupMaturitySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const row = await setAgeGroupMaturityNote({
+        clubId,
+        ageGroup: String(req.params.ageGroup || ''),
+        note: parsed.data.note,
+        updatedBy: req.userId,
+      });
+      return res.json({ ok: true, row });
+    } catch (error) {
+      return sendAgeGroupMaturityError(res, error);
+    }
+  }
+);
+
+function sendReadinessCeilingError(res: express.Response, error: unknown) {
+  if (error instanceof ReadinessCeilingOverrideError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * GET /doc-hub/clubs/:clubId/readiness-ceiling
+ * The editable table behind getDefaultReadinessCeiling -- one row per known
+ * age group, each either the club's own default-ceiling override or the
+ * shared hardcoded default (U13-14 -> DEVELOPING, U15-18 -> ADVANCED, etc.).
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/readiness-ceiling',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const rows = await getReadinessCeilingsForClub(clubId);
+      return res.json({ ok: true, rows });
+    } catch (error) {
+      return sendReadinessCeilingError(res, error);
+    }
+  }
+);
+
+const SetReadinessCeilingSchema = z.object({
+  ceiling: z.nativeEnum(SubprincipleReadiness).nullable(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/readiness-ceiling/:ageGroup
+ * DOC raises or lowers the club's default readiness ceiling for one age
+ * group (or resets it to the shared default by passing ceiling: null).
+ * This is a club-wide default, distinct from Team.readinessOverride (one
+ * specific team) -- the per-team override still wins when both are set.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/readiness-ceiling/:ageGroup',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) return res.status(401).json({ ok: false, error: 'Authentication required' });
+
+      const parsed = SetReadinessCeilingSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const row = await setReadinessCeilingOverride({
+        clubId,
+        ageGroup: String(req.params.ageGroup || ''),
+        ceiling: parsed.data.ceiling,
+        updatedBy: req.userId,
+      });
+      return res.json({ ok: true, row });
+    } catch (error) {
+      return sendReadinessCeilingError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/training-priorities/:priorityId/generate-drill
+ * First real caller of the Call1(intent)->Call2(drill)->Call3(QA gate)
+ * pipeline: turns a DOC-assigned TrainingPriority into one drill + QA
+ * verdict for a coach to review. Does not persist the drill -- this is the
+ * minimal end-to-end path; saving/attaching it to a session is follow-on work.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/training-priorities/:priorityId/generate-drill',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      await getTrainingPriorityForClub(req.params.priorityId, clubId);
+      const result = await generateDrillForTrainingPriority(req.params.priorityId);
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
     }
   }
 );

@@ -32,7 +32,16 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 export function isPlayOutRequest(message: string): boolean {
-  return /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+  if (
+    /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+      message
+    )
+  ) {
+    return true;
+  }
+  // "progress / build / play to midfield" is a play-out ask even without the
+  // literal "build-out" phrasing.
+  return /\b(?:progress(?:ing)?|build(?:ing)?|play(?:ing)?|get(?:ting)?|advance)\s+(?:the ball\s+)?(?:to|through|into)\s+(?:the\s+)?midfield\b/i.test(
     message
   );
 }

@@ -11,6 +11,10 @@ import {
   ChevronRight,
   Shield,
   Trophy,
+  Target,
+  BookOpen,
+  SlidersHorizontal,
+  BarChart3,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
 
@@ -41,16 +45,21 @@ const NAV_BASE: NavItem[] = [
     exact: true,
   },
   {
-    label: "Game Model",
-    href: "/doc-hub/game-model",
-    icon: Compass,
+    group: "Game Model",
+    items: [
+      { label: "Philosophy", href: "/doc-hub/game-model", icon: Compass },
+      { label: "Principles & Subprinciples", href: "/doc-hub/principles", icon: BookOpen },
+      { label: "Age Group Defaults", href: "/doc-hub/age-group-defaults", icon: SlidersHorizontal },
+    ],
   },
   {
-    group: "Club Ops",
+    group: "Coaching Ops",
     items: [
       { label: "Attention", href: "/doc-hub/attention", icon: AlertTriangle },
       { label: "Coaches", href: "/doc-hub/coaches", icon: Users },
       { label: "Teams", href: "/doc-hub/teams", icon: Trophy },
+      { label: "Training Priorities", href: "/doc-hub/training-priorities", icon: Target },
+      { label: "Adherence", href: "/doc-hub/adherence", icon: BarChart3 },
       { label: "Calendar", href: "/doc-hub/calendar", icon: CalendarDays },
     ],
   },
@@ -62,7 +71,11 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/coaches": ["DOC Console", "Coaches"],
   "/doc-hub/teams": ["DOC Console", "Teams"],
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
-  "/doc-hub/game-model": ["DOC Console", "Game Model"],
+  "/doc-hub/game-model": ["DOC Console", "Game Model", "Philosophy"],
+  "/doc-hub/principles": ["DOC Console", "Game Model", "Principles & Subprinciples"],
+  "/doc-hub/age-group-defaults": ["DOC Console", "Game Model", "Age Group Defaults"],
+  "/doc-hub/training-priorities": ["DOC Console", "Coaching Ops", "Training Priorities"],
+  "/doc-hub/adherence": ["DOC Console", "Coaching Ops", "Adherence"],
 };
 
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {

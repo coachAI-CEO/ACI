@@ -5,7 +5,9 @@ import { generateDrillDiagramSvg, persistDrillDiagramSvg } from "../services/dri
 import { defaultFormationsForFormat, type FieldFormat } from "../data/field-dimensions";
 import type { Drill } from "@prisma/client";
 
-process.env.DIAGRAM_SVG_ENGINE = "deterministic";
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
@@ -74,7 +76,7 @@ function prepareJson(drill: Drill): Record<string, any> {
   return json;
 }
 
-async function redrawOne(drill: Drill): Promise<{ ok: boolean; model?: string; error?: string }> {
+async function redrawOne(drill: Drill, placement: "scene" | "compiler"): Promise<{ ok: boolean; model?: string; error?: string }> {
   try {
     const json = prepareJson(drill);
     const result = await generateDrillDiagramSvg({
@@ -91,7 +93,7 @@ async function redrawOne(drill: Drill): Promise<{ ok: boolean; model?: string; e
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {
@@ -125,13 +127,14 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
 }
 
 async function main() {
+  const placement = hasFlag("--scene") ? "scene" : "compiler";
   const drills = await loadVaultDrills();
-  console.log(`Redrawing ${drills.length} vault drills with deterministic SVG`);
+  console.log(`Redrawing ${drills.length} vault drills with ${placement} SVG${placement === "compiler" ? " (pass --scene to opt in)" : ""}`);
   let ok = 0;
   let fail = 0;
   await pool(drills, 3, async (drill) => {
     const label = drill.refCode || drill.id;
-    const result = await redrawOne(drill);
+    const result = await redrawOne(drill, placement);
     if (result.ok) {
       ok += 1;
       console.log(`  ${label} ${result.model}`);

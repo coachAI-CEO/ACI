@@ -2,7 +2,9 @@ import "../config/load-env";
 import { prisma } from "../prisma";
 import { generateDrillDiagramSvg, persistDrillDiagramSvg } from "../services/drill-diagram-svg";
 
-process.env.DIAGRAM_SVG_ENGINE = "deterministic";
+function hasFlag(flag: string): boolean {
+  return process.argv.includes(flag);
+}
 
 function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
@@ -55,7 +57,7 @@ async function main() {
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement: hasFlag("--compiler") ? "compiler" : undefined });
     if (drill.refCode) await persistDrillDiagramSvg(drill.refCode, result);
     console.log(`  ${drill.refCode || drill.id} ${drill.drillType} ${result.model}`);
   }

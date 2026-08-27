@@ -22,6 +22,7 @@ import {
   sessionBuilderQuery,
 } from "./coach-center-curriculum";
 import { catalogForClub, catalogNotes } from "./club-team-catalog";
+import { getActiveTrainingPriorityForTeamWeek } from "./training-priority";
 
 const GAME_MODEL_LABELS: Record<string, string> = {
   POSSESSION: "Possession",
@@ -108,6 +109,7 @@ export function serializeTeam(team: any, viewer?: { userId?: string }) {
         coachLevel: audience.coachLevel,
         playerLevel: audience.playerLevel,
         teamName: team.name,
+        teamId: team.id,
       }),
       knowledge: buildWeekKnowledge({
         theme: draft.theme,
@@ -131,6 +133,7 @@ export function serializeTeam(team: any, viewer?: { userId?: string }) {
     coachLevel: audience.coachLevel,
     playerLevel: audience.playerLevel,
     teamName: team.name,
+    teamId: team.id,
   });
   return {
     id: team.id,
@@ -169,6 +172,87 @@ export function serializeTeam(team: any, viewer?: { userId?: string }) {
       : null,
     generateHref,
   };
+}
+
+const MOMENT_ENUM_TO_CAMEL: Record<string, string> = {
+  ATTACKING_ORGANIZATION: "attackingOrganization",
+  DEFENSIVE_TRANSITION: "defensiveTransition",
+  DEFENSIVE_ORGANIZATION: "defensiveOrganization",
+  ATTACKING_TRANSITION: "attackingTransition",
+};
+
+function weekStartDateForIndex(seasonStartDate: Date, weekIndex: number): Date {
+  const date = new Date(seasonStartDate);
+  date.setUTCDate(date.getUTCDate() + (weekIndex - 1) * 7);
+  return date;
+}
+
+/**
+ * Overlay a DOC-assigned TrainingPriority onto a curriculum week's
+ * theme/moment/focus/notes. phase/zone are left as the generic curriculum
+ * picked them -- a Subprinciple doesn't carry phase/zone, only moment, so
+ * there's nothing more specific to derive them from yet.
+ */
+function applyTrainingPriorityToWeek(
+  week: any,
+  priority: NonNullable<Awaited<ReturnType<typeof getActiveTrainingPriorityForTeamWeek>>>,
+  team: { id: string; ageGroup: string; gameModelId: string; name: string },
+  audience: { coachLevel?: string | null; playerLevel?: string | null }
+) {
+  const sub = priority.subprinciple;
+  const moment = MOMENT_ENUM_TO_CAMEL[sub.principle.moment] || week.moment;
+  return {
+    ...week,
+    theme: sub.trigger,
+    moment,
+    focus: sub.response,
+    notes: sub.antiPattern ? `Avoid: ${sub.antiPattern}` : week.notes,
+    source: "training_priority" as const,
+    trainingPriorityId: priority.id,
+    trainingPrioritySubprincipleId: sub.id,
+    generateHref: sessionBuilderQuery({
+      ageGroup: team.ageGroup,
+      gameModelId: team.gameModelId,
+      phase: week.phase,
+      zone: week.zone,
+      topic: sub.trigger,
+      coachLevel: audience.coachLevel,
+      playerLevel: audience.playerLevel,
+      teamName: team.name,
+      teamId: team.id,
+    }),
+  };
+}
+
+/**
+ * serializeTeam plus the DOC Hub integration: if the team's DOC has an
+ * ACTIVE TrainingPriority for the current calendar week, it overrides the
+ * generic default-curriculum week everywhere "this week's topic" is shown
+ * or used (overview, recommendations, chat assistant) -- otherwise every
+ * team, including ones with a real club game model, would keep surfacing
+ * generic BEGINNER/INTERMEDIATE/ADVANCED curriculum copy regardless of what
+ * the DOC actually assigned.
+ */
+export async function serializeTeamWithActivePriority(team: any, viewer?: { userId?: string }) {
+  const serialized = serializeTeam(team, viewer);
+  const season = team.seasons?.[0];
+  const currentWeek = serialized.season?.currentWeek;
+  if (!season || !currentWeek) return serialized;
+
+  const weekStart = weekStartDateForIndex(season.startDate, currentWeek.weekIndex);
+  const priority = await getActiveTrainingPriorityForTeamWeek(team.id, weekStart);
+  if (!priority) return serialized;
+
+  const overriddenWeek = applyTrainingPriorityToWeek(currentWeek, priority, team, {
+    coachLevel: serialized.coachLevel,
+    playerLevel: serialized.playerLevel,
+  });
+  serialized.season!.currentWeek = overriddenWeek;
+  serialized.season!.weeks = serialized.season!.weeks.map((w: any) =>
+    w.weekIndex === overriddenWeek.weekIndex ? overriddenWeek : w
+  );
+  serialized.generateHref = overriddenWeek.generateHref;
+  return serialized;
 }
 
 export async function listAllTeams(viewerUserId?: string) {
@@ -952,7 +1036,7 @@ async function teamDna(team: { clubId: string | null; gameModelId: GameModelId; 
 
 export async function getTeamOverview(userId: string, teamId: string) {
   const team = await requireTeamAccess(userId, teamId);
-  const serialized = serializeTeam(team, { userId });
+  const serialized = await serializeTeamWithActivePriority(team, { userId });
   const now = new Date();
   const weekEnd = new Date(now);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 14);
@@ -1058,7 +1142,7 @@ export async function getTeamCalendar(userId: string, teamId: string, weekStartI
 
 export async function recommendSessions(userId: string, teamId: string, weekIndex?: number | null) {
   const team = await requireTeamAccess(userId, teamId);
-  const serialized = serializeTeam(team, { userId });
+  const serialized = await serializeTeamWithActivePriority(team, { userId });
   const weeks = serialized.season?.weeks || [];
   const week =
     (weekIndex ? weeks.find((w: { weekIndex: number }) => w.weekIndex === weekIndex) : null) ||
@@ -1078,6 +1162,7 @@ export async function recommendSessions(userId: string, teamId: string, weekInde
       ageGroup: true,
       durationMin: true,
       gameModelId: true,
+      targetSubprincipleId: true,
       json: true,
     },
   });
@@ -1087,6 +1172,14 @@ export async function recommendSessions(userId: string, teamId: string, weekInde
       const json = (session.json || {}) as { phase?: string; zone?: string; topic?: string };
       let score = 1;
       const reasons: string[] = [];
+      if (
+        (week as any)?.trainingPriorityId &&
+        session.targetSubprincipleId &&
+        session.targetSubprincipleId === (week as any)?.trainingPrioritySubprincipleId
+      ) {
+        score += 5;
+        reasons.push("built for this week's assigned priority");
+      }
       if (week?.phase && json.phase === week.phase) {
         score += 3;
         reasons.push("same phase");
@@ -1139,7 +1232,7 @@ export async function sendChat(userId: string, teamId: string, content: string) 
   const text = content.trim().slice(0, 4000);
   if (!text) throw new CoachCenterError(400, "INVALID", "Message is required");
 
-  const serialized = serializeTeam(team, { userId });
+  const serialized = await serializeTeamWithActivePriority(team, { userId });
   const dna = await teamDna(team);
   const history = await listChat(userId, teamId);
   const upcoming = await prisma.calendarEvent.findMany({

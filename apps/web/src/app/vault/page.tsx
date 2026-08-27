@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import StoredDrillSvg from "@/components/StoredDrillSvg";
-import { collectDrillSvgIds, fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
+import { collectDrillSvgIds, fetchStoredDiagramSvgs, mergeSessionDrillSvgs, pickDrillDiagramSvg, pickDrillSvgId, resolveDrillGoalsAvailableForDisplay, sessionDrillsHaveStoredSvgs } from "@/lib/diagram-svg";
 import { getUserHeaders } from "@/lib/user";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import PlayerPlanViewModal from "@/components/PlayerPlanViewModal";
@@ -2120,7 +2120,10 @@ export default function VaultPage() {
                               {canDraw ? (
                               <StoredDrillSvg
                                 drillId={svgDrillId}
-                                goalsAvailable={drill.goalsAvailable ?? drill.json?.goalsAvailable ?? selectedSession.goalsAvailable ?? selectedSession.json?.goalsAvailable}
+                                goalsAvailable={resolveDrillGoalsAvailableForDisplay(
+                                  drill,
+                                  selectedSession.goalsAvailable ?? selectedSession.json?.goalsAvailable
+                                )}
                                 size="small"
                                 showRegenerate={false}
                                 drillType={drill.drillType}

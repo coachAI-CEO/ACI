@@ -75,14 +75,19 @@ function normalizeCoachLevel(value: unknown): string {
   return v;
 }
 
-function applyCoachLevelGuardrails<T extends { coachLevel?: unknown; playerLevel?: unknown }>(input: T): T {
+function applyCoachLevelGuardrails<T extends {
+  coachLevel?: unknown;
+  playerLevel?: unknown;
+  preserveCoachLevelContext?: unknown;
+}>(input: T): T {
   const next = { ...(input || {}) } as T;
   const coachLevel = normalizeCoachLevel(next.coachLevel);
+  const preserveContext = Boolean(next.preserveCoachLevelContext);
 
   if (coachLevel === "USSF_D" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
     next.coachLevel = coachLevel;
   }
-  if (coachLevel === "USSF_D") {
+  if (coachLevel === "USSF_D" && !preserveContext) {
     next.playerLevel = "BEGINNER";
   }
 
@@ -363,6 +368,7 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       session,
       qa,
       fixDecision,
+      deviationWarning: result.deviationWarning || null,
       telemetry: {
         gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
         phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,

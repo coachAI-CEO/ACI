@@ -1,36 +1,132 @@
-# TacticalEdge / ACI — Documentation Hub
+# TacticalEdge — Engineering Documentation
 
-**Last updated:** 2026-08-25 · **Version:** see [`VERSION`](VERSION)
+**Last updated:** 27 August 2026  
+**Brand:** TacticalEdge (repo and some logs still say ACI)
 
-TacticalEdge (ACI) is an AI soccer coaching platform: generate drills and sessions, run Coach Center for club teams, edit tactical boards, analyze video, and export PDFs. Clients are **web** (Next.js), **mobile** (Expo), and a shared **Express API**.
+Marketing and decks: [`TACTICALEDGE_UI_PRODUCT_REPORT.md`](./TACTICALEDGE_UI_PRODUCT_REPORT.md).  
+Local run: [`RUN_SERVERS.md`](./RUN_SERVERS.md).  
+Skill routing: [`CLAUDE.md`](./CLAUDE.md).
 
-This file is the **map**. Deep reference lives under `docs/`. Historical API/schema dumps from Feb 2026 are in git history for this path; do not treat archived copies as current.
+This file is the engineering map of what is in the repo now. It is not a January changelog.
 
 ---
 
-## Monorepo
+## Overview
+
+TacticalEdge is a soccer coaching OS. Coaches run a season from **Coach Center**, generate drills and sessions with tactical diagrams, teach on **Tactical Board**, and export session PDFs. Directors run philosophy and staff oversight from the **DOC Console**.
+
+**Stack**
+
+- API: Node.js, Express 5, TypeScript, Prisma, PostgreSQL (Supabase in current deploys)
+- Web: Next.js 16 App Router, React 19, Tailwind CSS 4
+- AI: Google Gemini
+- Hosting: web on Vercel (`tacticaledge.app`), API on Render
+- Package manager: pnpm workspaces
+
+**Defaults:** API `http://localhost:4000` (`PORT` or 4000). Web `http://localhost:3000` (Next may bump the port if 3000 is taken).
+
+---
+
+## Architecture
 
 ```
-aci/
-├── apps/
-│   ├── api/          Express + Prisma + AI generation
-│   ├── web/          Next.js coach web app
-│   └── mobile/       Expo (iOS / Android)
-├── packages/
-│   └── shared/       @aci/shared — types, board libs, Coach Center shapes
-├── docs/             Plans, inventories, how-tos, release process
-├── DOCUMENTATION.md  ← you are here
-├── VERSION
-├── CHANGELOG.md
-└── TODOS.md
+aci-features/
+├── apps/api/          Express API (generation, vault, Coach Center, DOC Hub, boards, PDFs)
+├── apps/web/          Next.js app (marketing + authenticated product)
+├── docs/              Board design contract, mobile plan (mobile is not shipped)
+├── pitch-deck-*.html  Audience decks (source of truth is the product report)
+└── CLAUDE.md          Agent routing
 ```
 
-| Surface | Default URL / port | Start |
+Data flow: browser → Next.js (`/api/*` proxies) → Express → Gemini / Prisma → PostgreSQL.
+
+Mounted API routers (`apps/api/src/app.ts`): auth, drills, sessions, vault, favorites, calendar, billing, video analysis, DOC Hub, Coach Center, boards, diagram SVG, admin, player plans, skill focus.
+
+---
+
+## Product surfaces (what to open)
+
+| Area | Web route | Notes |
 |---|---|---|
-| API | `http://localhost:4000` | `pnpm --filter api dev` (see app README) |
-| Web | `http://localhost:3000` | from `apps/web` |
-| Mobile | Expo Metro | `cd apps/mobile && npx expo start` |
-| Staging API | `https://tacticaledge-api.onrender.com` | Render (`docs/release-process.md`) |
+| Landing / pricing | `/`, `/landing`, `/pricing` | Production signup is paused unless `TRIALS_ENABLED=true` (API) and `NEXT_PUBLIC_TRIALS_ENABLED=true` (web) |
+| Coach Center | `/coach-center` | Team, 16-week curriculum, calendar, chat, next sessions, game day + recap |
+| Session Builder | `/demo/session` | 60/90 min sessions; full PDF + Coach’s Sheet |
+| Drill Generator | `/demo/drill` | Single drill + diagram |
+| Vault / favorites | `/vault`, `/vault/favorites` | Club-scoped for club members. Codes D-XXXX, S-XXXX, SR-XXXX |
+| Calendar | `/calendar` | Personal schedule |
+| Tactical Board | `/boards`, `/board/[id]` | Flag `tacticalBoardV1` (on by default) |
+| Video analysis | `/video-analysis` | Beta |
+| DOC Console | `/doc-hub` | DOC / section director / super admin |
+| Player plans | `/player-plans` | Team session → solo homework PDF |
+| Admin | `/admin/*` | Platform staff |
+
+Logged-in sidebar order: Coach Center → Session Builder → Vault → Favorites → Calendar → Tactical Board → Video Analysis (beta) → DOC Console (role) → Settings.
+
+---
+
+## Features (shipped)
+
+**Coach Center** — one assigned team through the season. Curriculum across four moments of the game. Game-day sheet and match recap. API under `/coach-center/*`.
+
+**Generation** — drills, sessions, progressive series. Structured constraints, QA grader, fixer, coach-level language. Session PDF rasterizes **stored** drill SVGs so print matches the vault (`apps/api/src/services/pdf-export.ts`). Compact export is landscape A4 **Coach’s Sheet**.
+
+**Tactical Board** — live pitch, drawing, formation × phase chassis, principles library (v2 JSON), AI chat, session fork, PDF import. Design contract: `docs/tactical-board-phase-positioning.md`.
+
+**DOC Console** — club philosophy, coach usage, Club Attention, teams, calendar assign / auto-populate / reassign. Phases 1–3 are live. Phase 4 (alerts, topic board, AI monitoring) is still deferred. The August 11 file `DOC_HUB_HANDOFF.md` is a Phase 0 snapshot, not current status.
+
+**Vault, calendar, player plans, video analysis (beta)** — still present. Video is not the newest flagship.
+
+**Billing** — Starter Coach $10/mo, Club Pro $40/mo (5 seats), Academy Elite custom. Free trials closed on production.
+
+---
+
+## Frontend notes
+
+- App chrome: `apps/web/src/components/AppHeader.tsx`
+- Coach Center: `apps/web/src/app/coach-center/`
+- DOC Console: `apps/web/src/app/doc-hub/`
+- Session PDF download: `/api/export-session-pdf` → API `/ai/export-session-pdf`
+- Trials: `apps/web/src/lib/trials.ts` and `apps/api/src/config/trials.ts`
+
+Public marketing pages hide the app sidebar.
+
+---
+
+## Setup
+
+See [`RUN_SERVERS.md`](./RUN_SERVERS.md). The API loads **root `.env`** (and `apps/api/.env` if present), not `.env.local`. Do not commit secrets. `apps/api/.env.example` has historically contained live-format credentials — do not copy those values into docs or git.
+
+```bash
+pnpm install
+cd apps/api && pnpm dev    # :4000
+cd apps/web && pnpm dev    # :3000
+```
+
+Then `/login` and `/coach-center`, not only `/demo/drill`.
+
+---
+
+## What not to treat as product docs
+
+| Path | What it is |
+|---|---|
+| `apps/api/*.md` | Dec 2025 prompt/QA scratch. Paths still mention `/Users/macbook/Projects/aci`. |
+| `docs/mobile/` | Unbuilt React Native plan. |
+| `apps/web/README.md` | create-next-app boilerplate. |
+| `TacticalEdge_*Pitch*.html` | Older 2 MB archive decks. Use `pitch-deck-*.html`. |
+
+---
+
+## Related
+
+- Product + UI brief: `TACTICALEDGE_UI_PRODUCT_REPORT.md`
+- Board principles: `docs/tactical-board/formation-principles-v2.md`
+- Video MVP spec (historical; feature is beta): `SHORT_VIDEO_ANALYSIS_FEATURE_SPEC.md`
+
+
+---
+
+
 
 ---
 
@@ -51,84 +147,6 @@ Full mobile plan: [`docs/mobile/README.md`](docs/mobile/README.md).
 
 ---
 
-## Docs by job (Diataxis)
-
-### Tutorials (learn by doing)
-
-| Doc | Audience |
-|---|---|
-| [`docs/mobile/TUTORIAL_FIRST_BOARD.md`](docs/mobile/TUTORIAL_FIRST_BOARD.md) | First native board: create → draw → save |
-| [`docs/mobile/TUTORIAL_COACH_CENTER_WEEK.md`](docs/mobile/TUTORIAL_COACH_CENTER_WEEK.md) | This week's curriculum → build session |
-
-### How-to (task recipes)
-
-| Doc | Task |
-|---|---|
-| [`docs/mobile/HOW_TO_TACTICAL_BOARDS.md`](docs/mobile/HOW_TO_TACTICAL_BOARDS.md) | Edit, sequence, AI chat, share, fork, offline |
-| [`docs/mobile/HOW_TO_COACH_CENTER.md`](docs/mobile/HOW_TO_COACH_CENTER.md) | Team overview, curriculum, chat, game day recap |
-| [`docs/release-process.md`](docs/release-process.md) | Render branch flip, pilot coaches, Expo `.env` |
-| [`docs/mobile/TESTING.md`](docs/mobile/TESTING.md) | Mobile test approach |
-
-### Reference
-
-| Doc | What it defines |
-|---|---|
-| [`docs/mobile/README.md`](docs/mobile/README.md) | Expo architecture, handoff table, env |
-| [`docs/TACTICAL_BOARD_TYPES.md`](docs/TACTICAL_BOARD_TYPES.md) | Canonical `WebDiagramV1` in `@aci/shared` |
-| [`docs/TACTICAL_BOARD_MOBILE_INVENTORY.md`](docs/TACTICAL_BOARD_MOBILE_INVENTORY.md) | Mobile/web/API board surfaces |
-| [`docs/COACH_CENTER_MOBILE_INVENTORY.md`](docs/COACH_CENTER_MOBILE_INVENTORY.md) | Coach Center routes + API usage |
-| [`docs/CALENDAR_BACKEND_API.md`](docs/CALENDAR_BACKEND_API.md) | Calendar API |
-| [`docs/CALENDAR_MOBILE_INVENTORY.md`](docs/CALENDAR_MOBILE_INVENTORY.md) | Calendar mobile surfaces |
-| [`docs/GENERATE_PARITY_REPORT.md`](docs/GENERATE_PARITY_REPORT.md) | Generate web ↔ mobile gaps |
-
-### Explanation / plans
-
-| Doc | Why it exists |
-|---|---|
-| [`docs/TACTICAL_BOARD_MOBILE_PLAN.md`](docs/TACTICAL_BOARD_MOBILE_PLAN.md) | Boards A→G.5 shipped; H parked |
-| [`docs/COACH_CENTER_IMPLEMENTATION_PLAN.md`](docs/COACH_CENTER_IMPLEMENTATION_PLAN.md) | Coach Center A→E shipped; F+ open |
-| [`docs/CALENDAR_IMPLEMENTATION_PLAN.md`](docs/CALENDAR_IMPLEMENTATION_PLAN.md) | Calendar rollout plan |
-| [`docs/tactical-board-phase-positioning.md`](docs/tactical-board-phase-positioning.md) | Pitch phase/zone positioning |
-| [`docs/tactical-board/`](docs/tactical-board/) | Formation principles |
-
-### Project hygiene
-
-| File | Role |
-|---|---|
-| [`VERSION`](VERSION) | Current release id |
-| [`CHANGELOG.md`](CHANGELOG.md) | User-facing changes |
-| [`TODOS.md`](TODOS.md) | Deferred / parked work |
-
----
-
-## Feature snapshot (2026-08)
-
-| Area | Web | Mobile |
-|---|---|---|
-| Generate (session / drill / series) | Full | Core flows; see parity report for gaps |
-| Vault + favorites | Full | Browse + detail + favorites |
-| Calendar | Full | Read surfaces shipped |
-| Coach Center | Author + consume | Consume A→E (curriculum, next sessions, chat, game day) |
-| Tactical boards | Full editor | Native editor A→G.5 (create, tools, sequence, AI text, share) |
-| Video analysis | Upload/results | Camera-native path |
-| Player plans / PDF | Full | Create + native share |
-| Billing / admin / Doc Hub | Web | Handoff via `webPath()` |
-
----
-
-## Shared packages
-
-`@aci/shared` (`packages/shared`) owns wire types used by web, API, and mobile:
-
-- Sessions / drills / enums
-- `WebDiagramV1` + board helpers (`pitch-formats`, elements, lines, sequence, …)
-- Coach Center team / curriculum / chat shapes
-- Calendar event envelopes
-
-Add fields in shared first, then API Zod (boards) or serializers, then clients. See [`docs/TACTICAL_BOARD_TYPES.md`](docs/TACTICAL_BOARD_TYPES.md).
-
----
-
 ## Branches & worktrees
 
 | Branch | Typical use |
@@ -142,9 +160,3 @@ Mobile source of truth for day-to-day Expo work is often the `aci-mobile-dev` wo
 Render staging branch pin: [`docs/release-process.md`](docs/release-process.md).
 
 ---
-
-## Contributing docs
-
-1. Prefer updating the **smallest** correct doc (inventory / how-to / plan) over growing this hub.
-2. After a ship that changes user-visible behavior, run `/document-release` (or update CHANGELOG + inventories by hand).
-3. Parked work goes in [`TODOS.md`](TODOS.md), not buried in plans only.
