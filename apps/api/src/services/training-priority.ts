@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import { TrainingPriorityOutcome, TrainingPriorityStatus } from "@prisma/client";
 import { isReadinessEligibleForTeam } from "./game-model-readiness";
 
 export class SubprincipleNotEligibleError extends Error {
@@ -91,4 +92,60 @@ export async function getTrainingPriorityForClub(trainingPriorityId: string, clu
     throw new TrainingPriorityError(404, "NOT_FOUND", "Training priority not found in this club");
   }
   return priority;
+}
+
+/** List a team's training priorities (newest week first), scoped to the club. */
+export async function listTrainingPrioritiesForTeam(input: {
+  clubId: string;
+  teamId: string;
+  status?: TrainingPriorityStatus;
+}) {
+  const team = await prisma.team.findUniqueOrThrow({
+    where: { id: input.teamId },
+    select: { id: true, clubId: true },
+  });
+  if (team.clubId !== input.clubId) {
+    throw new TrainingPriorityError(404, "NOT_FOUND", "Team not found in this club");
+  }
+
+  return prisma.trainingPriority.findMany({
+    where: { teamId: input.teamId, status: input.status },
+    include: {
+      subprinciple: {
+        select: {
+          id: true,
+          trigger: true,
+          response: true,
+          readiness: true,
+          principle: { select: { moment: true, statement: true } },
+        },
+      },
+    },
+    orderBy: { weekStart: "desc" },
+  });
+}
+
+/**
+ * Close the loop on a TrainingPriority: record whether the team actually
+ * improved (RARELY/SOMETIMES/CONSISTENTLY) after training on it, and mark it
+ * RESOLVED. Without this, status/outcome/outcomeNotes exist on the schema
+ * but nothing ever sets them -- a DOC could assign a priority and generate a
+ * drill, but never had a way to record what happened.
+ */
+export async function resolveTrainingPriority(input: {
+  clubId: string;
+  trainingPriorityId: string;
+  outcome: TrainingPriorityOutcome;
+  outcomeNotes?: string | null;
+}) {
+  await getTrainingPriorityForClub(input.trainingPriorityId, input.clubId);
+
+  return prisma.trainingPriority.update({
+    where: { id: input.trainingPriorityId },
+    data: {
+      status: TrainingPriorityStatus.RESOLVED,
+      outcome: input.outcome,
+      outcomeNotes: input.outcomeNotes,
+    },
+  });
 }

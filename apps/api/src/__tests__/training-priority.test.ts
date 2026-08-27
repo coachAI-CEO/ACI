@@ -2,7 +2,12 @@ jest.mock("../prisma", () => ({
   prisma: {
     team: { findUniqueOrThrow: jest.fn() },
     subprinciple: { findUniqueOrThrow: jest.fn() },
-    trainingPriority: { create: jest.fn(), findUniqueOrThrow: jest.fn() },
+    trainingPriority: {
+      create: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+    },
   },
 }));
 
@@ -10,6 +15,8 @@ import { prisma } from "../prisma";
 import {
   createTrainingPriority,
   getTrainingPriorityForClub,
+  listTrainingPrioritiesForTeam,
+  resolveTrainingPriority,
   SubprincipleNotEligibleError,
   TrainingPriorityError,
 } from "../services/training-priority";
@@ -18,6 +25,8 @@ const mockTeamFind = prisma.team.findUniqueOrThrow as jest.Mock;
 const mockSubprincipleFind = prisma.subprinciple.findUniqueOrThrow as jest.Mock;
 const mockCreate = prisma.trainingPriority.create as jest.Mock;
 const mockPriorityFind = prisma.trainingPriority.findUniqueOrThrow as jest.Mock;
+const mockFindMany = prisma.trainingPriority.findMany as jest.Mock;
+const mockUpdate = prisma.trainingPriority.update as jest.Mock;
 
 describe("createTrainingPriority", () => {
   beforeEach(() => {
@@ -167,5 +176,73 @@ describe("getTrainingPriorityForClub", () => {
     await expect(getTrainingPriorityForClub("priority-1", "club-1")).rejects.toBeInstanceOf(
       TrainingPriorityError
     );
+  });
+});
+
+describe("listTrainingPrioritiesForTeam", () => {
+  beforeEach(() => {
+    mockTeamFind.mockReset();
+    mockFindMany.mockReset();
+  });
+
+  test("lists priorities for a team in the given club", async () => {
+    mockTeamFind.mockResolvedValue({ id: "team-1", clubId: "club-1" });
+    mockFindMany.mockResolvedValue([{ id: "priority-1" }]);
+
+    const result = await listTrainingPrioritiesForTeam({ clubId: "club-1", teamId: "team-1" });
+
+    expect(result).toEqual([{ id: "priority-1" }]);
+    expect(mockFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { teamId: "team-1", status: undefined } })
+    );
+  });
+
+  test("rejects when the team belongs to a different club", async () => {
+    mockTeamFind.mockResolvedValue({ id: "team-1", clubId: "club-2" });
+
+    await expect(
+      listTrainingPrioritiesForTeam({ clubId: "club-1", teamId: "team-1" })
+    ).rejects.toBeInstanceOf(TrainingPriorityError);
+
+    expect(mockFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveTrainingPriority", () => {
+  beforeEach(() => {
+    mockPriorityFind.mockReset();
+    mockUpdate.mockReset();
+  });
+
+  test("marks a priority RESOLVED with its outcome", async () => {
+    mockPriorityFind.mockResolvedValue({ id: "priority-1", team: { clubId: "club-1" } });
+    mockUpdate.mockResolvedValue({ id: "priority-1", status: "RESOLVED", outcome: "CONSISTENTLY" });
+
+    const result = await resolveTrainingPriority({
+      clubId: "club-1",
+      trainingPriorityId: "priority-1",
+      outcome: "CONSISTENTLY" as any,
+      outcomeNotes: "Team locked this in by week 3.",
+    });
+
+    expect(result.status).toBe("RESOLVED");
+    expect(mockUpdate).toHaveBeenCalledWith({
+      where: { id: "priority-1" },
+      data: { status: "RESOLVED", outcome: "CONSISTENTLY", outcomeNotes: "Team locked this in by week 3." },
+    });
+  });
+
+  test("rejects when the priority belongs to a different club", async () => {
+    mockPriorityFind.mockResolvedValue({ id: "priority-1", team: { clubId: "club-2" } });
+
+    await expect(
+      resolveTrainingPriority({
+        clubId: "club-1",
+        trainingPriorityId: "priority-1",
+        outcome: "RARELY" as any,
+      })
+    ).rejects.toBeInstanceOf(TrainingPriorityError);
+
+    expect(mockUpdate).not.toHaveBeenCalled();
   });
 });

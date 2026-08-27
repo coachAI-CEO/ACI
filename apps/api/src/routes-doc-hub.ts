@@ -32,11 +32,14 @@ import {
   syncClubTeamCoaches,
   unassignClubTeamCoach,
 } from './services/coach-center';
+import { TrainingPriorityOutcome, TrainingPriorityStatus } from '@prisma/client';
 import {
   TrainingPriorityError,
   SubprincipleNotEligibleError,
   createTrainingPriority,
   getTrainingPriorityForClub,
+  listTrainingPrioritiesForTeam,
+  resolveTrainingPriority,
 } from './services/training-priority';
 import { generateDrillForTrainingPriority, LlmResponseParseError } from './services/generate-from-priority';
 
@@ -733,6 +736,68 @@ r.post(
         createdByUserId: req.userId,
       });
       return res.status(201).json({ ok: true, priority });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/teams/:teamId/training-priorities?status=ACTIVE
+ * List a team's training priorities, newest week first, with the target
+ * subprinciple's trigger/response/moment for display.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/teams/:teamId/training-priorities',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const statusRaw = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const status =
+        statusRaw && (Object.values(TrainingPriorityStatus) as string[]).includes(statusRaw)
+          ? (statusRaw as TrainingPriorityStatus)
+          : undefined;
+      const priorities = await listTrainingPrioritiesForTeam({ clubId, teamId: req.params.teamId, status });
+      return res.json({ ok: true, priorities });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+const ResolveTrainingPrioritySchema = z.object({
+  outcome: z.nativeEnum(TrainingPriorityOutcome),
+  outcomeNotes: z.string().max(2000).nullable().optional(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/training-priorities/:priorityId
+ * Close the loop: record whether the team improved after training on this
+ * priority and mark it RESOLVED.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/training-priorities/:priorityId',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const parsed = ResolveTrainingPrioritySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid resolve payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const priority = await resolveTrainingPriority({
+        clubId,
+        trainingPriorityId: req.params.priorityId,
+        outcome: parsed.data.outcome,
+        outcomeNotes: parsed.data.outcomeNotes,
+      });
+      return res.json({ ok: true, priority });
     } catch (error) {
       return sendTrainingPriorityError(res, error);
     }
