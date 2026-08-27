@@ -126,6 +126,39 @@ export async function listTrainingPrioritiesForTeam(input: {
 }
 
 /**
+ * The DOC-assigned focus for one team's calendar week, if any -- this is the
+ * integration point between DOC Hub (where a DOC sets a TrainingPriority)
+ * and Coach Center (where a coach sees "this week's curriculum"). Matched by
+ * exact day, since weekStart is always stored as that week's Monday.
+ */
+export async function getActiveTrainingPriorityForTeamWeek(teamId: string, weekStart: Date) {
+  const dayStart = new Date(Date.UTC(weekStart.getUTCFullYear(), weekStart.getUTCMonth(), weekStart.getUTCDate()));
+  const dayEnd = new Date(dayStart);
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+  return prisma.trainingPriority.findFirst({
+    where: {
+      teamId,
+      status: TrainingPriorityStatus.ACTIVE,
+      weekStart: { gte: dayStart, lt: dayEnd },
+    },
+    select: {
+      id: true,
+      rationale: true,
+      subprinciple: {
+        select: {
+          id: true,
+          trigger: true,
+          response: true,
+          antiPattern: true,
+          principle: { select: { moment: true } },
+        },
+      },
+    },
+  });
+}
+
+/**
  * Close the loop on a TrainingPriority: record whether the team actually
  * improved (RARELY/SOMETIMES/CONSISTENTLY) after training on it, and mark it
  * RESOLVED. Without this, status/outcome/outcomeNotes exist on the schema
