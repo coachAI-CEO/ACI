@@ -1,7 +1,7 @@
 import { prisma } from "../prisma";
 import { generateText } from "../gemini";
 import { getCoachLanguageProfile, buildSessionQAReviewerPrompt } from "../prompts/session";
-import { getDefaultPlayerAndCoachLevel } from "./game-model-readiness";
+import { getAgeGroupMaturityNote, getDefaultPlayerAndCoachLevel } from "./game-model-readiness";
 
 export type TrainingIntent = {
   tacticalProblem: string;
@@ -60,6 +60,9 @@ export async function deriveTrainingIntent(
     `RESPONSE: ${subprinciple.response}`,
     ...(subprinciple.antiPattern ? [`ANTI-PATTERN: ${subprinciple.antiPattern}`] : []),
     `Context: ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}`,
+    ...(getAgeGroupMaturityNote(context.ageGroup)
+      ? [`Age-group maturity: ${getAgeGroupMaturityNote(context.ageGroup)}`]
+      : []),
     "",
     "Produce a training intent -- NOT a drill, NOT constraints yet. Just the underlying design problem:",
     "- tacticalProblem: one sentence naming the specific decision/action players must repeatedly face.",
@@ -107,6 +110,9 @@ export async function generateDrillFromIntent(
     languageProfile,
     "",
     `Design a ${context.drillType || "TACTICAL"} drill for ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}.`,
+    ...(getAgeGroupMaturityNote(context.ageGroup)
+      ? [`Age-group maturity: ${getAgeGroupMaturityNote(context.ageGroup)}`]
+      : []),
     "",
     "The drill's constraints (rules, scoring, restart conditions) must be built so that:",
     `- ${intent.mustBeAvailable}`,

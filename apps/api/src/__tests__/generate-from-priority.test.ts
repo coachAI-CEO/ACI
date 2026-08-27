@@ -68,6 +68,27 @@ describe("generateDrillFromIntent", () => {
     expect(prompt).toContain("must be available");
     expect(prompt).toContain("must be avoided");
   });
+
+  // Regression guard: U13 and U18 both default to ADVANCED/USSF_B_PLUS (same
+  // 11v11 band), so without the maturity note their prompts would be
+  // identical apart from the raw ageGroup string. This asserts the two
+  // prompts actually diverge.
+  test("U13 and U18 (same playerLevel/coachLevel) get different maturity context in the prompt", async () => {
+    mockGenerateText.mockResolvedValue(
+      '{"title": "t", "drillType": "TACTICAL", "organization": {"area": {"lengthYards": 40, "widthYards": 30}, "setupSteps": [], "rotation": "", "restarts": "", "scoring": ""}, "constraints": [], "coachingPoints": []}'
+    );
+    const intent = { tacticalProblem: "p", mustBeAvailable: "a", mustBeAvoided: "b" };
+
+    await generateDrillFromIntent(intent, { ageGroup: "U13", playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" });
+    const u13Prompt = mockGenerateText.mock.calls[0][0] as string;
+
+    await generateDrillFromIntent(intent, { ageGroup: "U18", playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" });
+    const u18Prompt = mockGenerateText.mock.calls[1][0] as string;
+
+    expect(u13Prompt).toContain("Youngest in the 11v11 format");
+    expect(u18Prompt).toContain("Most experienced age group");
+    expect(u13Prompt).not.toBe(u18Prompt);
+  });
 });
 
 describe("generateDrillForTrainingPriority — full chain wiring", () => {

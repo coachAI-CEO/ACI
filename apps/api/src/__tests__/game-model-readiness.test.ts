@@ -1,5 +1,6 @@
 import { SubprincipleReadiness } from "@prisma/client";
 import {
+  getAgeGroupMaturityNote,
   getDefaultReadinessCeiling,
   resolveTeamReadinessCeiling,
   getEligibleTiers,
@@ -84,5 +85,28 @@ describe("getDefaultPlayerAndCoachLevel", () => {
 
   test("U16 (11v11) defaults to ADVANCED + USSF_B_PLUS", () => {
     expect(getDefaultPlayerAndCoachLevel("U16")).toEqual({ playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" });
+  });
+});
+
+describe("getAgeGroupMaturityNote", () => {
+  const ALL_AGE_GROUPS = ["U8", "U9", "U10", "U11", "U12", "U13", "U14", "U15", "U16", "U17", "U18"];
+
+  test("every real age group has a distinct, non-empty note", () => {
+    const notes = ALL_AGE_GROUPS.map(getAgeGroupMaturityNote);
+    expect(notes.every((note) => note.length > 0)).toBe(true);
+    expect(new Set(notes).size).toBe(ALL_AGE_GROUPS.length);
+  });
+
+  // Regression guard for the actual gap this was built to close: U13 and U18
+  // share the same playerLevel/coachLevel defaults (both 11v11 -> ADVANCED)
+  // but must not share the same maturity note, or the two ages are still
+  // indistinguishable to the generator.
+  test("U13 and U18 (same 11v11 band) get different notes", () => {
+    expect(getAgeGroupMaturityNote("U13")).not.toBe(getAgeGroupMaturityNote("U18"));
+  });
+
+  test("is case-insensitive and returns empty string for an unknown age group", () => {
+    expect(getAgeGroupMaturityNote("u9")).toBe(getAgeGroupMaturityNote("U9"));
+    expect(getAgeGroupMaturityNote("U99")).toBe("");
   });
 });

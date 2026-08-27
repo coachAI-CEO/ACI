@@ -73,3 +73,35 @@ export function getDefaultPlayerAndCoachLevel(ageGroup: string): { playerLevel: 
   const { playerLevel, coachLevel } = BAND_DEFAULTS[getGameFormatForAgeGroup(ageGroup)];
   return { playerLevel, coachLevel };
 }
+
+/**
+ * One-sentence maturity context per age group, injected into generation
+ * prompts ALONGSIDE playerLevel/coachLevel (not instead of them) -- those
+ * two enums only have 3 possible values each, so U13 through U18 all land
+ * on the same ADVANCED/USSF_B_PLUS bucket with nothing to tell them apart.
+ * This gives the model a real per-age signal without touching the enum
+ * system anything else (the BEGINNER-only-pairs-with-USSF_D rule, the
+ * readiness ceiling table) depends on.
+ *
+ * DRAFT CONTENT: written from general age/format development knowledge, not
+ * from Rocklin FC's own coaching staff. Treat this table as a first pass
+ * for the club's coaches to correct, the same way the game-model
+ * subprinciples themselves were coach-authored rather than assumed.
+ */
+const AGE_GROUP_MATURITY: Record<string, string> = {
+  U8: "Youngest team in the 7v7 format -- first exposure to positional shape; keep the picture small and concrete.",
+  U9: "Early 7v7 -- building basic role recognition, but still needs simple, single-cue instructions.",
+  U10: "Oldest in the 7v7 format -- ready for slightly more structure ahead of the step up to 9v9.",
+  U11: "Youngest in the 9v9 format -- learning to read a larger picture and more spacing than 7v7 offered.",
+  U12: "Oldest in the 9v9 format -- consolidating intermediate concepts before the jump to full 11v11.",
+  U13: "Youngest in the 11v11 format -- still adjusting to full-pitch scale and spacing, not yet at senior sophistication.",
+  U14: "Early 11v11 -- developing tactical discipline within the full structure; concepts are named but still being internalized.",
+  U15: "Mid-tier 11v11 -- comfortable with structure; the focus shifts to decision speed under real pressure.",
+  U16: "Established 11v11 -- increasing positional interchangeability and proactively reading the game, not just reacting.",
+  U17: "Near-senior 11v11 -- multi-phase tactical thinking; treat constraints and language close to adult sophistication.",
+  U18: "Most experienced age group -- full adult-level tactical vocabulary and game management expected.",
+};
+
+export function getAgeGroupMaturityNote(ageGroup: string): string {
+  return AGE_GROUP_MATURITY[ageGroup.toUpperCase()] || "";
+}
