@@ -331,9 +331,20 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
     (homeOutfield < (statedMatchup?.home || 0) || awayOutfield < (statedMatchup?.away || 0));
   // Keep LLM positions when the roster is already complete. If the text
   // says 8v8 but the model only drew 6v4, expand via the formation layout.
+  // But a "complete" roster whose positions are degenerate (every player in
+  // one lane / on one line) is not a usable picture -- re-lay it out.
+  const spread = (team: "home" | "away", axis: "x" | "y") => {
+    const vals = players.filter((p) => p.team === team).map((p) => p[axis]);
+    return vals.length > 1 ? Math.max(...vals) - Math.min(...vals) : 100;
+  };
+  const degenerateInput =
+    spread("home", "x") < 6 ||
+    spread("home", "y") < 6 ||
+    (awayOutfield > 1 && (spread("away", "x") < 6 || spread("away", "y") < 6));
   const preserveDrillLayout =
     outfieldTokens >= 6 &&
     !underfilledMatchup &&
+    !degenerateInput &&
     !/CONDITIONED_GAME|FULL_GAME/i.test(drillType);
   let laidOutBox = false;
   let laidOutOneGoal = false;
@@ -410,14 +421,20 @@ export function drillToDrawerParams(drill: DrillLike): DrawerParams {
   pinEndlineGoals(players, goals);
 
   const relaid = laidOutBox || laidOutOneGoal || laidOutTwoGoal;
-  const coachLevel = resolveCoachLevel(drill.coachLevel ?? json.coachLevel, drillType, goals);
+  const rawCoachLevel = drill.coachLevel ?? json.coachLevel;
+  const coachLevelWasExplicit = typeof rawCoachLevel === "string" && rawCoachLevel.trim() !== "";
+  const coachLevel = resolveCoachLevel(rawCoachLevel, drillType, goals);
   const opposed = players.some((player) => player.team === "away");
   const density = densityFor(coachLevel, drillType, goals, opposed);
   if (relaid || arrows.length === 0) {
     const topicArrows = layoutTopicArrows({ players, goals, drillType, phase, zone, density });
     if (topicArrows.length) replaceArray(arrows, topicArrows);
   }
-  if (density !== "d") {
+  // Synthesised concept zones (Support / Press trap / Rest defence) are a
+  // coaching-level teaching layer. Only add them when the drill actually
+  // declares a coach level -- otherwise a plain conditioned game picks up a
+  // "Support" box that then leaks into the drawer prompt (regression-4).
+  if (density !== "d" && coachLevelWasExplicit) {
     const labels = [...areaZones, ...safeZones].map((z) => String(z.label || ""));
     if (!labels.some((label) => /match area/i.test(label))) {
       for (const concept of layoutConceptZones({ players, goals, phase, zone, density })) {
@@ -1257,8 +1274,11 @@ function layoutOneGoalScene(args: {
     open: opposed,
   });
   if (defend.length) {
-    placeFormationLines(defend, formationDefending, fullOnRight ? [88, 72, 58, 44] : [12, 28, 42, 56], !fullOnRight, {
-      open: true,
+    // Back line stays out of the six-yard box (x<78 when the goal is on the
+    // right) so keepers and CBs don't stack on the goal line. The defending
+    // side holds a compact block (open:false), not a touchline-wide shape.
+    placeFormationLines(defend, formationDefending, fullOnRight ? [76, 62, 50, 40] : [24, 38, 50, 60], !fullOnRight, {
+      open: false,
     });
   }
   return true;
@@ -1481,7 +1501,7 @@ function spreadWidth(n: number, kind: LineKind, open = false): number[] {
   if (kind === "wb") return n <= 1 ? [12] : [12, 88];
   if (open) {
     if (n <= 1) return [50];
-    if (n === 2) return kind === "front" ? [34, 66] : [18, 82];
+    if (n === 2) return kind === "front" ? [37, 63] : [18, 82];
     if (n === 3) return kind === "front" ? [16, 50, 84] : [14, 50, 86];
     if (n === 4) return [14, 38, 62, 86];
     return Array.from({ length: n }, (_, i) => 12 + (i / Math.max(1, n - 1)) * 76);

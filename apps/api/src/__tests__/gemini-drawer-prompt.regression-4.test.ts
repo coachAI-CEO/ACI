@@ -61,8 +61,9 @@ function playerLines(prompt: string): string[] {
     .filter((line) => /^(home|away|gk|neutral)\s+pos=/.test(line));
 }
 
-test("v46 prompt forbids cloning a player at an arrow endpoint", () => {
-  expect(DRAWER_PROMPT_VERSION).toBe("v46-one-token");
+test("prompt forbids cloning a player at an arrow endpoint", () => {
+  // Don't pin the exact version -- the guard content below is the contract.
+  expect(DRAWER_PROMPT_VERSION).toMatch(/^v\d+/);
   const prompt = buildDrawerPrompt(drillToDrawerParams(nineVNine() as any));
   expect(prompt).toMatch(/ONE TOKEN PER PLAYER LINE/);
   expect(prompt).toMatch(/Never clone a player at an arrow endpoint/);
