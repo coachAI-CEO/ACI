@@ -9,6 +9,7 @@ jest.mock("../prisma", () => ({
       update: jest.fn(),
       findFirst: jest.fn(),
     },
+    readinessCeilingOverride: { findUnique: jest.fn() },
   },
 }));
 
@@ -32,12 +33,15 @@ const mockPriorityFind = prisma.trainingPriority.findUniqueOrThrow as jest.Mock;
 const mockFindMany = prisma.trainingPriority.findMany as jest.Mock;
 const mockUpdate = prisma.trainingPriority.update as jest.Mock;
 const mockPriorityFindFirst = prisma.trainingPriority.findFirst as jest.Mock;
+const mockCeilingOverrideFind = prisma.readinessCeilingOverride.findUnique as jest.Mock;
 
 describe("createTrainingPriority", () => {
   beforeEach(() => {
     mockTeamFind.mockReset();
     mockSubprincipleFind.mockReset();
     mockCreate.mockReset();
+    mockCeilingOverrideFind.mockReset();
+    mockCeilingOverrideFind.mockResolvedValue(null);
   });
 
   test("creates a TrainingPriority when the subprinciple's tier is eligible for the team", async () => {
@@ -161,6 +165,58 @@ describe("createTrainingPriority", () => {
     ).rejects.toBeInstanceOf(TrainingPriorityError);
 
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  // Regression guard for the club-level readiness ceiling override: a U9
+  // team is normally blocked from an ADVANCED subprinciple, but a club that
+  // has raised its own default ceiling for U9 should allow it -- without
+  // needing a per-team Team.readinessOverride.
+  test("a club-level ceiling override raises what's eligible without a per-team override", async () => {
+    mockTeamFind.mockResolvedValue({ id: "team-u9", clubId: "club-1", ageGroup: "U9", readinessOverride: null });
+    mockSubprincipleFind.mockResolvedValue({
+      id: "sub-advanced",
+      readiness: "ADVANCED",
+      trigger: "t",
+      response: "r",
+      principle: { clubId: "club-1" },
+    });
+    mockCeilingOverrideFind.mockResolvedValue({ ceiling: "ADVANCED" });
+    mockCreate.mockResolvedValue({ id: "priority-3" });
+
+    const result = await createTrainingPriority({
+      clubId: "club-1",
+      teamId: "team-u9",
+      subprincipleId: "sub-advanced",
+      weekStart: new Date("2026-09-14"),
+      rationale: "Club-wide early unlock for this cohort.",
+    });
+
+    expect(result.id).toBe("priority-3");
+    expect(mockCreate).toHaveBeenCalled();
+  });
+
+  test("a per-team readinessOverride still wins even if the club default is lower", async () => {
+    mockTeamFind.mockResolvedValue({ id: "team-u9", clubId: "club-1", ageGroup: "U9", readinessOverride: "ADVANCED" });
+    mockSubprincipleFind.mockResolvedValue({
+      id: "sub-advanced",
+      readiness: "ADVANCED",
+      trigger: "t",
+      response: "r",
+      principle: { clubId: "club-1" },
+    });
+    mockCeilingOverrideFind.mockResolvedValue({ ceiling: "FOUNDATIONAL" });
+    mockCreate.mockResolvedValue({ id: "priority-4" });
+
+    const result = await createTrainingPriority({
+      clubId: "club-1",
+      teamId: "team-u9",
+      subprincipleId: "sub-advanced",
+      weekStart: new Date("2026-09-14"),
+      rationale: "test",
+    });
+
+    expect(result.id).toBe("priority-4");
+    expect(mockCeilingOverrideFind).not.toHaveBeenCalled();
   });
 });
 

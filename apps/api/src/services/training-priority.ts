@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { TrainingPriorityOutcome, TrainingPriorityStatus } from "@prisma/client";
-import { isReadinessEligibleForTeam } from "./game-model-readiness";
+import { getEligibleTiers } from "./game-model-readiness";
+import { resolveClubDefaultReadinessCeiling } from "./readiness-ceiling-override";
 import { currentWeekIndex } from "./coach-center-curriculum";
 
 export class SubprincipleNotEligibleError extends Error {
@@ -65,7 +66,12 @@ export async function createTrainingPriority(input: {
     throw new TrainingPriorityError(404, "NOT_FOUND", "Subprinciple not found in this club");
   }
 
-  if (!isReadinessEligibleForTeam(team, subprinciple.readiness)) {
+  // Ceiling resolution order: Team.readinessOverride (per-team, highest
+  // priority) > the club's own default-ceiling override for this age group
+  // (DOC-editable, see readiness-ceiling-override.ts) > the shared
+  // hardcoded format/age default.
+  const ceiling = team.readinessOverride ?? (await resolveClubDefaultReadinessCeiling(input.clubId, team.ageGroup));
+  if (!getEligibleTiers(ceiling).includes(subprinciple.readiness)) {
     throw new SubprincipleNotEligibleError(subprinciple.readiness, team.ageGroup);
   }
 

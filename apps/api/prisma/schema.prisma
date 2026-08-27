@@ -818,6 +818,7 @@ model Club {
   teams               Team[]
   principles          Principle[]
   ageGroupMaturityNotes AgeGroupMaturityNote[]
+  readinessCeilingOverrides ReadinessCeilingOverride[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.
@@ -952,6 +953,25 @@ model AgeGroupMaturityNote {
 
   @@unique([clubId, ageGroup])
   @@map("age_group_maturity_notes")
+}
+
+// Per-club override of the default readiness ceiling for one age group (see
+// getDefaultReadinessCeiling in services/game-model-readiness.ts). Sits
+// between Team.readinessOverride (per-team, highest priority, unchanged)
+// and the hardcoded format/age table (final fallback): lets a DOC raise or
+// lower the default for e.g. "all our U14 teams" without editing every
+// team individually. Absence of a row means "use the shared default."
+model ReadinessCeilingOverride {
+  id        String                @id @default(uuid())
+  clubId    String                @map("club_id")
+  club      Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  ageGroup  String                @map("age_group")
+  ceiling   SubprincipleReadiness
+  updatedAt DateTime              @updatedAt @map("updated_at")
+  updatedBy String?               @map("updated_by")
+
+  @@unique([clubId, ageGroup])
+  @@map("readiness_ceiling_overrides")
 }
 
 // Optional per-club subdivision (an "age group," a "girls academy," whatever

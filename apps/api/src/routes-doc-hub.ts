@@ -1,6 +1,6 @@
 import express from 'express';
 import { z } from 'zod';
-import { ClubRole, TeamCoachRole } from '@prisma/client';
+import { ClubRole, SubprincipleReadiness, TeamCoachRole } from '@prisma/client';
 import { requireClubRole, ClubAuthRequest } from './middleware/club-auth';
 import { DOC_HUB_ROLES, listClubMembershipsForUser } from './services/club-memberships';
 import {
@@ -49,6 +49,11 @@ import {
   setAgeGroupMaturityNote,
 } from './services/age-group-maturity';
 import { listPrinciplesForClub } from './services/principles';
+import {
+  ReadinessCeilingOverrideError,
+  getReadinessCeilingsForClub,
+  setReadinessCeilingOverride,
+} from './services/readiness-ceiling-override';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -915,6 +920,75 @@ r.patch(
       return res.json({ ok: true, row });
     } catch (error) {
       return sendAgeGroupMaturityError(res, error);
+    }
+  }
+);
+
+function sendReadinessCeilingError(res: express.Response, error: unknown) {
+  if (error instanceof ReadinessCeilingOverrideError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * GET /doc-hub/clubs/:clubId/readiness-ceiling
+ * The editable table behind getDefaultReadinessCeiling -- one row per known
+ * age group, each either the club's own default-ceiling override or the
+ * shared hardcoded default (U13-14 -> DEVELOPING, U15-18 -> ADVANCED, etc.).
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/readiness-ceiling',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const rows = await getReadinessCeilingsForClub(clubId);
+      return res.json({ ok: true, rows });
+    } catch (error) {
+      return sendReadinessCeilingError(res, error);
+    }
+  }
+);
+
+const SetReadinessCeilingSchema = z.object({
+  ceiling: z.nativeEnum(SubprincipleReadiness).nullable(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/readiness-ceiling/:ageGroup
+ * DOC raises or lowers the club's default readiness ceiling for one age
+ * group (or resets it to the shared default by passing ceiling: null).
+ * This is a club-wide default, distinct from Team.readinessOverride (one
+ * specific team) -- the per-team override still wins when both are set.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/readiness-ceiling/:ageGroup',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) return res.status(401).json({ ok: false, error: 'Authentication required' });
+
+      const parsed = SetReadinessCeilingSchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const row = await setReadinessCeilingOverride({
+        clubId,
+        ageGroup: String(req.params.ageGroup || ''),
+        ceiling: parsed.data.ceiling,
+        updatedBy: req.userId,
+      });
+      return res.json({ ok: true, row });
+    } catch (error) {
+      return sendReadinessCeilingError(res, error);
     }
   }
 );
