@@ -1,6 +1,6 @@
 # TacticalEdge Product + UI Report (for landing page and pitch decks)
 
-**Last updated:** 19 August 2026  
+**Last updated:** 27 August 2026  
 **Audience:** landing-page specialist, deck editor, anyone selling the product  
 **Source of truth for:** `pitch-deck.html`, `pitch-deck-coach.html`, `pitch-deck-club.html`, `pitch-deck-tech.html`, `apps/web/src/app/landing/page.jsx`
 
@@ -13,7 +13,15 @@ Do not copy older API scratch notes under `apps/api/*.md` or the unbuilt mobile 
 **Product name:** TacticalEdge (legacy label “ACI Training Platform” still appears in a few internal docs)
 
 **What it is:**
-A soccer coaching OS for youth and academy clubs. Coaches run a season from **Coach Center**. They generate age-appropriate drills and sessions with tactical diagrams. They teach on a live **Tactical Board**. Directors run philosophy and staff oversight from the **DOC Console**.
+A soccer coaching OS for youth and academy clubs. Coaches run a season from **Coach Center**. They generate age-appropriate drills and sessions with tactical diagrams. They teach on a live **Tactical Board**. Directors run philosophy and staff oversight from the **Director of Coaching (DOC) Console**.
+
+**Naming:** spell it **Director of Coaching (DOC) Console** on first mention in any surface, **DOC Console** after that. Do not use "Technical Director" or "TD" — that label is retired (archive decks `Tactical-Edge Club Pitch.html` and `TacticalEdge_Coach_Pitch_v2.html` still carry it; they are frozen, do not edit).
+
+**Feature hierarchy (matches the landing page):**
+- **Flagship — four products coaches and directors open every week:** Coach Center, Session Builder, Tactical Board, Director of Coaching (DOC) Console.
+- **Supporting — everything else in the platform:** Content Vault, Player Homework (`/player-plans`), Video Analysis (beta), Drill Generator.
+
+Lead with the four flagship products. Do not present a flat 10-tile feature grid.
 
 **Core value:**
 Turn club philosophy + this week’s theme + the next match into field-ready sessions, game-day sheets, and printable PDFs, without planning from scratch.
@@ -78,7 +86,7 @@ Role-gated (DOC, section director, super admin). Not a generic admin analytics p
 - **Vault** (`/vault`): saved drills, sessions, series. Club-scoped for club members. Reference codes D-XXXX, S-XXXX, SR-XXXX.
 - **Favorites** (`/vault/favorites`)
 - **Calendar** (`/calendar`): personal schedule (Coach Center calendar is the team week).
-- **Player plans** (`/player-plans`): team session → solo homework, PDF for parents.
+- **Player Homework** (`/player-plans`): team session → solo player plan, PDF ready to send home. (Route is `/player-plans`; the landing label is "Player Homework".)
 - **Video analysis** (`/video-analysis`): beta. Short clip → observations → corrective session.
 
 ### F. Auth, billing, admin
@@ -139,20 +147,23 @@ Headline directions that still work:
 - Clubs: “One philosophy. Every coach. Every age group.”
 - General: “Session planning built for serious coaches.”
 
-Supporting line should now name the season workspace, not only generation:
+Supporting line names the season workspace, not only generation (this is the live landing copy):
 
-> Coach Center runs the week. Session Builder writes the plan. Tactical Board teaches the picture. DOC Console keeps the club on one game model.
+> Coach Center runs the week. Session Builder writes the plan. Tactical Board teaches the picture. The Director of Coaching (DOC) Console keeps the club on one game model.
+
+Hero badge: `Coach Center · Board · DOC Console` (no "AI-powered platform" tagline).
 
 **CTAs (production):**
-- Primary: “View Plans” → `/pricing`
-- Secondary: “Explore App” / “Log In”
-- Do not use “Start Free” or “Try Free for 7 Days” until trials are turned back on.
+- Primary: the signup CTA is trials-gated — "Register" when `NEXT_PUBLIC_TRIALS_ENABLED=true`, otherwise "View Plans" → `/pricing`.
+- Secondary: "Log In" → `/login`. The old "Explore App" → `/app` button and the footer "App Home" / "Session Generator" links were removed.
+- Landing closes with two audience cards: **For coaches** → signup CTA; **For Directors of Coaching** → `/pricing` ("Club Pro & Elite").
+- Do not use "Start Free" or "Try Free for 7 Days" until trials are turned back on.
 
-**Pricing bullets to add on Club Pro / Elite (true in product):**
-- Coach Center per team
-- Tactical Board
-- DOC Console (club roles)
-- Session PDF + Coach’s Sheet
+**Pricing page vs shipped product (`apps/web/src/app/pricing/page.jsx`) — known gap, not yet fixed:**
+The plan bullets still read generically and predate the flagship products. They should name what a buyer actually gets:
+- Club Pro lists "Advanced analytics" / "Club-wide content vault" — should also name **Coach Center per team**, **Tactical Board**, **DOC Console (club roles)**, **Session PDF + Coach's Sheet**.
+- Academy Elite says "Custom DC dashboard" — rename to **DOC Console** for consistency.
+- Starter Coach lists "AI coach assistant" / "Calendar planning" — fine, but confirm the flagship framing (Session Builder, not "AI coach assistant").
 
 ---
 

@@ -1,6 +1,6 @@
 # TacticalEdge — Engineering Documentation
 
-**Last updated:** 19 August 2026  
+**Last updated:** 27 August 2026  
 **Brand:** TacticalEdge (repo and some logs still say ACI)
 
 Marketing and decks: [`TACTICALEDGE_UI_PRODUCT_REPORT.md`](./TACTICALEDGE_UI_PRODUCT_REPORT.md).  
