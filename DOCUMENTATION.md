@@ -123,11 +123,6 @@ Then `/login` and `/coach-center`, not only `/demo/drill`.
 - Board principles: `docs/tactical-board/formation-principles-v2.md`
 - Video MVP spec (historical; feature is beta): `SHORT_VIDEO_ANALYSIS_FEATURE_SPEC.md`
 
-
----
-
-
-
 ---
 
 ## Quick start (mobile against staging)
