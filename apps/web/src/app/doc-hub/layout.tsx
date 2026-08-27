@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Shield,
   Trophy,
+  Layers,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
 
@@ -46,6 +47,11 @@ const NAV_BASE: NavItem[] = [
     icon: Compass,
   },
   {
+    label: "Age Group Maturity",
+    href: "/doc-hub/age-group-maturity",
+    icon: Layers,
+  },
+  {
     group: "Club Ops",
     items: [
       { label: "Attention", href: "/doc-hub/attention", icon: AlertTriangle },
@@ -63,6 +69,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/teams": ["DOC Console", "Teams"],
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model"],
+  "/doc-hub/age-group-maturity": ["DOC Console", "Age Group Maturity"],
 };
 
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {

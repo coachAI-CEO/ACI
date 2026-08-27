@@ -74,6 +74,14 @@ export type ClubOption = {
   role?: string;
 };
 
+export type AgeGroupMaturityRow = {
+  ageGroup: string;
+  note: string;
+  isCustom: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
 export const EMPTY_PHILOSOPHY: PhilosophyForm = {
   attackingOrganization: "",
   defensiveTransition: "",
