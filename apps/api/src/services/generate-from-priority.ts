@@ -1,0 +1,163 @@
+import { prisma } from "../prisma";
+import { generateText } from "../gemini";
+import { getCoachLanguageProfile } from "../prompts/session";
+
+export type TrainingIntent = {
+  tacticalProblem: string;
+  mustBeAvailable: string;
+  mustBeAvoided: string;
+};
+
+type SubprincipleFields = {
+  trigger: string;
+  response: string;
+  antiPattern: string | null;
+};
+
+function parseJsonResponse<T>(text: string): T {
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
+  return JSON.parse(cleaned) as T;
+}
+
+/**
+ * Call 1: derive a narrow training intent from a subprinciple. Deliberately
+ * produces a SMALL structured artifact -- tacticalProblem / mustBeAvailable /
+ * mustBeAvoided -- rather than passing the raw trigger/response straight
+ * through. Call 2 conditions on THIS output, not on the subprinciple text
+ * directly, which is what forces the constraint-generation step to actually
+ * derive from the priority instead of independently pattern-matching a
+ * plausible-sounding drill for the drillType. See the architecture doc's
+ * finding: a single-shot call can only ever make a principle and a
+ * constraint CO-OCCUR in the same text, never causally depend on one
+ * another -- splitting this into two calls, each conditioned on the
+ * previous one's OUTPUT rather than its input, is what fixes that.
+ */
+export async function deriveTrainingIntent(
+  subprinciple: SubprincipleFields,
+  context: { ageGroup: string; playerLevel: string }
+): Promise<TrainingIntent> {
+  const prompt = [
+    "You are translating a football club's game-model subprinciple into a training intent for one drill.",
+    "",
+    `TRIGGER: ${subprinciple.trigger}`,
+    `RESPONSE: ${subprinciple.response}`,
+    ...(subprinciple.antiPattern ? [`ANTI-PATTERN: ${subprinciple.antiPattern}`] : []),
+    `Context: ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}`,
+    "",
+    "Produce a training intent -- NOT a drill, NOT constraints yet. Just the underlying design problem:",
+    "- tacticalProblem: one sentence naming the specific decision/action players must repeatedly face.",
+    "- mustBeAvailable: what has to be true in the drill's setup for the trigger to occur repeatedly.",
+    "- mustBeAvoided: the anti-pattern restated as a design requirement (what the constraints must actively prevent, not just avoid rewarding).",
+    "",
+    'Output JSON only: { "tacticalProblem": string, "mustBeAvailable": string, "mustBeAvoided": string }',
+  ].join("\n");
+
+  const text = await generateText(prompt, { maxOutputTokens: 400 });
+  return parseJsonResponse<TrainingIntent>(text);
+}
+
+export type GeneratedDrill = {
+  title: string;
+  drillType: string;
+  organization: {
+    area: { lengthYards: number; widthYards: number };
+    setupSteps: string[];
+    rotation: string;
+    restarts: string;
+    scoring: string;
+  };
+  constraints: string[];
+  coachingPoints: string[];
+};
+
+/**
+ * Call 2: generate the actual drill, conditioned ONLY on Call 1's intent
+ * (plus session context and the coach-level language tier) -- not on the
+ * raw subprinciple. This is the step that was previously a single call
+ * pattern-matching a plausible drill for the drillType; now it has to
+ * design constraints that serve mustBeAvailable and actively block
+ * mustBeAvoided, because that's the only tactical context it's given.
+ */
+export async function generateDrillFromIntent(
+  intent: TrainingIntent,
+  context: { ageGroup: string; playerLevel: string; coachLevel: string; drillType?: string }
+): Promise<GeneratedDrill> {
+  const languageProfile = getCoachLanguageProfile(context.coachLevel);
+
+  const prompt = [
+    "SYSTEM: Output ONE JSON object for a single football training drill.",
+    "",
+    languageProfile,
+    "",
+    `Design a ${context.drillType || "TACTICAL"} drill for ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}.`,
+    "",
+    "The drill's constraints (rules, scoring, restart conditions) must be built so that:",
+    `- ${intent.mustBeAvailable}`,
+    `- The design actively prevents: ${intent.mustBeAvoided}`,
+    `- Players repeatedly face this problem: ${intent.tacticalProblem}`,
+    "",
+    "Do not restate the tactical problem as prose in the constraints -- build actual rules/scoring/restarts",
+    "that make it structurally true, the way a real coach would design a session.",
+    "",
+    "Output JSON only:",
+    "{",
+    '  "title": string,',
+    '  "drillType": string,',
+    '  "organization": { "area": {"lengthYards": number, "widthYards": number}, "setupSteps": string[], "rotation": string, "restarts": string, "scoring": string },',
+    '  "constraints": string[] (3-5 items),',
+    '  "coachingPoints": string[] (2-3 items)',
+    "}",
+  ].join("\n");
+
+  const text = await generateText(prompt, { maxOutputTokens: 800 });
+  return parseJsonResponse<GeneratedDrill>(text);
+}
+
+export type PriorityDrillResult = {
+  intent: TrainingIntent;
+  drill: GeneratedDrill;
+  qa: {
+    pass: boolean;
+    principleAlignment?: { contradicted: boolean; contradictingConstraint: string | null; explanation: string };
+    raw: unknown;
+  };
+};
+
+/**
+ * Full chain for one TrainingPriority: Call 1 -> Call 2 -> the hard-fail
+ * principle-alignment QA gate. Returns the generated drill AND the QA
+ * verdict together -- callers decide whether a failed verdict blocks
+ * showing the drill to a coach; this function doesn't discard the drill on
+ * failure, since the failure itself (and why) is useful to see.
+ */
+export async function generateDrillForTrainingPriority(trainingPriorityId: string): Promise<PriorityDrillResult> {
+  const priority = await prisma.trainingPriority.findUniqueOrThrow({
+    where: { id: trainingPriorityId },
+    include: {
+      subprinciple: { select: { trigger: true, response: true, antiPattern: true } },
+      team: { select: { ageGroup: true, playerLevel: true } },
+    },
+  });
+
+  const ageGroup = priority.team.ageGroup;
+  const playerLevel = priority.team.playerLevel || "INTERMEDIATE";
+  // No coachLevel on Team today -- default to USSF_C until that's wired through.
+  const coachLevel = "USSF_C";
+
+  const intent = await deriveTrainingIntent(priority.subprinciple, { ageGroup, playerLevel });
+  const drill = await generateDrillFromIntent(intent, { ageGroup, playerLevel, coachLevel });
+
+  const { buildSessionQAReviewerPrompt } = await import("../prompts/session");
+  const qaPrompt = buildSessionQAReviewerPrompt(
+    { title: drill.title, ageGroup, drills: [{ ...drill, diagram: { players: [], arrows: [], annotations: [], safeZones: [], goals: [], pitch: {} } }] },
+    priority.subprinciple
+  );
+  const qaText = await generateText(qaPrompt, { timeout: 45000, retries: 0 });
+  const qaJson = parseJsonResponse<{ pass: boolean; principleAlignment?: PriorityDrillResult["qa"]["principleAlignment"] }>(qaText);
+
+  return {
+    intent,
+    drill,
+    qa: { pass: qaJson.pass, principleAlignment: qaJson.principleAlignment, raw: qaJson },
+  };
+}

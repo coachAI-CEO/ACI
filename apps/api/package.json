@@ -27,6 +27,7 @@
     "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts",
     "seed:pilot-coaches": "ts-node --transpile-only --project tsconfig.json src/scripts/seed-pilot-coaches.ts",
     "seed:pilot-calendar": "ts-node --transpile-only --project tsconfig.json src/scripts/seed-pilot-calendar.ts",
+    "seed:game-model-rocklin-fc": "ts-node --transpile-only --project tsconfig.json src/scripts/seed-game-model-rocklin-fc.ts",
     "scenario:board": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-editor.ts",
     "scenario:board-drawing": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-drawing.ts",
     "scenario:board-lines": "ts-node --transpile-only --project tsconfig.json src/scripts/scenario-tactical-board-lines.ts",

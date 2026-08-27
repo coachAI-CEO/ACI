@@ -933,7 +933,7 @@ export async function generateAndReviewSession(
     phase: input.phase,
   });
   
-  const qaPrompt = buildSessionQAReviewerPrompt(session);
+  const qaPrompt = buildSessionQAReviewerPrompt(session, input.targetSubprinciple ?? undefined);
   console.log(`[SESSION] Starting QA with ${qaPrompt.length} char prompt...`);
   const qaModel = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL;
   const qaText = await generateText(qaPrompt, {

@@ -124,6 +124,40 @@ enum ArtifactType {
   MESOCYCLE
 }
 
+// The four moments a game model is defined across -- distinct from `Phase`
+// (a session's in-the-moment tactical focus). Mirrors Club.philosophy*'s
+// four fields, but structured instead of free text.
+enum GameModelMoment {
+  ATTACKING_ORGANIZATION
+  DEFENSIVE_TRANSITION
+  DEFENSIVE_ORGANIZATION
+  ATTACKING_TRANSITION
+}
+
+enum TrainingPriorityStatus {
+  ACTIVE
+  RESOLVED
+}
+
+// Coarse, coach-facing signal captured after the fact -- not a score, a
+// plain read on whether the trigger/response actually showed up in training.
+enum TrainingPriorityOutcome {
+  RARELY
+  SOMETIMES
+  CONSISTENTLY
+}
+
+// Whether a subprinciple is appropriate to actively train yet -- separate
+// from HOW it's taught (that's coachLevel's job, unchanged). A team's
+// eligible pool for curriculum/priority selection is filtered by this against
+// the team's playerLevel/ageGroup; it does not change the subprinciple's
+// wording, only whether it's offered as a priority candidate.
+enum SubprincipleReadiness {
+  FOUNDATIONAL
+  DEVELOPING
+  ADVANCED
+}
+
 model Drill {
   id      String  @id @default(uuid())
   refCode String? @unique // Human-readable reference code (D-XXXX format)
@@ -195,8 +229,21 @@ model Session {
   title   String
 
   // Tactical & psych metadata
-  principleIds  Json? // array of strings
+  principleIds  Json? // array of strings -- legacy free-form LLM tags, no fixed taxonomy
   psychThemeIds Json? // array of strings
+
+  // The specific subprinciple this session was built to develop -- distinct
+  // from principleIds above (free-form tags with no schema). Null until a
+  // session is generated from a TrainingPriority instead of a flat topic
+  // string. Session-level UI and the QA alignment gate both key off this.
+  targetSubprincipleId String?       @map("target_subprinciple_id")
+  targetSubprinciple   Subprinciple? @relation(fields: [targetSubprincipleId], references: [id], onDelete: SetNull)
+
+  // Which specific TrainingPriority instance (team + week) this session was
+  // generated for, if any. targetSubprincipleId above is denormalized from
+  // this for convenient display/QA lookups without a join.
+  trainingPriorityId String?           @map("training_priority_id")
+  trainingPriority   TrainingPriority? @relation(fields: [trainingPriorityId], references: [id], onDelete: SetNull)
 
   // Physical / conditioning
   energySystem String? // "ATP-PC" | "Anaerobic" | "Aerobic"
@@ -769,6 +816,7 @@ model Club {
   tacticalBoards      TacticalBoard[]
   sessions            Session[]
   teams               Team[]
+  principles          Principle[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.
@@ -816,6 +864,74 @@ model GameModelTemplate {
   updatedBy                       String?     @map("updated_by")
 
   @@map("game_model_templates")
+}
+
+// Structured counterpart to Club.philosophy* -- a real principle/subprinciple
+// hierarchy instead of one free-text blob per moment. A club's game model is
+// this table, not a label; TrainingPriority (next) selects from it instead of
+// generation reasoning from a flat GameModelId string.
+model Principle {
+  id        String          @id @default(uuid())
+  clubId    String          @map("club_id")
+  club      Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  moment    GameModelMoment
+  statement String          @db.Text
+  order     Int             @default(0)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  subprinciples Subprinciple[]
+
+  @@index([clubId, moment])
+  @@map("principles")
+}
+
+model Subprinciple {
+  id          String    @id @default(uuid())
+  principleId String    @map("principle_id")
+  principle   Principle @relation(fields: [principleId], references: [id], onDelete: Cascade)
+  // A trigger without a response, or vice versa, isn't a usable subprinciple --
+  // both are required, not optional detail.
+  trigger     String    @db.Text
+  response    String    @db.Text
+  antiPattern String?   @map("anti_pattern") @db.Text
+  readiness   SubprincipleReadiness @default(FOUNDATIONAL)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  sessions          Session[]
+  trainingPriorities TrainingPriority[]
+
+  @@index([principleId])
+  @@map("subprinciples")
+}
+
+// Which subprinciple a specific team is working on for a specific week, and
+// why. This is what actually drives generation (Call 1 reads this, not a
+// flat topic string) and what CurriculumWeek eventually points at instead of
+// a pre-authored theme. Outcome is captured after the fact, not predicted --
+// it's the input to next week's selection, not a score on this one.
+model TrainingPriority {
+  id             String                 @id @default(uuid())
+  teamId         String                 @map("team_id")
+  team           Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  subprincipleId String                 @map("subprinciple_id")
+  subprinciple   Subprinciple           @relation(fields: [subprincipleId], references: [id], onDelete: Cascade)
+  weekStart      DateTime               @map("week_start")
+  rationale      String                 @db.Text
+  status         TrainingPriorityStatus @default(ACTIVE)
+  outcome        TrainingPriorityOutcome?
+  outcomeNotes   String?                @map("outcome_notes") @db.Text
+  createdByUserId String?               @map("created_by_user_id")
+  createdAt      DateTime               @default(now()) @map("created_at")
+  updatedAt      DateTime               @updatedAt @map("updated_at")
+
+  sessions Session[]
+
+  @@index([teamId, weekStart])
+  @@index([subprincipleId])
+  @@map("training_priorities")
 }
 
 // Optional per-club subdivision (an "age group," a "girls academy," whatever
@@ -879,6 +995,11 @@ model Team {
   seasonLabel     String?     @map("season_label")
   notes           String?
   playerLevel     String?     @map("player_level")
+  // Null = use the default age/format-band readiness ceiling (7v7->FOUNDATIONAL,
+  // 9v9->+DEVELOPING, 11v11->+ADVANCED). A DOC can override this per team to
+  // unlock a higher tier early (or hold a team back) -- deliberately a manual
+  // call for now, not evaluation-driven; that's a separate future feature.
+  readinessOverride SubprincipleReadiness? @map("readiness_override")
   createdByUserId String      @map("created_by_user_id")
   createdBy       User        @relation("TeamCreatedBy", fields: [createdByUserId], references: [id])
   createdAt       DateTime    @default(now()) @map("created_at")
@@ -889,6 +1010,7 @@ model Team {
   chatMessages CoachCenterMessage[]
   gameDays     GameDayDocument[]
   calendarEvents CalendarEvent[]
+  trainingPriorities TrainingPriority[]
 
   @@index([createdByUserId])
   @@index([clubId])
