@@ -1,0 +1,246 @@
+import { useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors } from '../../constants/colors';
+import { DatePickerSheet } from '../ui/DatePickerSheet';
+import { DropdownCell, DropdownRow } from '../ui/DropdownCell';
+import { PickerSheet } from '../ui/PickerSheet';
+import { TimePickerSheet } from '../ui/TimePickerSheet';
+
+type Props = {
+  visible: boolean;
+  title?: string;
+  initialDate?: Date;
+  durationMin?: number;
+  onCancel: () => void;
+  onConfirm: (payload: { scheduledAt: Date; durationMin: number }) => void;
+  loading?: boolean;
+  /** Allow caller to lock duration (hides the row). Defaults to showing it. */
+  hideDuration?: boolean;
+};
+
+const DURATION_OPTIONS = [
+  { value: '30', label: '30 min' },
+  { value: '45', label: '45 min' },
+  { value: '60', label: '60 min' },
+  { value: '75', label: '75 min' },
+  { value: '90', label: '90 min' },
+];
+
+function formatDateForSheet(d: Date): string {
+  return d.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function formatTimeForSheet(d: Date): string {
+  return d.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+export function ScheduleSessionSheet({
+  visible,
+  title = 'Schedule session',
+  initialDate,
+  durationMin = 60,
+  onCancel,
+  onConfirm,
+  loading,
+  hideDuration,
+}: Props) {
+  const [scheduledAt, setScheduledAt] = useState(() => {
+    const seed = initialDate ?? new Date();
+    return new Date(seed);
+  });
+  const [duration, setDuration] = useState(String(durationMin));
+  const [dateSheetOpen, setDateSheetOpen] = useState(false);
+  const [timeSheetOpen, setTimeSheetOpen] = useState(false);
+  const [durationSheetOpen, setDurationSheetOpen] = useState(false);
+
+  const onPickDate = (date: Date) => {
+    const merged = new Date(scheduledAt);
+    merged.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+    setScheduledAt(merged);
+    setDateSheetOpen(false);
+  };
+
+  const onPickTime = (date: Date) => {
+    setScheduledAt(date);
+    setTimeSheetOpen(false);
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
+      <Pressable style={styles.backdrop} onPress={onCancel} />
+      <View style={styles.sheet}>
+        <View style={styles.grab} />
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>Pick a date and time, then confirm.</Text>
+
+        <DropdownRow>
+          <DropdownCell
+            fullWidth
+            label="Date"
+            value={formatDateForSheet(scheduledAt)}
+            pairLeft={false}
+            onPress={() => {
+              setDateSheetOpen(true);
+              setTimeSheetOpen(false);
+              setDurationSheetOpen(false);
+            }}
+          />
+        </DropdownRow>
+        <DropdownRow>
+          <DropdownCell
+            fullWidth
+            label="Time"
+            value={formatTimeForSheet(scheduledAt)}
+            pairLeft={false}
+            onPress={() => {
+              setTimeSheetOpen(true);
+              setDateSheetOpen(false);
+              setDurationSheetOpen(false);
+            }}
+          />
+        </DropdownRow>
+
+        {!hideDuration ? (
+          <DropdownRow>
+            <DropdownCell
+              fullWidth
+              label="Duration"
+              value={duration ? `${duration} min` : 'Pick'}
+              pairLeft={false}
+              onPress={() => {
+                setDurationSheetOpen(true);
+                setDateSheetOpen(false);
+                setTimeSheetOpen(false);
+              }}
+            />
+          </DropdownRow>
+        ) : null}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Confirm schedule"
+          disabled={Boolean(loading)}
+          onPress={() =>
+            onConfirm({
+              scheduledAt,
+              durationMin: Math.max(15, Number(duration) || durationMin || 60),
+            })
+          }
+          style={({ pressed }) => [
+            styles.confirm,
+            pressed ? styles.confirmPressed : null,
+            loading ? styles.confirmDisabled : null,
+          ]}
+        >
+          <Text style={styles.confirmLabel}>{loading ? 'Scheduling…' : 'Confirm schedule'}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          onPress={onCancel}
+          style={({ pressed }) => [styles.cancel, pressed ? styles.cancelPressed : null]}
+        >
+          <Text style={styles.cancelLabel}>Cancel</Text>
+        </Pressable>
+
+        <DatePickerSheet
+          visible={dateSheetOpen}
+          initialDate={scheduledAt}
+          selectedDate={scheduledAt}
+          onCancel={() => setDateSheetOpen(false)}
+          onPick={onPickDate}
+        />
+        <TimePickerSheet
+          visible={timeSheetOpen}
+          selectedDate={scheduledAt}
+          onCancel={() => setTimeSheetOpen(false)}
+          onPick={onPickTime}
+        />
+        <PickerSheet
+          visible={durationSheetOpen}
+          title="Pick a duration"
+          options={DURATION_OPTIONS}
+          selectedValue={duration}
+          onCancel={() => setDurationSheetOpen(false)}
+          onPick={(value) => {
+            setDuration(value);
+            setDurationSheetOpen(false);
+          }}
+        />
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  backdrop: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1,
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    gap: 6,
+    paddingBottom: 28,
+  },
+  grab: {
+    alignSelf: 'center',
+    backgroundColor: '#374151',
+    borderRadius: 999,
+    height: 4,
+    marginTop: 8,
+    width: 36,
+  },
+  title: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+  subtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  confirm: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    marginHorizontal: 12,
+    marginTop: 12,
+    paddingVertical: 14,
+  },
+  confirmDisabled: {
+    opacity: 0.6,
+  },
+  confirmPressed: {
+    opacity: 0.85,
+  },
+  confirmLabel: {
+    color: '#062b1d',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  cancel: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginHorizontal: 12,
+    marginTop: 8,
+    paddingVertical: 12,
+  },
+  cancelPressed: {
+    opacity: 0.85,
+  },
+  cancelLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+});

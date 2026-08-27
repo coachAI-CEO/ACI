@@ -509,12 +509,24 @@ function geomForPhase(
 export function labelStackAwayFromEmphasis(
   area: { x: number; y: number; width?: number; height?: number },
   count: number,
-  focusX?: number
+  focusX?: number,
+  orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL'
 ): { x: number; y: number }[] {
   const cy = area.y + (area.height ?? 20) / 2;
   const fx = typeof focusX === 'number' ? focusX : area.x + (area.width ?? 40) / 2;
 
-  // Opposite third along goal→goal (= screen horizontal)
+  if (orientation === 'VERTICAL') {
+    // Mobile portrait: stack captions down the opposite flank (vary y).
+    const colX = fx < 55 ? 86 : 14;
+    const startY = cy < 45 ? 62 : cy > 58 ? 14 : 68;
+    const step = count > 3 ? 8 : 9;
+    return Array.from({ length: Math.max(0, count) }, (_, i) => ({
+      x: clamp(colX),
+      y: clamp(startY + i * step),
+    }));
+  }
+
+  // Opposite third along goal→goal (= screen horizontal on landscape web)
   const baseY = cy < 45 ? 78 : cy > 58 ? 16 : 82;
   // Opposite flank from the channel (= screen vertical column)
   const preferTop = fx < 55;
@@ -1568,6 +1580,8 @@ export function placePhaseSnapshot(input: {
   /** Motif pass/press arrows — on for AI play-out, off for Setup shape. */
   includeMotifArrows?: boolean;
   engageNine?: boolean;
+  /** Caption stack axis — VERTICAL for mobile portrait boards. */
+  orientation?: 'HORIZONTAL' | 'VERTICAL';
 }): {
   players: Player[];
   arrows: Arrow[];
@@ -1585,6 +1599,7 @@ export function placePhaseSnapshot(input: {
     defBlock = 'high',
     includeMotifArrows = true,
     engageNine = false,
+    orientation = 'HORIZONTAL',
   } = input;
 
   const g = geomForPhase(phase, channelX, attFormation);
@@ -1650,11 +1665,16 @@ export function placePhaseSnapshot(input: {
     for (const c of defCues) captions.push(`DEF ${defFormation}: ${c}`.slice(0, 200));
   }
 
-  const stack = labelStackAwayFromEmphasis(g.area, Math.min(3, captions.length), focus.x);
+  const stack = labelStackAwayFromEmphasis(
+    g.area,
+    Math.min(3, captions.length),
+    focus.x,
+    orientation
+  );
   const labels = captions.slice(0, 3).map((text, i) => ({
     text: text.slice(0, 200),
-    x: stack[i]?.x ?? clamp(90 - i * 13),
-    y: stack[i]?.y ?? 76,
+    x: stack[i]?.x ?? (orientation === 'VERTICAL' ? 86 : clamp(90 - i * 13)),
+    y: stack[i]?.y ?? (orientation === 'VERTICAL' ? clamp(62 + i * 9) : 76),
   }));
 
   // Build-out ball: 4-2-3-1 sits with the pivot platform; other shapes with the ball-side CB
@@ -1863,6 +1883,7 @@ export function applySetupPhaseToDiagram(
     channelX,
     defBlock: input.defBlock || 'high',
     includeMotifArrows: false,
+    orientation: diagram.pitch?.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL',
   });
 
   const players = showOpposition
@@ -1893,9 +1914,14 @@ export function applySetupPhaseToDiagram(
       ? labelStackAwayFromEmphasis(
           { x: area0.x, y: area0.y, width: area0.width, height: area0.height },
           captionTexts.length,
-          focusX
+          focusX,
+          diagram.pitch?.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'
         )
-      : captionTexts.map((_, i) => ({ x: clamp(90 - i * 13), y: 76 }));
+      : captionTexts.map((_, i) =>
+          diagram.pitch?.orientation === 'VERTICAL'
+            ? { x: 86, y: clamp(62 + i * 9) }
+            : { x: clamp(90 - i * 13), y: 76 }
+        );
 
   return {
     ...diagram,

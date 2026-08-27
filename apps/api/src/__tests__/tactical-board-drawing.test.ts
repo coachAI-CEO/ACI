@@ -89,7 +89,7 @@ describe('Tactical board drawing + objects', () => {
     const blank = await createBlankBoard('coach-1', { title: 'Untitled board' });
     expect((blank.diagram as any).players.length).toBe(22);
 
-    let diagram = structuredClone(blank.diagram) as WebDiagramV1;
+    let diagram = structuredClone(blank.diagram) as unknown as WebDiagramV1;
 
     // Move ATT #9 and place/move balls
     diagram = {

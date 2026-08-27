@@ -122,3 +122,36 @@ Then `/login` and `/coach-center`, not only `/demo/drill`.
 - Product + UI brief: `TACTICALEDGE_UI_PRODUCT_REPORT.md`
 - Board principles: `docs/tactical-board/formation-principles-v2.md`
 - Video MVP spec (historical; feature is beta): `SHORT_VIDEO_ANALYSIS_FEATURE_SPEC.md`
+
+---
+
+## Quick start (mobile against staging)
+
+1. Work on branch `codex/mobile-app` (often worktree `aci-mobile-dev`).
+2. Create `apps/mobile/.env`:
+
+```env
+EXPO_PUBLIC_API_URL=https://tacticaledge-api.onrender.com
+EXPO_PUBLIC_WEB_URL=https://tacticaledge.app
+```
+
+3. Restart Metro with cache clear after any `.env` change: `npx expo start --clear`.
+4. Without `.env`, the client falls back to `http://localhost:4000` and looks like the API is down.
+
+Full mobile plan: [`docs/mobile/README.md`](docs/mobile/README.md).
+
+---
+
+## Branches & worktrees
+
+| Branch | Typical use |
+|---|---|
+| `main` | Production / default |
+| `codex/mobile-app` | Mobile + shared board/Coach Center work |
+| `codex/web-prod-release` | Web release train |
+
+Mobile source of truth for day-to-day Expo work is often the `aci-mobile-dev` worktree on `codex/mobile-app`. Other worktrees on `main` may lack `apps/mobile` after hotfixes — check before editing.
+
+Render staging branch pin: [`docs/release-process.md`](docs/release-process.md).
+
+---

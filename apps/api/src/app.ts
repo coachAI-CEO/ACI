@@ -23,6 +23,7 @@ import docHubRoutes from "./routes-doc-hub";
 import coachCenterRoutes from "./routes-coach-center";
 import boardsRoutes from "./routes-boards";
 import { diagramSvgRouter } from "./routes/diagram-svg";
+import adminDevRoutes from "./routes-admin-dev";
 
 const app = express();
 
@@ -83,5 +84,11 @@ app.use(adminRoutes); // Admin dashboard routes
 app.use(playerPlanRoutes); // Player plan routes
 app.use(organizationRoutes); // Organization management routes (CLUB accounts)
 app.use(videoAnalysisRoutes); // Video analysis routes
+
+// Dev-only reset helpers (gated by ENABLE_DEV_SEED_ROUTES + DEV_SEED_SECRET header;
+// see routes-admin-dev.ts). Mounted last so it never shadows real routes.
+if (process.env.ENABLE_DEV_SEED_ROUTES === "1") {
+  app.use(adminDevRoutes);
+}
 
 export default app;
