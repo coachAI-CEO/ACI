@@ -9,6 +9,25 @@ const TIER_ORDER: SubprincipleReadiness[] = [
   SubprincipleReadiness.ADVANCED,
 ];
 
+type GameFormat = ReturnType<typeof getGameFormatForAgeGroup>;
+
+/**
+ * Single source of truth for everything that varies by format/age band:
+ * readiness ceiling, default playerLevel, and default coachLevel. Both
+ * getDefaultReadinessCeiling and getDefaultPlayerAndCoachLevel read from
+ * this ONE table (keyed on getGameFormatForAgeGroup's output) instead of
+ * each hand-rolling its own format->tier ladder -- so a format-band change
+ * can't update one without the other.
+ */
+const BAND_DEFAULTS: Record<
+  GameFormat,
+  { readinessCeiling: SubprincipleReadiness; playerLevel: string; coachLevel: string }
+> = {
+  "7v7": { readinessCeiling: SubprincipleReadiness.FOUNDATIONAL, playerLevel: "BEGINNER", coachLevel: "USSF_D" },
+  "9v9": { readinessCeiling: SubprincipleReadiness.DEVELOPING, playerLevel: "INTERMEDIATE", coachLevel: "USSF_C" },
+  "11v11": { readinessCeiling: SubprincipleReadiness.ADVANCED, playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" },
+};
+
 /**
  * Default readiness ceiling by format/age band, per the age/format bands
  * already used everywhere else in generation (getGameFormatForAgeGroup).
@@ -16,10 +35,7 @@ const TIER_ORDER: SubprincipleReadiness[] = [
  * only the fallback when no override is set.
  */
 export function getDefaultReadinessCeiling(ageGroup: string): SubprincipleReadiness {
-  const format = getGameFormatForAgeGroup(ageGroup);
-  if (format === "7v7") return SubprincipleReadiness.FOUNDATIONAL;
-  if (format === "9v9") return SubprincipleReadiness.DEVELOPING;
-  return SubprincipleReadiness.ADVANCED;
+  return BAND_DEFAULTS[getGameFormatForAgeGroup(ageGroup)].readinessCeiling;
 }
 
 /** The team's actual ceiling: DOC override if set, else the age/format default. */
@@ -54,8 +70,6 @@ export function isReadinessEligibleForTeam(
  * every team, including U8s, to adult-level vocabulary and difficulty.
  */
 export function getDefaultPlayerAndCoachLevel(ageGroup: string): { playerLevel: string; coachLevel: string } {
-  const format = getGameFormatForAgeGroup(ageGroup);
-  if (format === "7v7") return { playerLevel: "BEGINNER", coachLevel: "USSF_D" };
-  if (format === "9v9") return { playerLevel: "INTERMEDIATE", coachLevel: "USSF_C" };
-  return { playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" };
+  const { playerLevel, coachLevel } = BAND_DEFAULTS[getGameFormatForAgeGroup(ageGroup)];
+  return { playerLevel, coachLevel };
 }

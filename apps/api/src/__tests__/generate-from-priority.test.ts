@@ -13,6 +13,7 @@ import {
   deriveTrainingIntent,
   generateDrillFromIntent,
   generateDrillForTrainingPriority,
+  LlmResponseParseError,
 } from "../services/generate-from-priority";
 
 const mockGenerateText = generateText as jest.Mock;
@@ -30,6 +31,23 @@ describe("deriveTrainingIntent", () => {
       { ageGroup: "U16", playerLevel: "ADVANCED" }
     );
     expect(intent).toEqual({ tacticalProblem: "p", mustBeAvailable: "a", mustBeAvoided: "b" });
+  });
+});
+
+describe("deriveTrainingIntent -- malformed model response", () => {
+  beforeEach(() => mockGenerateText.mockReset());
+
+  // Regression guard for the eng-review finding: a truncated/garbled model
+  // response must throw a distinguishable error, not a bare JSON.parse crash.
+  test("throws LlmResponseParseError (not a raw SyntaxError) on unparseable output", async () => {
+    mockGenerateText.mockResolvedValue('{"tacticalProblem": "p", "mustBeAvailable"');
+
+    await expect(
+      deriveTrainingIntent(
+        { trigger: "t", response: "r", antiPattern: "ap" },
+        { ageGroup: "U16", playerLevel: "ADVANCED" }
+      )
+    ).rejects.toBeInstanceOf(LlmResponseParseError);
   });
 });
 

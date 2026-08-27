@@ -15,9 +15,25 @@ type SubprincipleFields = {
   antiPattern: string | null;
 };
 
+/**
+ * Distinguishes "the model returned unparseable text" from every other
+ * failure mode in this chain (team not found, DB error, etc.) so a caller
+ * can react differently -- e.g. retry the same call vs. surface a hard error.
+ */
+export class LlmResponseParseError extends Error {
+  constructor(public readonly rawResponse: string, cause: unknown) {
+    super(`Failed to parse LLM JSON response: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "LlmResponseParseError";
+  }
+}
+
 function parseJsonResponse<T>(text: string): T {
   const cleaned = text.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-  return JSON.parse(cleaned) as T;
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (err) {
+    throw new LlmResponseParseError(text, err);
+  }
 }
 
 /**
