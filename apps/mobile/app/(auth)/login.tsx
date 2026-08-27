@@ -65,11 +65,11 @@ export default function LoginScreen() {
           <Button title="Sign In" onPress={onSubmit} loading={isLoading} />
 
           <Link href="/(auth)/forgot-password" style={styles.link}>
-            Forgot password?
+            <Text style={styles.link}>Forgot password?</Text>
           </Link>
 
           <Link href="/(auth)/register" style={styles.link}>
-            Create account
+            <Text style={styles.link}>Create account</Text>
           </Link>
         </ScrollView>
       </KeyboardAvoidingView>

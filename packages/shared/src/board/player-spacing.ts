@@ -79,18 +79,20 @@ export function diagramPlayerCoordsEqual(a: DiagramV1, b: DiagramV1): boolean {
 export function separateOverlappingPlayers<T extends PlayerLike>(
   players: T[],
   minGap = MIN_PLAYER_GAP,
-  opts?: { preserveY?: boolean }
+  opts?: { preserveY?: boolean; /** When true, opposite teams use `minGap` too (no marking stacks). */ uniformGap?: boolean }
 ): T[] {
   const next = players.map((p) => ({ ...p }));
   const n = next.length;
   const preserveY = opts?.preserveY ?? n >= 18;
+  const gapFor = (a: PlayerLike, b: PlayerLike) =>
+    opts?.uniformGap ? minGap : pairGap(a, b, minGap);
   for (let pass = 0; pass < 24; pass++) {
     let moved = false;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         const a = next[i];
         const b = next[j];
-        const target = pairGap(a, b, minGap) + 0.05;
+        const target = gapFor(a, b) + 0.05;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy);
@@ -116,9 +118,8 @@ export function separateOverlappingPlayers<T extends PlayerLike>(
           let mag = d;
           if (mag < 0.08) {
             const ang = (((i * 13 + j * 17) % 360) * Math.PI) / 180;
-            const opposite = pairGap(a, b, minGap) === OPPOSITE_TEAM_GAP;
-            ux = opposite ? (Math.cos(ang) >= 0 ? 1 : -1) : Math.cos(ang);
-            uy = opposite ? 0 : Math.sin(ang);
+            ux = Math.cos(ang);
+            uy = Math.sin(ang);
             mag = 0.08;
           }
           const nx = ux / mag;

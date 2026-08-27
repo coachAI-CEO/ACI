@@ -117,6 +117,30 @@ export async function patchBoard(
   }
 }
 
+/** Place Setup phase/zone/channel via API chassis (no DB write). */
+export async function placeBoardPhase(
+  boardId: string,
+  input: {
+    diagram: WebDiagramV1;
+    phase: string;
+    zone: string;
+    channel: string;
+    attFormation?: string;
+    defFormation?: string;
+    showOpposition?: boolean;
+  }
+): Promise<WebDiagramV1> {
+  try {
+    const response = await api.post<{ ok: boolean; diagram: WebDiagramV1 }>(
+      `/boards/${encodeURIComponent(boardId)}/phase-place`,
+      input
+    );
+    return response.data.diagram;
+  } catch (error) {
+    throw normalizeApiError(error);
+  }
+}
+
 // ─── AI chat ──────────────────────────────────────────────────────────
 
 export type BoardAiHistoryMessage = {
@@ -140,7 +164,13 @@ export type BoardAiChatResult = {
   diagram: WebDiagramV1 | null;
   coachLevel: string | null;
   playerLevel: string | null;
-  sessionBridge: { teamId: string; title: string; topic?: string | null } | null;
+  sessionBridge: {
+    generatorUrl?: string | null;
+    generatorPrompt?: string | null;
+    teamId?: string | null;
+    title?: string | null;
+    topic?: string | null;
+  } | null;
 };
 
 export async function sendBoardAiChat(

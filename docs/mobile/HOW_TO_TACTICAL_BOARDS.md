@@ -35,31 +35,45 @@ Editor chrome (matches interactive mock):
 | Goal | Do this |
 |---|---|
 | Move a player | Move tool → drag |
+| Move an arrow | Move tool → drag the line (or gold ends) |
 | Add a player | Player tool → tap pitch → set number/role/team in popover |
-| Draw a pass/run | Arrow tool → drag from → to |
+| Draw a pass / run / press | Arrow tool → pick **Pass · Run · Press** → drag from → to |
+| Draw web line types | Arrow tool → **Free / Line / Arrow / Dash / Curve / Curve↺** → drag |
+| Edit an arrow | Move tool → tap arrow → change coaching type / line type / flip / delete |
 | Place a ball | Ball tool → tap |
+| Place a label | Label tool → tap → edit text |
+| Edit a label | Move tool → long-press label |
+| Place a shape | Shape tool → Spot / Circle / Rect → tap |
+| Place kit | Kit tool → Cone / Goal / Man / Pole → tap |
+| Rotate mini-goal | Move tool → long-press mini-goal |
 | Remove | Erase tool → tap target |
-| Change 7v7 / 9v9 / 11v11 | Format control in header area |
-| Flip orientation | ⋯ → Orientation |
+| Rename a frame | Long-press frame chip → rename |
+| Flip to landscape | Rotate the phone — pitch auto-switches to horizontal |
+| Zoom Full / Half / Third | Segmented control above the pitch — crops from the away goal; saved as `pitch.variant` |
+| Change 7v7 / 9v9 / 11v11 | Format control → **formation popup** (pick ATT/DEF) → Apply |
+| Setup formations / format | ⋯ → **Setup · formations** → format reset, ATT/DEF shapes, show/hide teams |
+| Phase · third · channel | Same Setup sheet → pick Phase × Third × Channel → **Apply phase placement** |
+| Lanes / thirds overlay | Setup → Lanes / Thirds toggles |
 | Persist | **Save** (unsaved edits stay local until then) |
+| Rename board | ⋯ → **Rename board** |
 
 ---
 
 ## Multi-frame sequence
 
-1. Use the **frame bar** under the pitch: add / duplicate / delete / rename.
+1. Use the **frame bar** under the pitch: add / duplicate / delete / rename (long-press chip → rename on iOS and Android).
 2. Edit each frame independently (full layers snapshot per frame).
 3. Playback uses shared `interpolateLayers` between frames.
 4. Detail screen keeps a scrub bar for read-only playback.
 
 ---
 
-## AI chat (text)
+## AI chat (text + photo)
 
 1. ⋯ → **AI** (or AI entry on detail).
-2. Describe the change in the sheet; wait for an `applied` preview when offered.
-3. **Apply** commits into the diagram. In read mode, confirm the preview first.
-4. Image upload is not in v1 — text only.
+2. Type a request, tap a suggestion chip, and/or **Photo** to attach a pitch image.
+3. Wait for an `applied` preview when offered; **Apply** commits into the diagram.
+4. If the reply includes session ideas, **Open Session Builder** opens the web generator.
 
 ---
 

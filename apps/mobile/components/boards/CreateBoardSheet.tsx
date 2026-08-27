@@ -31,6 +31,7 @@ export function CreateBoardSheet({ visible, onClose, onCreated }: Props) {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<Step>('menu');
   const [title, setTitle] = useState('');
+  const [ageGroup, setAgeGroup] = useState('');
   const [drillKey, setDrillKey] = useState('');
   const [shareMode, setShareMode] = useState<BoardShareMode>('PRIVATE');
 
@@ -52,6 +53,7 @@ export function CreateBoardSheet({ visible, onClose, onCreated }: Props) {
   function reset() {
     setStep('menu');
     setTitle('');
+    setAgeGroup('');
     setDrillKey('');
     setShareMode('PRIVATE');
   }
@@ -75,7 +77,12 @@ export function CreateBoardSheet({ visible, onClose, onCreated }: Props) {
   }
 
   function submitBlank() {
-    mutation.mutate({ mode: 'BLANK', title: title.trim() || undefined, shareMode });
+    mutation.mutate({
+      mode: 'BLANK',
+      title: title.trim() || undefined,
+      ageGroup: ageGroup.trim() || undefined,
+      shareMode,
+    });
   }
 
   function submitSession(sessionId: string) {
@@ -103,6 +110,8 @@ export function CreateBoardSheet({ visible, onClose, onCreated }: Props) {
           <BlankTitleStep
             title={title}
             onTitle={setTitle}
+            ageGroup={ageGroup}
+            onAgeGroup={setAgeGroup}
             onBack={() => setStep('menu')}
             onSubmit={submitBlank}
             submitting={mutation.isPending}
@@ -210,12 +219,16 @@ function MenuStep({
 function BlankTitleStep({
   title,
   onTitle,
+  ageGroup,
+  onAgeGroup,
   onBack,
   onSubmit,
   submitting,
 }: {
   title: string;
   onTitle: (t: string) => void;
+  ageGroup: string;
+  onAgeGroup: (a: string) => void;
   onBack: () => void;
   onSubmit: () => void;
   submitting: boolean;
@@ -223,7 +236,7 @@ function BlankTitleStep({
   return (
     <View style={styles.body}>
       <Text style={styles.title}>Blank board</Text>
-      <Text style={styles.subtitle}>Give it a name (or leave blank for “Untitled”).</Text>
+      <Text style={styles.subtitle}>Name it and optionally set an age group (e.g. U12).</Text>
       <TextInput
         value={title}
         onChangeText={onTitle}
@@ -231,9 +244,20 @@ function BlankTitleStep({
         placeholderTextColor={colors.muted}
         style={styles.input}
         autoFocus
+        returnKeyType="next"
+        maxLength={80}
+      />
+      <TextInput
+        value={ageGroup}
+        onChangeText={onAgeGroup}
+        placeholder="Age group (optional)"
+        placeholderTextColor={colors.muted}
+        style={styles.input}
+        autoCapitalize="characters"
+        autoCorrect={false}
         returnKeyType="done"
         onSubmitEditing={onSubmit}
-        maxLength={80}
+        maxLength={12}
       />
       <View style={styles.stepActions}>
         <Button title="Back" variant="secondary" onPress={onBack} disabled={submitting} />

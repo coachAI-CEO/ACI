@@ -1,4 +1,4 @@
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../ui/Badge';
 import { colors } from '../../constants/colors';
@@ -38,7 +38,7 @@ export function BoardCard({ board, onLongPress }: Props) {
         : summary.attFormation || summary.defFormation
       : null;
 
-  function openDetail() {
+  function openBoard() {
     if (board.canEdit) {
       router.push({ pathname: '/boards/[id]/edit', params: { id: board.id } });
       return;
@@ -46,13 +46,9 @@ export function BoardCard({ board, onLongPress }: Props) {
     router.push({ pathname: '/boards/[id]', params: { id: board.id } });
   }
 
-  function openEditor() {
-    router.push({ pathname: '/boards/[id]/edit', params: { id: board.id } });
-  }
-
   return (
     <Pressable
-      onPress={openDetail}
+      onPress={openBoard}
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`Open board ${board.title || 'Untitled'}`}
@@ -84,29 +80,26 @@ export function BoardCard({ board, onLongPress }: Props) {
         <View style={styles.actions}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={
+              board.canEdit
+                ? `Edit ${board.title || 'Untitled'} in the editor`
+                : `Open ${board.title || 'Untitled'}`
+            }
+            hitSlop={8}
+            style={({ pressed }) => [styles.primaryBtn, pressed ? styles.primaryBtnPressed : null]}
+            onPress={openBoard}
+          >
+            <Text style={styles.primaryBtnLabel}>{board.canEdit ? 'Edit' : 'Open'}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel="Edit on web"
-            style={({ pressed }) => [styles.actionBtn, pressed ? styles.actionBtnPressed : null]}
+            hitSlop={8}
+            style={({ pressed }) => [styles.webLink, pressed ? styles.webLinkPressed : null]}
             onPress={() => void Linking.openURL(webPath(`/board/${board.id}`))}
           >
-            <Text style={styles.editBtnLabel}>Edit on web</Text>
+            <Text style={styles.webLinkLabel}>Web</Text>
           </Pressable>
-          {board.canEdit ? (
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={`Edit ${board.title || 'Untitled'} in the editor`}
-              style={({ pressed }) => [styles.editLink, pressed ? styles.editLinkPressed : null]}
-              onPress={openEditor}
-            >
-              Edit →
-            </Pressable>
-          ) : (
-            <Link
-              href={{ pathname: '/boards/[id]', params: { id: board.id } }}
-              style={styles.editLink}
-            >
-              Open →
-            </Link>
-          )}
         </View>
       </View>
     </Pressable>
@@ -132,20 +125,23 @@ const styles = StyleSheet.create({
   meta: { color: colors.muted, fontSize: 12 },
   footer: { alignItems: 'center', flexDirection: 'row', gap: 8, justifyContent: 'space-between' },
   spacer: { flex: 0 },
-  actions: { alignItems: 'center', flexDirection: 'row', gap: 12 },
-  actionBtn: {
-    backgroundColor: colors.surfaceAlt,
+  actions: { alignItems: 'center', flexDirection: 'row', gap: 10 },
+  primaryBtn: {
+    backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingHorizontal: 12,
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  actionBtnPressed: { opacity: 0.7 },
-  editBtnLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  editLink: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: '700',
+  primaryBtnPressed: { opacity: 0.75 },
+  primaryBtnLabel: { color: '#052e16', fontSize: 13, fontWeight: '800' },
+  webLink: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
     paddingVertical: 8,
   },
-  editLinkPressed: { opacity: 0.7 },
+  webLinkPressed: { opacity: 0.7 },
+  webLinkLabel: { color: colors.muted, fontSize: 13, fontWeight: '600' },
 });

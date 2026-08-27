@@ -1,8 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -16,6 +20,7 @@ import type { WebDiagramV1 } from '@aci/shared';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { colors } from '../../constants/colors';
+import { webPath } from '../../constants/web';
 import { describeApiError } from '../../services/api';
 import {
   sendBoardAiChat,
@@ -32,65 +37,137 @@ type Props = {
   onApplyDiagram: (next: WebDiagramV1, reply: string) => void;
 };
 
-type LocalMessage = BoardAiHistoryMessage & { id: string; applied?: boolean };
+type LocalMessage = BoardAiHistoryMessage & {
+  id: string;
+  applied?: boolean;
+  hasImage?: boolean;
+  sessionBridge?: BoardAiChatResult['sessionBridge'];
+};
+
+type PendingImage = {
+  data: string;
+  mimeType: string;
+  previewUri: string;
+};
+
+const SUGGESTED_PROMPTS = [
+  'Show a 4-2-3-1 from a goal kick',
+  'Press trigger at the centre circle',
+  'Add runs from both wingers',
+  'Build-out in the defensive third',
+];
 
 let localId = 0;
 const nextId = () => `m${++localId}-${Date.now().toString(36)}`;
 
 /**
- * Bottom sheet for text-only AI chat on a board. Mirrors the web's
- * `BoardAiSheet` shape — assistant replies can carry `applied: true`
- * (the AI mutated the diagram). Tapping "Apply" pushes the updated
- * diagram back into the editor (or detail screen).
- *
- * The composer sends up to the last 8 messages as `history`. Long
- * transcripts are auto-truncated.
+ * Bottom sheet for AI chat on a board — text + optional photo attach.
+ * Assistant replies can carry `applied: true` (diagram mutation) and/or
+ * a session-bridge link into Session Builder on web.
  */
 export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagram }: Props) {
   const [draft, setDraft] = useState('');
   const [history, setHistory] = useState<LocalMessage[]>([]);
   const [pendingReply, setPendingReply] = useState<BoardAiChatResult | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (!visible) {
-      // Reset state on close so each session is fresh.
       setDraft('');
       setHistory([]);
       setPendingReply(null);
+      setPendingImage(null);
     }
   }, [visible]);
 
   const send = useMutation({
     mutationFn: async () => {
       const trimmed = draft.trim();
-      if (!trimmed) throw new Error('Empty message');
+      if (!trimmed && !pendingImage) throw new Error('Empty message');
+      const message =
+        trimmed ||
+        (pendingImage ? 'Recreate this picture on the board.' : '');
       return sendBoardAiChat(boardId, {
-        message: trimmed,
+        message,
         diagram: diagram || undefined,
         history: history.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+        ...(pendingImage
+          ? {
+              image: {
+                data: pendingImage.data,
+                mimeType: pendingImage.mimeType,
+              },
+            }
+          : {}),
       });
     },
     onSuccess: (result) => {
       setPendingReply(result);
-      const userMsg: LocalMessage = { id: nextId(), role: 'user', content: draft.trim() };
+      const userContent =
+        draft.trim() ||
+        (pendingImage ? 'Recreate this picture on the board.' : '');
+      const userMsg: LocalMessage = {
+        id: nextId(),
+        role: 'user',
+        content: userContent,
+        hasImage: Boolean(pendingImage),
+      };
       const assistantMsg: LocalMessage = {
         id: nextId(),
         role: 'assistant',
         content: result.reply,
         applied: result.applied,
+        sessionBridge: result.sessionBridge,
       };
       setHistory((h) => [...h, userMsg, assistantMsg].slice(-8));
       setDraft('');
+      setPendingImage(null);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
   });
+
+  async function attachPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission required', 'Photo library access is needed to attach a board photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      base64: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Could not read photo', 'Try another image from your library.');
+      return;
+    }
+    const mimeType = asset.mimeType || 'image/jpeg';
+    setPendingImage({
+      data: asset.base64,
+      mimeType,
+      previewUri: asset.uri,
+    });
+  }
 
   function applyPending() {
     if (!pendingReply?.applied || !pendingReply.diagram) return;
     onApplyDiagram(pendingReply.diagram, pendingReply.reply);
     onClose();
   }
+
+  function openSessionBridge(bridge: NonNullable<BoardAiChatResult['sessionBridge']>) {
+    const url = bridge.generatorUrl
+      ? bridge.generatorUrl.startsWith('http')
+        ? bridge.generatorUrl
+        : webPath(bridge.generatorUrl)
+      : webPath('/generate');
+    void Linking.openURL(url);
+  }
+
+  const canSend = Boolean(draft.trim() || pendingImage) && !send.isPending;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -123,8 +200,21 @@ export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagra
               <View style={styles.emptyState}>
                 <Text style={styles.emptyTitle}>Ask the AI to draw, adjust, or explain</Text>
                 <Text style={styles.emptyBody}>
-                  Examples: "show me a 4-2-3-1 from a goal kick", "press trigger at the centre circle", "add 2 runs from the wingers".
+                  Attach a pitch photo, or tap a suggestion to get started.
                 </Text>
+                <View style={styles.promptChips}>
+                  {SUGGESTED_PROMPTS.map((p) => (
+                    <Pressable
+                      key={p}
+                      accessibilityRole="button"
+                      accessibilityLabel={p}
+                      onPress={() => setDraft(p)}
+                      style={({ pressed }) => [styles.promptChip, pressed ? { opacity: 0.7 } : null]}
+                    >
+                      <Text style={styles.promptChipLabel}>{p}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ) : (
               history.map((m) => (
@@ -137,7 +227,18 @@ export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagra
                   >
                     <Text style={styles.bubbleLabel}>{m.role === 'user' ? 'You' : 'AI'}</Text>
                     <Text style={styles.bubbleBody}>{m.content}</Text>
+                    {m.hasImage ? <Badge label="Photo attached" tone="muted" /> : null}
                     {m.applied ? <Badge label="Applied" tone="default" /> : null}
+                    {m.sessionBridge?.generatorUrl ? (
+                      <Pressable
+                        accessibilityRole="link"
+                        accessibilityLabel="Open Session Builder"
+                        onPress={() => openSessionBridge(m.sessionBridge!)}
+                        style={styles.bridgeLink}
+                      >
+                        <Text style={styles.bridgeLinkText}>Open Session Builder</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
               ))
@@ -146,7 +247,9 @@ export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagra
             {send.isPending ? (
               <View style={styles.pendingRow}>
                 <ActivityIndicator color={colors.primary} />
-                <Text style={styles.pendingText}>Thinking…</Text>
+                <Text style={styles.pendingText}>
+                  {pendingImage || history[history.length - 1]?.hasImage ? 'Reading photo…' : 'Thinking…'}
+                </Text>
               </View>
             ) : null}
 
@@ -164,7 +267,49 @@ export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagra
             </View>
           ) : null}
 
+          {pendingReply?.sessionBridge?.generatorUrl && !pendingReply.applied ? (
+            <View style={styles.applyRow}>
+              <Text style={styles.applyText} numberOfLines={2}>
+                Session ideas ready on web.
+              </Text>
+              <Button
+                title="Open"
+                onPress={() => openSessionBridge(pendingReply.sessionBridge!)}
+                variant="secondary"
+              />
+            </View>
+          ) : null}
+
+          {pendingImage ? (
+            <View style={styles.attachPreview}>
+              <Image source={{ uri: pendingImage.previewUri }} style={styles.attachThumb} />
+              <Text style={styles.attachLabel} numberOfLines={1}>
+                Photo ready to send
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Remove photo"
+                onPress={() => setPendingImage(null)}
+              >
+                <Text style={styles.attachRemove}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
           <View style={styles.composerRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Attach photo"
+              onPress={() => void attachPhoto()}
+              disabled={send.isPending}
+              style={({ pressed }) => [
+                styles.attachBtn,
+                pressed ? { opacity: 0.7 } : null,
+                send.isPending ? { opacity: 0.4 } : null,
+              ]}
+            >
+              <Text style={styles.attachBtnLabel}>Photo</Text>
+            </Pressable>
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -174,14 +319,12 @@ export function BoardAiSheet({ visible, boardId, diagram, onClose, onApplyDiagra
               multiline
               editable={!send.isPending}
               returnKeyType="send"
-              onSubmitEditing={() => send.mutate()}
+              onSubmitEditing={() => {
+                if (canSend) send.mutate();
+              }}
               blurOnSubmit={false}
             />
-            <Button
-              title="Send"
-              onPress={() => send.mutate()}
-              disabled={!draft.trim() || send.isPending}
-            />
+            <Button title="Send" onPress={() => send.mutate()} disabled={!canSend} />
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -219,9 +362,19 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 17, fontWeight: '800', letterSpacing: -0.2 },
   close: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   scrollContent: { gap: 8, padding: 12, paddingBottom: 24 },
-  emptyState: { alignItems: 'center', gap: 6, paddingTop: 24, paddingHorizontal: 12 },
+  emptyState: { alignItems: 'center', gap: 8, paddingTop: 16, paddingHorizontal: 12 },
   emptyTitle: { color: colors.text, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   emptyBody: { color: colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
+  promptChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 },
+  promptChip: {
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  promptChipLabel: { color: colors.text, fontSize: 12, fontWeight: '600' },
   bubbleRow: { flexDirection: 'row' },
   bubbleRowUser: { justifyContent: 'flex-end' },
   bubble: {
@@ -235,8 +388,16 @@ const styles = StyleSheet.create({
   },
   bubbleUser: { backgroundColor: '#14381f', borderColor: colors.primary },
   bubbleAssistant: {},
-  bubbleLabel: { color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase' },
+  bubbleLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   bubbleBody: { color: colors.text, fontSize: 14, lineHeight: 19 },
+  bridgeLink: { marginTop: 4 },
+  bridgeLinkText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   pendingRow: { alignItems: 'center', flexDirection: 'row', gap: 8 },
   pendingText: { color: colors.muted, fontSize: 13 },
   errorText: { color: '#f87171', fontSize: 13 },
@@ -253,6 +414,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   applyText: { color: colors.text, flex: 1, fontSize: 13 },
+  attachPreview: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 12,
+    paddingVertical: 4,
+  },
+  attachThumb: { borderRadius: 6, height: 40, width: 40 },
+  attachLabel: { color: colors.muted, flex: 1, fontSize: 12 },
+  attachRemove: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   composerRow: {
     alignItems: 'flex-end',
     flexDirection: 'row',
@@ -260,6 +431,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 4,
   },
+  attachBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceAlt,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 10,
+  },
+  attachBtnLabel: { color: colors.text, fontSize: 13, fontWeight: '700' },
   input: {
     backgroundColor: colors.surfaceAlt,
     borderColor: colors.border,

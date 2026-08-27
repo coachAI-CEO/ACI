@@ -145,6 +145,100 @@ export function viewportFor(format: PitchFormatId, zoom: PitchZoom): PitchViewpo
   };
 }
 
+/**
+ * Visible rectangle in diagram % (x=width, y=length).
+ * Matches `viewportFor`: crops from the away/DEF goal (y=0) along length.
+ */
+export type DiagramVisibleBand = {
+  xMin: number;
+  yMin: number;
+  xMax: number;
+  yMax: number;
+};
+
+export function diagramVisibleBand(
+  format: PitchFormatId,
+  zoom: PitchZoom
+): DiagramVisibleBand {
+  const spec = PITCH_SPECS[format];
+  const vp = viewportFor(format, zoom);
+  const yMin = (vp.originLengthYds / spec.lengthYards) * 100;
+  const yMax = ((vp.originLengthYds + vp.lengthYds) / spec.lengthYards) * 100;
+  const xMin = (vp.originWidthYds / spec.widthYards) * 100;
+  const xMax = ((vp.originWidthYds + vp.widthYds) / spec.widthYards) * 100;
+  return { xMin, yMin, xMax, yMax };
+}
+
+/** SVG viewBox string for a band. VERTICAL crops y; HORIZONTAL crops SVG-x (length). */
+export function viewBoxForBand(
+  band: DiagramVisibleBand,
+  orientation: "HORIZONTAL" | "VERTICAL" = "VERTICAL"
+): string {
+  const xSpan = Math.max(1, band.xMax - band.xMin);
+  const ySpan = Math.max(1, band.yMax - band.yMin);
+  if (orientation === "HORIZONTAL") {
+    // After HORIZONTAL_DIAGRAM_TRANSFORM, length (diagram y) maps to SVG x.
+    return `${band.yMin} ${band.xMin} ${ySpan} ${xSpan}`;
+  }
+  return `${band.xMin} ${band.yMin} ${xSpan} ${ySpan}`;
+}
+
+/**
+ * Map a point in the visible view (0–100 of the cropped SVG) into full diagram %.
+ * `vx`/`vy` are fractions of the on-screen pitch (not yet orientation-remapped).
+ */
+export function viewPctToDiagram(
+  vx: number,
+  vy: number,
+  band: DiagramVisibleBand,
+  orientation: "HORIZONTAL" | "VERTICAL" = "VERTICAL"
+): { x: number; y: number } {
+  const xSpan = Math.max(1, band.xMax - band.xMin);
+  const ySpan = Math.max(1, band.yMax - band.yMin);
+  if (orientation === "HORIZONTAL") {
+    // Screen (vx,vy) → SVG (band.yMin + vx%·ySpan, band.xMin + vy%·xSpan)
+    // then HORIZONTAL inverse: diagram x = 100 - svgY, diagram y = svgX
+    const svgX = band.yMin + (vx / 100) * ySpan;
+    const svgY = band.xMin + (vy / 100) * xSpan;
+    return { x: 100 - svgY, y: svgX };
+  }
+  return {
+    x: band.xMin + (vx / 100) * xSpan,
+    y: band.yMin + (vy / 100) * ySpan,
+  };
+}
+
+/** Map a screen-space pan delta (view %) into diagram-space delta. */
+export function viewDeltaToDiagram(
+  dvx: number,
+  dvy: number,
+  band: DiagramVisibleBand,
+  orientation: "HORIZONTAL" | "VERTICAL" = "VERTICAL"
+): { dx: number; dy: number } {
+  const xSpan = Math.max(1, band.xMax - band.xMin);
+  const ySpan = Math.max(1, band.yMax - band.yMin);
+  if (orientation === "HORIZONTAL") {
+    // screen right → +svgX → +diagram y; screen down → +svgY → −diagram x
+    return {
+      dx: -(dvy / 100) * xSpan,
+      dy: (dvx / 100) * ySpan,
+    };
+  }
+  return {
+    dx: (dvx / 100) * xSpan,
+    dy: (dvy / 100) * ySpan,
+  };
+}
+
+export function zoomFromPitchVariant(
+  variant: string | null | undefined
+): PitchZoom {
+  const v = String(variant || "").toUpperCase();
+  if (v === "HALF") return "HALF";
+  if (v === "THIRD") return "THIRD";
+  return "FULL";
+}
+
 export type PitchLayout = {
   left: number;
   top: number;

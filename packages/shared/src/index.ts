@@ -11,3 +11,6 @@ export * from './board/elements';
 export * from './board/lines';
 export * from './board/player-spacing';
 export * from './board/sequence';
+export * from './board/formations';
+export * from './board/setup-phase';
+export * from './board/labels';

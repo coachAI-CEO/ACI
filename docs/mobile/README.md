@@ -367,6 +367,7 @@ TanStack Query handles all server state (vault list, calendar events, etc.).
 
 | Doc | Kind |
 |---|---|
+| [PLAN_BOARD_PARITY.md](./PLAN_BOARD_PARITY.md) | Plan — close web↔mobile board gap |
 | [HOW_TO_TACTICAL_BOARDS.md](./HOW_TO_TACTICAL_BOARDS.md) | How-to |
 | [HOW_TO_COACH_CENTER.md](./HOW_TO_COACH_CENTER.md) | How-to |
 | [TUTORIAL_FIRST_BOARD.md](./TUTORIAL_FIRST_BOARD.md) | Tutorial |

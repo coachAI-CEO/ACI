@@ -82,7 +82,7 @@ export default function RegisterScreen() {
           <Button title="Create Account" onPress={onSubmit} loading={isLoading} />
 
           <Link href="/(auth)/login" style={styles.link}>
-            Back to sign in
+            <Text style={styles.link}>Back to sign in</Text>
           </Link>
         </ScrollView>
       </KeyboardAvoidingView>

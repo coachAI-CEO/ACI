@@ -29,7 +29,7 @@ import {
 import { useAuthStore } from '../../stores/auth.store';
 import { useOfflineStore } from '../../stores/offline.store';
 
-type ShareFilter = 'ALL' | 'PRIVATE' | 'CLUB';
+type ListFilter = 'ALL' | 'PRIVATE' | 'CLUB' | 'FAVORITES' | 'FORKED';
 
 const PAGE_SIZE = 40;
 
@@ -41,7 +41,7 @@ export default function BoardsHomeScreen() {
   const { create } = useLocalSearchParams<{ create?: string }>();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [shareFilter, setShareFilter] = useState<ShareFilter>('ALL');
+  const [listFilter, setListFilter] = useState<ListFilter>('ALL');
   const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
@@ -84,14 +84,17 @@ export default function BoardsHomeScreen() {
 
   const filtered = useMemo(() => {
     return allBoards.filter((board) => {
-      if (shareFilter !== 'ALL' && (board.shareMode || 'PRIVATE') !== shareFilter) return false;
+      if (listFilter === 'PRIVATE' && (board.shareMode || 'PRIVATE') !== 'PRIVATE') return false;
+      if (listFilter === 'CLUB' && board.shareMode !== 'CLUB') return false;
+      if (listFilter === 'FAVORITES' && !board.favorited) return false;
+      if (listFilter === 'FORKED' && !board.sourceSessionId && !board.sourceDrillKey) return false;
       if (debouncedSearch) {
         const haystack = `${board.title || ''} ${board.ageGroup || ''}`.toLowerCase();
         if (!haystack.includes(debouncedSearch)) return false;
       }
       return true;
     });
-  }, [allBoards, shareFilter, debouncedSearch]);
+  }, [allBoards, listFilter, debouncedSearch]);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteBoard(id),
@@ -133,7 +136,7 @@ export default function BoardsHomeScreen() {
         <View style={styles.headerText}>
           <Text style={styles.title}>Boards</Text>
           <Text style={styles.subtitle}>
-            View + create boards. Edit on web for drawing tools.
+            Create and edit boards on your phone. Open Web for desktop extras.
           </Text>
         </View>
         <Pressable
@@ -158,18 +161,25 @@ export default function BoardsHomeScreen() {
       />
 
       <View style={styles.chipsRow}>
-        {(['ALL', 'PRIVATE', 'CLUB'] as ShareFilter[]).map((id) => {
-          const selected = shareFilter === id;
-          const label = id === 'ALL' ? 'All' : id === 'PRIVATE' ? 'Private' : 'Club';
+        {(
+          [
+            { id: 'ALL', label: 'All' },
+            { id: 'FAVORITES', label: 'Favorites' },
+            { id: 'FORKED', label: 'Forked' },
+            { id: 'PRIVATE', label: 'Private' },
+            { id: 'CLUB', label: 'Club' },
+          ] as { id: ListFilter; label: string }[]
+        ).map((opt) => {
+          const selected = listFilter === opt.id;
           return (
             <Pressable
-              key={id}
+              key={opt.id}
               accessibilityRole="button"
               accessibilityState={{ selected }}
-              onPress={() => setShareFilter(id)}
+              onPress={() => setListFilter(opt.id)}
               style={[styles.chip, selected ? styles.chipSelected : null]}
             >
-              <Text style={[styles.chipLabel, selected ? styles.chipLabelSelected : null]}>{label}</Text>
+              <Text style={[styles.chipLabel, selected ? styles.chipLabelSelected : null]}>{opt.label}</Text>
             </Pressable>
           );
         })}
@@ -206,12 +216,12 @@ export default function BoardsHomeScreen() {
         </View>
       );
     }
-    const hasFilters = debouncedSearch.length > 0 || shareFilter !== 'ALL';
+    const hasFilters = debouncedSearch.length > 0 || listFilter !== 'ALL';
     if (hasFilters) {
       return (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>No matches</Text>
-          <Text style={styles.emptyBody}>Try clearing the search or share filter.</Text>
+          <Text style={styles.emptyBody}>Try clearing the search or filter chips.</Text>
         </View>
       );
     }
@@ -264,8 +274,8 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>No boards yet</Text>
       <Text style={styles.emptyBody}>
-        Create a blank board, fork a session, or fork a drill. Drawing tools still live on the
-        web — once you save on the web, it shows up here.
+        Create a blank board on your phone, or fork a session / drill. Draw arrows, formations,
+        kit, and frames here — Save keeps them in sync with web.
       </Text>
       <View style={styles.emptyActions}>
         <Button title="Create your first board" onPress={onCreate} />

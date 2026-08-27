@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
-  Dimensions,
   Linking,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -16,6 +15,7 @@ import {
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { BoardPreview } from '../../components/boards/BoardPreview';
@@ -34,25 +34,26 @@ import { readCachedBoardDetail, writeBoardDetailCache } from '../../services/off
 import { useAuthStore } from '../../stores/auth.store';
 import { formatGameModelLabel } from '../../utils/format';
 import { formatFromBoard } from '../../utils/board-format';
+import { useDevicePitchOrientation } from '../../hooks/useDevicePitchOrientation';
 import type { PitchFormatId, PitchZoom, WebDiagramV1 } from '@aci/shared';
-
-type Orientation = 'HORIZONTAL' | 'VERTICAL';
-
-const PAGE_WIDTH = Dimensions.get('window').width;
-// BoardPreview preserves aspect ratio internally via preserveAspectRatio,
-// so the height is just a hint; we size to roughly an 11v11 aspect for
-// dense toolbars.
-const PITCH_HEIGHT = Math.round((PAGE_WIDTH - 32) * (120 / 80));
+import { zoomFromPitchVariant } from '@aci/shared';
 
 export default function BoardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [slideIndex, setSlideIndex] = useState(0);
   const pagerRef = useRef<ScrollView>(null);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const orientation = useDevicePitchOrientation();
 
-  // Local viewer-only state — never mutates the saved diagram.
+  // Local viewer-only state — never mutates the saved diagram (except zoom when canEdit).
   const [zoom, setZoom] = useState<PitchZoom>('FULL');
-  const [orientation, setOrientation] = useState<Orientation>('HORIZONTAL');
+
+  // Pitch height: fill width; aspect follows device posture.
+  const pitchHeight =
+    orientation === 'VERTICAL'
+      ? Math.round((windowWidth - 32) * (120 / 80))
+      : Math.round(Math.min(windowHeight * 0.45, (windowWidth - 32) * (80 / 120)));
 
   // AI chat state.
   const [aiOpen, setAiOpen] = useState(false);
@@ -84,9 +85,8 @@ export default function BoardDetailScreen() {
 
   useEffect(() => {
     setSlideIndex(0);
-    setZoom('FULL');
-    setOrientation(query.data?.diagram?.pitch?.orientation ?? 'HORIZONTAL');
-  }, [id, query.data?.diagram?.pitch?.orientation]);
+    setZoom(zoomFromPitchVariant(query.data?.diagram?.pitch?.variant));
+  }, [id, query.data?.diagram?.pitch?.variant]);
 
   const favoriteMutation = useMutation({
     mutationFn: (favorited: boolean) => setBoardFavorited(String(id), favorited),
@@ -105,6 +105,23 @@ export default function BoardDetailScreen() {
       void queryClient.invalidateQueries({ queryKey: ['boards', 'list'] });
     },
   });
+
+  const applyZoom = useCallback(
+    (next: PitchZoom) => {
+      setZoom(next);
+      const diagram = query.data?.diagram;
+      if (!diagram || !query.data?.canEdit) return;
+      if (zoomFromPitchVariant(diagram.pitch?.variant) === next) return;
+      patchDiagramMutation.mutate({
+        ...diagram,
+        pitch: {
+          ...diagram.pitch,
+          variant: next,
+        },
+      });
+    },
+    [query.data?.canEdit, query.data?.diagram, patchDiagramMutation]
+  );
 
   const frames = useMemo(() => extractBoardFrames(query.data?.diagram), [query.data?.diagram]);
 
@@ -178,13 +195,13 @@ export default function BoardDetailScreen() {
   const sequence = (board.diagram?.sequence?.frames?.length ?? 0) > 0 ? board.diagram?.sequence : null;
 
   const onMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = Math.round(event.nativeEvent.contentOffset.x / PAGE_WIDTH);
+    const next = Math.round(event.nativeEvent.contentOffset.x / windowWidth);
     setSlideIndex(Math.max(0, Math.min(next, frames.length - 1)));
   };
 
   function jumpToFrame(index: number) {
     setSlideIndex(index);
-    pagerRef.current?.scrollTo({ x: index * PAGE_WIDTH, animated: true });
+    pagerRef.current?.scrollTo({ x: index * windowWidth, animated: true });
   }
 
   return (
@@ -211,34 +228,7 @@ export default function BoardDetailScreen() {
         <View style={styles.toolbar}>
           <View style={styles.toolbarRow}>
             <Text style={styles.toolbarLabel}>Format</Text>
-            <SegmentedControl
-              accessibilityLabel="Pitch format"
-              compact
-              value={format}
-              onChange={() => {
-                /* Read-only viewer: format follows the saved diagram +
-                   ageGroup. Mutations live in Phase D. */
-              }}
-              options={[
-                { value: '7V7', label: '7v7' },
-                { value: '9V9', label: '9v9' },
-                { value: '11V11', label: '11v11' },
-              ]}
-            />
-          </View>
-
-          <View style={styles.toolbarRow}>
-            <Text style={styles.toolbarLabel}>Orientation</Text>
-            <SegmentedControl
-              accessibilityLabel="Pitch orientation"
-              compact
-              value={orientation}
-              onChange={setOrientation}
-              options={[
-                { value: 'HORIZONTAL', label: 'Horizontal' },
-                { value: 'VERTICAL', label: 'Vertical' },
-              ]}
-            />
+            <Text style={styles.formatReadonly}>{format.replace('V', 'v')}</Text>
           </View>
 
           <View style={styles.toolbarRow}>
@@ -247,7 +237,7 @@ export default function BoardDetailScreen() {
               accessibilityLabel="Pitch zoom"
               compact
               value={zoom}
-              onChange={setZoom}
+              onChange={applyZoom}
               options={[
                 { value: 'FULL', label: 'Full' },
                 { value: 'HALF', label: 'Half' },
@@ -270,16 +260,16 @@ export default function BoardDetailScreen() {
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               onMomentumScrollEnd={onMomentumEnd}
-              style={styles.pager}
+              style={[styles.pager, { width: windowWidth }]}
             >
               {frames.map((frame, idx) => (
-                <View key={frame?.id || `frame-${idx}`} style={styles.page}>
+                <View key={frame?.id || `frame-${idx}`} style={[styles.page, { width: windowWidth }]}>
                   <BoardPreview
                     diagram={board.diagram}
                     frame={frame}
                     zoom={zoom}
                     orientation={orientation}
-                    height={PITCH_HEIGHT}
+                    height={pitchHeight}
                   />
                 </View>
               ))}
@@ -290,7 +280,7 @@ export default function BoardDetailScreen() {
               frame={activeFrame}
               zoom={zoom}
               orientation={orientation}
-              height={PITCH_HEIGHT}
+              height={pitchHeight}
             />
           )}
         </Pressable>
@@ -310,7 +300,9 @@ export default function BoardDetailScreen() {
         ) : null}
 
         <Text style={styles.note}>
-          Phone view is read-only. Use the web editor for drawing tools, principles, and AI chat.
+          {canEdit
+            ? 'Open the editor to draw players, arrows, frames, and AI chat. Web still has denser desktop tools.'
+            : 'This board is view-only on phone. Open it on web if you need to edit.'}
         </Text>
 
         <View style={styles.actions}>
@@ -426,9 +418,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
     textTransform: 'uppercase',
   },
+  formatReadonly: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   slideMeta: { color: colors.muted, fontSize: 13, paddingHorizontal: 16 },
-  pager: { width: PAGE_WIDTH },
-  page: { gap: 8, paddingHorizontal: 16, width: PAGE_WIDTH },
+  pager: {},
+  page: { gap: 8, paddingHorizontal: 16 },
   dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', paddingHorizontal: 16 },
   dot: { backgroundColor: colors.border, borderRadius: 999, height: 8, width: 8 },
   dotActive: { backgroundColor: colors.primary, width: 18 },

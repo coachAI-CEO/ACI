@@ -99,7 +99,21 @@ export default function RootLayout() {
             options={{ ...stackHeader, title: 'Game Day' }}
           />
           <Stack.Screen name="boards/index" options={{ ...stackHeader, title: 'Boards' }} />
-          <Stack.Screen name="boards/[id]" options={{ ...stackHeader, title: 'Board' }} />
+          <Stack.Screen
+            name="boards/[id]"
+            options={{ ...stackHeader, title: 'Board', orientation: 'all' }}
+          />
+          <Stack.Screen
+            name="boards/[id]/edit"
+            options={{
+              ...stackHeader,
+              title: 'Edit board',
+              // Screen sets its own undo/redo · Save · ⋯ chrome.
+              headerBackVisible: false,
+              // Portrait → vertical pitch; landscape → horizontal pitch.
+              orientation: 'all',
+            }}
+          />
           <Stack.Screen name="sideline/[sessionId]" />
           <Stack.Screen name="settings" options={{ ...stackHeader, title: 'Settings', headerBackTitle: 'Home' }} />
         </Stack>

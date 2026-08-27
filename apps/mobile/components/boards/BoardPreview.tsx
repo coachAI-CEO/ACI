@@ -1,11 +1,13 @@
-import { memo, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { memo, useMemo, useState } from 'react';
+import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
+  Ellipse,
   G,
   Line,
   Path,
+  Polygon,
   RadialGradient,
   Rect,
   Stop,
@@ -21,9 +23,31 @@ import type {
   WebDiagramPlayer,
   WebDiagramV1,
 } from '@aci/shared';
-import { PITCH_SPECS } from '@aci/shared';
+import {
+  PITCH_SPECS,
+  arrowHasHead,
+  diagramVisibleBand,
+  viewBoxForBand,
+  zoomFromPitchVariant,
+} from '@aci/shared';
 import { formatFromBoard } from '../../utils/board-format';
 import { colors } from '../../constants/colors';
+import {
+  ARROW_STROKE_WIDTH,
+  HORIZONTAL_DIAGRAM_TRANSFORM,
+  LINE_STROKE,
+  PITCH_FILL,
+  TOKEN_RADIUS_PCT,
+  TOKEN_STROKE,
+  arrowDashArray,
+  arrowHeadPoints,
+  arrowStroke,
+  shaftEndBeforeHead,
+  stretchAspect,
+  teamFill,
+  teamNumberFill,
+  tokenRadiusY,
+} from './boardTheme';
 
 type Orientation = 'HORIZONTAL' | 'VERTICAL';
 type Zoom = 'FULL' | 'HALF' | 'THIRD';
@@ -49,17 +73,11 @@ type Props = {
   hideChromeLabel?: boolean;
 };
 
-const TOKEN_RADIUS_PCT = 3;
-
 /**
- * Read-only tactical board renderer. Mounts the pitch chrome + diagram
- * layers (areas, cones, elements, goals, balls, players, arrows, coach,
- * labels) into a single SVG so they share the same viewBox / transform.
+ * Read-only tactical board renderer.
  *
- * Coordinate convention: 0–100 normalized against the length axis
- * (HORIZONTAL = goal-to-goal across, VERTICAL = top-to-bottom). For
- * VERTICAL the inner groups are rotated -90° around the center so the
- * length axis runs top-to-bottom on the rendered surface.
+ * Diagram space is always x=width, y=length (ATT attacks toward y=0).
+ * VERTICAL renders 1:1; HORIZONTAL applies an SVG matrix remap.
  */
 function BoardPreviewInner({
   diagram,
@@ -71,15 +89,30 @@ function BoardPreviewInner({
   hideChromeLabel,
 }: Props) {
   const layers = useMemo<WebDiagramFrameLayers>(() => resolveLayers(diagram, frame), [diagram, frame]);
+  const [layoutW, setLayoutW] = useState(0);
 
   const format = formatFromBoard({ ageGroup: null, diagram });
-  const orient: Orientation = orientation ?? diagram?.pitch?.orientation ?? 'HORIZONTAL';
-  const z: Zoom = zoom ?? 'FULL';
+  const orient: Orientation = orientation ?? diagram?.pitch?.orientation ?? 'VERTICAL';
+  const z: Zoom = zoom ?? zoomFromPitchVariant(diagram?.pitch?.variant);
   const thirds = showThirds ?? !!diagram?.pitch?.showThirds;
+  const showLanes = !!diagram?.pitch?.showZones;
   const zones = diagram?.pitch?.zones;
 
-  const containerTransform =
-    orient === 'VERTICAL' ? [{ rotate: '-90' }, { translateX: '-100' }] : undefined;
+  const svgViewBox = useMemo(
+    () => viewBoxForBand(diagramVisibleBand(format, z), orient),
+    [format, z, orient]
+  );
+  const visibleBand = useMemo(() => diagramVisibleBand(format, z), [format, z]);
+
+  const diagramTransform =
+    orient === 'HORIZONTAL' ? HORIZONTAL_DIAGRAM_TRANSFORM : undefined;
+
+  const playersSorted = useMemo(() => {
+    const list = layers.players || [];
+    return list
+      .map((p, index) => ({ p, index }))
+      .sort((a, b) => teamDrawOrder(a.p.team) - teamDrawOrder(b.p.team));
+  }, [layers.players]);
 
   const chromeLabel = hideChromeLabel
     ? null
@@ -89,14 +122,22 @@ function BoardPreviewInner({
         ? `${format} · Half`
         : `${format} · Third`;
 
+  const onLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && w !== layoutW) setLayoutW(w);
+  };
+
+  const rx = TOKEN_RADIUS_PCT;
+  const ry = tokenRadiusY(rx, layoutW || height, height, orient);
+  const aspect = stretchAspect(layoutW || height, height, orient);
+
   return (
-    <View style={[styles.wrap, { height, width: '100%' }]} pointerEvents="none">
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="xMidYMid meet"
-      >
+    <View
+      style={[styles.wrap, { height, width: '100%', backgroundColor: PITCH_FILL }]}
+      pointerEvents="none"
+      onLayout={onLayout}
+    >
+      <Svg width="100%" height="100%" viewBox={svgViewBox} preserveAspectRatio="none">
         <Defs>
           <RadialGradient id="spotlightGrad" cx="50%" cy="50%" r="50%">
             <Stop offset="0%" stopColor="#fbbf24" stopOpacity={0.45} />
@@ -104,15 +145,13 @@ function BoardPreviewInner({
           </RadialGradient>
         </Defs>
 
-        <G transform={containerTransform as any}>
-          <PitchMarkings format={format} zoom={z} showThirds={thirds} zones={zones} />
+        <G transform={diagramTransform}>
+          <PitchMarkings format={format} zoom={z} showThirds={thirds} showLanes={showLanes} zones={zones} />
 
-          {/* Areas (under players/arrows). */}
           {(layers.areas || []).map((a, i) => (
             <AreaLayer key={`area-${i}`} area={a} />
           ))}
 
-          {/* Cones + elements. */}
           {(layers.cones || []).map((c, i) => (
             <Cone key={`cone-${i}`} cone={c} />
           ))}
@@ -120,50 +159,60 @@ function BoardPreviewInner({
             <ElementToken key={`element-${i}`} element={el} />
           ))}
 
-          {/* Goals. */}
           {(layers.goals || []).map((g, i) => (
             <Goal key={`goal-${i}`} goal={g} />
           ))}
 
-          {/* Balls. */}
           {(layers.balls || []).map((b, i) => (
-            <Ball key={`ball-${i}`} ball={b} />
+            <Ball
+              key={`ball-${i}`}
+              ball={b}
+              canvasW={layoutW || height}
+              canvasH={height}
+              orientation={orient}
+            />
           ))}
 
-          {/* Players. */}
-          {(layers.players || []).map((p, i) => (
-            <PlayerToken key={p.id || `player-${i}`} player={p} />
+          {playersSorted.map(({ p, index }) => (
+            <PlayerToken key={p.id || `player-${index}`} player={p} rx={rx} ry={ry} />
           ))}
 
-          {/* Arrows (on top of players so a run-line into a player still shows). */}
           {(layers.arrows || []).map((a, i) => (
-            <Arrow key={`arrow-${i}`} arrow={a} layers={layers} />
+            <Arrow
+              key={`arrow-${i}`}
+              arrow={a}
+              layers={layers}
+              aspect={aspect}
+            />
           ))}
 
-          {/* Coach marker on top. */}
           {layers.coach ? <Coach coach={layers.coach} /> : null}
+
+          {(layers.labels || []).map((l, i) => (
+            <SvgText
+              key={`label-${i}`}
+              x={l.x}
+              y={l.y}
+              fontSize={3}
+              fill={colors.text}
+              textAnchor="middle"
+            >
+              {l.text}
+            </SvgText>
+          ))}
+
+          {chromeLabel ? (
+            <SvgText
+              x={visibleBand.xMax - 2}
+              y={visibleBand.yMax - 3}
+              fontSize={3}
+              fill={colors.muted}
+              textAnchor="end"
+            >
+              {chromeLabel}
+            </SvgText>
+          ) : null}
         </G>
-
-        {/* Labels (always upright). */}
-        {(layers.labels || []).map((l, i) => (
-          <SvgText
-            key={`label-${i}`}
-            x={l.x}
-            y={l.y}
-            fontSize={3}
-            fill={colors.text}
-            textAnchor="middle"
-          >
-            {l.text}
-          </SvgText>
-        ))}
-
-        {/* Chrome label — drawn upright, outside the rotated group. */}
-        {chromeLabel ? (
-          <SvgText x={98} y={97} fontSize={3} fill={colors.muted} textAnchor="end">
-            {chromeLabel}
-          </SvgText>
-        ) : null}
       </Svg>
     </View>
   );
@@ -178,17 +227,25 @@ function BoardPreviewInner({
  */
 export const BoardPreview = memo(BoardPreviewInner);
 
+function teamDrawOrder(team: WebDiagramPlayer['team']): number {
+  if (team === 'ATT') return 0;
+  if (team === 'NEUTRAL') return 1;
+  return 2;
+}
+
 // ─── Pitch markings (inline, share the same <Svg> as the layers above) ───
 
 function PitchMarkings({
   format,
-  zoom,
+  zoom: _zoom,
   showThirds,
+  showLanes = false,
   zones,
 }: {
   format: '7V7' | '9V9' | '11V11';
   zoom: Zoom;
   showThirds: boolean;
+  showLanes?: boolean;
   zones?: WebDiagramV1['pitch']['zones'];
 }) {
   const spec = PITCH_SPECS[format];
@@ -201,42 +258,49 @@ function PitchMarkings({
   const ccRadius = (spec.centerCircleRadiusYds / spec.lengthYards) * 100;
   const third1 = lenToPct(spec.lengthYards / 3);
   const third2 = lenToPct((2 * spec.lengthYards) / 3);
-  const drawThirds = showThirds || spec.buildOutLines;
+  const drawThirds = showThirds || !!spec.buildOutLines;
 
-  const zoneStrips = zones
+  const zoneStrips = showLanes
     ? [
-        { x: 0, w: 10, show: !!zones.leftWide },
-        { x: 10, w: 15, show: !!zones.leftHalfSpace },
-        { x: 25, w: 50, show: !!zones.centralChannel },
-        { x: 75, w: 15, show: !!zones.rightHalfSpace },
-        { x: 90, w: 10, show: !!zones.rightWide },
-      ].filter((s) => s.show)
-    : [];
+        { x: 0, w: 10 },
+        { x: 10, w: 15 },
+        { x: 25, w: 50 },
+        { x: 75, w: 15 },
+        { x: 90, w: 10 },
+      ]
+    : zones
+      ? [
+          { x: 0, w: 10, show: !!zones.leftWide },
+          { x: 10, w: 15, show: !!zones.leftHalfSpace },
+          { x: 25, w: 50, show: !!zones.centralChannel },
+          { x: 75, w: 15, show: !!zones.rightHalfSpace },
+          { x: 90, w: 10, show: !!zones.rightWide },
+        ].filter((s) => s.show)
+      : [];
 
   return (
     <>
-      <Rect x={0} y={0} width={100} height={100} fill="#0d5e2c" />
+      <Rect x={0} y={0} width={100} height={100} fill={PITCH_FILL} />
       {zoneStrips.map((s, i) => (
         <Rect key={`zone-${i}`} x={s.x} y={0} width={s.w} height={100} fill="#ffffff" opacity={0.06} />
       ))}
-      <Line x1={0} y1={0} x2={100} y2={0} stroke="#ffffff" strokeWidth={0.4} />
-      <Line x1={0} y1={100} x2={100} y2={100} stroke="#ffffff" strokeWidth={0.4} />
-      <Line x1={0} y1={0} x2={0} y2={100} stroke="#ffffff" strokeWidth={0.4} />
-      <Line x1={100} y1={0} x2={100} y2={100} stroke="#ffffff" strokeWidth={0.4} />
-      <Line x1={midLen} y1={0} x2={midLen} y2={100} stroke="#ffffff" strokeWidth={0.3} />
-      <Circle cx={midLen} cy={50} r={ccRadius} fill="none" stroke="#ffffff" strokeWidth={0.3} />
-      <Circle cx={midLen} cy={50} r={0.4} fill="#ffffff" />
+      <Line x1={0} y1={0} x2={100} y2={0} stroke={LINE_STROKE} strokeWidth={0.45} />
+      <Line x1={0} y1={100} x2={100} y2={100} stroke={LINE_STROKE} strokeWidth={0.45} />
+      <Line x1={0} y1={0} x2={0} y2={100} stroke={LINE_STROKE} strokeWidth={0.45} />
+      <Line x1={100} y1={0} x2={100} y2={100} stroke={LINE_STROKE} strokeWidth={0.45} />
+      <Line x1={0} y1={midLen} x2={100} y2={midLen} stroke={LINE_STROKE} strokeWidth={0.35} />
+      <Circle cx={50} cy={midLen} r={ccRadius} fill="none" stroke={LINE_STROKE} strokeWidth={0.35} />
+      <Circle cx={50} cy={midLen} r={0.4} fill="#ffffff" opacity={0.85} />
       <PenaltyBox side="AWAY" spec={spec} widthYds={widthYds} />
       <PenaltyBox side="HOME" spec={spec} widthYds={widthYds} />
       <GoalArea side="AWAY" spec={spec} widthYds={widthYds} />
       <GoalArea side="HOME" spec={spec} widthYds={widthYds} />
-      {/* Goal posts. */}
-      <Rect x={-0.6} y={halfW - 1.5} width={0.6} height={3} fill="#ffffff" opacity={0.85} />
-      <Rect x={100} y={halfW - 1.5} width={0.6} height={3} fill="#ffffff" opacity={0.85} />
+      <Rect x={halfW - 1.5} y={-0.6} width={3} height={0.6} fill="#ffffff" opacity={0.85} />
+      <Rect x={halfW - 1.5} y={100} width={3} height={0.6} fill="#ffffff" opacity={0.85} />
       {drawThirds ? (
         <>
-          <Line x1={third1} y1={0} x2={third1} y2={100} stroke="#ffffff" strokeWidth={0.2} strokeDasharray="1,1" />
-          <Line x1={third2} y1={0} x2={third2} y2={100} stroke="#ffffff" strokeWidth={0.2} strokeDasharray="1,1" />
+          <Line x1={0} y1={third1} x2={100} y2={third1} stroke={LINE_STROKE} strokeWidth={0.2} strokeDasharray="1,1" />
+          <Line x1={0} y1={third2} x2={100} y2={third2} stroke={LINE_STROKE} strokeWidth={0.2} strokeDasharray="1,1" />
         </>
       ) : null}
     </>
@@ -255,15 +319,15 @@ function PenaltyBox({
   const depth = spec.penaltyDepthYds;
   const lenToPct = (l: number) => (l / spec.lengthYards) * 100;
   const widToPct = (w: number) => (w / widthYds) * 100;
-  const x = side === 'AWAY' ? 0 : lenToPct(spec.lengthYards - depth);
-  const w = lenToPct(depth);
-  const y = widToPct(widthYds / 2 - spec.penaltyWidthYds / 2);
-  const h = widToPct(spec.penaltyWidthYds);
-  const spotX = side === 'AWAY' ? lenToPct(spec.penaltySpotYds) : lenToPct(spec.lengthYards - spec.penaltySpotYds);
+  const y = side === 'AWAY' ? 0 : lenToPct(spec.lengthYards - depth);
+  const h = lenToPct(depth);
+  const x = widToPct(widthYds / 2 - spec.penaltyWidthYds / 2);
+  const w = widToPct(spec.penaltyWidthYds);
+  const spotY = side === 'AWAY' ? lenToPct(spec.penaltySpotYds) : lenToPct(spec.lengthYards - spec.penaltySpotYds);
   return (
     <>
-      <Rect x={x} y={y} width={w} height={h} fill="none" stroke="#ffffff" strokeWidth={0.3} />
-      <Circle cx={spotX} cy={50} r={0.4} fill="#ffffff" />
+      <Rect x={x} y={y} width={w} height={h} fill="none" stroke={LINE_STROKE} strokeWidth={0.35} />
+      <Circle cx={50} cy={spotY} r={0.4} fill="#ffffff" opacity={0.85} />
     </>
   );
 }
@@ -280,11 +344,11 @@ function GoalArea({
   const depth = spec.goalAreaDepthYds;
   const lenToPct = (l: number) => (l / spec.lengthYards) * 100;
   const widToPct = (w: number) => (w / widthYds) * 100;
-  const x = side === 'AWAY' ? 0 : lenToPct(spec.lengthYards - depth);
-  const w = lenToPct(depth);
-  const y = widToPct(widthYds / 2 - spec.goalAreaWidthYds / 2);
-  const h = widToPct(spec.goalAreaWidthYds);
-  return <Rect x={x} y={y} width={w} height={h} fill="none" stroke="#ffffff" strokeWidth={0.25} />;
+  const y = side === 'AWAY' ? 0 : lenToPct(spec.lengthYards - depth);
+  const h = lenToPct(depth);
+  const x = widToPct(widthYds / 2 - spec.goalAreaWidthYds / 2);
+  const w = widToPct(spec.goalAreaWidthYds);
+  return <Rect x={x} y={y} width={w} height={h} fill="none" stroke={LINE_STROKE} strokeWidth={0.28} />;
 }
 
 // ─── Layer renderers ──────────────────────────────────────────────────────
@@ -309,23 +373,7 @@ function resolveLayers(
       elements: frame.elements || diagram?.elements,
     };
   }
-  if (diagram?.sequence?.frames?.length) {
-    const activeId = diagram.sequence.activeFrameId;
-    const active = activeId ? diagram.sequence.frames.find((f) => f.id === activeId) : diagram.sequence.frames[0];
-    if (active) {
-      return {
-        players: active.players || [],
-        arrows: active.arrows || [],
-        areas: active.areas || [],
-        labels: active.labels || [],
-        balls: active.balls,
-        goals: active.goals,
-        coach: active.coach,
-        cones: active.cones,
-        elements: active.elements,
-      };
-    }
-  }
+  // Prefer root — live working copy of the active frame.
   return {
     players: diagram?.players || [],
     arrows: diagram?.arrows || [],
@@ -339,23 +387,46 @@ function resolveLayers(
   };
 }
 
-function PlayerToken({ player }: { player: WebDiagramPlayer }) {
-  const teamFill =
-    player.team === 'ATT' ? '#3b82f6' : player.team === 'DEF' ? '#f97316' : '#94a3b8';
-  const r = TOKEN_RADIUS_PCT;
+function PlayerToken({
+  player,
+  rx,
+  ry,
+}: {
+  player: WebDiagramPlayer;
+  rx: number;
+  ry: number;
+}) {
+  const fill = teamFill(player.team);
+  const numFill = teamNumberFill(player.team);
   const showRole = player.labelStyle === 'number-and-role' && player.role;
   return (
     <G>
       {showRole ? (
-        <Circle cx={player.x} cy={player.y} r={r + 1.2} fill="none" stroke={teamFill} strokeWidth={0.4} />
+        <Ellipse
+          cx={player.x}
+          cy={player.y}
+          rx={rx + 1.2}
+          ry={ry + 1.2 * (ry / rx)}
+          fill="none"
+          stroke={fill}
+          strokeWidth={0.35}
+        />
       ) : null}
-      <Circle cx={player.x} cy={player.y} r={r} fill={teamFill} stroke="#ffffff" strokeWidth={0.5} />
+      <Ellipse
+        cx={player.x}
+        cy={player.y}
+        rx={rx}
+        ry={ry}
+        fill={fill}
+        stroke={TOKEN_STROKE}
+        strokeWidth={0.4}
+      />
       {typeof player.number === 'number' ? (
         <SvgText
           x={player.x}
-          y={player.y + 1}
-          fontSize={r * 0.9}
-          fill="#ffffff"
+          y={player.y + ry * 0.35}
+          fontSize={Math.min(rx, ry) * 1.05}
+          fill={numFill}
           fontWeight="700"
           textAnchor="middle"
         >
@@ -365,9 +436,9 @@ function PlayerToken({ player }: { player: WebDiagramPlayer }) {
       {showRole && player.role ? (
         <SvgText
           x={player.x}
-          y={player.y + r + 3}
+          y={player.y + ry + 3}
           fontSize={2.2}
-          fill="#ffffff"
+          fill="#e2e8f0"
           fontWeight="600"
           textAnchor="middle"
         >
@@ -378,32 +449,65 @@ function PlayerToken({ player }: { player: WebDiagramPlayer }) {
   );
 }
 
-function Arrow({ arrow, layers }: { arrow: WebDiagramArrow; layers: WebDiagramFrameLayers }) {
+function Arrow({
+  arrow,
+  layers,
+  aspect,
+}: {
+  arrow: WebDiagramArrow;
+  layers: WebDiagramFrameLayers;
+  aspect: number;
+}) {
   const from = resolvePoint(arrow.from, layers);
   const to = resolvePoint(arrow.to, layers);
   if (!from || !to) return null;
 
-  const color =
-    arrow.type === 'pass'
-      ? '#22c55e'
-      : arrow.type === 'run'
-        ? '#3b82f6'
-        : arrow.type === 'press'
-          ? '#ef4444'
-          : arrow.type === 'cover'
-            ? '#a855f7'
-            : '#fb923c';
-  const dash = arrow.style === 'dashed' ? '2,1' : arrow.style === 'dotted' ? '0.5,1' : undefined;
-  const stroke = arrow.weight === 'bold' ? 0.8 : 0.5;
+  const color = arrowStroke(arrow.type);
+  const dash = arrowDashArray(arrow);
+  const stroke = arrow.weight === 'bold' ? ARROW_STROKE_WIDTH + 0.35 : ARROW_STROKE_WIDTH;
+  const showHead = arrowHasHead(arrow);
 
-  if (arrow.control) {
-    const d = `M ${from.x} ${from.y} Q ${arrow.control.x} ${arrow.control.y} ${to.x} ${to.y}`;
-    return <Path d={d} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={dash} strokeLinecap="round" />;
+  let headFrom = from;
+  const tip = to;
+
+  if (arrow.path && arrow.path.length > 1) {
+    headFrom = arrow.path[arrow.path.length - 1] || from;
+  } else if (arrow.control) {
+    headFrom = arrow.control;
   }
-  const path = arrow.path && arrow.path.length > 1
-    ? `M ${from.x} ${from.y} ${arrow.path.map((p) => `L ${p.x} ${p.y}`).join(' ')}`
-    : `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
-  return <Path d={path} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={dash} strokeLinecap="round" />;
+
+  const shaftEnd = showHead ? shaftEndBeforeHead(headFrom, tip) : tip;
+
+  let pathD: string;
+  if (arrow.path && arrow.path.length > 1) {
+    pathD = `M ${from.x} ${from.y} ${arrow.path.map((p) => `L ${p.x} ${p.y}`).join(' ')} L ${shaftEnd.x} ${shaftEnd.y}`;
+  } else if (arrow.control) {
+    pathD = `M ${from.x} ${from.y} Q ${arrow.control.x} ${arrow.control.y} ${shaftEnd.x} ${shaftEnd.y}`;
+  } else {
+    pathD = `M ${from.x} ${from.y} L ${shaftEnd.x} ${shaftEnd.y}`;
+  }
+
+  return (
+    <G>
+      <Path
+        d={pathD}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeDasharray={dash}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {showHead ? (
+        <Polygon
+          points={arrowHeadPoints(headFrom.x, headFrom.y, tip.x, tip.y, undefined, aspect)}
+          fill={color}
+          stroke={color}
+          strokeWidth={0.2}
+        />
+      ) : null}
+    </G>
+  );
 }
 
 function resolvePoint(
@@ -418,8 +522,30 @@ function resolvePoint(
   return null;
 }
 
-function Ball({ ball }: { ball: WebDiagramBall }) {
-  return <Circle cx={ball.x} cy={ball.y} r={1.4} fill="#ffffff" stroke="#111827" strokeWidth={0.3} />;
+function Ball({
+  ball,
+  canvasW,
+  canvasH,
+  orientation = 'VERTICAL',
+}: {
+  ball: WebDiagramBall;
+  canvasW: number;
+  canvasH: number;
+  orientation?: Orientation;
+}) {
+  const rx = 1.4;
+  const ry = tokenRadiusY(rx, canvasW, canvasH, orientation);
+  return (
+    <Ellipse
+      cx={ball.x}
+      cy={ball.y}
+      rx={rx}
+      ry={ry}
+      fill="#f9fafb"
+      stroke={TOKEN_STROKE}
+      strokeWidth={0.25}
+    />
+  );
 }
 
 function Goal({ goal }: { goal: WebDiagramGoal }) {
@@ -504,7 +630,7 @@ function AreaLayer({ area }: { area: WebDiagramV1['areas'][number] }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: '#0d5e2c',
+    backgroundColor: PITCH_FILL,
     borderRadius: 8,
     overflow: 'hidden',
   },
