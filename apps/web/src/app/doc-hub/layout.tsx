@@ -12,6 +12,7 @@ import {
   Shield,
   Trophy,
   Layers,
+  Target,
 } from "lucide-react";
 import { DocHubProvider, useDocHub } from "./_lib/DocHubContext";
 
@@ -57,6 +58,7 @@ const NAV_BASE: NavItem[] = [
       { label: "Attention", href: "/doc-hub/attention", icon: AlertTriangle },
       { label: "Coaches", href: "/doc-hub/coaches", icon: Users },
       { label: "Teams", href: "/doc-hub/teams", icon: Trophy },
+      { label: "Training Priorities", href: "/doc-hub/training-priorities", icon: Target },
       { label: "Calendar", href: "/doc-hub/calendar", icon: CalendarDays },
     ],
   },
@@ -70,6 +72,7 @@ const BREADCRUMBS: Record<string, string[]> = {
   "/doc-hub/calendar": ["DOC Console", "Calendar"],
   "/doc-hub/game-model": ["DOC Console", "Game Model"],
   "/doc-hub/age-group-maturity": ["DOC Console", "Age Group Maturity"],
+  "/doc-hub/training-priorities": ["DOC Console", "Training Priorities"],
 };
 
 function SidebarLink({ item, pathname }: { item: NavLeaf; pathname: string }) {

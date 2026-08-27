@@ -48,6 +48,7 @@ import {
   getAgeGroupMaturityNotesForClub,
   setAgeGroupMaturityNote,
 } from './services/age-group-maturity';
+import { listPrinciplesForClub } from './services/principles';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -699,6 +700,27 @@ function sendTrainingPriorityError(res: express.Response, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return res.status(500).json({ ok: false, error: message });
 }
+
+/**
+ * GET /doc-hub/clubs/:clubId/principles
+ * The club's full game-model tree (principles by moment, each with its
+ * subprinciples) -- read-only. Feeds the Training Priorities subprinciple
+ * picker; authoring happens via seed scripts today, not this route.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/principles',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const principles = await listPrinciplesForClub(clubId);
+      return res.json({ ok: true, principles });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return res.status(500).json({ ok: false, error: message });
+    }
+  }
+);
 
 const CreateTrainingPrioritySchema = z.object({
   teamId: z.string().uuid(),
