@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDocHub } from "../_lib/DocHubContext";
 import type { PrincipleWithSubprinciples } from "../_lib/types";
 import { authHeaders } from "../_lib/utils";
@@ -17,12 +17,23 @@ const READINESS_PILL: Record<string, string> = {
   ADVANCED: "border-violet-400/30 bg-violet-500/15 text-violet-300",
 };
 
+const MOMENT_ORDER = [
+  "ATTACKING_ORGANIZATION",
+  "ATTACKING_TRANSITION",
+  "DEFENSIVE_ORGANIZATION",
+  "DEFENSIVE_TRANSITION",
+] as const;
+
 const MOMENT_LABEL: Record<string, string> = {
   ATTACKING_ORGANIZATION: "Attacking Organization",
   DEFENSIVE_TRANSITION: "Defensive Transition",
   DEFENSIVE_ORGANIZATION: "Defensive Organization",
   ATTACKING_TRANSITION: "Attacking Transition",
 };
+
+function momentAnchor(moment: string) {
+  return `moment-${moment.toLowerCase().replace(/_/g, "-")}`;
+}
 
 export default function DocHubPrinciplesPage() {
   const { access, selectedClubId, selectedClub } = useDocHub();
@@ -52,6 +63,19 @@ export default function DocHubPrinciplesPage() {
 
   const totalSubprinciples = principles.reduce((sum, p) => sum + p.subprinciples.length, 0);
 
+  const groupedByMoment = useMemo(() => {
+    const groups = new Map<string, PrincipleWithSubprinciples[]>();
+    for (const principle of principles) {
+      const list = groups.get(principle.moment) || [];
+      list.push(principle);
+      groups.set(principle.moment, list);
+    }
+    const order = [...MOMENT_ORDER, ...[...groups.keys()].filter((m) => !MOMENT_ORDER.includes(m as any))];
+    return order
+      .filter((moment) => groups.has(moment))
+      .map((moment) => ({ moment, principles: groups.get(moment)! }));
+  }, [principles]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -77,43 +101,80 @@ export default function DocHubPrinciplesPage() {
         </div>
       ) : (
         <>
-          <p className="text-xs text-slate-500">
-            {principles.length} principles &middot; {totalSubprinciples} subprinciples
-          </p>
-          <div className="space-y-5">
-            {principles.map((principle) => (
-              <div key={principle.id} className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-emerald-400">
-                  {MOMENT_LABEL[principle.moment] || principle.moment}
-                </p>
-                <h2 className="mt-1 text-base font-semibold text-slate-100">{principle.statement}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {principles.length} principles &middot; {totalSubprinciples} subprinciples
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {groupedByMoment.map(({ moment }) => (
+                <a
+                  key={moment}
+                  href={`#${momentAnchor(moment)}`}
+                  className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs text-slate-300 hover:border-emerald-500/60 hover:text-emerald-300"
+                >
+                  {MOMENT_LABEL[moment] || moment}
+                </a>
+              ))}
+            </div>
+          </div>
 
-                <ul className="mt-4 space-y-3">
-                  {principle.subprinciples.map((sub) => (
-                    <li key={sub.id} className="rounded-xl border border-slate-800 bg-slate-950/30 p-3">
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${READINESS_PILL[sub.readiness]}`}
-                      >
-                        {READINESS_LABEL[sub.readiness]}
-                      </span>
-                      <p className="mt-2 text-sm font-medium text-slate-100">
-                        <span className="text-slate-500">Trigger — </span>
-                        {sub.trigger}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">
-                        <span className="text-slate-500">Response — </span>
-                        {sub.response}
-                      </p>
-                      {sub.antiPattern ? (
-                        <p className="mt-1 text-xs italic text-slate-500">
-                          <span className="not-italic text-slate-600">Anti-pattern — </span>
-                          {sub.antiPattern}
-                        </p>
-                      ) : null}
-                    </li>
+          <div className="space-y-10">
+            {groupedByMoment.map(({ moment, principles: momentPrinciples }) => (
+              <section key={moment} id={momentAnchor(moment)} className="scroll-mt-20">
+                <div className="mb-4 flex items-baseline gap-3 border-b border-slate-800 pb-3">
+                  <h2 className="text-lg font-semibold text-emerald-300">{MOMENT_LABEL[moment] || moment}</h2>
+                  <span className="text-xs text-slate-500">
+                    {momentPrinciples.length} principle{momentPrinciples.length === 1 ? "" : "s"} &middot;{" "}
+                    {momentPrinciples.reduce((sum, p) => sum + p.subprinciples.length, 0)} subprinciples
+                  </span>
+                </div>
+
+                <div className="space-y-5">
+                  {momentPrinciples.map((principle) => (
+                    <div key={principle.id} className="rounded-2xl border border-slate-700/50 bg-slate-900/60 p-5">
+                      <h3 className="text-base font-semibold text-slate-100">{principle.statement}</h3>
+
+                      <ul className="mt-4 space-y-4">
+                        {principle.subprinciples.map((sub) => (
+                          <li key={sub.id} className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${READINESS_PILL[sub.readiness]}`}
+                            >
+                              {READINESS_LABEL[sub.readiness]}
+                            </span>
+
+                            <div className="mt-3 space-y-2.5">
+                              <p className="text-[15px] leading-relaxed text-slate-100">
+                                <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                                  Trigger
+                                </span>
+                                <br />
+                                {sub.trigger}
+                              </p>
+                              <p className="text-[15px] leading-relaxed text-slate-200">
+                                <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                                  Response
+                                </span>
+                                <br />
+                                {sub.response}
+                              </p>
+                              {sub.antiPattern ? (
+                                <p className="rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-3 py-2 text-sm leading-relaxed text-rose-200/90">
+                                  <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-rose-400/80">
+                                    Anti-pattern
+                                  </span>
+                                  <br />
+                                  {sub.antiPattern}
+                                </p>
+                              ) : null}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
-              </div>
+                </div>
+              </section>
             ))}
           </div>
         </>
