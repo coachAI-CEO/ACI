@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { generateText } from "../gemini";
-import { getCoachLanguageProfile } from "../prompts/session";
+import { getCoachLanguageProfile, buildSessionQAReviewerPrompt } from "../prompts/session";
+import { getDefaultPlayerAndCoachLevel } from "./game-model-readiness";
 
 export type TrainingIntent = {
   tacticalProblem: string;
@@ -140,14 +141,17 @@ export async function generateDrillForTrainingPriority(trainingPriorityId: strin
   });
 
   const ageGroup = priority.team.ageGroup;
-  const playerLevel = priority.team.playerLevel || "INTERMEDIATE";
-  // No coachLevel on Team today -- default to USSF_C until that's wired through.
-  const coachLevel = "USSF_C";
+  // Team has no coachLevel field yet and playerLevel is null on every real
+  // seeded team -- fall back to the age/format-band default (matching the
+  // existing BEGINNER-only-pairs-with-USSF_D rule) rather than a flat
+  // hardcode that would give U8 teams adult-level vocabulary/difficulty.
+  const defaults = getDefaultPlayerAndCoachLevel(ageGroup);
+  const playerLevel = priority.team.playerLevel || defaults.playerLevel;
+  const coachLevel = defaults.coachLevel;
 
   const intent = await deriveTrainingIntent(priority.subprinciple, { ageGroup, playerLevel });
   const drill = await generateDrillFromIntent(intent, { ageGroup, playerLevel, coachLevel });
 
-  const { buildSessionQAReviewerPrompt } = await import("../prompts/session");
   const qaPrompt = buildSessionQAReviewerPrompt(
     { title: drill.title, ageGroup, drills: [{ ...drill, diagram: { players: [], arrows: [], annotations: [], safeZones: [], goals: [], pitch: {} } }] },
     priority.subprinciple

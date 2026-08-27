@@ -1,0 +1,88 @@
+import { SubprincipleReadiness } from "@prisma/client";
+import {
+  getDefaultReadinessCeiling,
+  resolveTeamReadinessCeiling,
+  getEligibleTiers,
+  isReadinessEligibleForTeam,
+  getDefaultPlayerAndCoachLevel,
+} from "../services/game-model-readiness";
+
+describe("getDefaultReadinessCeiling", () => {
+  test("7v7 age band (U8-U10) ceilings at FOUNDATIONAL", () => {
+    expect(getDefaultReadinessCeiling("U9")).toBe(SubprincipleReadiness.FOUNDATIONAL);
+  });
+
+  test("9v9 age band (U11-U12) ceilings at DEVELOPING", () => {
+    expect(getDefaultReadinessCeiling("U11")).toBe(SubprincipleReadiness.DEVELOPING);
+  });
+
+  test("11v11 age band (U13+) ceilings at ADVANCED", () => {
+    expect(getDefaultReadinessCeiling("U16")).toBe(SubprincipleReadiness.ADVANCED);
+  });
+});
+
+describe("resolveTeamReadinessCeiling", () => {
+  test("uses the age/format default when no override is set", () => {
+    expect(resolveTeamReadinessCeiling({ ageGroup: "U9", readinessOverride: null })).toBe(
+      SubprincipleReadiness.FOUNDATIONAL
+    );
+  });
+
+  test("a DOC override on a young team raises the ceiling above the age default", () => {
+    expect(
+      resolveTeamReadinessCeiling({ ageGroup: "U9", readinessOverride: SubprincipleReadiness.ADVANCED })
+    ).toBe(SubprincipleReadiness.ADVANCED);
+  });
+});
+
+describe("getEligibleTiers", () => {
+  test("DEVELOPING ceiling includes FOUNDATIONAL and DEVELOPING, not ADVANCED", () => {
+    expect(getEligibleTiers(SubprincipleReadiness.DEVELOPING)).toEqual([
+      SubprincipleReadiness.FOUNDATIONAL,
+      SubprincipleReadiness.DEVELOPING,
+    ]);
+  });
+
+  test("ADVANCED ceiling includes all three tiers", () => {
+    expect(getEligibleTiers(SubprincipleReadiness.ADVANCED)).toHaveLength(3);
+  });
+});
+
+describe("isReadinessEligibleForTeam", () => {
+  test("a U9 team is eligible for a FOUNDATIONAL subprinciple", () => {
+    expect(isReadinessEligibleForTeam({ ageGroup: "U9", readinessOverride: null }, SubprincipleReadiness.FOUNDATIONAL)).toBe(
+      true
+    );
+  });
+
+  test("a U9 team is NOT eligible for an ADVANCED subprinciple without an override", () => {
+    expect(isReadinessEligibleForTeam({ ageGroup: "U9", readinessOverride: null }, SubprincipleReadiness.ADVANCED)).toBe(
+      false
+    );
+  });
+
+  test("a U16 team is eligible for all three tiers", () => {
+    const team = { ageGroup: "U16", readinessOverride: null };
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.FOUNDATIONAL)).toBe(true);
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.DEVELOPING)).toBe(true);
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.ADVANCED)).toBe(true);
+  });
+});
+
+describe("getDefaultPlayerAndCoachLevel", () => {
+  // Regression guard for the level-defaulting bug found in eng review: a
+  // hardcoded INTERMEDIATE/USSF_C default previously fired for every team
+  // regardless of age, violating the existing "BEGINNER only pairs with
+  // USSF_D" rule for every U8-U10 team.
+  test("U9 (7v7) defaults to BEGINNER + USSF_D", () => {
+    expect(getDefaultPlayerAndCoachLevel("U9")).toEqual({ playerLevel: "BEGINNER", coachLevel: "USSF_D" });
+  });
+
+  test("U12 (9v9) defaults to INTERMEDIATE + USSF_C", () => {
+    expect(getDefaultPlayerAndCoachLevel("U12")).toEqual({ playerLevel: "INTERMEDIATE", coachLevel: "USSF_C" });
+  });
+
+  test("U16 (11v11) defaults to ADVANCED + USSF_B_PLUS", () => {
+    expect(getDefaultPlayerAndCoachLevel("U16")).toEqual({ playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" });
+  });
+});
