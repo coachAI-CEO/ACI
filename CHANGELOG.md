@@ -3,6 +3,29 @@
 All notable changes to this project are documented here. The version id lives
 in [`VERSION`](VERSION).
 
+## 1.12.0 — 2026-08-27
+
+### Mobile — tactical board editor parity
+
+The phone editor now matches the web editor's core drawing surface.
+
+- Device-driven pitch orientation: portrait → vertical pitch, landscape →
+  horizontal pitch with an edge-to-edge board and a slim overlaid HUD
+- Formation + Setup sheets: pick a shape per team, place attacking/defending/
+  transition phases by zone and channel (via `POST /boards/:id/phase-place`)
+- Arrow / shape / kit type pickers, label create + edit, board rename
+- Board list: Favorites and Forked filter chips
+- Board AI chat accepts a photo attachment (mirrors the web editor)
+- Shared `@aci/shared` board modules: `formations`, `labels`, `setup-phase`;
+  web `board-formations.ts` now re-exports from shared
+- App allows rotation; only the board screens opt into landscape, every other
+  screen stays portrait-locked
+
+### Repo
+
+- `codex/mobile-app` merged up to `main` — reconciled against the structured
+  game model (Principle / Subprinciple / TrainingPriority) and its Prisma schema
+
 ## 1.11.0 — 2026-08-25
 
 ### Mobile — tactical boards

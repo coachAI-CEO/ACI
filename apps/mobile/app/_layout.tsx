@@ -73,7 +73,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AppEffects />
         <NetworkBanner />
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack screenOptions={{ headerShown: false, orientation: 'portrait' }}>
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="favorites" options={{ ...stackHeader, title: 'Favorites' }} />
