@@ -11,13 +11,30 @@ export class SubprincipleNotEligibleError extends Error {
   }
 }
 
+/** Matches the {status, code} shape used by CoachCenterError/ClubCalendarAssignError elsewhere in doc-hub. */
+export class TrainingPriorityError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "TrainingPriorityError";
+  }
+}
+
 /**
  * Create a TrainingPriority, enforcing the team's readiness ceiling at write
  * time -- not just a UI filter. A team's coach/DOC can still deliberately
  * raise Team.readinessOverride to unlock a tier early; this only blocks an
  * accidental assignment past what's currently eligible.
+ *
+ * Also enforces that both the team and the subprinciple belong to clubId --
+ * without this a DOC authenticated into one club could target another
+ * club's team or subprinciple by guessing its id.
  */
 export async function createTrainingPriority(input: {
+  clubId: string;
   teamId: string;
   subprincipleId: string;
   weekStart: Date;
@@ -26,12 +43,25 @@ export async function createTrainingPriority(input: {
 }) {
   const team = await prisma.team.findUniqueOrThrow({
     where: { id: input.teamId },
-    select: { id: true, ageGroup: true, readinessOverride: true },
+    select: { id: true, clubId: true, ageGroup: true, readinessOverride: true },
   });
+  if (team.clubId !== input.clubId) {
+    throw new TrainingPriorityError(404, "NOT_FOUND", "Team not found in this club");
+  }
+
   const subprinciple = await prisma.subprinciple.findUniqueOrThrow({
     where: { id: input.subprincipleId },
-    select: { id: true, readiness: true, trigger: true, response: true },
+    select: {
+      id: true,
+      readiness: true,
+      trigger: true,
+      response: true,
+      principle: { select: { clubId: true } },
+    },
   });
+  if (subprinciple.principle.clubId !== input.clubId) {
+    throw new TrainingPriorityError(404, "NOT_FOUND", "Subprinciple not found in this club");
+  }
 
   if (!isReadinessEligibleForTeam(team, subprinciple.readiness)) {
     throw new SubprincipleNotEligibleError(subprinciple.readiness, team.ageGroup);
@@ -46,4 +76,19 @@ export async function createTrainingPriority(input: {
       createdByUserId: input.createdByUserId,
     },
   });
+}
+
+/**
+ * Fetch a TrainingPriority scoped to a club, for the generate-drill route --
+ * same cross-club guard as createTrainingPriority, applied on read.
+ */
+export async function getTrainingPriorityForClub(trainingPriorityId: string, clubId: string) {
+  const priority = await prisma.trainingPriority.findUniqueOrThrow({
+    where: { id: trainingPriorityId },
+    select: { id: true, team: { select: { clubId: true } } },
+  });
+  if (priority.team.clubId !== clubId) {
+    throw new TrainingPriorityError(404, "NOT_FOUND", "Training priority not found in this club");
+  }
+  return priority;
 }

@@ -32,6 +32,13 @@ import {
   syncClubTeamCoaches,
   unassignClubTeamCoach,
 } from './services/coach-center';
+import {
+  TrainingPriorityError,
+  SubprincipleNotEligibleError,
+  createTrainingPriority,
+  getTrainingPriorityForClub,
+} from './services/training-priority';
+import { generateDrillForTrainingPriority, LlmResponseParseError } from './services/generate-from-priority';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -666,6 +673,90 @@ r.delete(
       return res.json({ ok: true, team });
     } catch (error) {
       return sendTeamError(res, error);
+    }
+  }
+);
+
+function sendTrainingPriorityError(res: express.Response, error: unknown) {
+  if (error instanceof TrainingPriorityError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  if (error instanceof SubprincipleNotEligibleError) {
+    return res.status(400).json({ ok: false, error: 'NOT_ELIGIBLE', message: error.message });
+  }
+  if (error instanceof LlmResponseParseError) {
+    return res.status(502).json({ ok: false, error: 'MODEL_RESPONSE_UNPARSEABLE', message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+const CreateTrainingPrioritySchema = z.object({
+  teamId: z.string().uuid(),
+  subprincipleId: z.string().uuid(),
+  weekStart: z.string().min(1),
+  rationale: z.string().min(1).max(2000),
+});
+
+/**
+ * POST /doc-hub/clubs/:clubId/training-priorities
+ * A DOC (or section director) sets one team's training focus for a week by
+ * picking a game-model subprinciple. Enforces the team's readiness ceiling
+ * and that both team and subprinciple belong to this club.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/training-priorities',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const parsed = CreateTrainingPrioritySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid training priority payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const weekStart = new Date(parsed.data.weekStart);
+      if (Number.isNaN(weekStart.getTime())) {
+        return res.status(400).json({ ok: false, error: 'Invalid weekStart' });
+      }
+
+      const priority = await createTrainingPriority({
+        clubId,
+        teamId: parsed.data.teamId,
+        subprincipleId: parsed.data.subprincipleId,
+        weekStart,
+        rationale: parsed.data.rationale,
+        createdByUserId: req.userId,
+      });
+      return res.status(201).json({ ok: true, priority });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+/**
+ * POST /doc-hub/clubs/:clubId/training-priorities/:priorityId/generate-drill
+ * First real caller of the Call1(intent)->Call2(drill)->Call3(QA gate)
+ * pipeline: turns a DOC-assigned TrainingPriority into one drill + QA
+ * verdict for a coach to review. Does not persist the drill -- this is the
+ * minimal end-to-end path; saving/attaching it to a session is follow-on work.
+ */
+r.post(
+  '/doc-hub/clubs/:clubId/training-priorities/:priorityId/generate-drill',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      await getTrainingPriorityForClub(req.params.priorityId, clubId);
+      const result = await generateDrillForTrainingPriority(req.params.priorityId);
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
     }
   }
 );
