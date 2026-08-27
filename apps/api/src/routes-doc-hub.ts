@@ -42,6 +42,7 @@ import {
   resolveTrainingPriority,
 } from './services/training-priority';
 import { generateDrillForTrainingPriority, LlmResponseParseError } from './services/generate-from-priority';
+import { getCoachAdherenceRanking } from './services/coach-adherence';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -798,6 +799,27 @@ r.patch(
         outcomeNotes: parsed.data.outcomeNotes,
       });
       return res.json({ ok: true, priority });
+    } catch (error) {
+      return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+/**
+ * GET /doc-hub/clubs/:clubId/coaches/adherence
+ * Ranks the club's coaches by how often a DOC-assigned TrainingPriority for
+ * their team actually resulted in a session generated for it. Advisory
+ * only -- nothing in the system enforces the DOC's assignment; this is
+ * visibility into who's staying on the club's game model, not a gate.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/coaches/adherence',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const ranking = await getCoachAdherenceRanking(clubId);
+      return res.json({ ok: true, ranking });
     } catch (error) {
       return sendTrainingPriorityError(res, error);
     }

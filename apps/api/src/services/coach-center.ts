@@ -109,6 +109,7 @@ export function serializeTeam(team: any, viewer?: { userId?: string }) {
         coachLevel: audience.coachLevel,
         playerLevel: audience.playerLevel,
         teamName: team.name,
+        teamId: team.id,
       }),
       knowledge: buildWeekKnowledge({
         theme: draft.theme,
@@ -132,6 +133,7 @@ export function serializeTeam(team: any, viewer?: { userId?: string }) {
     coachLevel: audience.coachLevel,
     playerLevel: audience.playerLevel,
     teamName: team.name,
+    teamId: team.id,
   });
   return {
     id: team.id,
@@ -194,7 +196,7 @@ function weekStartDateForIndex(seasonStartDate: Date, weekIndex: number): Date {
 function applyTrainingPriorityToWeek(
   week: any,
   priority: NonNullable<Awaited<ReturnType<typeof getActiveTrainingPriorityForTeamWeek>>>,
-  team: { ageGroup: string; gameModelId: string; name: string },
+  team: { id: string; ageGroup: string; gameModelId: string; name: string },
   audience: { coachLevel?: string | null; playerLevel?: string | null }
 ) {
   const sub = priority.subprinciple;
@@ -217,6 +219,7 @@ function applyTrainingPriorityToWeek(
       coachLevel: audience.coachLevel,
       playerLevel: audience.playerLevel,
       teamName: team.name,
+      teamId: team.id,
     }),
   };
 }

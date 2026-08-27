@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { TrainingPriorityOutcome, TrainingPriorityStatus } from "@prisma/client";
 import { isReadinessEligibleForTeam } from "./game-model-readiness";
+import { currentWeekIndex } from "./coach-center-curriculum";
 
 export class SubprincipleNotEligibleError extends Error {
   constructor(readiness: string, ageGroup: string) {
@@ -156,6 +157,28 @@ export async function getActiveTrainingPriorityForTeamWeek(teamId: string, weekS
       },
     },
   });
+}
+
+/**
+ * Convenience wrapper for callers (like the regular session generator) that
+ * only have a teamId in hand -- resolves the team's active season week on
+ * its own, then delegates to getActiveTrainingPriorityForTeamWeek. Coach
+ * Center's serializeTeamWithActivePriority does this same weekIndex ->
+ * weekStart math itself since it already has the team+season in memory;
+ * this version exists for callers that don't.
+ */
+export async function getActivePriorityForCurrentWeek(teamId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { seasons: { where: { active: true }, take: 1, select: { startDate: true } } },
+  });
+  const season = team?.seasons?.[0];
+  if (!season) return null;
+
+  const weekIndex = currentWeekIndex(season.startDate);
+  const weekStart = new Date(season.startDate);
+  weekStart.setUTCDate(weekStart.getUTCDate() + (weekIndex - 1) * 7);
+  return getActiveTrainingPriorityForTeamWeek(teamId, weekStart);
 }
 
 /**

@@ -1,12 +1,13 @@
 jest.mock("../prisma", () => ({
   prisma: {
-    team: { findUniqueOrThrow: jest.fn() },
+    team: { findUniqueOrThrow: jest.fn(), findUnique: jest.fn() },
     subprinciple: { findUniqueOrThrow: jest.fn() },
     trainingPriority: {
       create: jest.fn(),
       findUniqueOrThrow: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      findFirst: jest.fn(),
     },
   },
 }));
@@ -14,6 +15,7 @@ jest.mock("../prisma", () => ({
 import { prisma } from "../prisma";
 import {
   createTrainingPriority,
+  getActivePriorityForCurrentWeek,
   getTrainingPriorityForClub,
   listTrainingPrioritiesForTeam,
   resolveTrainingPriority,
@@ -22,11 +24,13 @@ import {
 } from "../services/training-priority";
 
 const mockTeamFind = prisma.team.findUniqueOrThrow as jest.Mock;
+const mockTeamFindUnique = prisma.team.findUnique as jest.Mock;
 const mockSubprincipleFind = prisma.subprinciple.findUniqueOrThrow as jest.Mock;
 const mockCreate = prisma.trainingPriority.create as jest.Mock;
 const mockPriorityFind = prisma.trainingPriority.findUniqueOrThrow as jest.Mock;
 const mockFindMany = prisma.trainingPriority.findMany as jest.Mock;
 const mockUpdate = prisma.trainingPriority.update as jest.Mock;
+const mockPriorityFindFirst = prisma.trainingPriority.findFirst as jest.Mock;
 
 describe("createTrainingPriority", () => {
   beforeEach(() => {
@@ -244,5 +248,40 @@ describe("resolveTrainingPriority", () => {
     ).rejects.toBeInstanceOf(TrainingPriorityError);
 
     expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("getActivePriorityForCurrentWeek", () => {
+  beforeEach(() => {
+    mockTeamFindUnique.mockReset();
+    mockPriorityFindFirst.mockReset();
+  });
+
+  test("resolves the team's active season week and looks up that week's priority", async () => {
+    // A season that started exactly on this week's Monday -> weekIndex 1,
+    // so the resolved weekStart should equal the season's own startDate.
+    const now = new Date();
+    const day = now.getUTCDay();
+    const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    monday.setUTCDate(monday.getUTCDate() + (day === 0 ? -6 : 1 - day));
+
+    mockTeamFindUnique.mockResolvedValue({ seasons: [{ startDate: monday }] });
+    mockPriorityFindFirst.mockResolvedValue({ id: "priority-1" });
+
+    const result = await getActivePriorityForCurrentWeek("team-1");
+
+    expect(result).toEqual({ id: "priority-1" });
+    const callArgs = mockPriorityFindFirst.mock.calls[0][0];
+    expect(callArgs.where.teamId).toBe("team-1");
+    expect(callArgs.where.weekStart.gte.toISOString().slice(0, 10)).toBe(monday.toISOString().slice(0, 10));
+  });
+
+  test("returns null when the team has no active season", async () => {
+    mockTeamFindUnique.mockResolvedValue({ seasons: [] });
+
+    const result = await getActivePriorityForCurrentWeek("team-1");
+
+    expect(result).toBeNull();
+    expect(mockPriorityFindFirst).not.toHaveBeenCalled();
   });
 });

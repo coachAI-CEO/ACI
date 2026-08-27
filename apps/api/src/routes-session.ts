@@ -368,6 +368,7 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       session,
       qa,
       fixDecision,
+      deviationWarning: result.deviationWarning || null,
       telemetry: {
         gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
         phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,

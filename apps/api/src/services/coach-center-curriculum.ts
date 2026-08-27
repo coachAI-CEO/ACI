@@ -449,6 +449,7 @@ export function sessionBuilderQuery(params: {
   coachLevel?: string | null;
   playerLevel?: string | null;
   teamName?: string | null;
+  teamId?: string | null;
 }): string {
   const audience = sessionAudience({
     coachLevel: params.coachLevel,
@@ -465,6 +466,9 @@ export function sessionBuilderQuery(params: {
   if (params.phase) search.set("phase", params.phase);
   if (params.zone) search.set("zone", params.zone);
   if (params.topic) search.set("topic", params.topic);
+  // Carried through so the generator can check this team's active
+  // TrainingPriority and tag the session / return a deviationWarning.
+  if (params.teamId) search.set("teamId", params.teamId);
   return `/demo/session?${search.toString()}`;
 }
 

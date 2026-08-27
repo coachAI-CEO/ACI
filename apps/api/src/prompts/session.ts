@@ -37,6 +37,13 @@ export interface SessionPromptInput {
   // flow), QA behaves exactly as before.
   targetSubprinciple?: QaTargetSubprinciple | null;
 
+  // Optional: which team this session is being generated for. Used only to
+  // check the team's active TrainingPriority (if any) for this calendar
+  // week -- when the topic matches, the created Session is tagged with
+  // that priority/subprinciple; when it doesn't, generateAndReviewSession
+  // returns a non-blocking deviationWarning instead of failing the request.
+  teamId?: string;
+
   /** Club-authored 4-moment DNA from DOC Hub; preferred over hardcoded model profiles. */
   clubPhilosophy?: ClubPhilosophyPromptInput | null;
 

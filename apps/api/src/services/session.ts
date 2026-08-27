@@ -26,6 +26,7 @@ import {
 } from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
+import { getActivePriorityForCurrentWeek } from "./training-priority";
 
 // Re-export for convenience
 export { fixSessionDecision };
@@ -1153,6 +1154,31 @@ export async function generateAndReviewSession(
     qa: finalQa,
   };
 
+  // If this session was generated for a team with a DOC-assigned
+  // TrainingPriority for the current week, check whether the topic used
+  // matches what the DOC assigned. A match tags the session (so it counts
+  // toward that team's adherence tracking and future recommendation
+  // scoring); a mismatch surfaces a non-blocking deviationWarning instead
+  // of failing the request -- enforcement stays a DOC/coach conversation,
+  // not a system gate.
+  let targetSubprincipleId: string | undefined;
+  let trainingPriorityIdForSession: string | undefined;
+  let deviationWarning: { assignedTrigger: string; providedTopic: string | null } | null = null;
+
+  if (input.teamId) {
+    const activePriority = await getActivePriorityForCurrentWeek(input.teamId);
+    if (activePriority) {
+      const providedTopic = (input.topic || "").trim();
+      const assignedTrigger = activePriority.subprinciple.trigger.trim();
+      if (providedTopic && providedTopic.toLowerCase() === assignedTrigger.toLowerCase()) {
+        targetSubprincipleId = activePriority.subprinciple.id;
+        trainingPriorityIdForSession = activePriority.id;
+      } else {
+        deviationWarning = { assignedTrigger, providedTopic: providedTopic || null };
+      }
+    }
+  }
+
   // Persist session with all fields
   const created = await prisma.session.create({
     data: {
@@ -1165,32 +1191,35 @@ export async function generateAndReviewSession(
       durationMin: input.durationMin ?? jsonForDb.durationMin ?? 90,
       qaScore: avgScore,
       approved: !!finalQa.pass,
-      
+
       // Session constraints
       numbersMin: input.numbersMin,
       numbersMax: input.numbersMax,
-      
-      principleIds: Array.isArray(jsonForDb.principleIds) 
-        ? jsonForDb.principleIds 
+
+      principleIds: Array.isArray(jsonForDb.principleIds)
+        ? jsonForDb.principleIds
         : [],
-      psychThemeIds: Array.isArray(jsonForDb.psychThemeIds) 
-        ? jsonForDb.psychThemeIds 
+      psychThemeIds: Array.isArray(jsonForDb.psychThemeIds)
+        ? jsonForDb.psychThemeIds
         : [],
-      
+
       // Formation & level metadata
       formationUsed: input.formationAttacking,
       playerLevel: input.playerLevel as any,
       coachLevel: input.coachLevel as any,
-      
+
       spaceConstraint: input.spaceConstraint as any,
       goalsAvailable: input.goalsAvailable ?? 0,
-      
+
       // Auto-save to vault
       savedToVault: true,
-      
+
       // Track who generated this session
       generatedBy: userId || null,
       clubId: (await resolveSessionClubId(userId, String(input.gameModelId))) || undefined,
+
+      targetSubprincipleId,
+      trainingPriorityId: trainingPriorityIdForSession,
 
       json: jsonForDb,
     },
@@ -1250,6 +1279,7 @@ export async function generateAndReviewSession(
       },
       qa: finalQa,
       fixDecision,
+      deviationWarning,
       raw: {
         created: { id: created.id },
       },
