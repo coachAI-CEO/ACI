@@ -102,6 +102,9 @@ const AGE_GROUP_MATURITY: Record<string, string> = {
   U18: "Most experienced age group -- full adult-level tactical vocabulary and game management expected.",
 };
 
+/** Single source of truth for which age groups are known/editable. */
+export const KNOWN_AGE_GROUPS = Object.keys(AGE_GROUP_MATURITY);
+
 export function getAgeGroupMaturityNote(ageGroup: string): string {
   return AGE_GROUP_MATURITY[ageGroup.toUpperCase()] || "";
 }

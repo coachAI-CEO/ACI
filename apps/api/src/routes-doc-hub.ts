@@ -43,6 +43,11 @@ import {
 } from './services/training-priority';
 import { generateDrillForTrainingPriority, LlmResponseParseError } from './services/generate-from-priority';
 import { getCoachAdherenceRanking } from './services/coach-adherence';
+import {
+  AgeGroupMaturityError,
+  getAgeGroupMaturityNotesForClub,
+  setAgeGroupMaturityNote,
+} from './services/age-group-maturity';
 
 function sectionScopeFromRequest(req: ClubAuthRequest): string | null {
   return resolveSectionScope({
@@ -822,6 +827,72 @@ r.get(
       return res.json({ ok: true, ranking });
     } catch (error) {
       return sendTrainingPriorityError(res, error);
+    }
+  }
+);
+
+function sendAgeGroupMaturityError(res: express.Response, error: unknown) {
+  if (error instanceof AgeGroupMaturityError) {
+    return res.status(error.status).json({ ok: false, error: error.code, message: error.message });
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * GET /doc-hub/clubs/:clubId/age-group-maturity
+ * The editable table behind getAgeGroupMaturityNote -- one row per known
+ * age group, each either the club's own override or the shared default.
+ */
+r.get(
+  '/doc-hub/clubs/:clubId/age-group-maturity',
+  requireClubRole(DOC_HUB_ROLES),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const rows = await getAgeGroupMaturityNotesForClub(clubId);
+      return res.json({ ok: true, rows });
+    } catch (error) {
+      return sendAgeGroupMaturityError(res, error);
+    }
+  }
+);
+
+const SetAgeGroupMaturitySchema = z.object({
+  note: z.string().max(1000).nullable(),
+});
+
+/**
+ * PATCH /doc-hub/clubs/:clubId/age-group-maturity/:ageGroup
+ * DOC edits one age group's maturity note (or resets it to the shared
+ * default by passing note: null). DOC-only, matching club philosophy edits.
+ */
+r.patch(
+  '/doc-hub/clubs/:clubId/age-group-maturity/:ageGroup',
+  requireClubRole([ClubRole.DOC]),
+  async (req: ClubAuthRequest, res) => {
+    try {
+      if (!req.userId) return res.status(401).json({ ok: false, error: 'Authentication required' });
+
+      const parsed = SetAgeGroupMaturitySchema.safeParse(req.body || {});
+      if (!parsed.success) {
+        return res.status(400).json({
+          ok: false,
+          error: 'Invalid payload',
+          details: parsed.error.flatten(),
+        });
+      }
+
+      const clubId = req.clubId || String(req.params.clubId || '');
+      const row = await setAgeGroupMaturityNote({
+        clubId,
+        ageGroup: String(req.params.ageGroup || ''),
+        note: parsed.data.note,
+        updatedBy: req.userId,
+      });
+      return res.json({ ok: true, row });
+    } catch (error) {
+      return sendAgeGroupMaturityError(res, error);
     }
   }
 );

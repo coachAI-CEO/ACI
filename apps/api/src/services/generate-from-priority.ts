@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { generateText } from "../gemini";
 import { getCoachLanguageProfile, buildSessionQAReviewerPrompt } from "../prompts/session";
 import { getAgeGroupMaturityNote, getDefaultPlayerAndCoachLevel } from "./game-model-readiness";
+import { resolveAgeGroupMaturityNote } from "./age-group-maturity";
 
 export type TrainingIntent = {
   tacticalProblem: string;
@@ -51,8 +52,9 @@ function parseJsonResponse<T>(text: string): T {
  */
 export async function deriveTrainingIntent(
   subprinciple: SubprincipleFields,
-  context: { ageGroup: string; playerLevel: string }
+  context: { ageGroup: string; playerLevel: string; maturityNote?: string }
 ): Promise<TrainingIntent> {
+  const maturityNote = context.maturityNote ?? getAgeGroupMaturityNote(context.ageGroup);
   const prompt = [
     "You are translating a football club's game-model subprinciple into a training intent for one drill.",
     "",
@@ -60,9 +62,7 @@ export async function deriveTrainingIntent(
     `RESPONSE: ${subprinciple.response}`,
     ...(subprinciple.antiPattern ? [`ANTI-PATTERN: ${subprinciple.antiPattern}`] : []),
     `Context: ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}`,
-    ...(getAgeGroupMaturityNote(context.ageGroup)
-      ? [`Age-group maturity: ${getAgeGroupMaturityNote(context.ageGroup)}`]
-      : []),
+    ...(maturityNote ? [`Age-group maturity: ${maturityNote}`] : []),
     "",
     "Produce a training intent -- NOT a drill, NOT constraints yet. Just the underlying design problem:",
     "- tacticalProblem: one sentence naming the specific decision/action players must repeatedly face.",
@@ -100,9 +100,16 @@ export type GeneratedDrill = {
  */
 export async function generateDrillFromIntent(
   intent: TrainingIntent,
-  context: { ageGroup: string; playerLevel: string; coachLevel: string; drillType?: string }
+  context: {
+    ageGroup: string;
+    playerLevel: string;
+    coachLevel: string;
+    drillType?: string;
+    maturityNote?: string;
+  }
 ): Promise<GeneratedDrill> {
   const languageProfile = getCoachLanguageProfile(context.coachLevel);
+  const maturityNote = context.maturityNote ?? getAgeGroupMaturityNote(context.ageGroup);
 
   const prompt = [
     "SYSTEM: Output ONE JSON object for a single football training drill.",
@@ -110,9 +117,7 @@ export async function generateDrillFromIntent(
     languageProfile,
     "",
     `Design a ${context.drillType || "TACTICAL"} drill for ageGroup=${context.ageGroup}, playerLevel=${context.playerLevel}.`,
-    ...(getAgeGroupMaturityNote(context.ageGroup)
-      ? [`Age-group maturity: ${getAgeGroupMaturityNote(context.ageGroup)}`]
-      : []),
+    ...(maturityNote ? [`Age-group maturity: ${maturityNote}`] : []),
     "",
     "The drill's constraints (rules, scoring, restart conditions) must be built so that:",
     `- ${intent.mustBeAvailable}`,
@@ -158,7 +163,7 @@ export async function generateDrillForTrainingPriority(trainingPriorityId: strin
     where: { id: trainingPriorityId },
     include: {
       subprinciple: { select: { trigger: true, response: true, antiPattern: true } },
-      team: { select: { ageGroup: true, playerLevel: true } },
+      team: { select: { ageGroup: true, playerLevel: true, clubId: true } },
     },
   });
 
@@ -170,9 +175,13 @@ export async function generateDrillForTrainingPriority(trainingPriorityId: strin
   const defaults = getDefaultPlayerAndCoachLevel(ageGroup);
   const playerLevel = priority.team.playerLevel || defaults.playerLevel;
   const coachLevel = defaults.coachLevel;
+  // Club's own editable maturity note if the DOC has set one, else the
+  // shared default -- resolved once here so both calls below use the same
+  // note rather than each independently hitting the DB.
+  const maturityNote = await resolveAgeGroupMaturityNote(priority.team.clubId, ageGroup);
 
-  const intent = await deriveTrainingIntent(priority.subprinciple, { ageGroup, playerLevel });
-  const drill = await generateDrillFromIntent(intent, { ageGroup, playerLevel, coachLevel });
+  const intent = await deriveTrainingIntent(priority.subprinciple, { ageGroup, playerLevel, maturityNote });
+  const drill = await generateDrillFromIntent(intent, { ageGroup, playerLevel, coachLevel, maturityNote });
 
   const qaPrompt = buildSessionQAReviewerPrompt(
     { title: drill.title, ageGroup, drills: [{ ...drill, diagram: { players: [], arrows: [], annotations: [], safeZones: [], goals: [], pitch: {} } }] },

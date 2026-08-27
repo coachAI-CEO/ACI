@@ -4,6 +4,7 @@ jest.mock("../gemini", () => ({
 jest.mock("../prisma", () => ({
   prisma: {
     trainingPriority: { findUniqueOrThrow: jest.fn() },
+    ageGroupMaturityNote: { findUnique: jest.fn() },
   },
 }));
 
@@ -18,6 +19,7 @@ import {
 
 const mockGenerateText = generateText as jest.Mock;
 const mockPriorityFind = prisma.trainingPriority.findUniqueOrThrow as jest.Mock;
+const mockMaturityNoteFind = prisma.ageGroupMaturityNote.findUnique as jest.Mock;
 
 describe("deriveTrainingIntent", () => {
   beforeEach(() => mockGenerateText.mockReset());
@@ -95,6 +97,8 @@ describe("generateDrillForTrainingPriority — full chain wiring", () => {
   beforeEach(() => {
     mockGenerateText.mockReset();
     mockPriorityFind.mockReset();
+    mockMaturityNoteFind.mockReset();
+    mockMaturityNoteFind.mockResolvedValue(null);
     mockPriorityFind.mockResolvedValue({
       id: "priority-1",
       subprinciple: {
@@ -102,7 +106,7 @@ describe("generateDrillForTrainingPriority — full chain wiring", () => {
         response: "Lock the opponent against the touchline, eliminate the backward escape pass, and execute an aggressive double-team tackle.",
         antiPattern: "Over-committing centrally and opening up an easy diagonal switch of play.",
       },
-      team: { ageGroup: "U16", playerLevel: null },
+      team: { ageGroup: "U16", playerLevel: null, clubId: "club-1" },
     });
   });
 
@@ -179,5 +183,26 @@ describe("generateDrillForTrainingPriority — full chain wiring", () => {
     const call2Prompt = mockGenerateText.mock.calls[1][0] as string;
     // team.ageGroup is U16 (11v11 band) -> USSF_B_PLUS, not the old hardcoded USSF_C.
     expect(call2Prompt).toContain("USSF_B_PLUS");
+  });
+
+  // Regression guard for the DOC Hub editable screen: when a club has set
+  // its own maturity note for this team's age group, both calls must use
+  // it instead of the shared default.
+  test("uses the club's custom age-group maturity note when one is set", async () => {
+    mockMaturityNoteFind.mockResolvedValue({ note: "Rocklin FC's own U16 note: focus on tempo control." });
+    mockGenerateText
+      .mockResolvedValueOnce(intentResponse)
+      .mockResolvedValueOnce(drillResponse)
+      .mockResolvedValueOnce(qaResponseLegitimate);
+
+    await generateDrillForTrainingPriority("priority-1");
+
+    expect(mockMaturityNoteFind).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clubId_ageGroup: { clubId: "club-1", ageGroup: "U16" } } })
+    );
+    const call1Prompt = mockGenerateText.mock.calls[0][0] as string;
+    const call2Prompt = mockGenerateText.mock.calls[1][0] as string;
+    expect(call1Prompt).toContain("Rocklin FC's own U16 note: focus on tempo control.");
+    expect(call2Prompt).toContain("Rocklin FC's own U16 note: focus on tempo control.");
   });
 });

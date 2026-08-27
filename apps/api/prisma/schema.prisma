@@ -817,6 +817,7 @@ model Club {
   sessions            Session[]
   teams               Team[]
   principles          Principle[]
+  ageGroupMaturityNotes AgeGroupMaturityNote[]
 
   // map: preserves the exact index names the raw-SQL table already has, so
   // this migration doesn't drop and recreate them under new names.
@@ -932,6 +933,25 @@ model TrainingPriority {
   @@index([teamId, weekStart])
   @@index([subprincipleId])
   @@map("training_priorities")
+}
+
+// Per-club override of the shared default age-group maturity note (see
+// getAgeGroupMaturityNote in services/game-model-readiness.ts) injected into
+// generation prompts to keep same-format ages (e.g. U13 vs U18, both 11v11)
+// from generating identically. Absence of a row for a given (clubId,
+// ageGroup) means "use the shared default" -- this table only holds
+// club-specific corrections, editable by the club's own DOC.
+model AgeGroupMaturityNote {
+  id        String   @id @default(uuid())
+  clubId    String   @map("club_id")
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  ageGroup  String   @map("age_group")
+  note      String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@unique([clubId, ageGroup])
+  @@map("age_group_maturity_notes")
 }
 
 // Optional per-club subdivision (an "age group," a "girls academy," whatever
