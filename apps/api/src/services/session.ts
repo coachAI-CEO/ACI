@@ -17,7 +17,13 @@ import {
   isFullSizeGoal,
   resolveDiagramGoalsAvailable,
 } from "./diagram-goals";
-import { generateDrillDiagramSvg, omitDiagramSvgFromDrill, persistDrillDiagramSvg } from "./drill-diagram-svg";
+import {
+  attachSceneToDrillJson,
+  generateDrillDiagramSvg,
+  isSceneDiagramPlacement,
+  omitDiagramSvgFromDrill,
+  persistDrillDiagramSvg,
+} from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
 
@@ -966,7 +972,11 @@ export async function generateAndReviewSession(
     finalSession.drills.map(async (drill: any) => {
       if (isCancelled()) throw new Error("REQUEST_CANCELLED");
       try {
-        if (drill.drillType !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
+        if (
+          !isSceneDiagramPlacement() &&
+          drill.drillType !== "COOLDOWN" &&
+          needsDiagramEnrichment(drill?.diagram, input.coachLevel)
+        ) {
           const reenriched = await reenrichDiagramFromDrillJson(drill);
           if (reenriched) {
             drill.diagram = reenriched;
@@ -1107,6 +1117,7 @@ export async function generateAndReviewSession(
               zone: drill.zone ?? input.zone,
             });
             drill.diagramSvg = diagramResult.svg;
+            attachSceneToDrillJson(drill, diagramResult);
             try {
               await persistDrillDiagramSvg(drill.refCode, diagramResult);
             } catch (err: any) {
@@ -1382,6 +1393,7 @@ export async function buildCoachLevelVariantFromSession(
           zone: drill.zone ?? input.zone,
         });
         drill.diagramSvg = diagramResult.svg;
+        attachSceneToDrillJson(drill, diagramResult);
       } catch (err: any) {
         console.error(
           `[COACH_VARIANT] Failed to draw diagram for drill ${drill.refCode}:`,

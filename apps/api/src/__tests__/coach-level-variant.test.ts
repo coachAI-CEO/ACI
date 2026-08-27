@@ -11,6 +11,13 @@ jest.mock("../services/drill-diagram-svg", () => ({
   generateDrillDiagramSvg: jest.fn(),
   omitDiagramSvgFromDrill: jest.fn((drill: any) => drill),
   persistDrillDiagramSvg: jest.fn(),
+  attachSceneToDrillJson: jest.fn((drill: any, result: any) => {
+    if (!result?.scene) return;
+    drill.sceneDocument = result.scene;
+    drill.scenePromptVersion = result.promptVersion;
+    if (result.sceneCard) drill.sceneCard = result.sceneCard;
+  }),
+  isSceneDiagramPlacement: jest.fn(() => true),
 }));
 
 import { buildCoachLevelVariantFromSession } from "../services/session";

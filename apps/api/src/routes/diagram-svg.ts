@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { getEnforcedClubVaultScope } from "../services/club-game-model-scope";
 import { drillDiagramVisible } from "../services/diagram-svg-access";
-import { generateDrillDiagramSvg, persistDrillDiagramSvg, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
+import { generateDrillDiagramSvg, persistDrillDiagramSvg, placementForStoredPicture, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
 import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 import { isWarmupPicture, svgPictureIsOvercrowded } from "../data/field-dimensions";
@@ -169,7 +169,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement: placementForStoredPicture(force, Boolean(currentSvg)) });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {
@@ -281,7 +281,7 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement: placementForStoredPicture(false, Boolean(drill.diagramSvg)) });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {

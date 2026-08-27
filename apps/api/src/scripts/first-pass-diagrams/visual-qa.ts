@@ -68,38 +68,19 @@ export function frozenConfidence(scores: FirstPassScores): number {
   return Math.round((ok / Math.max(1, checks.length)) * 100);
 }
 
-export async function judgeDiagramVisual(args: {
+export async function judgePng(args: {
   pngPath: string;
-  fixture: FirstPassFixture;
-  params: DrawerParams;
+  prompt: string;
   frozenIssues: string[];
 }): Promise<VisualQaResult> {
   const png = fs.readFileSync(args.pngPath);
-  const prompt = [
-    "You are a USSF-C soccer coach doing visual QA on a training diagram.",
-    "Judge the PICTURE, not the JSON. Frozen schema can pass while the card is still wrong.",
-    "",
-    ...contractLines(args.fixture, args.params),
-    args.frozenIssues.length ? `Compiler already flagged: ${args.frozenIssues.join("; ")}` : "Compiler flagged nothing.",
-    "",
-    "Score confidence 0-100 for 'a club coach would use this card as-is'.",
-    "Roster: pass if total tokens sit in the legal player-count range above. Do not require a full 11v11 (22) or 9v9 (18) just because the field format says that.",
-    "Fail (confidence <= 55) if: leftover outfield (blue/red) token standing in a WHITE full-size net; NO GK on the pug end of a one-full-goal game; two minis on one end when there is NO full goal on the other end; rondo drawn as a finishing 4v4 with minis; total tokens outside the legal player-count range; 11v11/9v9/7v7 tactical or conditioned card labeled with a 7v7 box (35×25, 40×35) instead of full pitch width; " +
-      VISUAL_FRAME_RULE,
-    VISUAL_FRAME_RULE,
-    "PASS these: orange mini-goals (even if they look large); a rondo box with no goals; GK next to the mini-goals on a one-full-goal card; two minis on the SAME end when a white full-size goal is on the opposite end; 20 tokens on an 11v11 one-full card if both GKs are present.",
-    "",
-    "Return ONLY JSON: {\"confidence\": number, \"verdict\": \"pass\"|\"review\"|\"fail\", \"issues\": string[], \"summary\": string}",
-    "verdict pass if confidence >= 80, review if 56-79, fail if <= 55.",
-  ].join("\n");
-
   const requested = process.env.GEMINI_QA_MODEL || process.env.GEMINI_FAST_MODEL || "gemini-3.5-flash-lite";
   if (/gemini-3\.[56]-flash$/i.test(requested) && !/lite/i.test(requested)) {
     throw new Error(`Refusing banned non-lite QA model "${requested}". Use gemini-3.5-flash-lite.`);
   }
   const text = await generateMultimodalText(
     [
-      { text: prompt },
+      { text: args.prompt },
       { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
     ],
     { timeout: 30000, model: requested }
@@ -129,6 +110,33 @@ export async function judgeDiagramVisual(args: {
     issues,
     summary: String(parsed.summary || ""),
   };
+}
+
+export async function judgeDiagramVisual(args: {
+  pngPath: string;
+  fixture: FirstPassFixture;
+  params: DrawerParams;
+  frozenIssues: string[];
+}): Promise<VisualQaResult> {
+  const prompt = [
+    "You are a USSF-C soccer coach doing visual QA on a training diagram.",
+    "Judge the PICTURE, not the JSON. Frozen schema can pass while the card is still wrong.",
+    "",
+    ...contractLines(args.fixture, args.params),
+    args.frozenIssues.length ? `Compiler already flagged: ${args.frozenIssues.join("; ")}` : "Compiler flagged nothing.",
+    "",
+    "Score confidence 0-100 for 'a club coach would use this card as-is'.",
+    "Roster: pass if total tokens sit in the legal player-count range above. Do not require a full 11v11 (22) or 9v9 (18) just because the field format says that.",
+    "Fail (confidence <= 55) if: leftover outfield (blue/red) token standing in a WHITE full-size net; NO GK on the pug end of a one-full-goal game; two minis on one end when there is NO full goal on the other end; rondo drawn as a finishing 4v4 with minis; total tokens outside the legal player-count range; 11v11/9v9/7v7 tactical or conditioned card labeled with a 7v7 box (35×25, 40×35) instead of full pitch width; " +
+      VISUAL_FRAME_RULE,
+    VISUAL_FRAME_RULE,
+    "PASS these: orange mini-goals (even if they look large); a rondo box with no goals; GK next to the mini-goals on a one-full-goal card; two minis on the SAME end when a white full-size goal is on the opposite end; 20 tokens on an 11v11 one-full card if both GKs are present.",
+    "",
+    "Return ONLY JSON: {\"confidence\": number, \"verdict\": \"pass\"|\"review\"|\"fail\", \"issues\": string[], \"summary\": string}",
+    "verdict pass if confidence >= 80, review if 56-79, fail if <= 55.",
+  ].join("\n");
+
+  return judgePng({ pngPath: args.pngPath, prompt, frozenIssues: args.frozenIssues });
 }
 
 export function sceneConfidence(rows: Array<{ visual?: VisualQaResult | null }>): number {

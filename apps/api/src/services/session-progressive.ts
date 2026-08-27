@@ -8,7 +8,12 @@ import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { enforceDiagramGoalAvailability, resolveDiagramGoalsAvailable } from "./diagram-goals";
-import { generateDrillDiagramSvg, omitDiagramSvgFromDrill } from "./drill-diagram-svg";
+import {
+  attachSceneToDrillJson,
+  generateDrillDiagramSvg,
+  isSceneDiagramPlacement,
+  omitDiagramSvgFromDrill,
+} from "./drill-diagram-svg";
 import { isWarmupPicture } from "../data/field-dimensions";
 import { resolveSessionClubId } from "./club-philosophy";
 import {
@@ -274,7 +279,7 @@ async function generateSingleProgressiveSession(
         if (drill.drillType === "COOLDOWN") return;
 
         try {
-          if (needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
+          if (!isSceneDiagramPlacement() && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
             const reenriched = await reenrichDiagramFromDrillJson(drill);
             if (reenriched) {
               drill.diagram = reenriched;
@@ -520,6 +525,7 @@ export async function generateProgressiveSessionSeries(
               zone: drill.zone ?? baseInput.zone,
             });
             drill.diagramSvg = diagramResult.svg;
+            attachSceneToDrillJson(drill, diagramResult);
           } catch (err: any) {
             console.error(`[PROGRESSIVE] Failed to draw diagram for drill ${drillRefCode}:`, err?.message);
           }

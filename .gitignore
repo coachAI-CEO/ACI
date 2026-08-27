@@ -32,6 +32,7 @@ coverage/
 *.test.js
 # Session-panel lab tests — keep tracked so Claude Code can run them after clone
 !apps/api/src/__tests__/session-panel.test.ts
+!apps/api/src/__tests__/scene-diagram.test.ts
 
 # Prisma
 prisma/dev.db
