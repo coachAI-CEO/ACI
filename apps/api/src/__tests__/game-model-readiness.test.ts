@@ -20,6 +20,20 @@ describe("getDefaultReadinessCeiling", () => {
   test("11v11 age band (U13+) ceilings at ADVANCED", () => {
     expect(getDefaultReadinessCeiling("U16")).toBe(SubprincipleReadiness.ADVANCED);
   });
+
+  // Regression guard for the within-11v11 sub-banding: U13/U14 (still
+  // growing into the format) default-cap lower than U15+ (established),
+  // even though both are the same 11v11 format band.
+  test("U13 and U14 (youngest in 11v11) default-cap at DEVELOPING, not ADVANCED", () => {
+    expect(getDefaultReadinessCeiling("U13")).toBe(SubprincipleReadiness.DEVELOPING);
+    expect(getDefaultReadinessCeiling("U14")).toBe(SubprincipleReadiness.DEVELOPING);
+  });
+
+  test("U15 through U18 (established in 11v11) default to ADVANCED", () => {
+    for (const ageGroup of ["U15", "U16", "U17", "U18"]) {
+      expect(getDefaultReadinessCeiling(ageGroup)).toBe(SubprincipleReadiness.ADVANCED);
+    }
+  });
 });
 
 describe("resolveTeamReadinessCeiling", () => {
@@ -66,6 +80,22 @@ describe("isReadinessEligibleForTeam", () => {
     const team = { ageGroup: "U16", readinessOverride: null };
     expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.FOUNDATIONAL)).toBe(true);
     expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.DEVELOPING)).toBe(true);
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.ADVANCED)).toBe(true);
+  });
+
+  // Regression guard for the within-11v11 sub-banding: a U13 team is 11v11
+  // but not yet "established" -- it should NOT be eligible for ADVANCED
+  // subprinciples without an explicit DOC override, even though older
+  // 11v11 teams (U16) are.
+  test("a U13 team is NOT eligible for ADVANCED without an override, unlike U16", () => {
+    const team = { ageGroup: "U13", readinessOverride: null };
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.FOUNDATIONAL)).toBe(true);
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.DEVELOPING)).toBe(true);
+    expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.ADVANCED)).toBe(false);
+  });
+
+  test("a U13 team's DOC can still override up to ADVANCED", () => {
+    const team = { ageGroup: "U13", readinessOverride: SubprincipleReadiness.ADVANCED };
     expect(isReadinessEligibleForTeam(team, SubprincipleReadiness.ADVANCED)).toBe(true);
   });
 });

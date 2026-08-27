@@ -12,30 +12,56 @@ const TIER_ORDER: SubprincipleReadiness[] = [
 type GameFormat = ReturnType<typeof getGameFormatForAgeGroup>;
 
 /**
- * Single source of truth for everything that varies by format/age band:
- * readiness ceiling, default playerLevel, and default coachLevel. Both
- * getDefaultReadinessCeiling and getDefaultPlayerAndCoachLevel read from
- * this ONE table (keyed on getGameFormatForAgeGroup's output) instead of
- * each hand-rolling its own format->tier ladder -- so a format-band change
- * can't update one without the other.
+ * Single source of truth for playerLevel/coachLevel (the generation
+ * difficulty/vocabulary enums) by format/age band. Deliberately stays
+ * format-based only, unlike the readiness ceiling below -- those enums only
+ * have 3 possible values, so there's nothing to gain from sub-banding them
+ * further within 11v11; per-age nuance in generation comes from
+ * getAgeGroupMaturityNote instead (see below).
  */
-const BAND_DEFAULTS: Record<
-  GameFormat,
-  { readinessCeiling: SubprincipleReadiness; playerLevel: string; coachLevel: string }
-> = {
-  "7v7": { readinessCeiling: SubprincipleReadiness.FOUNDATIONAL, playerLevel: "BEGINNER", coachLevel: "USSF_D" },
-  "9v9": { readinessCeiling: SubprincipleReadiness.DEVELOPING, playerLevel: "INTERMEDIATE", coachLevel: "USSF_C" },
-  "11v11": { readinessCeiling: SubprincipleReadiness.ADVANCED, playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" },
+const BAND_DEFAULTS: Record<GameFormat, { playerLevel: string; coachLevel: string }> = {
+  "7v7": { playerLevel: "BEGINNER", coachLevel: "USSF_D" },
+  "9v9": { playerLevel: "INTERMEDIATE", coachLevel: "USSF_C" },
+  "11v11": { playerLevel: "ADVANCED", coachLevel: "USSF_B_PLUS" },
 };
 
 /**
- * Default readiness ceiling by format/age band, per the age/format bands
- * already used everywhere else in generation (getGameFormatForAgeGroup).
- * A DOC can override this per team via Team.readinessOverride -- this is
- * only the fallback when no override is set.
+ * Default readiness ceiling by format band, EXCEPT within 11v11 where it's
+ * sub-banded by exact age -- U13-U14 default-cap at DEVELOPING, U15-U18
+ * open to ADVANCED. Unlike playerLevel/coachLevel and the maturity note
+ * (both tone/vocabulary signals only), this changes actual ELIGIBILITY:
+ * which subprinciple tiers a team can be assigned by default. A DOC can
+ * still override any team's ceiling directly via Team.readinessOverride --
+ * this only changes the un-overridden default, and only within 11v11.
+ *
+ * DRAFT CUTOFF: U13-14 vs U15-18 is a reasonable first split ("still
+ * growing into 11v11" vs "established"), not verified against Rocklin FC's
+ * own coaching judgment -- adjust freely, same as the maturity notes.
+ */
+const READINESS_CEILING_BY_AGE_WITHIN_11V11: Record<string, SubprincipleReadiness> = {
+  U13: SubprincipleReadiness.DEVELOPING,
+  U14: SubprincipleReadiness.DEVELOPING,
+  U15: SubprincipleReadiness.ADVANCED,
+  U16: SubprincipleReadiness.ADVANCED,
+  U17: SubprincipleReadiness.ADVANCED,
+  U18: SubprincipleReadiness.ADVANCED,
+};
+
+const FORMAT_READINESS_CEILING: Record<GameFormat, SubprincipleReadiness> = {
+  "7v7": SubprincipleReadiness.FOUNDATIONAL,
+  "9v9": SubprincipleReadiness.DEVELOPING,
+  "11v11": SubprincipleReadiness.ADVANCED,
+};
+
+/**
+ * Default readiness ceiling per age/format band. A DOC can override this
+ * per team via Team.readinessOverride -- this is only the fallback when no
+ * override is set.
  */
 export function getDefaultReadinessCeiling(ageGroup: string): SubprincipleReadiness {
-  return BAND_DEFAULTS[getGameFormatForAgeGroup(ageGroup)].readinessCeiling;
+  const format = getGameFormatForAgeGroup(ageGroup);
+  if (format !== "11v11") return FORMAT_READINESS_CEILING[format];
+  return READINESS_CEILING_BY_AGE_WITHIN_11V11[ageGroup.toUpperCase()] ?? FORMAT_READINESS_CEILING[format];
 }
 
 /** The team's actual ceiling: DOC override if set, else the age/format default. */
