@@ -6,13 +6,24 @@ import {
   getGameFormatForAgeGroup,
   getPlayersPerTeamForFormat,
   type GameFormat,
+  type SessionPromptInput,
 } from "../prompts/session";
 import { fixSessionDecision } from "./fixer";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
-import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
-import { generateDrillDiagramSvg, omitDiagramSvgFromDrill, persistDrillDiagramSvg } from "./drill-diagram-svg";
-import { isWarmupPicture } from "../data/field-dimensions";
+import {
+  demoteDiagramGoalkeepers,
+  enforceDiagramGoalAvailability,
+  isFullSizeGoal,
+  resolveDiagramGoalsAvailable,
+} from "./diagram-goals";
+import {
+  attachSceneToDrillJson,
+  generateDrillDiagramSvg,
+  isSceneDiagramPlacement,
+  omitDiagramSvgFromDrill,
+  persistDrillDiagramSvg,
+} from "./drill-diagram-svg";
 import { needsDescriptionExpansion, expandDrillDescription } from "./description-enrichment";
 import { resolveSessionClubId } from "./club-philosophy";
 
@@ -860,7 +871,11 @@ export async function generateAndReviewSession(
         const formatLabel = enforceConditionedGameFormatDiagram(drill, input);
         if (formatLabel) conditionedGameFormatLabel = formatLabel;
         enforceDiagramPlayerLimit(drill, input.numbersMax);
-        enforceDiagramGoalAvailability(drill, input);
+        enforceDiagramGoalAvailability(drill, {
+          ...input,
+          goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+          drillType: drill.drillType,
+        });
         normalizeGoalkeeperPositions(drill.diagram);
         applyCoachLevelDiagramProfile(drill, input.coachLevel);
         
@@ -957,13 +972,21 @@ export async function generateAndReviewSession(
     finalSession.drills.map(async (drill: any) => {
       if (isCancelled()) throw new Error("REQUEST_CANCELLED");
       try {
-        if (drill.drillType !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
+        if (
+          !isSceneDiagramPlacement() &&
+          drill.drillType !== "COOLDOWN" &&
+          needsDiagramEnrichment(drill?.diagram, input.coachLevel)
+        ) {
           const reenriched = await reenrichDiagramFromDrillJson(drill);
           if (reenriched) {
             drill.diagram = reenriched;
             enforceConditionedGameFormatDiagram(drill, input);
             enforceDiagramPlayerLimit(drill, input.numbersMax);
-            enforceDiagramGoalAvailability(drill, input);
+            enforceDiagramGoalAvailability(drill, {
+          ...input,
+          goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+          drillType: drill.drillType,
+        });
             normalizeGoalkeeperPositions(drill.diagram);
             applyCoachLevelDiagramProfile(drill, input.coachLevel);
             if (drill.json && typeof drill.json === "object") {
@@ -977,7 +1000,11 @@ export async function generateAndReviewSession(
       if (drill?.diagram) {
         enforceConditionedGameFormatDiagram(drill, input);
         enforceDiagramPlayerLimit(drill, input.numbersMax);
-        enforceDiagramGoalAvailability(drill, input);
+        enforceDiagramGoalAvailability(drill, {
+          ...input,
+          goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+          drillType: drill.drillType,
+        });
         normalizeGoalkeeperPositions(drill.diagram);
         applyCoachLevelDiagramProfile(drill, input.coachLevel);
       }
@@ -1013,8 +1040,8 @@ export async function generateAndReviewSession(
           // Map from input or drill JSON
           numbersMin: drill.numbersMin ?? input.numbersMin,
           numbersMax: drill.numbersMax ?? input.numbersMax,
-          goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
-          goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
+          goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+          goalMode: resolveDiagramGoalsAvailable(drill, input) === 1 ? "FULL1" : drill.goalMode,
           spaceConstraint: drill.spaceConstraint ?? input.spaceConstraint,
           formationUsed: drill.formationUsed ?? input.formationAttacking,
           playerLevel: input.playerLevel as any,
@@ -1076,7 +1103,7 @@ export async function generateAndReviewSession(
               title: drill.title || "Drill",
               json: {
                 ...drill,
-                goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
+                goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
               },
               drillType: drill.drillType || "TECHNICAL",
               durationMin: drill.durationMin ?? input.durationMin ?? 25,
@@ -1090,6 +1117,7 @@ export async function generateAndReviewSession(
               zone: drill.zone ?? input.zone,
             });
             drill.diagramSvg = diagramResult.svg;
+            attachSceneToDrillJson(drill, diagramResult);
             try {
               await persistDrillDiagramSvg(drill.refCode, diagramResult);
             } catch (err: any) {
@@ -1106,8 +1134,8 @@ export async function generateAndReviewSession(
             data: {
               json: omitDiagramSvgFromDrill(drill),
               coachLevel: input.coachLevel as any,
-              goalsAvailable: isWarmupPicture(drill.drillType) ? 0 : (input.goalsAvailable ?? drill.goalsAvailable ?? 0),
-              goalMode: input.goalsAvailable === 1 ? "LARGE" : drill.goalMode,
+              goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+              goalMode: resolveDiagramGoalsAvailable(drill, input) === 1 ? "FULL1" : drill.goalMode,
             },
           });
         } catch (err: any) {
@@ -1229,4 +1257,190 @@ export async function generateAndReviewSession(
   } finally {
     clearMetricsContext();
   }
+}
+
+function normalizeCoachLevelForVariant(coachLevel?: string): string {
+  const v = String(coachLevel || "")
+    .trim()
+    .toUpperCase();
+  if (v === "USSF_D") return "USSF_D";
+  if (v === "USSF_C") return "USSF_C";
+  if (v === "USSF_B_PLUS" || v === "USSF_B+" || v === "USSF_B") return "USSF_B_PLUS";
+  return v;
+}
+
+type CoachLevelVariantSessionRow = {
+  id: string;
+  refCode?: string | null;
+  title: string;
+  gameModelId: string;
+  phase?: string | null;
+  zone?: string | null;
+  ageGroup: string;
+  durationMin?: number | null;
+  numbersMin?: number | null;
+  numbersMax?: number | null;
+  goalsAvailable?: number | null;
+  spaceConstraint?: string | null;
+  formationUsed?: string | null;
+  playerLevel?: string | null;
+  coachLevel?: string | null;
+  approved?: boolean | null;
+  principleIds?: unknown;
+  psychThemeIds?: unknown;
+  json?: unknown;
+  user?: { id: string; name: string | null; email: string | null } | null;
+};
+
+function buildPromptInputFromSessionRow(
+  row: CoachLevelVariantSessionRow,
+  coachLevel: string
+): SessionPromptInput {
+  const json =
+    row.json && typeof row.json === "object" ? (row.json as Record<string, unknown>) : {};
+  const formationUsed =
+    typeof row.formationUsed === "string" && row.formationUsed.trim()
+      ? row.formationUsed
+      : typeof json.formationAttacking === "string"
+        ? json.formationAttacking
+        : "4-3-3";
+  const formationDefending =
+    typeof json.formationDefending === "string"
+      ? json.formationDefending
+      : formationUsed;
+
+  return {
+    gameModelId: String(row.gameModelId),
+    ageGroup: row.ageGroup,
+    phase: typeof row.phase === "string" ? row.phase : undefined,
+    zone: typeof row.zone === "string" ? row.zone : undefined,
+    durationMin: row.durationMin ?? (json.durationMin as number | undefined) ?? 90,
+    numbersMin: row.numbersMin ?? 16,
+    numbersMax: row.numbersMax ?? 22,
+    goalsAvailable: row.goalsAvailable ?? 0,
+    spaceConstraint: String(row.spaceConstraint || "FULL"),
+    formationAttacking: formationUsed,
+    formationDefending,
+    playerLevel: String(row.playerLevel || "INTERMEDIATE"),
+    coachLevel,
+    topic: typeof json.topic === "string" ? json.topic : undefined,
+  };
+}
+
+/**
+ * Re-language an existing vault session for a different coach license level
+ * without calling the LLM. Keeps drill structure, ref codes, and session context.
+ */
+export async function buildCoachLevelVariantFromSession(
+  row: CoachLevelVariantSessionRow,
+  targetCoachLevel: string
+) {
+  const coachLevel = normalizeCoachLevelForVariant(targetCoachLevel);
+  if (!coachLevel) {
+    throw new Error("coachLevel is required");
+  }
+
+  const input = buildPromptInputFromSessionRow(row, coachLevel);
+  const sourceJson =
+    row.json && typeof row.json === "object"
+      ? (row.json as Record<string, unknown>)
+      : {};
+  const variantSession = JSON.parse(
+    JSON.stringify({
+      ...sourceJson,
+      title: row.title,
+      gameModelId: row.gameModelId,
+      phase: row.phase,
+      zone: row.zone,
+      ageGroup: row.ageGroup,
+      durationMin: input.durationMin,
+      coachLevel,
+    })
+  ) as Record<string, unknown>;
+
+  if (!Array.isArray(variantSession.drills) || variantSession.drills.length === 0) {
+    throw new Error("Session has no drills to adapt");
+  }
+
+  variantSession.coachLevel = coachLevel;
+
+  (variantSession.drills as any[]).forEach((drill) => {
+    drill.coachLevel = coachLevel;
+    applyCoachLevelDiagramProfile(drill, coachLevel);
+  });
+  applyCoachLevelLanguageProfile(variantSession, coachLevel);
+  humanizeGameModelText(variantSession);
+
+  await Promise.all(
+    (variantSession.drills as any[]).map(async (drill) => {
+      if (!drill?.refCode || String(drill.drillType || "").toUpperCase() === "COOLDOWN") return;
+      try {
+        const diagramResult = await generateDrillDiagramSvg({
+          title: drill.title || "Drill",
+          json: {
+            ...drill,
+            goalsAvailable: resolveDiagramGoalsAvailable(drill, input),
+          },
+          drillType: drill.drillType || "TECHNICAL",
+          durationMin: drill.durationMin ?? input.durationMin ?? 25,
+          rpeMin: drill.rpeMin ?? 5,
+          rpeMax: drill.rpeMax ?? 7,
+          numbersMin: input.numbersMin,
+          numbersMax: input.numbersMax,
+          spaceConstraint: input.spaceConstraint ?? drill.spaceConstraint,
+          coachLevel,
+          phase: drill.phase ?? input.phase,
+          zone: drill.zone ?? input.zone,
+        });
+        drill.diagramSvg = diagramResult.svg;
+        attachSceneToDrillJson(drill, diagramResult);
+      } catch (err: any) {
+        console.error(
+          `[COACH_VARIANT] Failed to draw diagram for drill ${drill.refCode}:`,
+          err?.message
+        );
+      }
+    })
+  );
+
+  const qa = (sourceJson.qa as Record<string, unknown> | undefined) || {};
+
+  return {
+    session: {
+      id: row.id,
+      refCode: row.refCode,
+      title: (variantSession.title as string) || row.title,
+      gameModelId: row.gameModelId,
+      phase: row.phase,
+      zone: row.zone,
+      coachLevel,
+      ageGroup: row.ageGroup,
+      durationMin: input.durationMin,
+      goalsAvailable: input.goalsAvailable,
+      numbersMin: input.numbersMin,
+      numbersMax: input.numbersMax,
+      playerLevel: input.playerLevel,
+      spaceConstraint: input.spaceConstraint,
+      formationUsed: input.formationAttacking,
+      summary: variantSession.summary,
+      drills: variantSession.drills,
+      sessionPlan: variantSession.sessionPlan,
+      equipment: variantSession.equipment,
+      coachingNotes: variantSession.coachingNotes,
+      principleIds: Array.isArray(row.principleIds) ? row.principleIds : [],
+      psychThemeIds: Array.isArray(row.psychThemeIds) ? row.psychThemeIds : [],
+      creator: row.user
+        ? { id: row.user.id, name: row.user.name, email: row.user.email || "" }
+        : null,
+    },
+    qa: {
+      pass: Boolean(row.approved || qa.pass),
+      summary: typeof qa.summary === "string" ? qa.summary : undefined,
+      scores:
+        qa.scores && typeof qa.scores === "object"
+          ? (qa.scores as Record<string, number>)
+          : {},
+    },
+    variantOnly: true,
+  };
 }

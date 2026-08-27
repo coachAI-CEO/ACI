@@ -13,6 +13,7 @@ import { prisma } from "../prisma";
 import { buildDrillPrompt, buildQAReviewerPrompt } from "../prompts/drill-optimized-v2";
 import { generateRefCode } from "../utils/ref-code";
 import { needsDiagramEnrichment, reenrichDiagramFromDrillJson } from "./diagram-enrichment";
+import { isSceneDiagramPlacement } from "./drill-diagram-svg";
 import { demoteDiagramGoalkeepers, enforceDiagramGoalAvailability, isFullSizeGoal } from "./diagram-goals";
 
 /**
@@ -636,7 +637,11 @@ export async function generateAndReviewDrill(
   // needsDiagramEnrichment(undefined) would return true and trigger a
   // wasted Gemini call to generate one.
   try {
-    if (String(input.drillType || "").toUpperCase() !== "COOLDOWN" && needsDiagramEnrichment(drill?.diagram, input.coachLevel)) {
+    if (
+      !isSceneDiagramPlacement() &&
+      String(input.drillType || "").toUpperCase() !== "COOLDOWN" &&
+      needsDiagramEnrichment(drill?.diagram, input.coachLevel)
+    ) {
       const reenriched = await reenrichDiagramFromDrillJson(drill);
       if (reenriched) {
         drill.diagram = reenriched;
@@ -751,8 +756,15 @@ export async function generateAndReviewDrill(
       rpeMin: processedFields.rpeMin ?? 3,
       rpeMax: processedFields.rpeMax ?? 6,
       
-      goalsAvailable: processedFields.goalsAvailable ?? 0,
-      goalMode: processedFields.goalMode,
+      // Read from jsonForDb, not processedFields -- enforceDiagramGoalAvailability
+      // (called at lines 651-652 and again on jsonForDb at line 708, after
+      // processedFields.goalMode/.goalsAvailable were already captured) mutates
+      // goalMode/goalsAvailable in place. Using the stale processedFields values
+      // here previously wrote a different goalMode to the Drill.goalMode column
+      // than what ended up in Drill.json.goalMode -- same row, two disagreeing
+      // values for the same field.
+      goalsAvailable: jsonForDb.goalsAvailable ?? processedFields.goalsAvailable ?? 0,
+      goalMode: jsonForDb.goalMode ?? processedFields.goalMode,
       
       // --- NEW: Formation & Level fields (from input, validated) ---
       // Store attacking formation in formationUsed for backward compatibility

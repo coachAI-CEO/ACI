@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { getEnforcedClubVaultScope } from "../services/club-game-model-scope";
 import { drillDiagramVisible } from "../services/diagram-svg-access";
-import { generateDrillDiagramSvg, persistDrillDiagramSvg, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
+import { generateDrillDiagramSvg, persistDrillDiagramSvg, placementForStoredPicture, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
 import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 import { isWarmupPicture, svgPictureIsOvercrowded } from "../data/field-dimensions";
@@ -52,9 +52,14 @@ function resolveGoalsAvailable(drill: any): number | null {
     const value = Number(candidate);
     if (Number.isFinite(value) && value >= 0) return value;
   }
+  // Two vocabularies exist for this field: the older "LARGE"/"MINI2" (still
+  // written by postProcessDrill/goal-normalizer.ts) and the newer
+  // "FULL1"/"FULL2"/"NONE" (written by diagram-goals.ts, matching the
+  // canonical type in types/drill.ts). Recognize both so this fallback
+  // works regardless of which pipeline produced the row.
   const goalMode = String(drill?.goalMode || json.goalMode || "").toUpperCase();
-  if (goalMode === "LARGE") return 1;
-  if (goalMode === "MINI2") return 2;
+  if (goalMode === "LARGE" || goalMode === "FULL1") return 1;
+  if (goalMode === "MINI2" || goalMode === "FULL2") return 2;
   // Missing equipment flag is not "zero full goals" -- count keepers from
   // whatever full-size goals the stored diagram already drew.
   return null;
@@ -164,7 +169,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement: placementForStoredPicture(force, Boolean(currentSvg)) });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {
@@ -276,7 +281,7 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
       phase: drill.phase,
       zone: drill.zone,
       coachLevel: drill.coachLevel,
-    });
+    }, { placement: placementForStoredPicture(false, Boolean(drill.diagramSvg)) });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {

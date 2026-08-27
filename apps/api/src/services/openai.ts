@@ -23,44 +23,79 @@ export async function generateTextWithMetrics(
   const timeout = options?.timeout || TIMEOUT_MS;
   const startTime = Date.now();
 
+  console.log(`[OpenAI] Attempt with model ${model}, timeout: ${timeout}ms, prompt length: ${prompt.length} chars`);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
-  try {
-    const res = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
+  // Belt-and-suspenders: a silent 48-minute hang was observed live
+  // (2026-08-26) well past the AbortController's timeout, meaning fetch()
+  // did not reliably honor the abort signal for a stalled response body
+  // read (headers can return promptly while the body itself never
+  // completes). Race the whole call against an independent timer so a
+  // hang can never again silently eat an entire batch run.
+  // The hard timeout also calls controller.abort() itself (not just the
+  // normal `timer`) so the underlying fetch is actually cut off, not just
+  // abandoned by the caller while it keeps running in the background.
+  let hardTimer: ReturnType<typeof setTimeout>;
+  const hardTimeout = new Promise<never>((_, reject) => {
+    hardTimer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("OPENAI_HARD_TIMEOUT"));
+    }, timeout + 15000);
+  });
+
+  const attempt = (async () => {
+    try {
+      const res = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`OpenAI ${res.status}: ${body.slice(0, 300)}`);
+      }
+
+      const json: any = await res.json();
+      const text = json?.choices?.[0]?.message?.content;
+      if (typeof text !== "string") throw new Error("OpenAI response missing choices[0].message.content");
+
+      const result = {
+        text,
         model,
-        messages: [{ role: "user", content: prompt }],
-        ...(options?.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`OpenAI ${res.status}: ${body.slice(0, 300)}`);
+        durationMs: Date.now() - startTime,
+        promptTokens: json?.usage?.prompt_tokens ?? null,
+        completionTokens: json?.usage?.completion_tokens ?? null,
+        totalTokens: json?.usage?.total_tokens ?? null,
+      };
+      console.log(`[OpenAI] Success in ${result.durationMs}ms`);
+      return result;
+    } catch (e: any) {
+      if (e?.name === "AbortError") throw new Error("OPENAI_TIMEOUT");
+      throw e;
     }
+  })();
+  // If hardTimeout wins the race, `attempt`'s eventual rejection (from the
+  // abort() above) would otherwise be an unhandled promise rejection since
+  // nothing is left awaiting it.
+  attempt.catch(() => {});
 
-    const json: any = await res.json();
-    const text = json?.choices?.[0]?.message?.content;
-    if (typeof text !== "string") throw new Error("OpenAI response missing choices[0].message.content");
-
-    return {
-      text,
-      model,
-      durationMs: Date.now() - startTime,
-      promptTokens: json?.usage?.prompt_tokens ?? null,
-      completionTokens: json?.usage?.completion_tokens ?? null,
-      totalTokens: json?.usage?.total_tokens ?? null,
-    };
+  try {
+    return await Promise.race([attempt, hardTimeout]);
   } catch (e: any) {
-    if (e?.name === "AbortError") throw new Error("OPENAI_TIMEOUT");
+    console.log(`[OpenAI] Error after ${Date.now() - startTime}ms: ${e?.message || String(e)}`);
     throw e;
   } finally {
     clearTimeout(timer);
+    clearTimeout(hardTimer!);
   }
 }
