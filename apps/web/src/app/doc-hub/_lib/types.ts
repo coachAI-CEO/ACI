@@ -82,6 +82,24 @@ export type AgeGroupMaturityRow = {
   updatedBy: string | null;
 };
 
+export type ReadinessCeilingRow = {
+  ageGroup: string;
+  ceiling: "FOUNDATIONAL" | "DEVELOPING" | "ADVANCED";
+  isCustom: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export type CoachAdherenceRow = {
+  userId: string;
+  name: string;
+  email: string | null;
+  teams: Array<{ teamId: string; teamName: string; assigned: number; matched: number }>;
+  assigned: number;
+  matched: number;
+  rate: number | null;
+};
+
 export type TeamListRow = {
   id: string;
   name: string;
