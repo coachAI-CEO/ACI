@@ -21,31 +21,8 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-function warmupSvgStillHasMatchKit(drillType: string | null | undefined, svg: string | null | undefined): boolean {
-  const type = String(drillType || "").toUpperCase().replace(/[-\s]/g, "");
-  if (!type.includes("WARMUP") || !svg) return false;
-  return />GK</.test(svg) || /id="api-goal-overlay"/.test(svg);
-}
-
-function svgHasShirtNumbers(svg: string | null | undefined): boolean {
-  if (!svg) return false;
-  return /fill="#ffffff">\d+</.test(svg);
-}
-
-function svgPictureIsOvercrowded(drillType: string | null | undefined, svg: string | null | undefined): boolean {
-  if (!svg) return false;
-  const n = (svg.match(/filter="url\(#ps\)"/g) || []).length;
-  const type = String(drillType || "").toUpperCase();
-  if (type.includes("WARMUP")) return n > 10;
-  if (type.includes("TECHNICAL")) return n > 10;
-  const home = (svg.match(/fill="#3b82f6" stroke="#020617"/g) || []).length;
-  const away = (svg.match(/fill="#ef4444" stroke="#020617"/g) || []).length;
-  if (home === 0 || away === 0) return n > 10;
-  return home > 10 || away > 10;
-}
-
-function storedSvgIsStale(drillType: string | null | undefined, svg: string | null | undefined): boolean {
-  return warmupSvgStillHasMatchKit(drillType, svg) || svgHasShirtNumbers(svg) || svgPictureIsOvercrowded(drillType, svg);
+function isUsableSvg(svg: string | null | undefined): svg is string {
+  return Boolean(svg && /<svg[\s>]/i.test(svg) && !/Diagram generating/i.test(svg));
 }
 
 export default function StoredDrillSvg({
@@ -58,8 +35,7 @@ export default function StoredDrillSvg({
   initialSvg,
 }: StoredDrillSvgProps) {
   const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
-  const staleWarmup = storedSvgIsStale(drillType, initialSvg);
-  const [svg, setSvg] = React.useState<string | null>(staleWarmup ? null : initialSvg || null);
+  const [svg, setSvg] = React.useState<string | null>(isUsableSvg(initialSvg) ? initialSvg : null);
   const [loading, setLoading] = React.useState(false);
   const [drawing, setDrawing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -67,13 +43,11 @@ export default function StoredDrillSvg({
 
   React.useEffect(() => {
     setError(null);
-    if (storedSvgIsStale(drillType, initialSvg)) return;
-    if (initialSvg) setSvg(initialSvg);
-  }, [initialSvg, drillType]);
+    if (isUsableSvg(initialSvg)) setSvg(initialSvg);
+  }, [initialSvg]);
 
   const fetchStored = React.useCallback(async () => {
     if (!drillId || loadingRef.current) return;
-    if (initialSvg && !storedSvgIsStale(drillType, initialSvg)) return;
     loadingRef.current = true;
     setLoading(true);
     setError(null);
@@ -92,13 +66,13 @@ export default function StoredDrillSvg({
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [drillId, initialSvg, drillType]);
+  }, [drillId]);
 
   React.useEffect(() => {
-    if (isCooldown || svg) return;
-    if (initialSvg && !staleWarmup) return;
+    if (isCooldown) return;
+    if (isUsableSvg(svg) || isUsableSvg(initialSvg)) return;
     if (drillId) void fetchStored();
-  }, [drillId, isCooldown, initialSvg, staleWarmup, svg, fetchStored]);
+  }, [drillId, isCooldown, svg, initialSvg, fetchStored]);
 
   const regenerate = React.useCallback(async () => {
     if (!drillId || loadingRef.current) return;

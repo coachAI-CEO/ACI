@@ -8,7 +8,7 @@ import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import type { DrawerParams } from "../types/drawer";
 import { generateSceneDiagram } from "./scene-diagram";
-import { SCENE_PROMPT_VERSION, type ModelScene } from "./scene-document";
+import { SCENE_PROMPT_VERSION, type SceneDiagram } from "./scene-document";
 
 type DrillLike = Parameters<typeof drillToDrawerParams>[0];
 
@@ -19,7 +19,7 @@ export type DrillDiagramSvgResult = {
   model: string;
   modelFallback: boolean;
   promptVersion: string;
-  scene?: ModelScene;
+  sceneDiagram?: SceneDiagram;
   sceneCard?: string;
 };
 
@@ -64,15 +64,16 @@ export function isSceneDiagramPlacement(override?: DiagramPlacement | string): b
   return resolveDiagramPlacement(override) === "scene";
 }
 
-/** Existing stored pictures stay on the compiler unless the coach force-regenerates. */
-export function placementForStoredPicture(force: boolean, hasStoredSvg: boolean): DiagramPlacement | undefined {
-  if (hasStoredSvg && !force) return "compiler";
-  return undefined;
+/** Always draw with scene XY. The compiler lives only as a forced rollback
+ * (force=true in redraw-vault-diagrams, eval-live-drill). Stored pictures
+ * are not redrawn implicitly — they keep the scene that was saved. */
+export function placementForStoredPicture(force: boolean): DiagramPlacement | undefined {
+  return force ? "compiler" : undefined;
 }
 
 export function attachSceneToDrillJson(drill: Record<string, any>, result: DrillDiagramSvgResult): void {
-  if (!result.scene) return;
-  drill.sceneDocument = result.scene;
+  if (!result.sceneDiagram) return;
+  drill.sceneDiagram = result.sceneDiagram;
   drill.scenePromptVersion = result.promptVersion;
   if (result.sceneCard) drill.sceneCard = result.sceneCard;
 }
@@ -95,7 +96,7 @@ export async function generateDrillDiagramSvg(
         model: scene.model,
         modelFallback: false,
         promptVersion: scene.promptVersion,
-        scene: scene.scene,
+        sceneDiagram: scene.diagram,
         sceneCard: scene.card,
       };
     } catch (err) {
@@ -131,12 +132,21 @@ export function omitDiagramSvgFromDrill<T extends Record<string, any>>(drill: T)
   return rest as T;
 }
 
+export function isPlaceholderDiagramSvg(svg: string | null | undefined): boolean {
+  if (!svg) return true;
+  return /Diagram generating/i.test(svg);
+}
+
+export function isSceneStoredPicture(promptVersion: string | null | undefined): boolean {
+  return String(promptVersion || "").startsWith("scene-");
+}
+
 /** Reopen/preview must not redraw just because the prompt version changed. */
 export function storedDiagramNeedsRedraw(
   force: boolean,
   currentSvg: string | null | undefined
 ): boolean {
-  return force === true || !currentSvg;
+  return force === true || isPlaceholderDiagramSvg(currentSvg);
 }
 
 function asRecord(value: unknown): Record<string, any> {
@@ -145,18 +155,29 @@ function asRecord(value: unknown): Record<string, any> {
 
 /** Write the SVG column by itself so a huge drill.json update cannot drop it. Merges scene JSON when present. */
 export async function persistDrillDiagramSvg(refCode: string, result: DrillDiagramSvgResult): Promise<void> {
+  const row = await prisma.drill.findUnique({
+    where: { refCode },
+    select: { json: true, diagramSvgPromptVersion: true },
+  });
+  if (
+    isSceneStoredPicture(row?.diagramSvgPromptVersion) &&
+    !result.sceneDiagram &&
+    !isSceneStoredPicture(result.promptVersion)
+  ) {
+    console.warn("[diagram] refusing to overwrite scene-xy picture with compiler", { refCode });
+    return;
+  }
   const data: Record<string, unknown> = {
     diagramSvg: fitDiagramSvgViewBox(result.svg),
     diagramSvgGeneratedAt: new Date(),
     diagramSvgModel: result.model,
     diagramSvgPromptVersion: result.promptVersion,
   };
-  if (result.scene) {
-    const row = await prisma.drill.findUnique({ where: { refCode }, select: { json: true } });
+  if (result.sceneDiagram) {
     const json = asRecord(row?.json);
     data.json = {
       ...json,
-      sceneDocument: result.scene,
+      sceneDiagram: result.sceneDiagram,
       scenePromptVersion: result.promptVersion || SCENE_PROMPT_VERSION,
       ...(result.sceneCard ? { sceneCard: result.sceneCard } : {}),
     };

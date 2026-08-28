@@ -119,6 +119,44 @@ export function snapKeepersToGoals(players: DrawerPlayer[], goals: DrawerGoal[])
   });
 }
 
+function isMini(goal: DrawerGoal): boolean {
+  return goal.type === "mini" || goal.type === "gate";
+}
+
+/** Two puggs on the end opposite one full-size net. Never stack them on y=50. */
+function minisOppositeFull(full: DrawerGoal, existing: DrawerGoal[]): DrawerGoal[] {
+  const miniX = full.x >= 50 ? 3 : 97;
+  return [0, 1].map((i) => {
+    const src = existing[i];
+    return {
+      id: String(src?.id || `MG-${i + 1}`),
+      type: "mini" as const,
+      x: miniX,
+      y: i === 0 ? 38 : 62,
+      width: src?.width && src.width > 0 ? src.width : 5,
+    };
+  });
+}
+
+function spreadEndMinis(goals: DrawerGoal[]): DrawerGoal[] {
+  const nonMini = goals.filter((g) => !isMini(g));
+  const minis = goals.filter(isMini);
+  const left = minis.filter((g) => g.x <= 22);
+  let right = minis.filter((g) => g.x >= 78);
+  const stray = minis.filter((g) => g.x > 22 && g.x < 78);
+  // Minis the model parked mid-pitch or on a top/bottom touchline have no end
+  // anchor — default the pair to the right end so the picture stays horizontal.
+  if (!left.length && !right.length && stray.length) right = stray;
+  const spread = (group: DrawerGoal[], x: number): DrawerGoal[] => {
+    if (group.length < 2) return group.map((g) => ({ ...g, x, y: 50 }));
+    return [...group]
+      .sort((a, b) => a.y - b.y)
+      .slice(0, 2)
+      .map((g, i) => ({ ...g, x, y: i === 0 ? 38 : 62 }));
+  };
+  return [...nonMini, ...spread(left, 3), ...spread(right, 97)];
+}
+
 /** Full goals on the left/right ends, vertically centred. Stops top/bottom nets (and rotated GKs in corners). */
 export function pinGoalsToEnds(goals: DrawerGoal[]): DrawerGoal[] {
   const full = goals.filter((g) => g.type === "full");
@@ -132,12 +170,11 @@ export function pinGoalsToEnds(goals: DrawerGoal[]): DrawerGoal[] {
       : full.length === 1
         ? [{ ...full[0], type: "full" as const, x: full[0].x >= 50 ? 100 : 0, y: 50 }]
         : [];
-  const pinnedRest = rest.map((g) => {
-    if (g.type !== "mini") return g;
-    if (g.x > 22 && g.x < 78) return g;
-    return { ...g, x: g.x <= 50 ? 3 : 97, y: 50 };
-  });
-  return [...pinnedFull, ...pinnedRest];
+  if (pinnedFull.length === 1) {
+    const other = rest.filter((g) => !isMini(g));
+    return [...pinnedFull, ...minisOppositeFull(pinnedFull[0], rest.filter(isMini)), ...other];
+  }
+  return [...pinnedFull, ...spreadEndMinis(rest)];
 }
 
 const BACK_ROLES = /^(CB|LB|RB|LCB|RCB|SW)$/i;

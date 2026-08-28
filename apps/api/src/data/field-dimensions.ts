@@ -112,6 +112,32 @@ export function svgPictureIsOvercrowded(
   return home > 10 || away > 10;
 }
 
+export function svgHasShirtNumbers(svg: string | null | undefined): boolean {
+  if (!svg) return false;
+  return /fill="#ffffff">\d+</.test(svg);
+}
+
+/**
+ * Warmup may have orange mini-goals. Those still go through api-goal-overlay.
+ * Match kit is a GK shirt or a white full-size net, not the mini overlay itself.
+ */
+export function warmupSvgStillHasMatchKit(
+  drillType: string | null | undefined,
+  svg: string | null | undefined
+): boolean {
+  if (!isWarmupPicture(drillType) || !svg) return false;
+  if (/>GK</.test(svg)) return true;
+  if (!/id="api-goal-overlay"/.test(svg)) return false;
+  return /stroke="#f8fafc"/.test(svg);
+}
+
+export function storedSvgIsStale(
+  drillType: string | null | undefined,
+  svg: string | null | undefined
+): boolean {
+  return warmupSvgStillHasMatchKit(drillType, svg) || svgHasShirtNumbers(svg) || svgPictureIsOvercrowded(drillType, svg);
+}
+
 /** Session-setup defaults when a drill JSON omits formations. */
 export function defaultFormationsForFormat(format: FieldFormat): { attacking: string; defending: string } {
   if (format === "7V7") return { attacking: "2-3-1", defending: "3-2-1" };

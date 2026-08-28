@@ -28,9 +28,23 @@ export interface DrillPromptInput {
 /**
  * Get drill type-specific guidance that significantly changes the prompt
  */
+// Applied to every two-team drill (TACTICAL / CONDITIONED_GAME / FULL_GAME).
+const TWO_TEAM_LAW = [
+  "",
+  "TWO-TEAM PICTURE — NON-NEGOTIABLE:",
+  "- NAME EVERY PLAYER'S ROLE in setupSteps using standard position codes",
+  "  (LB CB RB LCB RCB DM LM CM RM LW RW ST CF), never 'attacker'/'defender'/'player'.",
+  "  A 3-1 is e.g. 'LM, CM, RM, ST'. A 2-1 is 'LCB, RCB, CM'. List them per team.",
+  "- BOTH TEAMS MUST BE ABLE TO SCORE. If one team attacks a goal/gate, give the",
+  "  other team its own target: a counter gate on their end line, 'complete N passes",
+  "  out of the zone', or 'dribble across the start line under control'. State it in",
+  "  setupSteps AND constraints. A pressing/transition drill where only one team can",
+  "  score is incomplete.",
+].join("\n");
+
 function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: string): string {
   const base = `For ${ageGroup} ${playerLevel} players, `;
-  
+
   switch (drillType) {
     case "WARMUP":
       return [
@@ -112,6 +126,7 @@ function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: 
         "",
         "❌ DO NOT: Focus on isolated technique, create unrealistic situations",
         "✅ DO: Emphasize decision-making, game understanding, tactical patterns",
+        TWO_TEAM_LAW,
         "",
         base + "create a tactical drill that develops game understanding and decision-making in realistic situations."
       ].join("\n");
@@ -140,6 +155,7 @@ function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: 
         "",
         "❌ DO NOT: Create isolated drills, ignore game context",
         "✅ DO: Emphasize game application, realistic situations, constraint-based learning",
+        TWO_TEAM_LAW,
         "",
         base + "create a conditioned game that applies skills in a game context with specific constraints."
       ].join("\n");
@@ -168,6 +184,7 @@ function getDrillTypeGuidance(drillType: string, ageGroup: string, playerLevel: 
         "",
         "❌ DO NOT: Over-constrain, create unrealistic situations",
         "✅ DO: Emphasize full game context, realistic match conditions",
+        TWO_TEAM_LAW,
         "",
         base + "create a full game scenario that simulates match conditions."
       ].join("\n");

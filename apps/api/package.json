@@ -22,6 +22,7 @@
     "sandbox:session-panel": "ts-node --project tsconfig.json src/scripts/session-panel/run.ts",
     "sandbox:scene-thesis": "ts-node --project tsconfig.json src/scripts/scene-thesis/compare.ts",
     "sandbox:scene-thesis:bench": "ts-node --project tsconfig.json src/scripts/scene-thesis/bench.ts",
+    "sandbox:scene-sample": "ts-node --project tsconfig.json src/scripts/scene-thesis/sample.ts",
     "sandbox:models": "ts-node --project tsconfig.json src/scripts/model-sandbox/run.ts",
     "sandbox:models:report": "ts-node --project tsconfig.json src/scripts/model-sandbox/report.ts",
     "backfill:club-memberships": "ts-node --project tsconfig.json src/scripts/backfill-club-memberships.ts",

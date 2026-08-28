@@ -1,4 +1,5 @@
 import type { DrawerParams, DrawerPlayer } from "../../types/drawer";
+import type { ScenePicture } from "../../services/scene-document";
 import type { ThesisIdea } from "./ideas";
 
 export type CheckResult = { ok: boolean; issues: string[] };
@@ -9,7 +10,53 @@ export type SceneScores = {
   roster: CheckResult;
   overlap: CheckResult;
   picture: CheckResult;
+  spacing: CheckResult;
+  horizontal: CheckResult;
+  ball: CheckResult;
 };
+
+function scoreBall(params: DrawerParams): CheckResult {
+  const issues: string[] = [];
+  if (!params.ball) {
+    issues.push("no ball on the pitch");
+    return check(issues);
+  }
+  const first = params.arrows[0];
+  if (first) {
+    const d = Math.hypot(first.from.x - params.ball.x, first.from.y - params.ball.y);
+    if (d > 8) issues.push(`ball is ${d.toFixed(0)} off the first arrow's start`);
+  }
+  return check(issues);
+}
+
+/**
+ * What the painted picture is expected to show. Decoupled from ThesisIdea so
+ * the stratified sampler (sample.ts) can score too — it derives an expectation
+ * from a generated drill instead of a hand-written card.
+ */
+export type SceneExpectation = {
+  picture?: ScenePicture;
+  goalsAvailable: number;
+  keepers: boolean;
+  /** Rough outfield-per-side the card implies; roster tolerance is wide. */
+  outfieldPerSide: number;
+  coachLevel?: string;
+  /** Technical/warmup: scene-document strips full goals and keepers. */
+  workingGroup?: boolean;
+  /** Raw arrow count the model emitted, before the painter dropped degenerates. */
+  rawArrowCount?: number;
+};
+
+export function ideaExpectation(idea: ThesisIdea): SceneExpectation {
+  return {
+    picture: idea.picture,
+    goalsAvailable: idea.goalsAvailable,
+    keepers: idea.keepers,
+    outfieldPerSide: idea.outfieldPerSide,
+    coachLevel: idea.coachLevel,
+    workingGroup: /WARMUP|TECHNICAL/i.test(idea.drillType),
+  };
+}
 
 const BACK_ROLES = /^(CB|LB|RB|LCB|RCB|SW)$/i;
 
@@ -31,14 +78,18 @@ function minPairDist(players: DrawerPlayer[]): number {
   return min;
 }
 
-function scoreGoals(params: DrawerParams, idea: ThesisIdea): CheckResult {
+function scoreGoals(params: DrawerParams, exp: SceneExpectation): CheckResult {
   const full = params.goals.filter((g) => g.type === "full");
   const issues: string[] = [];
-  if (idea.picture === "rondo") {
+  if (exp.workingGroup) {
+    if (full.length) issues.push(`working-group picture drew ${full.length} full goal(s) (should be stripped)`);
+    return check(issues);
+  }
+  if (exp.picture === "rondo") {
     if (full.length) issues.push("rondo drew a full-size goal");
     return check(issues);
   }
-  if (idea.goalsAvailable >= 2) {
+  if (exp.goalsAvailable >= 2) {
     if (full.length < 2) issues.push(`wanted two full goals, drew ${full.length}`);
     const left = full.filter((g) => g.x <= 8);
     const right = full.filter((g) => g.x >= 92);
@@ -46,7 +97,7 @@ function scoreGoals(params: DrawerParams, idea: ThesisIdea): CheckResult {
     for (const g of full) {
       if (Math.abs(g.y - 50) > 12) issues.push("full goal is not vertically centred (y=50)");
     }
-  } else if (idea.goalsAvailable === 1) {
+  } else if (exp.goalsAvailable === 1) {
     if (full.length !== 1) issues.push(`wanted one full goal, drew ${full.length}`);
   } else if (full.length) {
     issues.push("card has no full goal, picture drew one");
@@ -54,14 +105,15 @@ function scoreGoals(params: DrawerParams, idea: ThesisIdea): CheckResult {
   return check(issues);
 }
 
-function scoreKeepers(params: DrawerParams, idea: ThesisIdea): CheckResult {
+function scoreKeepers(params: DrawerParams, exp: SceneExpectation): CheckResult {
   const gks = params.players.filter(isKeeper);
   const issues: string[] = [];
-  if (!idea.keepers) {
-    if (gks.length) issues.push("card has no GK, picture drew one");
+  const wantKeepers = exp.keepers && !exp.workingGroup && exp.goalsAvailable >= 1;
+  if (!wantKeepers) {
+    if (gks.length) issues.push(`no GK expected, picture drew ${gks.length}`);
     return check(issues);
   }
-  if (gks.length < (idea.goalsAvailable >= 2 ? 2 : 1)) {
+  if (gks.length < (exp.goalsAvailable >= 2 ? 2 : 1)) {
     issues.push(`wanted keepers on the posts, drew ${gks.length}`);
   }
   const full = params.goals.filter((g) => g.type === "full");
@@ -75,20 +127,26 @@ function scoreKeepers(params: DrawerParams, idea: ThesisIdea): CheckResult {
   return check(issues);
 }
 
-function scoreRoster(params: DrawerParams, idea: ThesisIdea): CheckResult {
-  const want = idea.outfieldPerSide * 2 + (idea.keepers ? 2 : 0);
+function scoreRoster(params: DrawerParams, exp: SceneExpectation): CheckResult {
+  const want = exp.outfieldPerSide * 2 + (exp.keepers && !exp.workingGroup ? 2 : 0);
   const got = params.players.length;
   const issues: string[] = [];
-  if (got < want - 3 || got > want + 4) {
+  if (got < 2) issues.push("almost no shirts on the pitch");
+  if (want > 0 && (got < want - 3 || got > want + 3)) {
     issues.push(`player count ${got} is not the practice (~${want} from the card)`);
+  }
+  // Hard ceiling for an open two-team match picture: never more than a full
+  // roster for this format plus a small margin.
+  if (!exp.workingGroup && !exp.picture && want > 0 && got > want + 4) {
+    issues.push(`match picture drew ${got} shirts — over the full roster (~${want}) for this card`);
   }
   const home = params.players.filter((p) => p.team === "home").length;
   const away = params.players.filter((p) => p.team === "away").length;
-  if (idea.picture === "rondo") {
+  if (exp.picture === "rondo") {
     if (home + away < 4) issues.push("rondo has too few shirts");
-  } else if (idea.picture === "center") {
+  } else if (exp.picture === "center") {
     if (home < 1 || away < 1) issues.push("1v1/channel is missing a colour");
-  } else {
+  } else if (!exp.workingGroup) {
     if (home < 2) issues.push("no attacking team");
     if (away < 2) issues.push("no defending team");
   }
@@ -103,7 +161,51 @@ function scoreOverlap(params: DrawerParams): CheckResult {
   return check([]);
 }
 
-function scorePicture(params: DrawerParams, idea: ThesisIdea): CheckResult {
+/** Cluster / degenerate-layout guard, separate from pairwise overlap. */
+function scoreSpacing(params: DrawerParams, exp: SceneExpectation): CheckResult {
+  const pts = params.players;
+  if (pts.length < 3) return check([]);
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const spreadX = Math.max(...xs) - Math.min(...xs);
+  const spreadY = Math.max(...ys) - Math.min(...ys);
+  const issues: string[] = [];
+  if (spreadX < 6 && spreadY < 6) issues.push("all players collapsed onto one point");
+  // A full two-team match picture should use most of the length.
+  if (!exp.workingGroup && !exp.picture && exp.goalsAvailable >= 1 && spreadX < 30) {
+    issues.push(`match picture only spans x=${spreadX.toFixed(0)} — teams share the same third`);
+  }
+  return check(issues);
+}
+
+/** The rendered pitch is landscape; the layout must read wider than tall. */
+function scoreHorizontal(params: DrawerParams): CheckResult {
+  const anchors = [
+    ...params.players.map((p) => ({ x: p.x, y: p.y })),
+    ...params.goals.map((g) => ({ x: g.x, y: g.y })),
+  ];
+  if (anchors.length < 3) return check([]);
+  const xs = anchors.map((a) => a.x);
+  const ys = anchors.map((a) => a.y);
+  const rangeX = Math.max(...xs) - Math.min(...xs);
+  const rangeY = Math.max(...ys) - Math.min(...ys);
+  // Field panel is ~1.8x wider than tall — weight before comparing.
+  if (rangeY * 382 > rangeX * 688 * 1.15) {
+    return check([`layout is taller than wide (x-range ${rangeX.toFixed(0)}, y-range ${rangeY.toFixed(0)}) — must be horizontal`]);
+  }
+  return check([]);
+}
+
+function scoreArrows(params: DrawerParams, exp: SceneExpectation): CheckResult {
+  if (typeof exp.rawArrowCount !== "number") return check([]);
+  const dropped = Math.max(0, exp.rawArrowCount - params.arrows.length);
+  if (dropped > 0) {
+    return check([`${dropped} of ${exp.rawArrowCount} arrows dropped as degenerate (unmatched endpoint)`]);
+  }
+  return check([]);
+}
+
+function scorePicture(params: DrawerParams, exp: SceneExpectation): CheckResult {
   const issues: string[] = [];
   const outfield = params.players.filter((p) => !isKeeper(p));
   if (outfield.length < 2) return check(issues);
@@ -114,14 +216,14 @@ function scorePicture(params: DrawerParams, idea: ThesisIdea): CheckResult {
   const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
   const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
 
-  if (idea.picture === "rondo" || idea.picture === "center") {
+  if (exp.picture === "rondo" || exp.picture === "center") {
     if (Math.abs(cx - 50) > 18 || Math.abs(cy - 50) > 18) {
-      issues.push(`${idea.picture} is not in the middle of the pitch`);
+      issues.push(`${exp.picture} is not in the middle of the pitch`);
     }
-    if (span > 52) issues.push(`${idea.picture} is stretched across the pitch (span ${span.toFixed(0)})`);
+    if (span > 52) issues.push(`${exp.picture} is stretched across the pitch (span ${span.toFixed(0)})`);
   }
 
-  if (idea.picture === "matchup") {
+  if (exp.picture === "matchup") {
     const away = params.players.filter((p) => p.team === "away");
     const named = away.filter((p) => BACK_ROLES.test(p.role));
     const backs = named.length >= 3 ? named : [...away].sort((a, b) => b.x - a.x).slice(0, Math.min(4, away.length));
@@ -145,19 +247,26 @@ function scorePicture(params: DrawerParams, idea: ThesisIdea): CheckResult {
 }
 
 /** Frozen scene checks. No 11v11 formation-line contract — the card is law. */
-export function scoreScene(params: DrawerParams, idea: ThesisIdea): {
+export function scoreScene(
+  params: DrawerParams,
+  exp: SceneExpectation
+): {
   pass: boolean;
   scores: SceneScores;
   issues: string[];
 } {
   const scores: SceneScores = {
-    goals: scoreGoals(params, idea),
-    keepers: scoreKeepers(params, idea),
-    roster: scoreRoster(params, idea),
+    goals: scoreGoals(params, exp),
+    keepers: scoreKeepers(params, exp),
+    roster: scoreRoster(params, exp),
     overlap: scoreOverlap(params),
-    picture: scorePicture(params, idea),
+    picture: scorePicture(params, exp),
+    spacing: scoreSpacing(params, exp),
+    horizontal: scoreHorizontal(params),
+    ball: scoreBall(params),
   };
-  const issues = Object.values(scores).flatMap((c) => c.issues);
+  const arrows = scoreArrows(params, exp);
+  const issues = [...Object.values(scores).flatMap((c) => c.issues), ...arrows.issues];
   return { pass: issues.length === 0, scores, issues };
 }
 

@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. The version id lives
 in [`VERSION`](VERSION).
 
+## 1.13.0 — 2026-08-28
+
+### Diagrams — scene path on WebDiagramV1 + first-class ball
+
+The scene-XY diagram path now generates and stores a `WebDiagramV1` document
+(strict zod schema: `players` with `ATT`/`DEF` team + role codes, `balls[]`,
+ordered `playerId` arrows). `WebDiagramV1` is the wire + storage format;
+`DrawerParams` stays the internal render format. `ModelScene` is removed.
+
+- Every diagram now draws exactly one ball; the first ordered arrow starts at it
+- `scene-kit.ts` (new): deterministic reconciliation for the scene path —
+  two-team scoring, verbatim role-label preservation, roster line/side
+  assignment, keeper-per-goal, defensive-target gate, and the L/R touchline
+  mirror for the defending team (right-side roles to the top of screen)
+- `promptForScene` rewritten to request the `WebDiagramV1` JSON subset;
+  `SCENE_PROMPT_VERSION` → `scene-webv1-v1`
+- Scene card builder: sub-squad detection, roster extraction with a sanity
+  gate, formation-line reconciliation against implied counts
+- `scripts/scene-thesis` sampler: stratified run through the real two-call
+  pipeline with frozen checks + optional visual judge, including a ball check
+
+### Repo
+
+- Shipped from a fresh branch off `main`; `codex/diagram-scene-thesis` work
+  (already merged) is superseded by this consolidated PR
+
 ## 1.12.0 — 2026-08-27
 
 ### Mobile — tactical board editor parity

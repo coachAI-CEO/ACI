@@ -3,10 +3,24 @@ import path from "path";
 import type { DrawerParams } from "../../types/drawer";
 import { judgePng, type VisualQaResult } from "../first-pass-diagrams/visual-qa";
 import { renderSvgPreview } from "../first-pass-diagrams/preview";
-import type { ThesisIdea } from "./ideas";
 import { countByTeam } from "./compiler";
 
-function facts(idea: ThesisIdea, params: DrawerParams): string[] {
+/**
+ * The subset of a card the visual judge needs. ThesisIdea satisfies it
+ * structurally; the stratified sampler builds one from a generated drill.
+ */
+export type JudgeIdea = {
+  id: string;
+  title: string;
+  card: string;
+  picture?: "rondo" | "center" | "matchup" | "block";
+  coachLevel?: "USSF_D" | "USSF_C" | "USSF_B_PLUS";
+  outfieldPerSide: number;
+  keepers: boolean;
+  fieldFormat: string;
+};
+
+function facts(idea: JudgeIdea, params: DrawerParams): string[] {
   const counts = countByTeam(params.players);
   const att = params.players.filter((p) => p.team === "home").length;
   const def = params.players.filter((p) => p.team === "away").length;
@@ -19,7 +33,7 @@ function facts(idea: ThesisIdea, params: DrawerParams): string[] {
     `Practice picture type: ${picture}.`,
     `License / diagram density: ${idea.coachLevel || "USSF_D"}.`,
     `Card asked for ~${idea.outfieldPerSide}v${idea.outfieldPerSide}${idea.keepers ? " + GKs" : ""}, field format ${idea.fieldFormat} is the pitch size not a required roster.`,
-    `Painter drew: ${att} blue, ${def} red, ${gk} GK (${counts.total} shirts), ${full} full goals, ${minis} minis, ${params.lengthYards}×${params.widthYards}yd.`,
+    `The painter placed ${att} blue + ${def} red + ${gk} GK (${counts.total} shirts), ${full} full goals, ${minis} minis, ${params.lengthYards}×${params.widthYards}yd — VERIFY this matches the card, do not assume it does.`,
     idea.picture === "rondo"
       ? "RONDO: one ring in the MIDDLE. Fail two wing games, a finishing 4v4, or a full match dump."
       : idea.picture === "center"
@@ -28,11 +42,14 @@ function facts(idea: ThesisIdea, params: DrawerParams): string[] {
           ? "MATCHUP / switch: two teams facing. Red back line in THEIR half (between the ball and their GK), with recognizable shape — a line of four, not a clump. Mids may step. Fail a high line on the halfway AND fail a blob of overlapping reds."
           : "Draw THIS practice. Fail a generic 11v11 dump when the card is small-sided.",
     "GKs sit on the goal line, centred in the posts. Full goals left and right, y=50. Fail GKs in corners or an outfield shirt in a white net.",
-    "Do not require 11v11 / 9v9 / 7v7 roster just because the field format says that. Do not fail orange minis for looking large. Do not fail missing formation-role completeness.",
+    "Do not require 11v11 / 9v9 / 7v7 roster just because the field format says that. Do not fail orange minis for looking large.",
+    "LABELS: if the card names roles (a ROSTER line, or codes like LM/RCB/ST in the setup), the shirt labels must match. FAIL if the card names LM/CM/RM/ST etc but the diagram shows generic AT / DF / FW.",
+    "TWO-WAY SCORING: a two-team game should show a target on BOTH ends (goals, minis, or a counter gate). If one end is bare, mark REVIEW (not fail) unless the card's whole topic is the defensive transition and there is visibly nothing for the reds — only then fail.",
+    "Orange mini-goals and small gates count as targets. A full goal on one end plus minis on the other IS two-way — do not fail that.",
   ];
 }
 
-export function sceneVisualPrompt(idea: ThesisIdea, params: DrawerParams, frozenIssues: string[]): string {
+export function sceneVisualPrompt(idea: JudgeIdea, params: DrawerParams, frozenIssues: string[]): string {
   return [
     "You are a USSF-C soccer coach doing visual QA on a TacticalEdge TRAINING diagram.",
     "The painter is dumb — it only draws what was placed. Judge whether the PICTURE shows the written practice.",
@@ -48,17 +65,17 @@ export function sceneVisualPrompt(idea: ThesisIdea, params: DrawerParams, frozen
     "Switch of play: a long pass or run to the FAR flank, ball-side cluster vs weak-side target. Fail a centre-channel sequence into a striker with a finish.",
     "Press as a unit: several press arrows that converge on the ball. Fail two neat columns.",
     "Compactness between lines: two horizontal lines close together. Fail one vertical file of reds.",
-    "Fail (confidence <= 55) if: the picture is a different practice than the card; shirts dumped as two 11v11 columns; rondo on the wings; GKs off the posts; defending team has no shape (overlapping blob); switch of play with a high line on the halfway; leftover outfield token in a full-size net.",
-    "PASS a small-sided, readable picture that matches the card even if it is not a full match and even if arrows are a little busy.",
+    "Fail (confidence <= 55) if: the picture is a different practice than the card; shirts dumped as two 11v11 columns; rondo on the wings; GKs off the posts; defending team has no shape (overlapping blob); switch of play with a high line on the halfway; leftover outfield token in a full-size net; the card names roles but the labels are generic; ONE team is missing entirely from a two-team card.",
+    "PASS a small-sided, readable picture that matches the card even if it is not a full match. Busy arrows are fine, and a slightly bare end is REVIEW not fail. Missing the ONE concept, wrong labels, or a missing team are fails.",
     "",
     "Return ONLY JSON: {\"confidence\": number, \"verdict\": \"pass\"|\"review\"|\"fail\", \"issues\": string[], \"summary\": string}",
-    "verdict pass if confidence >= 80, review if 56-79, fail if <= 55.",
+    "verdict pass if confidence >= 85, review if 60-84, fail if <= 59.",
   ].join("\n");
 }
 
 export async function judgeSceneVisual(args: {
   svg: string;
-  idea: ThesisIdea;
+  idea: JudgeIdea;
   params: DrawerParams;
   outDir: string;
   tag: "compiler" | "model";

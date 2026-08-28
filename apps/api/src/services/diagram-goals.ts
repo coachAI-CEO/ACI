@@ -395,6 +395,15 @@ export function enforceDiagramGoalAvailability(drill: any, input: GoalAvailabili
     ensureTwoFullGoalsAndKeepers(drill.diagram);
     drill.goalsAvailable = 2;
     drill.goalMode = "FULL2";
+    drill.organization = drill.organization && typeof drill.organization === "object" ? drill.organization : {};
+    const setupSteps = Array.isArray(drill.organization.setupSteps) ? drill.organization.setupSteps : [];
+    const kept = setupSteps.filter(
+      (step: any) => !/mini-?goal|pugg|no full-size gk/i.test(String(step))
+    );
+    const hasFullGoalStep = kept.some((step: any) => /full-size goal|full size goal/i.test(String(step)));
+    drill.organization.setupSteps = hasFullGoalStep
+      ? kept
+      : ["Place a full-size goal with a GK on each end line.", ...kept];
     return;
   }
 

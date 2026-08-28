@@ -22,7 +22,7 @@ import { THESIS_IDEAS, type ThesisIdea } from "./ideas";
 import { judgeSceneVisual } from "./judge";
 import { thesisHtml, type SideScore, type ThesisRow } from "./report";
 import { extractScene, promptFor, sceneToDrawerParams } from "./scene";
-import { frozenConfidence, scoreScene } from "./score";
+import { frozenConfidence, ideaExpectation, scoreScene } from "./score";
 import { pinGoalsToEnds, snapKeepersToGoals } from "./space";
 
 function argValue(flag: string): string | undefined {
@@ -52,7 +52,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function sideScore(params: DrawerParams, idea: ThesisIdea): SideScore {
-  const frozen = scoreScene(params, idea);
+  const frozen = scoreScene(params, ideaExpectation(idea));
   return {
     frozenPass: frozen.pass,
     frozenScore: frozenConfidence(frozen.scores),
@@ -136,7 +136,7 @@ async function main() {
       fs.writeFileSync(path.join(outDir, `${idea.id}.model.json`), JSON.stringify(scene, null, 2));
       row.modelSvg = paint(modelParams);
       row.modelPlayers = countByTeam(modelParams.players).total;
-      row.note = String(scene.note || "");
+      row.note = String(scene.sequence?.frames?.[0]?.note || "");
       row.modelScore = sideScore(modelParams, idea);
 
       if (visualOn) {
