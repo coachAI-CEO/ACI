@@ -4,11 +4,22 @@ import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import { renderDeterministicDiagramSVG } from "./deterministic-drawer-svg";
 import { buildSceneCard, type SceneDrillLike } from "./scene-card";
-import { extractScene, promptForScene, sceneToDrawerParams, SCENE_PROMPT_VERSION, type SceneDiagram, type SceneCard } from "./scene-document";
+import { extractScene, promptForScene, sceneToDrawerParams, sceneFramesToDrawerParams, SCENE_PROMPT_VERSION, type SceneDiagram, type SceneCard } from "./scene-document";
 import type { DrawerParams } from "../types/drawer";
 
-export type SceneDiagramResult = {
+/** One painted frame in a scene sequence. */
+export type SceneSvgFrame = {
   svg: string;
+  role: "setup" | "action";
+  note?: string;
+  durationMs: number;
+};
+
+export type SceneDiagramResult = {
+  /** Frame 0's SVG — the stored single picture. Back-compat with callers that want one SVG. */
+  svg: string;
+  /** >= 2 entries when the model returned a mechanism sequence; 1 otherwise. */
+  frames: SceneSvgFrame[];
   diagram: SceneDiagram;
   card: string;
   model: string;
@@ -29,6 +40,15 @@ function paintScene(params: DrawerParams): string {
 
 export function renderSceneSvg(card: SceneCard, diagram: SceneDiagram): string {
   return paintScene(sceneToDrawerParams(card, diagram));
+}
+
+export function renderSceneFrames(card: SceneCard, diagram: SceneDiagram): SceneSvgFrame[] {
+  return sceneFramesToDrawerParams(card, diagram).map((f) => ({
+    svg: paintScene(f.params),
+    role: f.role,
+    note: f.note,
+    durationMs: f.durationMs,
+  }));
 }
 
 function sceneModel(): string {
@@ -58,9 +78,10 @@ export async function generateSceneDiagram(drill: SceneDrillLike): Promise<Scene
       model,
     });
     const diagram = extractScene(raw);
-    const params = sceneToDrawerParams(card, diagram);
+    const frames = renderSceneFrames(card, diagram);
     return {
-      svg: paintScene(params),
+      svg: frames[0].svg,
+      frames,
       diagram,
       card: card.card,
       model,

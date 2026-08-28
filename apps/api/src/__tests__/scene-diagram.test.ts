@@ -5,8 +5,8 @@ import {
   namedRoster,
   reconcileCardCounts,
 } from "../services/scene-card";
-import { extractScene, isUsableSceneZone, sceneToDrawerParams } from "../services/scene-document";
-import { renderSceneSvg } from "../services/scene-diagram";
+import { extractScene, isUsableSceneZone, sceneToDrawerParams, sceneFramesToDrawerParams } from "../services/scene-document";
+import { renderSceneSvg, renderSceneFrames } from "../services/scene-diagram";
 import { enforceSceneKit, fixRoleSides, relabelFromRoster } from "../services/scene-kit";
 import { normalizePositionLabel } from "../services/deterministic-drawer-svg";
 import { pinGoalsToEnds } from "../services/scene-space";
@@ -150,6 +150,103 @@ test("sceneToDrawerParams guarantees one ball and starts the first arrow on it",
     })
   );
   expect(withBall.ball).toEqual(withBall.arrows[0].from);
+});
+
+test("a mechanism sequence paints one frame each, with carry-forward", () => {
+  const card = {
+    title: "Third-man run",
+    card: "TACTICAL. Combination to release the striker.",
+    drillType: "TACTICAL",
+    fieldFormat: "9V9" as const,
+    spaceConstraint: "FULL",
+    formationAttacking: "",
+    formationDefending: "",
+    goalsAvailable: 1,
+  };
+  const scene = sd({
+    players: [
+      { id: "b1", team: "home", role: "CM", x: 30, y: 55 },
+      { id: "b2", team: "home", role: "AM", x: 45, y: 45 },
+      { id: "b3", team: "home", role: "ST", x: 60, y: 50 },
+      { id: "r1", team: "away", role: "CB", x: 70, y: 50 },
+    ],
+    balls: [{ x: 30, y: 55 }],
+    sequence: {
+      frames: [
+        {
+          id: "f1",
+          note: "Shape: CM on the ball",
+          durationMs: 2000,
+          players: [
+            { id: "b1", team: "home", role: "CM", x: 30, y: 55 },
+            { id: "b2", team: "home", role: "AM", x: 45, y: 45 },
+            { id: "b3", team: "home", role: "ST", x: 60, y: 50 },
+            { id: "r1", team: "away", role: "CB", x: 70, y: 50 },
+          ],
+          balls: [{ x: 30, y: 55 }],
+          arrows: [],
+        },
+        {
+          id: "f2",
+          note: "CM into AM, ST spins in behind",
+          durationMs: 2200,
+          // only the shirts that move are re-stated
+          players: [{ id: "b3", team: "home", role: "ST", x: 72, y: 40 }],
+          balls: [{ x: 45, y: 45 }],
+          arrows: [{ type: "pass", order: 1, from: { playerId: "b1" }, to: { playerId: "b2" } }],
+        },
+      ],
+    },
+  });
+
+  const frames = sceneFramesToDrawerParams(card, scene);
+  expect(frames).toHaveLength(2);
+  expect(frames[0].role).toBe("setup");
+  expect(frames[1].role).toBe("action");
+  expect(frames[1].note).toMatch(/spins in behind/);
+  // carry-forward: frame 2 still has the full roster even though it only
+  // re-stated one shirt
+  expect(frames[1].params.players.length).toBe(frames[0].params.players.length);
+  // the carried-forward CM kept its frame-1 position
+  const cm1 = frames[0].params.players.find((p) => p.id === "b1")!;
+  const cm2 = frames[1].params.players.find((p) => p.id === "b1")!;
+  expect(cm2.x).toBeCloseTo(cm1.x, 5);
+  // the moved ST took its new position
+  const st2 = frames[1].params.players.find((p) => p.id === "b3")!;
+  expect(st2.x).toBeGreaterThan(65);
+
+  const svgs = renderSceneFrames(card, scene);
+  expect(svgs).toHaveLength(2);
+  expect(svgs[1].svg).toMatch(/<svg/);
+});
+
+test("a single-frame scene returns exactly one frame", () => {
+  const card = {
+    title: "Rondo",
+    card: "TECHNICAL. 4v1 rondo.",
+    drillType: "TECHNICAL",
+    fieldFormat: "7V7" as const,
+    spaceConstraint: "THIRD",
+    formationAttacking: "",
+    formationDefending: "",
+    goalsAvailable: 0,
+  };
+  const frames = renderSceneFrames(
+    card,
+    sd({
+      players: [
+        { id: "b1", team: "home", role: "CM", x: 40, y: 40 },
+        { id: "b2", team: "home", role: "CM", x: 60, y: 40 },
+        { id: "b3", team: "home", role: "CM", x: 60, y: 60 },
+        { id: "b4", team: "home", role: "CM", x: 40, y: 60 },
+        { id: "r1", team: "away", role: "CB", x: 50, y: 50 },
+      ],
+      balls: [{ x: 40, y: 40 }],
+      arrows: [{ type: "pass", order: 1, from: { playerId: "b1" }, to: { playerId: "b2" } }],
+    })
+  );
+  expect(frames).toHaveLength(1);
+  expect(frames[0].role).toBe("setup");
 });
 
 test("renderSceneSvg draws a WebDiagramV1 end to end, ball included", () => {

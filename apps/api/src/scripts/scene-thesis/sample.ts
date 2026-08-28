@@ -27,6 +27,7 @@ import {
   extractScene,
   promptForScene,
   sceneToDrawerParams,
+  sceneFramesToDrawerParams,
   type SceneDiagram,
   type SceneCard,
 } from "../../services/scene-document";
@@ -36,7 +37,7 @@ import { renderDeterministicDiagramSVG } from "../../services/deterministic-draw
 import { computeTokenRadius, scaleFactorFromTokenRadius, type FieldFormat } from "../../data/field-dimensions";
 import { pinGoalsToEnds, snapKeepersToGoals } from "../../services/scene-space";
 import type { DrawerParams } from "../../types/drawer";
-import { frozenConfidence, scoreScene, type SceneExpectation, type SceneScores } from "./score";
+import { frozenConfidence, scoreScene, scoreSequence, type SceneExpectation, type SceneScores } from "./score";
 import { judgeSceneVisual, type JudgeIdea } from "./judge";
 import type { VisualQaResult } from "../first-pass-diagrams/visual-qa";
 
@@ -392,7 +393,11 @@ async function main() {
       const scene = await generateScene(card);
       const params = sceneToDrawerParams(card, scene);
       const exp = expectationFrom(card, drillLike, scene);
-      const { pass, scores, issues } = scoreScene(params, exp);
+      const { pass: basePass, scores, issues: baseIssues } = scoreScene(params, exp);
+      const frameParams = sceneFramesToDrawerParams(card, scene).map((f) => f.params);
+      const seq = scoreSequence(frameParams);
+      const issues = [...baseIssues, ...seq.issues];
+      const pass = basePass && seq.ok;
       const svg = paint(params);
       const tag = String(idx).padStart(2, "0");
       fs.writeFileSync(path.join(outDir, `${tag}.scene.json`), JSON.stringify(scene, null, 2));
