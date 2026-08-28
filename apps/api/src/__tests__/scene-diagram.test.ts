@@ -7,7 +7,7 @@ import {
 } from "../services/scene-card";
 import { extractScene, isUsableSceneZone, sceneToDrawerParams, sceneFramesToDrawerParams } from "../services/scene-document";
 import { renderSceneSvg, renderSceneFrames } from "../services/scene-diagram";
-import { enforceSceneKit, fixRoleSides, relabelFromRoster } from "../services/scene-kit";
+import { enforceSceneKit, fixRoleSides, reassignArrowOwners, relabelFromRoster } from "../services/scene-kit";
 import { normalizePositionLabel } from "../services/deterministic-drawer-svg";
 import { pinGoalsToEnds } from "../services/scene-space";
 import { warmupSvgStillHasMatchKit } from "../data/field-dimensions";
@@ -286,6 +286,100 @@ test("renderSceneSvg draws a WebDiagramV1 end to end, ball included", () => {
   // roles came through verbatim
   expect(svg).toMatch(/>LCB</);
   expect(svg).toMatch(/>ST</);
+  // two arrows → numbered step badges 1 and 2
+  expect(svg).toMatch(/>1<\/text>/);
+  expect(svg).toMatch(/>2<\/text>/);
+  // arrows take the acting team's colour: blue pass off b2 (home),
+  // red press off r1 (away) — never a blue line off a red shirt
+  expect(svg).toMatch(/stroke="#3b82f6"[^>]*marker-end="url\(#mHome\)"/);
+  expect(svg).toMatch(/stroke="#ef4444"[^>]*marker-end="url\(#mAway\)"/);
+});
+
+test("reassignArrowOwners rebinds a red-shirt forward pass into blue's final third", () => {
+  const players = [
+    { id: "b_rcb", team: "home" as const, role: "RCB", x: 20, y: 62, number: 3 },
+    { id: "b_cm", team: "home" as const, role: "CM", x: 35, y: 50, number: 8 },
+    { id: "b_st", team: "home" as const, role: "ST", x: 50, y: 50, number: 9 },
+    { id: "r_dm1", team: "away" as const, role: "DM", x: 50, y: 38, number: 6 },
+    { id: "r_cb", team: "away" as const, role: "CB", x: 62, y: 50, number: 5 },
+  ];
+  // home avg x (35) < away avg x (56) → home attacks right
+  const fixed = reassignArrowOwners(
+    [
+      { type: "pass", order: 1, from: { playerId: "b_rcb" }, to: { playerId: "b_cm" } } as any,
+      { type: "pass", order: 5, from: { playerId: "r_dm1" }, to: { x: 88, y: 38 } } as any,
+    ],
+    players
+  );
+  // step 1 (blue→blue, short) untouched
+  expect((fixed[0].from as any).playerId).toBe("b_rcb");
+  // step 5: red DM making a forward pass into blue's final third → nearest blue shirt (b_st, 12 away)
+  expect((fixed[1].from as any).playerId).toBe("b_st");
+});
+
+test("reassignArrowOwners leaves a legit backward pass and a press alone", () => {
+  const players = [
+    { id: "b1", team: "home" as const, role: "CM", x: 60, y: 50, number: 8 },
+    { id: "b2", team: "home" as const, role: "CB", x: 30, y: 50, number: 5 },
+    { id: "r1", team: "away" as const, role: "ST", x: 62, y: 50, number: 9 },
+    { id: "r2", team: "away" as const, role: "CM", x: 70, y: 50, number: 8 },
+  ];
+  const fixed = reassignArrowOwners(
+    [
+      // blue recycles backward — not into anyone's final third, untouched
+      { type: "pass", from: { playerId: "b1" }, to: { playerId: "b2" } } as any,
+      // red presses toward the ball — press type is never reassigned
+      { type: "press", from: { playerId: "r1" }, to: { x: 40, y: 50 } } as any,
+    ],
+    players
+  );
+  expect((fixed[0].from as any).playerId).toBe("b1");
+  expect((fixed[1].from as any).playerId).toBe("r1");
+});
+
+test("arrow order is renumbered contiguously and a lone arrow gets no badge", () => {
+  const card = {
+    title: "Combo",
+    card: "TACTICAL. Third-man combination.",
+    drillType: "TACTICAL",
+    fieldFormat: "9V9" as const,
+    spaceConstraint: "FULL",
+    formationAttacking: "",
+    formationDefending: "",
+    goalsAvailable: 1,
+  };
+  // model gave gappy / out-of-order values (5, 2, 2) → expect 1,2,3 in sorted order
+  const many = sceneToDrawerParams(
+    card,
+    sd({
+      players: [
+        { id: "b1", team: "home", role: "CM", x: 25, y: 50 },
+        { id: "b2", team: "home", role: "AM", x: 45, y: 45 },
+        { id: "b3", team: "home", role: "ST", x: 62, y: 52 },
+        { id: "r1", team: "away", role: "CB", x: 75, y: 50 },
+      ],
+      balls: [{ x: 25, y: 50 }],
+      arrows: [
+        { type: "run", order: 5, from: { playerId: "b3" }, to: { x: 78, y: 40 } },
+        { type: "pass", order: 2, from: { playerId: "b1" }, to: { playerId: "b2" } },
+        { type: "pass", order: 2, from: { playerId: "b2" }, to: { playerId: "b3" } },
+      ],
+    })
+  );
+  expect(many.arrows.map((a) => a.order)).toEqual([1, 2, 3]);
+
+  const lone = sceneToDrawerParams(
+    card,
+    sd({
+      players: [
+        { id: "b1", team: "home", role: "CM", x: 25, y: 50 },
+        { id: "r1", team: "away", role: "CB", x: 70, y: 50 },
+      ],
+      balls: [{ x: 25, y: 50 }],
+      arrows: [{ type: "pass", order: 1, from: { playerId: "b1" }, to: { x: 55, y: 50 } }],
+    })
+  );
+  expect(lone.arrows[0].order).toBeUndefined();
 });
 
 test("pinGoalsToEnds parks full nets on the left and right at y=50", () => {

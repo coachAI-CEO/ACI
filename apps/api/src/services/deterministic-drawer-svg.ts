@@ -132,6 +132,9 @@ function renderDefs(): string {
 ${arrowMarker("mPass", "#3b82f6")}
 ${arrowMarker("mRun", "#3b82f6")}
 ${arrowMarker("mPress", "#ef4444")}
+${arrowMarker("mHome", "#3b82f6")}
+${arrowMarker("mAway", "#ef4444")}
+${arrowMarker("mNeutral", "#f59e0b")}
 ${arrowMarker("mCounter", "#22c55e")}
 ${arrowMarker("mDeliver", "#ffffff", "#0f172a")}
 ${arrowMarker("mFinish", "#fbbf24")}
@@ -300,11 +303,40 @@ function renderArrow(arrow: DrawerArrow, geometry: Geometry, params: DrawerParam
   const start = insetPoint(rawFrom, towardStart, padAtEndpoint(rawFrom, geometry, params, arrow.from.isCoach, false));
   const end = insetPoint(rawTo, towardEnd, padAtEndpoint(rawTo, geometry, params, arrow.to.isCoach, true));
   if (Math.hypot(end.x - start.x, end.y - start.y) < 8) return "";
-  const style = arrowStyle(arrow.type);
+  const style = arrowStyle(arrow.type, arrow.team);
   const d = routed.control
     ? `M ${round(start.x)} ${round(start.y)} Q ${round(routed.control.x)} ${round(routed.control.y)} ${round(end.x)} ${round(end.y)}`
     : `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`;
-  return `<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-linecap="round"${style.dash ? ` stroke-dasharray="${style.dash}"` : ""} marker-end="url(#${style.marker})"/>`;
+  const path = `<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-linecap="round"${style.dash ? ` stroke-dasharray="${style.dash}"` : ""} marker-end="url(#${style.marker})"/>`;
+  return path + renderArrowBadge(arrow, start, towardStart, style.stroke, geometry);
+}
+
+/**
+ * A small numbered disc at the arrow's tail so a single frame reads as an
+ * ordered sequence (1 pass -> 2 run -> 3 finish). Offset perpendicular to
+ * the arrow so it clears the line and the shirt it leaves.
+ */
+function renderArrowBadge(
+  arrow: DrawerArrow,
+  start: { x: number; y: number },
+  toward: { x: number; y: number },
+  color: string,
+  geometry: Geometry
+): string {
+  if (typeof arrow.order !== "number" || arrow.order < 1) return "";
+  const dx = toward.x - start.x;
+  const dy = toward.y - start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // perpendicular unit vector, nudged back down the line a touch
+  const off = Math.max(8, geometry.tokenRadius * 0.55);
+  const cx = round(start.x - (dy / len) * off - (dx / len) * 2);
+  const cy = round(start.y + (dx / len) * off - (dy / len) * 2);
+  const r = round(Math.max(6, geometry.tokenRadius * 0.4));
+  const fontSize = round(Math.max(8, r * 1.05));
+  return `<g transform="translate(${cx},${cy})">
+<circle cx="0" cy="0" r="${r}" fill="${color}" stroke="#f8fafc" stroke-width="1.4"/>
+<text x="0" y="0" font-family="Arial" font-size="${fontSize}" font-weight="800" text-anchor="middle" dominant-baseline="central" fill="#ffffff">${arrow.order}</text>
+</g>`;
 }
 
 function renderPlayer(player: DrawerPlayer, geometry: Geometry): string {
@@ -376,13 +408,26 @@ ${items.join("\n")}
 </g>`;
 }
 
-function arrowStyle(type: DrawerArrow["type"]): { stroke: string; width: string; dash?: string; marker: string } {
-  if (type === "press") return { stroke: "#ef4444", width: "2.5", dash: "5,3", marker: "mPress" };
+function arrowStyle(
+  type: DrawerArrow["type"],
+  team?: DrawerArrow["team"]
+): { stroke: string; width: string; dash?: string; marker: string } {
+  // Team-specific semantics keep their own colour regardless of who acts.
   if (type === "counter") return { stroke: "#22c55e", width: "2.5", marker: "mCounter" };
   if (type === "delivery") return { stroke: "#ffffff", width: "2.5", dash: "4,3", marker: "mDeliver" };
   if (type === "finish") return { stroke: "#fbbf24", width: "2.5", marker: "mFinish" };
-  if (type === "run" || type === "movement") return { stroke: "#3b82f6", width: "2.5", dash: "6,4", marker: "mRun" };
-  return { stroke: "#3b82f6", width: "2.5", marker: "mPass" };
+
+  // pass / run / press take the acting player's colour so a line never
+  // contradicts the shirt it comes off. Dash pattern still encodes the type.
+  const byTeam =
+    team === "away"
+      ? { stroke: "#ef4444", marker: "mAway" }
+      : team === "neutral"
+        ? { stroke: "#f59e0b", marker: "mNeutral" }
+        : { stroke: "#3b82f6", marker: "mHome" };
+  if (type === "press") return { ...byTeam, width: "2.5", dash: "5,3" };
+  if (type === "run" || type === "movement") return { ...byTeam, width: "2.5", dash: "6,4" };
+  return { ...byTeam, width: "2.5" };
 }
 
 function playerPalette(team: DrawerPlayer["team"]): { fill: string } {

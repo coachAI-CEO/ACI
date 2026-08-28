@@ -29,13 +29,16 @@ const TEAM_COLORS: Record<DrawerPlayer["team"], string> = {
   neutral: "#f59e0b",
 };
 
-// Mirrors arrowStyle() in deterministic-drawer-svg.ts (stroke/dash only --
-// the legend doesn't need width/marker). Keep in sync for the same reason.
+// pass / run / press are drawn in the acting player's team colour now (see
+// arrowStyle in deterministic-drawer-svg.ts), so their legend swatch is a
+// neutral slate — the chip communicates the LINE STYLE, the team dots
+// communicate the colour. counter/delivery/finish keep their own hue.
+const ARROW_NEUTRAL = "#94a3b8";
 const ARROW_COLORS: Record<DrawerArrow["type"], { color: string; dash?: string }> = {
-  pass: { color: "#3b82f6" },
-  run: { color: "#3b82f6", dash: "6,4" },
-  movement: { color: "#3b82f6", dash: "6,4" },
-  press: { color: "#ef4444", dash: "5,3" },
+  pass: { color: ARROW_NEUTRAL },
+  run: { color: ARROW_NEUTRAL, dash: "6,4" },
+  movement: { color: ARROW_NEUTRAL, dash: "6,4" },
+  press: { color: ARROW_NEUTRAL, dash: "5,3" },
   counter: { color: "#22c55e" },
   delivery: { color: "#ffffff", dash: "4,3" },
   finish: { color: "#fbbf24" },

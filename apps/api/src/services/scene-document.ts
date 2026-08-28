@@ -9,11 +9,11 @@ import {
   separatePlayers,
   shiftIfNearAway,
 } from "./scene-space";
-import { enforceSceneKit, fixRoleSides, relabelFromRoster } from "./scene-kit";
+import { enforceSceneKit, fixRoleSides, reassignArrowOwners, relabelFromRoster } from "./scene-kit";
 import { parseWebDiagramV1 } from "./board-diagram-schema";
 import { toWebDiagramV1, type WebDiagramV1 } from "./web-diagram-v1";
 
-export const SCENE_PROMPT_VERSION = "scene-webv1-v1";
+export const SCENE_PROMPT_VERSION = "scene-webv1-v3";
 
 /** The scene model now emits WebDiagramV1 (shared with the tactical board). */
 export type SceneDiagram = WebDiagramV1;
@@ -248,19 +248,29 @@ export function sceneToDrawerParams(
     );
   }
 
-  const arrows = [...(scene.arrows || [])]
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
-    .map((a, i) => {
-      const from = shiftIfNearAway(map(resolveRef(a.from, players)), backsBefore, defShift);
-      const to = shiftIfNearAway(map(resolveRef(a.to, players)), backsBefore, defShift);
-      return {
-        id: `A-${i + 1}`,
-        from: { x: clamp(from.x), y: clamp(from.y) },
-        to: { x: clamp(to.x), y: clamp(to.y) },
-        type: arrowType(a.type),
-        label: undefined as string | undefined,
-      };
-    });
+  const sortedArrows = reassignArrowOwners([...(scene.arrows || [])], players).sort(
+    (a, b) => (a.order ?? 99) - (b.order ?? 99)
+  );
+  // The model's order is advisory (gaps, dupes, all-99). Renumber 1..N in the
+  // sorted order so the painter's badges are always contiguous. Only badge
+  // when there are 2+ arrows — a lone arrow needs no step number.
+  const numberArrows = sortedArrows.length > 1;
+  const teamById = new Map(players.map((p) => [p.id, p.team]));
+  const arrows = sortedArrows.map((a, i) => {
+    const from = shiftIfNearAway(map(resolveRef(a.from, players)), backsBefore, defShift);
+    const to = shiftIfNearAway(map(resolveRef(a.to, players)), backsBefore, defShift);
+    const originId = a.from && "playerId" in a.from ? a.from.playerId : undefined;
+    const originTeam = originId ? teamById.get(originId) : undefined;
+    return {
+      id: `A-${i + 1}`,
+      from: { x: clamp(from.x), y: clamp(from.y) },
+      to: { x: clamp(to.x), y: clamp(to.y) },
+      type: arrowType(a.type),
+      label: undefined as string | undefined,
+      order: numberArrows ? i + 1 : undefined,
+      team: originTeam === "home" || originTeam === "away" || originTeam === "neutral" ? originTeam : undefined,
+    };
+  });
 
   // Exactly one ball. If the model gave none, start it where the first arrow
   // starts (usually a pass/carry) or at centre. Then snap the first arrow's
@@ -417,10 +427,59 @@ If the practice is TECHNICAL or WARMUP: ONE working group only (about 6-10 shirt
 If the practice is two teams (5v5, 8v8, 9v9, a switch, a conditioned game): use the box, facing each other — they should not share the same spine. 9v9 is 8 outfield + GK per colour, not a leftover 4-3-3.
 Defending team (red, away): back line in THEIR half, between the ball and their GK. A ball-side shift is fine; a high line on the halfway is not, unless the card is a press.
 A role's L/R prefix is that team's OWN left/right facing their attack, and the teams face opposite ways. home attacks right: home L* at the TOP (low y), home R* at the BOTTOM (high y). away is mirrored: away L* at the BOTTOM, away R* at the TOP. Getting away's L/R backwards is the usual mistake — check it.
+ARROW OWNERSHIP: home (blue) attacks toward x=100, away (red) attacks toward x=0. A pass or run that advances toward x=100 belongs to a BLUE shirt — its "from" is a blue playerId. A pass/run toward x=0, or a red counter-attack, starts from a RED shirt. Never start a blue-direction forward pass from a red shirt (or vice versa). A press always starts from the team WITHOUT the ball, aimed at the ball carrier.
 Do not invent a full match if the card is a rondo, 5v5, or a middle-third block.
 Skip a zone that covers the whole pitch or a third of it; cones/goals already mark the box. A zone must be a SMALL square or channel (never height or width >= 70). Teach "defensive third" with an arrow and a short label, not a cone rectangle.
 Named shirts and named actions beat a vague headcount. If the card names a 2v1, draw that 2v1 — do not invent a leftover squad to hit "~8 shirts".
 If the card names a flank or channel, put the action in that band, not on the spine.
+
+TWO WORKED EXAMPLES (match this shape and rule-fidelity, do NOT copy the counts — the card below sets those):
+
+Example A — "U14. 8v8 conditioned game, build from the back. Two full-size goals with keepers."
+{
+  "players": [
+    { "id": "bk", "team": "gk", "role": "GK", "x": 4, "y": 50 },
+    { "id": "b1", "team": "home", "role": "LCB", "x": 22, "y": 38 },
+    { "id": "b2", "team": "home", "role": "RCB", "x": 22, "y": 62 },
+    { "id": "b3", "team": "home", "role": "CM", "x": 40, "y": 50 },
+    { "id": "b4", "team": "home", "role": "LW", "x": 52, "y": 30 },
+    { "id": "b5", "team": "home", "role": "ST", "x": 58, "y": 52 },
+    { "id": "rk", "team": "gk", "role": "GK", "x": 96, "y": 50 },
+    { "id": "r1", "team": "away", "role": "RCB", "x": 74, "y": 40 },
+    { "id": "r2", "team": "away", "role": "LCB", "x": 74, "y": 60 },
+    { "id": "r3", "team": "away", "role": "CM", "x": 60, "y": 50 }
+  ],
+  "goals": [
+    { "id": "gl", "type": "full", "x": 0, "y": 50, "width": 8 },
+    { "id": "gr", "type": "full", "x": 100, "y": 50, "width": 8 }
+  ],
+  "balls": [{ "x": 22, "y": 62 }],
+  "arrows": [
+    { "type": "pass", "order": 1, "from": { "playerId": "b2" }, "to": { "playerId": "b3" } },
+    { "type": "run", "order": 2, "from": { "playerId": "b4" }, "to": { "x": 62, "y": 24 } },
+    { "type": "press", "order": 3, "from": { "playerId": "r3" }, "to": { "x": 44, "y": 50 } }
+  ],
+  "labels": [{ "text": "RCB splits the first line", "x": 30, "y": 66 }]
+}
+Note: home L* (LCB, LW) at the TOP; away R* (RCB) at the TOP (mirrored); each GK flat on its own goal line; ball on the shirt the first arrow leaves.
+
+Example B — "4v1 rondo, one touch."
+{
+  "players": [
+    { "id": "b1", "team": "home", "role": "CM", "x": 42, "y": 40 },
+    { "id": "b2", "team": "home", "role": "CM", "x": 58, "y": 40 },
+    { "id": "b3", "team": "home", "role": "CM", "x": 58, "y": 60 },
+    { "id": "b4", "team": "home", "role": "CM", "x": 42, "y": 60 },
+    { "id": "r1", "team": "away", "role": "CB", "x": 50, "y": 50 }
+  ],
+  "goals": [],
+  "balls": [{ "x": 42, "y": 40 }],
+  "arrows": [{ "type": "pass", "order": 1, "from": { "playerId": "b1" }, "to": { "playerId": "b2" } }],
+  "labels": [{ "text": "Scan before the ball arrives", "x": 50, "y": 30 }]
+}
+Note: one small square in the middle, defender in the centre, no goals, no keepers.
+
+Now output ONE JSON object for THE PRACTICE below — nothing else, no prose, do not echo the examples.
 
 THE PRACTICE:
 ${card.card}`;
