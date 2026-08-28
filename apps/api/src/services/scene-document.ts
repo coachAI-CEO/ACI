@@ -13,7 +13,7 @@ import { enforceSceneKit, fixRoleSides, relabelFromRoster } from "./scene-kit";
 import { parseWebDiagramV1 } from "./board-diagram-schema";
 import { toWebDiagramV1, type WebDiagramV1 } from "./web-diagram-v1";
 
-export const SCENE_PROMPT_VERSION = "scene-webv1-v1";
+export const SCENE_PROMPT_VERSION = "scene-webv1-v2";
 
 /** The scene model now emits WebDiagramV1 (shared with the tactical board). */
 export type SceneDiagram = WebDiagramV1;
@@ -318,6 +318,54 @@ Do not invent a full match if the card is a rondo, 5v5, or a middle-third block.
 Skip a zone that covers the whole pitch or a third of it; cones/goals already mark the box. A zone must be a SMALL square or channel (never height or width >= 70). Teach "defensive third" with an arrow and a short label, not a cone rectangle.
 Named shirts and named actions beat a vague headcount. If the card names a 2v1, draw that 2v1 — do not invent a leftover squad to hit "~8 shirts".
 If the card names a flank or channel, put the action in that band, not on the spine.
+
+TWO WORKED EXAMPLES (match this shape and rule-fidelity, do NOT copy the counts — the card below sets those):
+
+Example A — "U14. 8v8 conditioned game, build from the back. Two full-size goals with keepers."
+{
+  "players": [
+    { "id": "bk", "team": "gk", "role": "GK", "x": 4, "y": 50 },
+    { "id": "b1", "team": "home", "role": "LCB", "x": 22, "y": 38 },
+    { "id": "b2", "team": "home", "role": "RCB", "x": 22, "y": 62 },
+    { "id": "b3", "team": "home", "role": "CM", "x": 40, "y": 50 },
+    { "id": "b4", "team": "home", "role": "LW", "x": 52, "y": 30 },
+    { "id": "b5", "team": "home", "role": "ST", "x": 58, "y": 52 },
+    { "id": "rk", "team": "gk", "role": "GK", "x": 96, "y": 50 },
+    { "id": "r1", "team": "away", "role": "RCB", "x": 74, "y": 40 },
+    { "id": "r2", "team": "away", "role": "LCB", "x": 74, "y": 60 },
+    { "id": "r3", "team": "away", "role": "CM", "x": 60, "y": 50 }
+  ],
+  "goals": [
+    { "id": "gl", "type": "full", "x": 0, "y": 50, "width": 8 },
+    { "id": "gr", "type": "full", "x": 100, "y": 50, "width": 8 }
+  ],
+  "balls": [{ "x": 22, "y": 62 }],
+  "arrows": [
+    { "type": "pass", "order": 1, "from": { "playerId": "b2" }, "to": { "playerId": "b3" } },
+    { "type": "run", "order": 2, "from": { "playerId": "b4" }, "to": { "x": 62, "y": 24 } },
+    { "type": "press", "order": 3, "from": { "playerId": "r3" }, "to": { "x": 44, "y": 50 } }
+  ],
+  "labels": [{ "text": "RCB splits the first line", "x": 30, "y": 66 }]
+}
+Note: home L* (LCB, LW) at the TOP; away R* (RCB) at the TOP (mirrored); each GK flat on its own goal line; ball on the shirt the first arrow leaves.
+
+Example B — "4v1 rondo, one touch."
+{
+  "players": [
+    { "id": "b1", "team": "home", "role": "CM", "x": 42, "y": 40 },
+    { "id": "b2", "team": "home", "role": "CM", "x": 58, "y": 40 },
+    { "id": "b3", "team": "home", "role": "CM", "x": 58, "y": 60 },
+    { "id": "b4", "team": "home", "role": "CM", "x": 42, "y": 60 },
+    { "id": "r1", "team": "away", "role": "CB", "x": 50, "y": 50 }
+  ],
+  "goals": [],
+  "balls": [{ "x": 42, "y": 40 }],
+  "arrows": [{ "type": "pass", "order": 1, "from": { "playerId": "b1" }, "to": { "playerId": "b2" } }],
+  "labels": [{ "text": "Scan before the ball arrives", "x": 50, "y": 30 }]
+}
+Note: one small square in the middle, defender in the centre, no goals, no keepers.
+
+Now output ONE JSON object for THE PRACTICE below — nothing else, no prose, do not echo the examples.
 
 THE PRACTICE:
 ${card.card}`;
