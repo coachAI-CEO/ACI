@@ -18,6 +18,27 @@ export const SCENE_PROMPT_VERSION = "scene-webv1-v1";
 /** The scene model now emits WebDiagramV1 (shared with the tactical board). */
 export type SceneDiagram = WebDiagramV1;
 
+/** One frame's worth of scene content — the subset of WebDiagramV1 a frame carries. */
+type SceneLayers = {
+  players?: SceneDiagram["players"];
+  goals?: SceneDiagram["goals"];
+  arrows?: SceneDiagram["arrows"];
+  balls?: SceneDiagram["balls"];
+  areas?: SceneDiagram["areas"];
+  labels?: SceneDiagram["labels"];
+};
+
+/** A painted frame: DrawerParams + the playback metadata the stepper needs. */
+export type SceneFrameParams = {
+  params: DrawerParams;
+  /** setup (frame 0) | action (every later frame). */
+  role: "setup" | "action";
+  note?: string;
+  durationMs: number;
+};
+
+const FRAME_DEFAULT_MS = 1800;
+
 export type ScenePicture = "rondo" | "center" | "matchup" | "block";
 
 export type SceneCard = {
@@ -119,12 +140,46 @@ function resolveRef(
   return { x: clamp(Number(ref?.x)), y: clamp(Number(ref?.y)) };
 }
 
+/**
+ * Merge a frame's players onto the previous frame's. Shirts keyed by id:
+ * this frame's version wins; shirts only in the previous frame are carried
+ * forward unchanged. Order follows the previous frame, then any new ids.
+ */
+function carryForwardRawPlayers(
+  frame: NonNullable<SceneLayers["players"]>,
+  prev: SceneLayers["players"] | undefined
+): NonNullable<SceneLayers["players"]> {
+  if (!prev || prev.length === 0) return [...frame];
+  const byId = new Map<string, (typeof frame)[number]>();
+  for (const p of prev) if (p?.id) byId.set(String(p.id), p);
+  for (const p of frame) if (p?.id) byId.set(String(p.id), p);
+  const seen = new Set<string>();
+  const out: typeof frame = [];
+  for (const p of [...prev, ...frame]) {
+    const id = p?.id ? String(p.id) : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(byId.get(id)!);
+  }
+  // Players with no id at all (model slip) — keep this frame's, drop prev's.
+  for (const p of frame) if (!p?.id) out.push(p);
+  return out;
+}
+
 /** Paint a WebDiagramV1 scene through the TE painter. Do not use drillToDrawerParams. */
-export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): DrawerParams {
+export function sceneToDrawerParams(
+  card: SceneCard,
+  scene: SceneLayers,
+  prevRawPlayers?: SceneLayers["players"]
+): DrawerParams {
   const format = fieldFormatOf(card);
   const space = practiceSpaceYards(format, String(card.spaceConstraint || "FULL"));
-  const rawPlayerCount = (scene.players || []).length;
-  let players: DrawerPlayer[] = (scene.players || []).map((p, i) => {
+  // Carry-forward: a frame only re-states the shirts that move. Any shirt the
+  // previous frame had that this frame omits keeps its previous coordinates,
+  // so every frame carries the full roster.
+  const rawPlayers = carryForwardRawPlayers(scene.players || [], prevRawPlayers);
+  const rawPlayerCount = rawPlayers.length;
+  let players: DrawerPlayer[] = rawPlayers.map((p, i) => {
     const role = roleOf(p.role);
     const team = teamOf(p.team, role);
     return {
@@ -267,6 +322,54 @@ export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): Drawe
     hideMatchPitchMarkings: hideMatchMarkings(card),
     lockTokenRadius: String(card.coachLevel || "").toUpperCase() === "USSF_B_PLUS" ? 11 : TOKEN_RADIUS_BASELINE,
   };
+}
+
+/**
+ * Paint a scene as an ordered list of frames. A single-frame diagram (no
+ * `sequence`) returns one entry — identical to `sceneToDrawerParams`. A
+ * `sequence.frames[]` diagram returns one painted frame each, with the model's
+ * "only move what moves" honoured via carry-forward.
+ */
+export function sceneFramesToDrawerParams(card: SceneCard, scene: SceneDiagram): SceneFrameParams[] {
+  const frames = scene.sequence?.frames;
+  if (!frames || frames.length < 2) {
+    return [
+      {
+        params: sceneToDrawerParams(card, scene),
+        role: "setup",
+        note: frames?.[0]?.note || scene.sequence?.frames?.[0]?.note,
+        durationMs: clampDuration(frames?.[0]?.durationMs),
+      },
+    ];
+  }
+
+  const out: SceneFrameParams[] = [];
+  let prevRaw: SceneLayers["players"] | undefined;
+  frames.forEach((frame, i) => {
+    const layers: SceneLayers = {
+      players: frame.players,
+      goals: frame.goals ?? scene.goals,
+      arrows: frame.arrows,
+      balls: frame.balls,
+      areas: frame.areas ?? scene.areas,
+      labels: frame.labels ?? scene.labels,
+    };
+    const params = sceneToDrawerParams(card, layers, prevRaw);
+    prevRaw = carryForwardRawPlayers(frame.players || [], prevRaw);
+    out.push({
+      params,
+      role: i === 0 ? "setup" : "action",
+      note: frame.note,
+      durationMs: clampDuration(frame.durationMs),
+    });
+  });
+  return out;
+}
+
+function clampDuration(ms: number | undefined): number {
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return FRAME_DEFAULT_MS;
+  return Math.max(1000, Math.min(4000, Math.round(n)));
 }
 
 export function promptForScene(card: SceneCard): string {

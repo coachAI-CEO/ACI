@@ -270,6 +270,30 @@ export function scoreScene(
   return { pass: issues.length === 0, scores, issues };
 }
 
+/**
+ * Sequence sanity: 2-3 frames, each frame keeps the full roster (carry-forward
+ * worked), each frame has exactly one ball, and the ball moves across frames
+ * (a static ball across a "mechanism" sequence means the frames are cosmetic).
+ */
+export function scoreSequence(frames: DrawerParams[]): CheckResult {
+  const issues: string[] = [];
+  if (frames.length < 2) return check(issues);
+  if (frames.length > 3) issues.push(`${frames.length} frames — cap is 3`);
+  const counts = frames.map((f) => f.players.length);
+  if (Math.max(...counts) - Math.min(...counts) > 1) {
+    issues.push(`roster jumps across frames (${counts.join("→")}) — carry-forward failed`);
+  }
+  for (let i = 0; i < frames.length; i++) {
+    if (!frames[i].ball) issues.push(`frame ${i} has no ball`);
+  }
+  const balls = frames.map((f) => f.ball).filter(Boolean) as Array<{ x: number; y: number }>;
+  if (balls.length >= 2) {
+    const moved = balls.some((b, i) => i > 0 && Math.hypot(b.x - balls[0].x, b.y - balls[0].y) > 4);
+    if (!moved) issues.push("ball never moves across the sequence");
+  }
+  return check(issues);
+}
+
 export function frozenConfidence(scores: SceneScores): number {
   const checks = Object.values(scores);
   const ok = checks.filter((c) => c.ok).length;

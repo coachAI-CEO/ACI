@@ -7,7 +7,7 @@ import { applyGoalOverlay } from "./goal-overlay";
 import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import type { DrawerParams } from "../types/drawer";
-import { generateSceneDiagram } from "./scene-diagram";
+import { generateSceneDiagram, type SceneSvgFrame } from "./scene-diagram";
 import { SCENE_PROMPT_VERSION, type SceneDiagram } from "./scene-document";
 
 type DrillLike = Parameters<typeof drillToDrawerParams>[0];
@@ -20,6 +20,8 @@ export type DrillDiagramSvgResult = {
   modelFallback: boolean;
   promptVersion: string;
   sceneDiagram?: SceneDiagram;
+  /** Ordered painted frames when the scene is a mechanism sequence (>= 2). */
+  sceneFrames?: SceneSvgFrame[];
   sceneCard?: string;
 };
 
@@ -97,6 +99,7 @@ export async function generateDrillDiagramSvg(
         modelFallback: false,
         promptVersion: scene.promptVersion,
         sceneDiagram: scene.diagram,
+        sceneFrames: scene.frames.length > 1 ? scene.frames : undefined,
         sceneCard: scene.card,
       };
     } catch (err) {
@@ -179,6 +182,8 @@ export async function persistDrillDiagramSvg(refCode: string, result: DrillDiagr
       ...json,
       sceneDiagram: result.sceneDiagram,
       scenePromptVersion: result.promptVersion || SCENE_PROMPT_VERSION,
+      // Clears a stale sequence when a redraw comes back single-frame.
+      sceneFrames: result.sceneFrames ?? null,
       ...(result.sceneCard ? { sceneCard: result.sceneCard } : {}),
     };
   }
