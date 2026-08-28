@@ -71,6 +71,22 @@ test("inferScenePicture tags rondo, channel, and switch — not press-as-unit", 
   expect(inferScenePicture("Press as a unit after the trigger", "SSG")).toBeUndefined();
 });
 
+test("inferScenePicture: a real full goal beats a 'rondo' / '1v1' keyword", () => {
+  // "Defensive Third Transition Rondo" whose card also demands a full goal + GK
+  expect(
+    inferScenePicture("Defensive Third Transition Rondo. Full-size goal with a GK.", "TACTICAL", {
+      goalsAvailable: 1,
+    })
+  ).toBeUndefined();
+  expect(inferScenePicture("1v1 to a full-size goal and keeper", "TACTICAL", { goalsAvailable: 1 })).toBeUndefined();
+  // still a rondo with no goal, even when tagged TACTICAL
+  expect(inferScenePicture("4v1 rondo in a square", "TACTICAL", { goalsAvailable: 0 })).toBe("rondo");
+  // a switch is still a switch — a full goal doesn't disqualify a matchup
+  expect(
+    inferScenePicture("Switch the point of attack to the weak-side", "SSG", { goalsAvailable: 2 })
+  ).toBe("matchup");
+});
+
 test("technical circuit card draws one grid, not a leftover 9v9", () => {
   const card = buildSceneCard({
     title: "Defensive Third Receiving and Forward Passing Technical Circuit",
