@@ -9,11 +9,11 @@ import {
   separatePlayers,
   shiftIfNearAway,
 } from "./scene-space";
-import { enforceSceneKit, fixRoleSides, relabelFromRoster } from "./scene-kit";
+import { enforceSceneKit, fixRoleSides, reassignArrowOwners, relabelFromRoster } from "./scene-kit";
 import { parseWebDiagramV1 } from "./board-diagram-schema";
 import { toWebDiagramV1, type WebDiagramV1 } from "./web-diagram-v1";
 
-export const SCENE_PROMPT_VERSION = "scene-webv1-v2";
+export const SCENE_PROMPT_VERSION = "scene-webv1-v3";
 
 /** The scene model now emits WebDiagramV1 (shared with the tactical board). */
 export type SceneDiagram = WebDiagramV1;
@@ -193,7 +193,9 @@ export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): Drawe
     );
   }
 
-  const sortedArrows = [...(scene.arrows || [])].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  const sortedArrows = reassignArrowOwners([...(scene.arrows || [])], players).sort(
+    (a, b) => (a.order ?? 99) - (b.order ?? 99)
+  );
   // The model's order is advisory (gaps, dupes, all-99). Renumber 1..N in the
   // sorted order so the painter's badges are always contiguous. Only badge
   // when there are 2+ arrows — a lone arrow needs no step number.
@@ -318,6 +320,7 @@ If the practice is TECHNICAL or WARMUP: ONE working group only (about 6-10 shirt
 If the practice is two teams (5v5, 8v8, 9v9, a switch, a conditioned game): use the box, facing each other — they should not share the same spine. 9v9 is 8 outfield + GK per colour, not a leftover 4-3-3.
 Defending team (red, away): back line in THEIR half, between the ball and their GK. A ball-side shift is fine; a high line on the halfway is not, unless the card is a press.
 A role's L/R prefix is that team's OWN left/right facing their attack, and the teams face opposite ways. home attacks right: home L* at the TOP (low y), home R* at the BOTTOM (high y). away is mirrored: away L* at the BOTTOM, away R* at the TOP. Getting away's L/R backwards is the usual mistake — check it.
+ARROW OWNERSHIP: home (blue) attacks toward x=100, away (red) attacks toward x=0. A pass or run that advances toward x=100 belongs to a BLUE shirt — its "from" is a blue playerId. A pass/run toward x=0, or a red counter-attack, starts from a RED shirt. Never start a blue-direction forward pass from a red shirt (or vice versa). A press always starts from the team WITHOUT the ball, aimed at the ball carrier.
 Do not invent a full match if the card is a rondo, 5v5, or a middle-third block.
 Skip a zone that covers the whole pitch or a third of it; cones/goals already mark the box. A zone must be a SMALL square or channel (never height or width >= 70). Teach "defensive third" with an arrow and a short label, not a cone rectangle.
 Named shirts and named actions beat a vague headcount. If the card names a 2v1, draw that 2v1 — do not invent a leftover squad to hit "~8 shirts".

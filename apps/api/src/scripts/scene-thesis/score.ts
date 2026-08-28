@@ -14,6 +14,7 @@ export type SceneScores = {
   horizontal: CheckResult;
   ball: CheckResult;
   arrowOrder: CheckResult;
+  arrowDirection: CheckResult;
 };
 
 /** 2+ arrows must carry contiguous 1..N step numbers; a lone arrow carries none. */
@@ -281,10 +282,51 @@ export function scoreScene(
     horizontal: scoreHorizontal(params),
     ball: scoreBall(params),
     arrowOrder: scoreArrowOrder(params),
+    arrowDirection: scoreArrowDirection(params),
   };
   const arrows = scoreArrows(params, exp);
   const issues = [...Object.values(scores).flatMap((c) => c.issues), ...arrows.issues];
   return { pass: issues.length === 0, scores, issues };
+}
+
+/**
+ * A forward pass/run that advances toward one goal but starts from a shirt of
+ * the team defending that goal — e.g. a red DM making the blue build-up pass.
+ * Nearest shirt to the arrow tail is taken as the owner.
+ */
+function scoreArrowDirection(params: DrawerParams): CheckResult {
+  const home = params.players.filter((p) => p.team === "home");
+  const away = params.players.filter((p) => p.team === "away");
+  if (home.length < 2 || away.length < 2 || params.arrows.length === 0) return check([]);
+  const avg = (ps: DrawerPlayer[]) => ps.reduce((s, p) => s + p.x, 0) / ps.length;
+  const homeAttacksRight = avg(home) < avg(away);
+  const issues: string[] = [];
+
+  for (const a of params.arrows) {
+    if (a.type !== "pass" && a.type !== "run") continue;
+    const dx = a.to.x - a.from.x;
+    if (Math.abs(dx) < 15) continue;
+    // nearest shirt to the tail is the presumed owner
+    let near: DrawerPlayer | null = null;
+    let best = 12;
+    for (const p of params.players) {
+      const d = Math.hypot(p.x - a.from.x, p.y - a.from.y);
+      if (d < best) {
+        best = d;
+        near = p;
+      }
+    }
+    if (!near || (near.team !== "home" && near.team !== "away")) continue;
+    const nearAttacksRight = (near.team === "home") === homeAttacksRight;
+    const towardOwnGoal = nearAttacksRight ? dx < 0 : dx > 0;
+    const deepInOwnEnd = nearAttacksRight ? a.to.x <= 25 : a.to.x >= 75;
+    if (towardOwnGoal && deepInOwnEnd) {
+      issues.push(
+        `step ${a.order ?? "?"} (${a.type}) drives into ${near.team === "home" ? "away" : "home"}'s attacking end but starts from a ${near.team} shirt (${near.role})`
+      );
+    }
+  }
+  return check(issues);
 }
 
 export function frozenConfidence(scores: SceneScores): number {
