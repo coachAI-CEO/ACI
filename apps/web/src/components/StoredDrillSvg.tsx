@@ -25,6 +25,16 @@ function isUsableSvg(svg: string | null | undefined): svg is string {
   return Boolean(svg && /<svg[\s>]/i.test(svg) && !/Diagram generating/i.test(svg));
 }
 
+type SceneFrame = { svg: string; role?: string; note?: string; durationMs?: number };
+
+function parseFrames(value: unknown): SceneFrame[] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const frames = value.filter(
+    (f): f is SceneFrame => Boolean(f && typeof (f as SceneFrame).svg === "string" && isUsableSvg((f as SceneFrame).svg))
+  );
+  return frames.length >= 2 ? frames : null;
+}
+
 export default function StoredDrillSvg({
   drillId,
   goalsAvailable,
@@ -36,6 +46,9 @@ export default function StoredDrillSvg({
 }: StoredDrillSvgProps) {
   const isCooldown = String(drillType || "").toUpperCase() === "COOLDOWN";
   const [svg, setSvg] = React.useState<string | null>(isUsableSvg(initialSvg) ? initialSvg : null);
+  const [frames, setFrames] = React.useState<SceneFrame[] | null>(null);
+  const [frameIdx, setFrameIdx] = React.useState(0);
+  const [playing, setPlaying] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [drawing, setDrawing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -45,6 +58,18 @@ export default function StoredDrillSvg({
     setError(null);
     if (isUsableSvg(initialSvg)) setSvg(initialSvg);
   }, [initialSvg]);
+
+  // Filmstrip playback: advance to the last frame, then stop.
+  React.useEffect(() => {
+    if (!playing || !frames || frames.length < 2) return;
+    if (frameIdx >= frames.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const ms = Math.max(1000, Math.min(4000, Number(frames[frameIdx]?.durationMs) || 1800));
+    const t = setTimeout(() => setFrameIdx((i) => i + 1), ms);
+    return () => clearTimeout(t);
+  }, [playing, frames, frameIdx]);
 
   const fetchStored = React.useCallback(async () => {
     if (!drillId || loadingRef.current) return;
@@ -59,6 +84,9 @@ export default function StoredDrillSvg({
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.hasStoredSvg && typeof data.svg === "string") {
         setSvg(data.svg);
+        const parsed = parseFrames(data.frames);
+        setFrames(parsed);
+        setFrameIdx(0);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load diagram");
@@ -95,6 +123,8 @@ export default function StoredDrillSvg({
         throw new Error(data.error || data.reason || "SVG generation failed");
       }
       setSvg(data.svg);
+      setFrames(parseFrames(data.frames));
+      setFrameIdx(0);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "SVG generation failed");
     } finally {
@@ -134,7 +164,58 @@ export default function StoredDrillSvg({
         </div>
       )}
 
-      {svg ? (
+      {frames && frames.length > 1 ? (
+        <div className="space-y-2">
+          <div
+            className={`overflow-hidden rounded-2xl border border-slate-800/70 bg-[#08111f] p-2 shadow-2xl shadow-black/30 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-full ${padding}`}
+            dangerouslySetInnerHTML={{
+              __html: fitDiagramSvgViewBox(frames[Math.min(frameIdx, frames.length - 1)].svg),
+            }}
+          />
+          <div className="flex items-center gap-2 text-xs text-slate-400">
+            <button
+              type="button"
+              onClick={() => {
+                setPlaying(false);
+                setFrameIdx((i) => Math.max(0, i - 1));
+              }}
+              disabled={frameIdx === 0}
+              className="inline-flex h-7 items-center rounded-full border border-slate-700 px-2.5 font-semibold text-slate-300 disabled:opacity-40"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (frameIdx >= frames.length - 1) setFrameIdx(0);
+                setPlaying((p) => !p);
+              }}
+              className="inline-flex h-7 items-center rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3 font-semibold text-cyan-300"
+            >
+              {playing ? "Pause" : frameIdx >= frames.length - 1 ? "Replay" : "Play"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPlaying(false);
+                setFrameIdx((i) => Math.min(frames.length - 1, i + 1));
+              }}
+              disabled={frameIdx >= frames.length - 1}
+              className="inline-flex h-7 items-center rounded-full border border-slate-700 px-2.5 font-semibold text-slate-300 disabled:opacity-40"
+            >
+              Next
+            </button>
+            <span className="tabular-nums">
+              {Math.min(frameIdx, frames.length - 1) + 1} / {frames.length}
+            </span>
+          </div>
+          {frames[Math.min(frameIdx, frames.length - 1)].note && (
+            <p className="rounded-lg border border-slate-800/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+              {frames[Math.min(frameIdx, frames.length - 1)].note}
+            </p>
+          )}
+        </div>
+      ) : svg ? (
         <div
           className={`overflow-hidden rounded-2xl border border-slate-800/70 bg-[#08111f] p-2 shadow-2xl shadow-black/30 [&>svg]:block [&>svg]:h-auto [&>svg]:w-full [&>svg]:max-w-full ${padding}`}
           dangerouslySetInnerHTML={{ __html: fitDiagramSvgViewBox(svg) }}

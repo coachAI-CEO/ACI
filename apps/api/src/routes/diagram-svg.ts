@@ -21,6 +21,20 @@ function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
 }
 
+/** Stored scene sequence frames ([{svg,role,note,durationMs}]), or null. */
+function storedSceneFrames(drill: any): Array<Record<string, unknown>> | null {
+  const frames = asRecord(drill?.json).sceneFrames;
+  if (!Array.isArray(frames) || frames.length < 2) return null;
+  return frames
+    .filter((f) => f && typeof (f as any).svg === "string")
+    .map((f: any) => ({
+      svg: fitDiagramSvgViewBox(String(f.svg)),
+      role: f.role === "action" ? "action" : "setup",
+      note: typeof f.note === "string" ? f.note : undefined,
+      durationMs: Number.isFinite(Number(f.durationMs)) ? Number(f.durationMs) : 1800,
+    }));
+}
+
 function resolveGoalsAvailable(drill: any): number | null {
   const json = asRecord(drill?.json);
   const candidates = [
@@ -105,7 +119,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   const needsRegen = storedDiagramNeedsRedraw(force, currentSvg);
 
   if (!needsRegen) {
-    return res.json({ svg: currentSvg, cached: true });
+    return res.json({ svg: currentSvg, cached: true, frames: storedSceneFrames(drill) ?? undefined });
   }
 
   try {
@@ -169,6 +183,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       cached: false,
       model: result.model,
       modelFallback: result.modelFallback,
+      frames: result.sceneFrames ?? undefined,
     });
   } catch (err) {
     console.error("drill_to_drawer_params_failed", { drillId, err });
@@ -247,7 +262,7 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
     if (svg !== drill.diagramSvg) {
       await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
     }
-    return res.json({ svg, hasStoredSvg: true, cached: true });
+    return res.json({ svg, hasStoredSvg: true, cached: true, frames: storedSceneFrames(drill) ?? undefined });
   }
 
   try {
@@ -284,6 +299,7 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
       hasStoredSvg: true,
       cached: false,
       model: result.model,
+      frames: result.sceneFrames ?? undefined,
     });
   } catch (err) {
     console.error("diagram_svg_fetch_compile_failed", { drillId, err });
