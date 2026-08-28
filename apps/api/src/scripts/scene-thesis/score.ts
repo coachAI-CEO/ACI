@@ -13,7 +13,23 @@ export type SceneScores = {
   spacing: CheckResult;
   horizontal: CheckResult;
   ball: CheckResult;
+  arrowOrder: CheckResult;
 };
+
+/** 2+ arrows must carry contiguous 1..N step numbers; a lone arrow carries none. */
+function scoreArrowOrder(params: DrawerParams): CheckResult {
+  const orders = params.arrows.map((a) => a.order);
+  if (params.arrows.length < 2) {
+    return check(orders.some((o) => typeof o === "number") ? ["a lone arrow was given a step badge"] : []);
+  }
+  const nums = orders.filter((o): o is number => typeof o === "number");
+  if (nums.length !== params.arrows.length) {
+    return check([`${params.arrows.length - nums.length} of ${params.arrows.length} arrows have no step number`]);
+  }
+  const sorted = [...nums].sort((a, b) => a - b);
+  const contiguous = sorted.every((n, i) => n === i + 1);
+  return check(contiguous ? [] : [`arrow steps are not 1..N (${sorted.join(",")})`]);
+}
 
 function scoreBall(params: DrawerParams): CheckResult {
   const issues: string[] = [];
@@ -264,6 +280,7 @@ export function scoreScene(
     spacing: scoreSpacing(params, exp),
     horizontal: scoreHorizontal(params),
     ball: scoreBall(params),
+    arrowOrder: scoreArrowOrder(params),
   };
   const arrows = scoreArrows(params, exp);
   const issues = [...Object.values(scores).flatMap((c) => c.issues), ...arrows.issues];

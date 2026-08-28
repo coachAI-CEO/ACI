@@ -304,7 +304,36 @@ function renderArrow(arrow: DrawerArrow, geometry: Geometry, params: DrawerParam
   const d = routed.control
     ? `M ${round(start.x)} ${round(start.y)} Q ${round(routed.control.x)} ${round(routed.control.y)} ${round(end.x)} ${round(end.y)}`
     : `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`;
-  return `<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-linecap="round"${style.dash ? ` stroke-dasharray="${style.dash}"` : ""} marker-end="url(#${style.marker})"/>`;
+  const path = `<path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" stroke-linecap="round"${style.dash ? ` stroke-dasharray="${style.dash}"` : ""} marker-end="url(#${style.marker})"/>`;
+  return path + renderArrowBadge(arrow, start, towardStart, style.stroke, geometry);
+}
+
+/**
+ * A small numbered disc at the arrow's tail so a single frame reads as an
+ * ordered sequence (1 pass -> 2 run -> 3 finish). Offset perpendicular to
+ * the arrow so it clears the line and the shirt it leaves.
+ */
+function renderArrowBadge(
+  arrow: DrawerArrow,
+  start: { x: number; y: number },
+  toward: { x: number; y: number },
+  color: string,
+  geometry: Geometry
+): string {
+  if (typeof arrow.order !== "number" || arrow.order < 1) return "";
+  const dx = toward.x - start.x;
+  const dy = toward.y - start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  // perpendicular unit vector, nudged back down the line a touch
+  const off = Math.max(8, geometry.tokenRadius * 0.55);
+  const cx = round(start.x - (dy / len) * off - (dx / len) * 2);
+  const cy = round(start.y + (dx / len) * off - (dy / len) * 2);
+  const r = round(Math.max(6, geometry.tokenRadius * 0.4));
+  const fontSize = round(Math.max(8, r * 1.05));
+  return `<g transform="translate(${cx},${cy})">
+<circle cx="0" cy="0" r="${r}" fill="${color}" stroke="#f8fafc" stroke-width="1.4"/>
+<text x="0" y="0" font-family="Arial" font-size="${fontSize}" font-weight="800" text-anchor="middle" dominant-baseline="central" fill="#ffffff">${arrow.order}</text>
+</g>`;
 }
 
 function renderPlayer(player: DrawerPlayer, geometry: Geometry): string {

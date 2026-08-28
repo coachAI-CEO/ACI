@@ -189,6 +189,54 @@ test("renderSceneSvg draws a WebDiagramV1 end to end, ball included", () => {
   // roles came through verbatim
   expect(svg).toMatch(/>LCB</);
   expect(svg).toMatch(/>ST</);
+  // two arrows → numbered step badges 1 and 2
+  expect(svg).toMatch(/>1<\/text>/);
+  expect(svg).toMatch(/>2<\/text>/);
+});
+
+test("arrow order is renumbered contiguously and a lone arrow gets no badge", () => {
+  const card = {
+    title: "Combo",
+    card: "TACTICAL. Third-man combination.",
+    drillType: "TACTICAL",
+    fieldFormat: "9V9" as const,
+    spaceConstraint: "FULL",
+    formationAttacking: "",
+    formationDefending: "",
+    goalsAvailable: 1,
+  };
+  // model gave gappy / out-of-order values (5, 2, 2) → expect 1,2,3 in sorted order
+  const many = sceneToDrawerParams(
+    card,
+    sd({
+      players: [
+        { id: "b1", team: "home", role: "CM", x: 25, y: 50 },
+        { id: "b2", team: "home", role: "AM", x: 45, y: 45 },
+        { id: "b3", team: "home", role: "ST", x: 62, y: 52 },
+        { id: "r1", team: "away", role: "CB", x: 75, y: 50 },
+      ],
+      balls: [{ x: 25, y: 50 }],
+      arrows: [
+        { type: "run", order: 5, from: { playerId: "b3" }, to: { x: 78, y: 40 } },
+        { type: "pass", order: 2, from: { playerId: "b1" }, to: { playerId: "b2" } },
+        { type: "pass", order: 2, from: { playerId: "b2" }, to: { playerId: "b3" } },
+      ],
+    })
+  );
+  expect(many.arrows.map((a) => a.order)).toEqual([1, 2, 3]);
+
+  const lone = sceneToDrawerParams(
+    card,
+    sd({
+      players: [
+        { id: "b1", team: "home", role: "CM", x: 25, y: 50 },
+        { id: "r1", team: "away", role: "CB", x: 70, y: 50 },
+      ],
+      balls: [{ x: 25, y: 50 }],
+      arrows: [{ type: "pass", order: 1, from: { playerId: "b1" }, to: { x: 55, y: 50 } }],
+    })
+  );
+  expect(lone.arrows[0].order).toBeUndefined();
 });
 
 test("pinGoalsToEnds parks full nets on the left and right at y=50", () => {

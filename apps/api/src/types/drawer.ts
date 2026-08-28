@@ -71,6 +71,9 @@ export interface DrawerArrow {
   to: { x: number; y: number; isCoach?: boolean };
   type: "pass" | "run" | "press" | "movement" | "counter" | "delivery" | "finish";
   label?: string;
+  /** 1-based step in the sequence. When set on 2+ arrows the painter draws a
+   * numbered badge at each arrow's start so one frame reads as a filmstrip. */
+  order?: number;
 }
 
 export interface DrawerZone {

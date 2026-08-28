@@ -193,19 +193,23 @@ export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): Drawe
     );
   }
 
-  const arrows = [...(scene.arrows || [])]
-    .sort((a, b) => (a.order ?? 99) - (b.order ?? 99))
-    .map((a, i) => {
-      const from = shiftIfNearAway(map(resolveRef(a.from, players)), backsBefore, defShift);
-      const to = shiftIfNearAway(map(resolveRef(a.to, players)), backsBefore, defShift);
-      return {
-        id: `A-${i + 1}`,
-        from: { x: clamp(from.x), y: clamp(from.y) },
-        to: { x: clamp(to.x), y: clamp(to.y) },
-        type: arrowType(a.type),
-        label: undefined as string | undefined,
-      };
-    });
+  const sortedArrows = [...(scene.arrows || [])].sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  // The model's order is advisory (gaps, dupes, all-99). Renumber 1..N in the
+  // sorted order so the painter's badges are always contiguous. Only badge
+  // when there are 2+ arrows — a lone arrow needs no step number.
+  const numberArrows = sortedArrows.length > 1;
+  const arrows = sortedArrows.map((a, i) => {
+    const from = shiftIfNearAway(map(resolveRef(a.from, players)), backsBefore, defShift);
+    const to = shiftIfNearAway(map(resolveRef(a.to, players)), backsBefore, defShift);
+    return {
+      id: `A-${i + 1}`,
+      from: { x: clamp(from.x), y: clamp(from.y) },
+      to: { x: clamp(to.x), y: clamp(to.y) },
+      type: arrowType(a.type),
+      label: undefined as string | undefined,
+      order: numberArrows ? i + 1 : undefined,
+    };
+  });
 
   // Exactly one ball. If the model gave none, start it where the first arrow
   // starts (usually a pass/carry) or at centre. Then snap the first arrow's
