@@ -237,6 +237,16 @@ function expectationFrom(card: SceneCard, drillLike: SceneDrillLike, scene: Scen
 // Records + report
 // ---------------------------------------------------------------------------
 
+/** Per-arrow debug row: what the model said each numbered step is. */
+type StepRow = {
+  order: number | null;
+  type: string;
+  from: string;
+  to: string;
+  /** Painted endpoints — spot a step that resolved to nowhere. */
+  painted: string;
+};
+
 type SampleRecord = {
   idx: number;
   profileLabel: string;
@@ -249,11 +259,41 @@ type SampleRecord = {
   scores: SceneScores | null;
   confidence: number | null;
   issues: string[];
+  steps: StepRow[];
   visual: VisualQaResult | null;
   svg: string | null;
   durationMs: number;
   error: string | null;
 };
+
+/** Resolve one arrow endpoint to a human string ("b3 ST" or "(50,40)"). */
+function endpointLabel(
+  ref: { playerId?: string; x?: number; y?: number } | undefined,
+  players: SceneDiagram["players"]
+): string {
+  if (ref?.playerId) {
+    const p = (players || []).find((pl) => pl.id === ref.playerId);
+    return p ? `${p.id} ${p.role || p.team}` : `${ref.playerId} (missing!)`;
+  }
+  if (Number.isFinite(ref?.x) && Number.isFinite(ref?.y)) return `(${Math.round(ref!.x!)},${Math.round(ref!.y!)})`;
+  return "?";
+}
+
+function stepBreakdown(scene: SceneDiagram, params: DrawerParams): StepRow[] {
+  const raw = [...(scene.arrows || [])].sort((a, b) => ((a as any).order ?? 99) - ((b as any).order ?? 99));
+  return raw.map((a, i) => {
+    const painted = params.arrows[i];
+    return {
+      order: painted?.order ?? null,
+      type: String((a as any).type || "pass"),
+      from: endpointLabel((a as any).from, scene.players),
+      to: endpointLabel((a as any).to, scene.players),
+      painted: painted
+        ? `(${Math.round(painted.from.x)},${Math.round(painted.from.y)})→(${Math.round(painted.to.x)},${Math.round(painted.to.y)})`
+        : "DROPPED",
+    };
+  });
+}
 
 async function runWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, i: number) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
@@ -292,6 +332,14 @@ function reportHtml(records: SampleRecord[], model: string): string {
       const issues = r.issues.length
         ? `<ul class="issues">${r.issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
         : `<p class="ok">No issues from the frozen checks.</p>`;
+      const stepsHtml = r.steps && r.steps.length
+        ? `<table class="steps"><thead><tr><th>badge #</th><th>type</th><th>from → to (model refs)</th><th>painted coords</th></tr></thead><tbody>${r.steps
+            .map(
+              (st) =>
+                `<tr><td>${st.order ?? "—"}</td><td>${esc(st.type)}</td><td>${esc(st.from)} → ${esc(st.to)}</td><td>${esc(st.painted)}</td></tr>`
+            )
+            .join("")}</tbody></table>`
+        : `<p class="ok">No arrows.</p>`;
       const v = r.visual;
       const visualHtml = v
         ? `<p class="visual ${v.verdict}">JUDGE ${v.verdict.toUpperCase()} · ${v.confidence} — ${esc(v.summary)}</p>${
@@ -305,6 +353,7 @@ function reportHtml(records: SampleRecord[], model: string): string {
   <p class="meta">${esc(r.profileLabel)} · ${esc(r.input.drillType)} · ${esc(r.input.gameModelId)} · ${esc(r.input.ageGroup)} · ${esc(r.input.coachLevel)} · ${esc(r.input.spaceConstraint)} · ${r.players} shirts · ${r.durationMs}ms</p>
   <div class="svg">${r.svg}</div>
   <div class="badges">${badges}</div>
+  <details open><summary>Steps — what each number is</summary>${stepsHtml}</details>
   ${visualHtml}
   ${issues}
   ${r.note ? `<p class="note"><span>on the figure</span> ${esc(r.note)}</p>` : ""}
@@ -330,6 +379,9 @@ function reportHtml(records: SampleRecord[], model: string): string {
   .visual.pass{color:#34d399}.visual.review{color:#fbbf24}.visual.fail{color:#f87171}
   details{margin-top:8px}summary{cursor:pointer;color:#93c5fd;font-size:12px}
   .card-text{white-space:pre-wrap;background:#08111f;border-radius:8px;padding:10px;font-size:12px;color:#cbd5e1}
+  table.steps{width:100%;border-collapse:collapse;font-size:11px;margin:6px 0}
+  table.steps th{text-align:left;color:#64748b;font-weight:600;border-bottom:1px solid rgba(255,255,255,0.1);padding:3px 6px}
+  table.steps td{padding:3px 6px;border-bottom:1px solid rgba(255,255,255,0.05);color:#cbd5e1;font-family:ui-monospace,Menlo,monospace}
   .e{color:#fca5a5;white-space:pre-wrap;font-size:12px}.i{color:#64748b;font-size:11px;white-space:pre-wrap;max-height:160px;overflow:auto}
 </style></head><body>
 <h1>Tactical<span>Edge</span> scene-XY sample</h1>
@@ -425,14 +477,14 @@ async function main() {
         idx, profileLabel, input,
         title: card.title, card: card.card, note: null,
         players: params.players.length, pass, scores,
-        confidence: frozenConfidence(scores), issues, visual, svg,
+        confidence: frozenConfidence(scores), issues, steps: stepBreakdown(scene, params), visual, svg,
         durationMs: Date.now() - startedAt, error: null,
       };
     } catch (err: any) {
       process.stdout.write(`\r  ${++done}/${samples.length}`);
       return {
         idx, profileLabel, input, title: null, card: null, note: null, players: 0,
-        pass: false, scores: null, confidence: null, issues: [], visual: null, svg: null,
+        pass: false, scores: null, confidence: null, issues: [], steps: [], visual: null, svg: null,
         durationMs: Date.now() - startedAt, error: err?.message || String(err),
       };
     }

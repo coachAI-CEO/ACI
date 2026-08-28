@@ -1,6 +1,7 @@
 import { isWarmupPicture } from "../data/field-dimensions";
 import type { DrawerGoal, DrawerPlayer } from "../types/drawer";
 import { snapKeepersToGoals } from "./scene-space";
+import type { WebDiagramV1 } from "./web-diagram-v1";
 
 /**
  * The card's kit intent, carried explicitly so sceneToDrawerParams can
@@ -108,6 +109,64 @@ export function relabelFromRoster(
     "away"
   );
   return next;
+}
+
+// ---------------------------------------------------------------------------
+// Arrow ownership — the model sometimes starts a forward pass into a team's
+// attacking third from an OPPONENT shirt (e.g. a red DM makes the blue
+// build-up pass). When the geometry is unambiguous, rebind the arrow's
+// origin to the nearest shirt of the team the pass actually belongs to.
+// ---------------------------------------------------------------------------
+
+type RawArrow = NonNullable<WebDiagramV1["arrows"]>[number];
+
+function avgX(players: DrawerPlayer[]): number {
+  return players.length ? players.reduce((s, p) => s + p.x, 0) / players.length : 50;
+}
+
+export function reassignArrowOwners(arrows: RawArrow[], players: DrawerPlayer[]): RawArrow[] {
+  const home = players.filter((p) => p.team === "home");
+  const away = players.filter((p) => p.team === "away");
+  if (home.length < 1 || away.length < 1) return arrows;
+  const homeAttacksRight = avgX(home) < avgX(away);
+  const byId = new Map(players.map((p) => [p.id, p]));
+
+  const targetX = (ref: RawArrow["to"] | RawArrow["from"]): number | null => {
+    if (ref && "playerId" in ref && ref.playerId && byId.has(ref.playerId)) return byId.get(ref.playerId)!.x;
+    const x = Number((ref as { x?: number })?.x);
+    return Number.isFinite(x) ? x : null;
+  };
+
+  return arrows.map((a) => {
+    const type = String(a.type || "").toLowerCase();
+    // pass + run are directional advancement; press/cover/transition are not.
+    if (type !== "pass" && type !== "run" && type !== "movement") return a;
+    const fromId = a.from && "playerId" in a.from ? a.from.playerId : undefined;
+    const fp = fromId ? byId.get(fromId) : undefined;
+    if (!fp || (fp.team !== "home" && fp.team !== "away")) return a;
+    const tx = targetX(a.to);
+    const fx = targetX(a.from);
+    if (tx == null || fx == null) return a;
+    const dx = tx - fx;
+    if (Math.abs(dx) < 15) return a;
+
+    // Does this pass/run drive toward the goal fp's own team DEFENDS, and land
+    // right on top of it? That's only sensible if fp is really the OTHER
+    // team — a shirt driving the ball into its own net area.
+    const fpAttacksRight = (fp.team === "home") === homeAttacksRight;
+    const towardOwnGoal = fpAttacksRight ? dx < 0 : dx > 0;
+    const deepInOwnEnd = fpAttacksRight ? tx <= 25 : tx >= 75;
+    if (!towardOwnGoal || !deepInOwnEnd) return a;
+
+    const owner: DrawerPlayer["team"] = fp.team === "home" ? "away" : "home";
+    // Rebind to the closest owner shirt near the arrow start (<= 18 units).
+    const pool = (owner === "home" ? home : away)
+      .map((p) => ({ p, d: Math.hypot(p.x - fp.x, p.y - fp.y) }))
+      .filter((c) => c.d <= 18)
+      .sort((c1, c2) => c1.d - c2.d);
+    if (!pool.length) return a;
+    return { ...a, from: { playerId: pool[0].p.id } };
+  });
 }
 
 // ---------------------------------------------------------------------------
