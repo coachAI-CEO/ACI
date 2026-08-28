@@ -384,7 +384,7 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     "- goalsAvailable counts FULL-SIZE goals with a GK specifically. If goalsAvailable=0, the coach has NO full-size goal -- do not add a 'BIG' type goal or a GK-defended goal on any drill. Mini-goals/gates ARE still allowed and commonly used as scoring targets (especially for TACTICAL and CONDITIONED_GAME) -- do not write 'full-size goal', 'GK', or 'goalkeeper' language for this session.",
     "- If goalsAvailable=1, use exactly one full-size goal with one GK. The opposite end must use two mini-goals or gates and must NOT have a GK.",
     "- If goalsAvailable=1, do not write 'full-size goals', 'two goals with GKs', or 'game flows through GKs'. Use 'one GK' and 'mini-goal restarts' language.",
-    "- If goalsAvailable>=2, two full goals/GKs are allowed only when the setup explicitly needs them.",
+    "- If goalsAvailable>=2, CONDITIONED_GAME and FULL_GAME use two full-size goals with GKs (one on each end). Do not write mini-goals, puggs, or 'no full-size GKs' into those drills.",
     "",
     "SPACE CONSTRAINT LOCK (MANDATORY -- this is the actual amount of field the coach has, not a suggestion):",
     `- spaceConstraint=${input.spaceConstraint} for THIS session. The real field for ${gameFormat} (this ageGroup) is ${spaceDims.full.lengthYards}x${spaceDims.full.widthYards} yards. ${input.spaceConstraint === "FULL" ? "The coach has the full field available." : `The coach only has ${spaceDims.label} available -- ${input.spaceConstraint} of the full field, splitting the length and keeping full width.`}`,

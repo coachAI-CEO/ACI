@@ -2,13 +2,13 @@ import {
   extractScene,
   promptForScene,
   sceneToDrawerParams as sceneToDrawerParamsFromCard,
-  type ModelScene,
+  type SceneDiagram,
   type SceneCard,
 } from "../../services/scene-document";
 import type { DrawerParams } from "../../types/drawer";
 import type { ThesisIdea } from "./ideas";
 
-export { extractScene, type ModelScene };
+export { extractScene, type SceneDiagram };
 
 function ideaToCard(idea: ThesisIdea): SceneCard {
   return {
@@ -34,6 +34,6 @@ export function promptFor(idea: ThesisIdea): string {
   return promptForScene(ideaToCard(idea));
 }
 
-export function sceneToDrawerParams(idea: ThesisIdea, scene: ModelScene): DrawerParams {
+export function sceneToDrawerParams(idea: ThesisIdea, scene: SceneDiagram): DrawerParams {
   return sceneToDrawerParamsFromCard(ideaToCard(idea), scene);
 }

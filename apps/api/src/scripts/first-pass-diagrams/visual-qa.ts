@@ -83,7 +83,7 @@ export async function judgePng(args: {
       { text: args.prompt },
       { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
     ],
-    { timeout: 30000, model: requested }
+    { timeout: Number(process.env.VISUAL_QA_TIMEOUT_MS || 60000), model: requested }
   );
   const parsed = parseJsonSafe(text);
   if (!parsed) {

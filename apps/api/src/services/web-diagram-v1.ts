@@ -341,8 +341,9 @@ function mapPitchVariant(raw: unknown): WebDiagramV1['pitch']['variant'] {
 
 function mapTeam(raw: unknown): WebDiagramTeam {
   const t = String(raw || '').toUpperCase();
-  if (t === 'ATT' || t === 'ATTACK') return 'ATT';
-  if (t === 'DEF' || t === 'DEFEND' || t === 'DEFENSE') return 'DEF';
+  // Board vocab: ATT / DEF / NEUTRAL. Scene vocab: home / away / gk / neutral.
+  if (t === 'ATT' || t === 'ATTACK' || t === 'HOME' || t === 'BLUE') return 'ATT';
+  if (t === 'DEF' || t === 'DEFEND' || t === 'DEFENSE' || t === 'AWAY' || t === 'RED' || t === 'GK') return 'DEF';
   return 'NEUTRAL';
 }
 
@@ -467,7 +468,9 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
     ? src.areas
     : Array.isArray(src.safeZones)
       ? src.safeZones
-      : [];
+      : Array.isArray(src.zones)
+        ? src.zones
+        : [];
   const areas: WebDiagramV1['areas'] = areasRaw
     .filter((a: any) => a && typeof a === 'object')
     .map((a: any) => ({

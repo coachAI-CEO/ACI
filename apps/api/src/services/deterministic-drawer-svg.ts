@@ -39,6 +39,7 @@ export function renderDeterministicDiagramSVG(params: DrawerParams): string {
   const zoneLabels = params.zones.map((zone) => renderZoneLabel(zone, geometry)).join("");
   const arrows = params.arrows.map((arrow) => renderArrow(arrow, geometry, params)).join("");
   const players = params.players.map((player) => renderPlayer(player, geometry)).join("");
+  const ball = renderBall(params.ball, geometry);
   const coach = renderCoach(params.coach, geometry);
   const legend = renderLegend(params, geometry);
 
@@ -49,6 +50,7 @@ export function renderDeterministicDiagramSVG(params: DrawerParams): string {
     field,
     zoneBackgrounds,
     players,
+    ball,
     coach,
     arrows,
     zoneLabels,
@@ -321,6 +323,19 @@ function renderPlayer(player: DrawerPlayer, geometry: Geometry): string {
 </g>`;
 }
 
+/** The play ball. Small white disc with a dark ring so it reads on the
+ * green and never gets mistaken for a shirt. */
+function renderBall(ball: DrawerParams["ball"], geometry: Geometry): string {
+  if (!ball || !Number.isFinite(ball.x) || !Number.isFinite(ball.y)) return "";
+  const point = toSvgPoint(ball, geometry);
+  const r = round(Math.max(4, geometry.tokenRadius * 0.42));
+  return `<g transform="translate(${point.x},${point.y})">
+<circle cx="0" cy="0" r="${round(r + 1.5)}" fill="#000000" opacity="0.25"/>
+<circle cx="0" cy="0" r="${r}" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+<circle cx="0" cy="0" r="${round(r * 0.42)}" fill="#0f172a"/>
+</g>`;
+}
+
 /** The coach's position on the sideline, with a ball supply icon -- setup
  * steps almost always describe where the coach stands to feed balls, but
  * nothing rendered it before this. */
@@ -377,13 +392,21 @@ function playerPalette(team: DrawerPlayer["team"]): { fill: string } {
   return { fill: "#3b82f6" };
 }
 
-// Ordered so a compound code like "LCB"/"RCB" (left/right center-back) or
-// "LCM"/"RCM"/"DCM" (center-mid variants) matches its real base position as
-// a substring, instead of falling through to a blind 2-character truncation
-// that produced meaningless labels like "LC"/"RC".
-const CORE_POSITION_CODES = ["GK", "CB", "LB", "RB", "FB", "WB", "DM", "CM", "AM", "MF", "LM", "RM", "LW", "RW", "CF", "ST", "FW"];
+// `normalizePositionLabel` does `CORE_POSITION_CODES.find(c => base.includes(c))`,
+// first match wins, so ORDER matters:
+//   - L/R compounds ("LCB", "RDM") go FIRST so they survive verbatim instead of
+//     collapsing to their bare form ("CB", "DM").
+//   - bare codes next.
+//   - "LC"/"RC" (left/right centre in a small-sided 3-1) LAST — real shorthand
+//     with no bare form; keep them rather than falling through to "AT"/"DF".
+const CORE_POSITION_CODES = [
+  "GK",
+  "LCB", "RCB", "LDM", "RDM", "LCM", "RCM", "LWB", "RWB",
+  "CB", "LB", "RB", "FB", "WB", "DM", "CM", "AM", "MF", "LM", "RM", "LW", "RW", "CF", "ST", "FW",
+  "LC", "RC",
+];
 
-function normalizePositionLabel(player: DrawerPlayer): string {
+export function normalizePositionLabel(player: DrawerPlayer): string {
   if (player.team === "gk") return "GK";
   if (player.team === "neutral") return "NT";
   const normalized = (player.role || player.label || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -394,7 +417,7 @@ function normalizePositionLabel(player: DrawerPlayer): string {
   if (base.includes("FULLBACK")) return "FB";
   if (base === "DEF" || base === "DF" || base === "D") return "CB";
   if (base.includes("MID") || base === "M") return "CM";
-  if (base.includes("WING")) return base.startsWith("L") ? "LW" : base.startsWith("R") ? "RW" : "FW";
+  if (base.includes("WING") || base === "W" || base === "WNG") return base.startsWith("L") ? "LW" : base.startsWith("R") ? "RW" : "FW";
   if (base.includes("FORWARD") || base.includes("STRIKER")) return "ST";
   if (base === "LF" || base === "RF") return "ST";
   if (base.startsWith("SUP") || base === "SU" || base.includes("SUPPORT")) return "CM";

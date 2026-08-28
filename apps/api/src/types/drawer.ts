@@ -22,6 +22,9 @@ export interface DrawerParams {
   goals: DrawerGoal[];
   arrows: DrawerArrow[];
   zones: DrawerZone[];
+  /** The play ball, in 0-100 pitch coords. One ball, or none for a pure
+   * shape diagram. */
+  ball?: { x: number; y: number };
   annotations: DrawerAnnotation[];
   coachingPoints: string[];
   primaryCoachingPicture: string;

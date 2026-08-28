@@ -4,26 +4,31 @@ import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import { renderDeterministicDiagramSVG } from "./deterministic-drawer-svg";
 import { buildSceneCard, type SceneDrillLike } from "./scene-card";
-import { extractScene, promptForScene, sceneToDrawerParams, SCENE_PROMPT_VERSION, type ModelScene } from "./scene-document";
-import { pinGoalsToEnds, snapKeepersToGoals } from "./scene-space";
+import { extractScene, promptForScene, sceneToDrawerParams, SCENE_PROMPT_VERSION, type SceneDiagram, type SceneCard } from "./scene-document";
 import type { DrawerParams } from "../types/drawer";
 
 export type SceneDiagramResult = {
   svg: string;
-  scene: ModelScene;
+  diagram: SceneDiagram;
   card: string;
   model: string;
   promptVersion: typeof SCENE_PROMPT_VERSION;
 };
 
+// params come from sceneToDrawerParams, which already pins goals, snaps
+// keepers, and runs enforceSceneKit. This just renders.
 function paintScene(params: DrawerParams): string {
-  const goals = pinGoalsToEnds(params.goals);
-  const snapped = { ...params, goals, players: snapKeepersToGoals(params.players, goals) };
   const tokenRadius =
-    typeof snapped.lockTokenRadius === "number" && snapped.lockTokenRadius > 0
-      ? snapped.lockTokenRadius
-      : computeTokenRadius(snapped.widthYards, snapped.lengthYards, snapped.fieldFormat, snapped.players.length);
-  return fitDiagramSvgViewBox(applyGoalOverlay(renderDeterministicDiagramSVG(snapped), snapped.goals, scaleFactorFromTokenRadius(tokenRadius)));
+    typeof params.lockTokenRadius === "number" && params.lockTokenRadius > 0
+      ? params.lockTokenRadius
+      : computeTokenRadius(params.widthYards, params.lengthYards, params.fieldFormat, params.players.length);
+  return fitDiagramSvgViewBox(
+    applyGoalOverlay(renderDeterministicDiagramSVG(params), params.goals, scaleFactorFromTokenRadius(tokenRadius))
+  );
+}
+
+export function renderSceneSvg(card: SceneCard, diagram: SceneDiagram): string {
+  return paintScene(sceneToDrawerParams(card, diagram));
 }
 
 function sceneModel(): string {
@@ -52,11 +57,11 @@ export async function generateSceneDiagram(drill: SceneDrillLike): Promise<Scene
       timeout: 60000,
       model,
     });
-    const scene = extractScene(raw);
-    const params = sceneToDrawerParams(card, scene);
+    const diagram = extractScene(raw);
+    const params = sceneToDrawerParams(card, diagram);
     return {
       svg: paintScene(params),
-      scene,
+      diagram,
       card: card.card,
       model,
       promptVersion: SCENE_PROMPT_VERSION,
