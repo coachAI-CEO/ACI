@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HORIZONTAL token roundness check</title>
+    <style>
+      body {
+        background: #0b1220;
+        color: #e5e7eb;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        margin: 24px;
+      }
+      h1 {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        margin-top: 16px;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 8px;
+      }
+      svg {
+        background: #062816;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        display: block;
+      }
+      .pass {
+        color: #22c55e;
+      }
+      .fail {
+        color: #ef4444;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Landscape HORIZONTAL player tokens — before vs after</h1>
+    <p style="font-size: 13px; color: #9ca3af; max-width: 720px">
+      Canvas 700×280, viewBox 0 0 100 100, preserveAspectRatio=none, transform
+      matrix(0 -1 1 0 0 100). Tokens must be round on screen.
+    </p>
+    <div class="row" id="out"></div>
+    <script>
+      const W = 700;
+      const H = 280;
+      const RX = 3;
+      const TRANSFORM = 'matrix(0 -1 1 0 0 100)';
+
+      function tokenRy(rx, w, h, orientation) {
+        const aspect = w / h;
+        return orientation === 'HORIZONTAL' ? rx / aspect : rx * aspect;
+      }
+
+      function screenRadii(rx, ry, orientation) {
+        if (orientation === 'HORIZONTAL') {
+          return { sx: (ry * W) / 100, sy: (rx * H) / 100 };
+        }
+        return { sx: (rx * W) / 100, sy: (ry * H) / 100 };
+      }
+
+      function panel(title, ry, ok) {
+        const players = [
+          { x: 20, y: 25, fill: '#ef4444', n: 4 },
+          { x: 50, y: 50, fill: '#22c55e', n: 8 },
+          { x: 75, y: 70, fill: '#22c55e', n: 10 },
+        ];
+        const marks = players
+          .map(
+            (p) => `
+          <ellipse cx="${p.x}" cy="${p.y}" rx="${RX}" ry="${ry}" fill="${p.fill}" stroke="#0b1220" stroke-width="0.4"/>
+          <text x="${p.x}" y="${p.y + 1}" font-size="3.2" fill="#fff" font-weight="700" text-anchor="middle">${p.n}</text>
+        `
+          )
+          .join('');
+        const { sx, sy } = screenRadii(RX, ry, 'HORIZONTAL');
+        const ratio = (sx / sy).toFixed(2);
+        return `
+          <figure>
+            <figcaption>
+              <strong class="${ok ? 'pass' : 'fail'}">${title}</strong>
+              · diagram ry=${ry.toFixed(2)} · screen ${sx.toFixed(1)}×${sy.toFixed(1)}px · ratio ${ratio}
+            </figcaption>
+            <svg width="${W}" height="${H}" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <rect width="100" height="100" fill="#062816"/>
+              <g transform="${TRANSFORM}">
+                <rect x="2" y="2" width="96" height="96" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="0.4"/>
+                <line x1="50" y1="2" x2="50" y2="98" stroke="rgba(255,255,255,0.32)" stroke-width="0.35"/>
+                <circle cx="50" cy="50" r="9" fill="none" stroke="rgba(255,255,255,0.32)" stroke-width="0.35"/>
+                ${marks}
+              </g>
+            </svg>
+          </figure>
+        `;
+      }
+
+      const wrongRy = tokenRy(RX, W, H, 'VERTICAL'); // old bug when used under HORIZONTAL
+      const rightRy = tokenRy(RX, W, H, 'HORIZONTAL');
+      const wrong = screenRadii(RX, wrongRy, 'HORIZONTAL');
+      const right = screenRadii(RX, rightRy, 'HORIZONTAL');
+
+      document.getElementById('out').innerHTML =
+        panel('BEFORE (bug): VERTICAL ry under HORIZONTAL', wrongRy, Math.abs(wrong.sx - wrong.sy) < 1) +
+        panel('AFTER (fix): HORIZONTAL-aware ry', rightRy, Math.abs(right.sx - right.sy) < 1);
+    </script>
+  </body>
+</html>

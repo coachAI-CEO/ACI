@@ -31,6 +31,19 @@ export interface SessionPromptInput {
   // "Rest Defense Setup"). See TOPIC LOCK in buildSessionPrompt.
   topic?: string;
 
+  // Optional: the specific subprinciple this session was built from (via a
+  // TrainingPriority), if any. When present, the QA reviewer runs the hard
+  // principle-alignment gate against it; when absent (today's flat-topic
+  // flow), QA behaves exactly as before.
+  targetSubprinciple?: QaTargetSubprinciple | null;
+
+  // Optional: which team this session is being generated for. Used only to
+  // check the team's active TrainingPriority (if any) for this calendar
+  // week -- when the topic matches, the created Session is tagged with
+  // that priority/subprinciple; when it doesn't, generateAndReviewSession
+  // returns a non-blocking deviationWarning instead of failing the request.
+  teamId?: string;
+
   /** Club-authored 4-moment DNA from DOC Hub; preferred over hardcoded model profiles. */
   clubPhilosophy?: ClubPhilosophyPromptInput | null;
 
@@ -262,6 +275,43 @@ function getSessionPhaseGuidance(phase?: string, zone?: string): string {
 }
 
 /**
+ * The coach-level vocabulary ladder: three distinct language tiers for the
+ * SAME underlying tactical content. This governs HOW something is written,
+ * not WHAT is taught -- a subprinciple's trigger/response doesn't change
+ * across tiers, only the words used to express it. Separate from
+ * PLAYER LEVEL DIFFICULTY (which governs what's actually demanded of
+ * players) -- coachLevel and playerLevel are independent dials, paired only
+ * by the rule that BEGINNER players only pair with coachLevel=USSF_D.
+ *
+ * Extracted from buildSessionPrompt so this progression is independently
+ * documented and testable, matching the getSessionGameModelGuidance /
+ * getSessionPhaseGuidance pattern used for the other two dials.
+ */
+export function getCoachLanguageProfile(coachLevel: string): string {
+  const isUssfD = coachLevel === "USSF_D";
+  const isUssfC = coachLevel === "USSF_C";
+
+  return [
+    "COACH LANGUAGE PROFILE (MANDATORY -- THREE DISTINCT LEVELS, NOT TWO. USSF_C and USSF_B_PLUS must read as different from EACH OTHER, not just both different from USSF_D):",
+    isUssfD
+      ? "- USSF_D: use clear, practical language that a D-license coach can run immediately. Keep terms simple and direct."
+      : isUssfC
+      ? "- USSF_C: solid, grounded tactical vocabulary -- name ONE concept at a time (pressing trigger, supporting angle, switch of play, third-man pass) and explain it in the same sentence or the next one. A C-license coach knows these terms individually but doesn't yet chain several together fluently."
+      : "- USSF_B_PLUS: fluent, interconnected tactical language -- combine multiple concepts in a single idea the way an experienced coach actually talks (e.g. 'use rest-defense shape to cover the counter while the far winger occupies the last line to stretch their block'), reference how phases interact (build-up shaping the press, press triggering the transition), and assume the coach doesn't need each term individually defined.",
+    isUssfD
+      ? "- BANNED WORDS for USSF_D: never write 'overload', 'numerical superiority', 'half-space', 'half-turn', 'third-man run/combination', 'line-breaking pass', 'defensive block', 'mid-block', 'low-block', 'rest defense', 'unmarking movement', 'positional shape', 'positional play', 'pressing trigger', 'switch the point of attack', 'compact', or 'staggered' -- and nothing that sounds like a coaching-license textbook term in general. Each time you would reach for one of those, write an ORDINARY SENTENCE describing the same idea in your own words instead (e.g. instead of 'positional shape', write something like 'make sure players are spread out where they can help each other' -- a full, natural sentence, NOT a fixed replacement phrase copy-pasted in). The banned words above are examples to avoid, not a find-and-replace table -- do not literally paste in any fixed substitute phrase either; write it fresh, in context, in whatever words fit that specific sentence."
+      : isUssfC
+      ? "- USSF_C vocabulary ceiling: stick to well-known, individually-taught concepts (pressing triggers, support angles, switching play, third-man passes, basic pressing/possession shape). Avoid B+-tier layered/systemic language: do NOT write 'rest defense', 'cover shadow', 'blindside run', or sentences that fuse 2+ tactical ideas into one clause -- that reads as B+, not C."
+      : "- USSF_B_PLUS vocabulary floor: go beyond C's individual-concept vocabulary into named systemic patterns -- 'rest defense', 'cover shadow', 'blindside runs', 'game-model interactions across phases' (how build-up shape sets up the press, how the counterpress relates to rest defense). If a B+ session could be mistaken for a C session, it isn't advanced enough -- add a layered concept, not just a longer sentence.",
+    isUssfD
+      ? "- USSF D quality target: same detail level and structure, but simpler words and more direct action cues."
+      : isUssfC
+      ? "- USSF_C quality target: clear, grounded, one tactical idea at a time -- a coach with real but developing tactical background."
+      : "- USSF_B_PLUS quality target: dense, fluent, systemic -- a coach who talks in connected tactical patterns, not a vocabulary list.",
+  ].join("\n");
+}
+
+/**
  * Build session prompt - generates a full practice session with multiple drills
  */
 export function buildSessionPrompt(input: SessionPromptInput): string {
@@ -326,22 +376,7 @@ export function buildSessionPrompt(input: SessionPromptInput): string {
     ...(isUssfBPlus
       ? ["- USSF_B_PLUS diagrams must be the richest view: 7-10 arrows, 4-6 annotations, and 2-3 safe zones with advanced tactical labels."]
       : []),
-    "COACH LANGUAGE PROFILE (MANDATORY -- THREE DISTINCT LEVELS, NOT TWO. USSF_C and USSF_B_PLUS must read as different from EACH OTHER, not just both different from USSF_D):",
-    isUssfD
-      ? "- USSF_D: use clear, practical language that a D-license coach can run immediately. Keep terms simple and direct."
-      : isUssfC
-      ? "- USSF_C: solid, grounded tactical vocabulary -- name ONE concept at a time (pressing trigger, supporting angle, switch of play, third-man pass) and explain it in the same sentence or the next one. A C-license coach knows these terms individually but doesn't yet chain several together fluently."
-      : "- USSF_B_PLUS: fluent, interconnected tactical language -- combine multiple concepts in a single idea the way an experienced coach actually talks (e.g. 'use rest-defense shape to cover the counter while the far winger occupies the last line to stretch their block'), reference how phases interact (build-up shaping the press, press triggering the transition), and assume the coach doesn't need each term individually defined.",
-    isUssfD
-      ? "- BANNED WORDS for USSF_D: never write 'overload', 'numerical superiority', 'half-space', 'half-turn', 'third-man run/combination', 'line-breaking pass', 'defensive block', 'mid-block', 'low-block', 'rest defense', 'unmarking movement', 'positional shape', 'positional play', 'pressing trigger', 'switch the point of attack', 'compact', or 'staggered' -- and nothing that sounds like a coaching-license textbook term in general. Each time you would reach for one of those, write an ORDINARY SENTENCE describing the same idea in your own words instead (e.g. instead of 'positional shape', write something like 'make sure players are spread out where they can help each other' -- a full, natural sentence, NOT a fixed replacement phrase copy-pasted in). The banned words above are examples to avoid, not a find-and-replace table -- do not literally paste in any fixed substitute phrase either; write it fresh, in context, in whatever words fit that specific sentence."
-      : isUssfC
-      ? "- USSF_C vocabulary ceiling: stick to well-known, individually-taught concepts (pressing triggers, support angles, switching play, third-man passes, basic pressing/possession shape). Avoid B+-tier layered/systemic language: do NOT write 'rest defense', 'cover shadow', 'blindside run', or sentences that fuse 2+ tactical ideas into one clause -- that reads as B+, not C."
-      : "- USSF_B_PLUS vocabulary floor: go beyond C's individual-concept vocabulary into named systemic patterns -- 'rest defense', 'cover shadow', 'blindside runs', 'game-model interactions across phases' (how build-up shape sets up the press, how the counterpress relates to rest defense). If a B+ session could be mistaken for a C session, it isn't advanced enough -- add a layered concept, not just a longer sentence.",
-    isUssfD
-      ? "- USSF D quality target: same detail level and structure, but simpler words and more direct action cues."
-      : isUssfC
-      ? "- USSF_C quality target: clear, grounded, one tactical idea at a time -- a coach with real but developing tactical background."
-      : "- USSF_B_PLUS quality target: dense, fluent, systemic -- a coach who talks in connected tactical patterns, not a vocabulary list.",
+    getCoachLanguageProfile(input.coachLevel),
     "PLAYER LEVEL DIFFICULTY LOCK (MANDATORY):",
     "- coachLevel controls VOCABULARY (how it's written). playerLevel controls DIFFICULTY (what's actually demanded of the players). These are two separate dials.",
     "- PAIRING RULE: BEGINNER players are only valid with coachLevel=USSF_D. USSF_C and USSF_B_PLUS sessions use INTERMEDIATE or ADVANCED players — never write BEGINNER constraints for C/B+.",
@@ -709,7 +744,13 @@ function summarizeSessionForQa(session: any): any {
   return { ...session, drills };
 }
 
-export function buildSessionQAReviewerPrompt(session: any): string {
+export type QaTargetSubprinciple = {
+  trigger: string;
+  response: string;
+  antiPattern?: string | null;
+};
+
+export function buildSessionQAReviewerPrompt(session: any, targetSubprinciple?: QaTargetSubprinciple): string {
   const prettySession = JSON.stringify(summarizeSessionForQa(session), null, 2);
 
   return [
@@ -718,12 +759,55 @@ export function buildSessionQAReviewerPrompt(session: any): string {
     "{",
     '  "pass": boolean,',
     '  "scores": {"structure": number, "gameModel": number, "phase": number, "psych": number, "clarity": number, "realism": number, "constraints": number, "safety": number, "progression": number},',
+    ...(targetSubprinciple
+      ? ['  "principleAlignment": {"contradicted": boolean, "contradictingConstraint": string | null, "explanation": string},']
+      : []),
     '  "summary": string,',
     '  "notes": string[]',
     "}",
     "",
     "Scoring (1-5): 1=broken, 2=serious issues, 3=fixable, 4=strong, 5=excellent.",
     "",
+    ...(targetSubprinciple
+      ? [
+          "PRINCIPLE ALIGNMENT (hard gate, separate from the 1-5 scores above -- this is a",
+          "reward-direction check, not a theme-presence check):",
+          `- TRIGGER this session was built to develop: "${targetSubprinciple.trigger}"`,
+          `- REQUIRED RESPONSE: "${targetSubprinciple.response}"`,
+          ...(targetSubprinciple.antiPattern
+            ? [`- ANTI-PATTERN this session must actively discourage (not just avoid mentioning): "${targetSubprinciple.antiPattern}"`]
+            : []),
+          "- Read every constraint in the tactical/conditioned-game drills. The question for each one is:",
+          "  does achieving the anti-pattern's outcome COST the side responsible for it, or does it PAY them?",
+          "",
+          "  Two constraints can look superficially similar and be opposite in meaning -- tell them apart by",
+          "  whether the reward is EXPLICITLY CONDITIONED on the specific failure the anti-pattern describes:",
+          "",
+          '  - LEGITIMATE (do NOT flag): "If Red\'s defensive line stays deep while the forwards press alone,',
+          '    Blue gets a bonus point." This explicitly names the failure (pressing alone, unsupported) as',
+          "    the trigger for the opponent's reward -- it's a cost imposed ON THE SIDE THAT MADE THE MISTAKE,",
+          "    a standard coaching disincentive. The side responsible for the anti-pattern loses by it.",
+          "",
+          '  - CONTRADICTION (flag this): "The attacking team is awarded 3 points for completing a diagonal',
+          '    switch of play out of the wide trap zone." This rewards achieving the anti-pattern\'s outcome',
+          "    UNCONDITIONALLY -- with no named defensive failure required to trigger it, so it functions as",
+          "    a reward for the outcome itself, not a cost for the mistake that produces it. Nothing here ties",
+          "    the point to a described failure of the response; it just pays for the anti-pattern happening.",
+          "",
+          "  Ask: if I removed the anti-pattern's exact behavior from this constraint, would the point still",
+          "  make sense as a description of a mistake? If yes (as in the first example -- the point is clearly",
+          "  framed as a consequence of a named failure), it's a legitimate disincentive. If the constraint",
+          "  reads as a plain reward for a move/outcome with no failure attached, it's a contradiction.",
+          "",
+          "  Set contradicted=true only for the second kind, and quote the exact constraint text in",
+          "  contradictingConstraint. Do not flag a constraint just because it mentions vocabulary from the",
+          "  anti-pattern -- naming the failure to penalize it is the correct design, not a violation.",
+          "- ⚠️ CRITICAL: if principleAlignment.contradicted is true, set pass=false regardless of the 1-5 scores",
+          "  above. A session that reads well but pays the wrong side for the wrong outcome is worse than a",
+          "  session with weak clarity -- it actively teaches the opposite of what this club's game model says.",
+          "",
+        ]
+      : []),
     "NOTE: each drill's diagram field below is summarized as counts (playersCount, arrowsCount, annotationsCount, safeZonesCount, goalsCount, hasPitch) rather than the full arrays -- judge diagram completeness by whether these counts are non-zero and reasonable, not by inspecting coordinates.",
     "",
     "STRUCTURE (rate overall session structure):",

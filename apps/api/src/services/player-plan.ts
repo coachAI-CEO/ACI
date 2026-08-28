@@ -72,6 +72,25 @@ export async function generatePlayerPlanFromSession(
     throw new Error(`Session not found: ${sessionId}`);
   }
 
+  // Idempotency: if this user already has a player plan for this source
+  // session, return it instead of burning another LLM call and creating a
+  // duplicate row. The mobile and web UIs are expected to call
+  // `/player-plans/by-source` first, but this guards against any client that
+  // doesn't (and against double-taps before that lookup resolves).
+  const existing = await prisma.playerPlan.findFirst({
+    where: { userId, sourceType: "SESSION", sourceId: session.id },
+    select: { id: true, refCode: true },
+  });
+  if (existing) {
+    console.log(`[PLAYER_PLAN] Reusing existing plan ${existing.refCode} for session ${session.id}`);
+    const plan = await prisma.playerPlan.findUnique({ where: { id: existing.id } });
+    return {
+      plan,
+      id: existing.id,
+      refCode: existing.refCode || "",
+    };
+  }
+
   const sessionJson = (session.json as any) || {};
   const drills = sessionJson.drills || [];
 
@@ -208,6 +227,23 @@ export async function generatePlayerPlanFromSeries(
 
   if (sessions.length === 0) {
     throw new Error("Series not found or has no sessions");
+  }
+
+  // Idempotency: reuse any existing player plan for this user+series instead
+  // of generating a new one. See the matching guard in
+  // `generatePlayerPlanFromSession`.
+  const existing = await prisma.playerPlan.findFirst({
+    where: { userId, sourceType: "SERIES", sourceId: seriesId },
+    select: { id: true, refCode: true },
+  });
+  if (existing) {
+    console.log(`[PLAYER_PLAN] Reusing existing plan ${existing.refCode} for series ${seriesId}`);
+    const plan = await prisma.playerPlan.findUnique({ where: { id: existing.id } });
+    return {
+      plan,
+      id: existing.id,
+      refCode: existing.refCode || "",
+    };
   }
 
   // Filter by sessionNumbers if provided

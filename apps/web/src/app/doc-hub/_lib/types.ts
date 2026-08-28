@@ -74,6 +74,92 @@ export type ClubOption = {
   role?: string;
 };
 
+export type AgeGroupMaturityRow = {
+  ageGroup: string;
+  note: string;
+  isCustom: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export type ReadinessCeilingRow = {
+  ageGroup: string;
+  ceiling: "FOUNDATIONAL" | "DEVELOPING" | "ADVANCED";
+  isCustom: boolean;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+export type CoachAdherenceRow = {
+  userId: string;
+  name: string;
+  email: string | null;
+  teams: Array<{ teamId: string; teamName: string; assigned: number; matched: number }>;
+  assigned: number;
+  matched: number;
+  rate: number | null;
+};
+
+export type TeamListRow = {
+  id: string;
+  name: string;
+  ageGroup: string;
+};
+
+export type SubprincipleOption = {
+  id: string;
+  trigger: string;
+  response: string;
+  antiPattern: string | null;
+  readiness: "FOUNDATIONAL" | "DEVELOPING" | "ADVANCED";
+  order: number;
+};
+
+export type PrincipleWithSubprinciples = {
+  id: string;
+  moment: string;
+  statement: string;
+  order: number;
+  subprinciples: SubprincipleOption[];
+};
+
+export type TrainingPriorityRow = {
+  id: string;
+  weekStart: string;
+  rationale: string;
+  status: "ACTIVE" | "RESOLVED";
+  outcome: "RARELY" | "SOMETIMES" | "CONSISTENTLY" | null;
+  outcomeNotes: string | null;
+  subprinciple: {
+    id: string;
+    trigger: string;
+    response: string;
+    readiness: "FOUNDATIONAL" | "DEVELOPING" | "ADVANCED";
+    principle: { moment: string; statement: string };
+  };
+};
+
+export type GeneratedDrillResult = {
+  intent: { tacticalProblem: string; mustBeAvailable: string; mustBeAvoided: string };
+  drill: {
+    title: string;
+    drillType: string;
+    organization: {
+      area: { lengthYards: number; widthYards: number };
+      setupSteps: string[];
+      rotation: string;
+      restarts: string;
+      scoring: string;
+    };
+    constraints: string[];
+    coachingPoints: string[];
+  };
+  qa: {
+    pass: boolean;
+    principleAlignment?: { contradicted: boolean; contradictingConstraint: string | null; explanation: string };
+  };
+};
+
 export const EMPTY_PHILOSOPHY: PhilosophyForm = {
   attackingOrganization: "",
   defensiveTransition: "",

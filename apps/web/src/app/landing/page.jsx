@@ -10,14 +10,12 @@ import {
   ClipboardList,
   Zap,
   Activity,
-  Brain,
   BarChart3,
   FileText,
-  Heart,
-  Sparkles,
   ArrowRight,
   Instagram,
   Twitter,
+  Video,
 } from "lucide-react";
 import { trialsEnabled } from "@/lib/trials";
 
@@ -37,30 +35,65 @@ export default function TacticalEdgeLanding() {
     { label: "Drills Generated", value: "1500+", icon: <Zap size={20} /> },
     { label: "Sessions Created", value: "250+", icon: <Calendar size={20} /> },
     { label: "Coaches Active", value: "50+", icon: <Users size={20} /> },
-    { label: "Training Phases", value: "6", icon: <Activity size={20} /> },
+    { label: "Training Phases", value: "5", icon: <Activity size={20} /> },
     { label: "Age Groups", value: "U8-U18", icon: <Trophy size={20} /> },
     { label: "Formations", value: "12+", icon: <Layout size={20} /> },
   ];
 
-  const features = [
-    { icon: <Zap size={28} />, title: "Drill Generator", desc: "Individual drills with tactical context, diagrams, coaching points, and variations tailored to your squad." },
-    { icon: <ClipboardList size={28} />, title: "Session Builder", desc: "Complete 60-90 minute sessions with our proven 5-phase structure." },
-    { icon: <Activity size={28} />, title: "Progressive Series", desc: "Multi-session plans with progression logic that builds on each session." },
-    { icon: <Users size={28} />, title: "Player Sessions", desc: "Auto-generate individual player homework for development outside team training." },
-    { icon: <Heart size={28} />, title: "Player Focus & Wellbeing", desc: "Psychological and motivational support with confidence tracking." },
-    { icon: <Brain size={28} />, title: "AI Coach Assistant", desc: "Natural language input that learns from your feedback." },
-    { icon: <FileText size={28} />, title: "Content Vault", desc: "Save, organize, and search sessions with reference codes." },
-    { icon: <Calendar size={28} />, title: "Calendar Planning", desc: "Drag & drop scheduling with parent communication." },
-    { icon: <BarChart3 size={28} />, title: "Club Analytics", desc: "Admin dashboard with cross-coach visibility." },
+  const flagship = [
+    {
+      icon: <Trophy size={28} />,
+      title: "Coach Center",
+      desc: "Season workspace for one team: 16-week curriculum, calendar, chat, next sessions, game-day sheet and recap.",
+    },
+    {
+      icon: <ClipboardList size={28} />,
+      title: "Session Builder",
+      desc: "60–90 minute sessions with the 5-phase structure. Export a full PDF or a one-page Coach’s Sheet for the field.",
+    },
+    {
+      icon: <Layout size={28} />,
+      title: "Tactical Board",
+      desc: "Live pitch, formation × phase chassis, principles library, and AI talk in your coaching language.",
+    },
+    {
+      icon: <BarChart3 size={28} />,
+      title: "Director of Coaching (DOC) Console",
+      desc: "Club philosophy, coach usage, empty weeks, and assign or reassign sessions onto coach calendars.",
+    },
+  ];
+
+  const supporting = [
+    {
+      icon: <FileText size={22} />,
+      title: "Content Vault",
+      desc: "Save drills and sessions with reference codes. Club-scoped for staff.",
+    },
+    {
+      icon: <Users size={22} />,
+      title: "Player Homework",
+      desc: "Turn a team session into a solo player plan. PDF ready to send home.",
+    },
+    {
+      icon: <Video size={22} />,
+      title: "Video Analysis",
+      badge: "Beta",
+      desc: "Upload a short clip. Get ranked observations and a corrective session.",
+    },
+    {
+      icon: <Zap size={22} />,
+      title: "Drill Generator",
+      desc: "One drill with tactical context, diagram, coaching points, and variations.",
+    },
   ];
 
   const workflow = [
-    { step: 1, title: "Describe", desc: "Set age group, formation, and training phase" },
-    { step: 2, title: "Generate", desc: "AI builds complete structured session" },
-    { step: 3, title: "Review", desc: "Explore drill cards, tweak parameters" },
-    { step: 4, title: "Save & Schedule", desc: "Send to vault, calendar, notify parents" },
-    { step: 5, title: "Reflect", desc: "Post-training feedback loop" },
-    { step: 6, title: "Progress", desc: "AI builds next session based on outcomes" },
+    { step: 1, title: "Open Coach Center", desc: "Your assigned team, this week’s curriculum theme, next match" },
+    { step: 2, title: "Generate", desc: "Build or reuse a session for that theme" },
+    { step: 3, title: "Review", desc: "Drill cards, tactical diagrams, coaching points" },
+    { step: 4, title: "Print or teach", desc: "Session PDF, Coach’s Sheet, or Tactical Board" },
+    { step: 5, title: "Game day", desc: "Match sheet: focus, DNA, set pieces" },
+    { step: 6, title: "Recap", desc: "Record the match, then pick up next week’s theme" },
   ];
 
   const scrollToSection = (id) => {
@@ -125,7 +158,7 @@ export default function TacticalEdgeLanding() {
       <header id="hero" className="relative px-6 pb-20 pt-40">
         <div className="mx-auto max-w-7xl text-center">
           <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#ADFF2F]/20 bg-[#ADFF2F]/10 px-3 py-1.5 text-xs uppercase tracking-[0.2em] text-[#ADFF2F]">
-            <Sparkles size={14} /> AI-POWERED COACHING PLATFORM
+            Coach Center · Board · DOC Console
           </div>
           <h1 className="mb-8 text-5xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-7xl">
             Session planning
@@ -135,15 +168,15 @@ export default function TacticalEdgeLanding() {
             </span>
           </h1>
           <p className="mx-auto mb-10 max-w-3xl text-lg font-semibold leading-relaxed text-gray-100 [text-shadow:0_3px_14px_rgba(0,0,0,0.85)] md:text-2xl">
-            Generate drills, full sessions, and progressive series with tactical diagrams, all tailored to your age group, formation, and game model.
+            Coach Center runs the week. Session Builder writes the plan. Tactical Board teaches the picture. The Director of Coaching (DOC) Console keeps the club on one game model.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href={signupHref} className="flex h-14 items-center gap-3 rounded-sm bg-[#ADFF2F] px-10 text-xs font-black uppercase text-black transition-all hover:bg-white">
               <span>{signupLabel}</span>
               <ArrowRight size={18} />
             </Link>
-            <Link href="/app" className="h-14 rounded-sm border border-white/10 bg-white/5 px-10 text-xs font-black uppercase text-white hover:bg-white/10 inline-flex items-center">
-              Explore App
+            <Link href="/login" className="h-14 rounded-sm border border-white/10 bg-white/5 px-10 text-xs font-black uppercase text-white hover:bg-white/10 inline-flex items-center">
+              Log In
             </Link>
           </div>
 
@@ -163,18 +196,38 @@ export default function TacticalEdgeLanding() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
             <h2 className="mb-3 text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
-              Complete Coaching <span className="text-[#ADFF2F]">Solution</span>
+              The weekly coaching <span className="text-[#ADFF2F]">OS</span>
             </h2>
-            <p className="text-lg text-gray-200">Everything you need to plan, execute, and analyze</p>
+            <p className="text-lg text-gray-200">Four products coaches and directors actually open. Everything else supports them.</p>
           </div>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {features.map((feature) => (
+          <div className="grid gap-6 md:grid-cols-2">
+            {flagship.map((feature) => (
               <div key={feature.title} className="group rounded-2xl border border-white/15 bg-black/55 p-8 backdrop-blur-sm transition-all hover:border-[#ADFF2F]/60 hover:bg-black/65">
                 <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-xl border border-[#ADFF2F]/35 bg-[#ADFF2F]/12 text-[#ADFF2F] transition-all duration-200 group-hover:scale-105 group-hover:border-[#ADFF2F]/80 group-hover:bg-[#ADFF2F] group-hover:text-black group-hover:shadow-[0_0_24px_rgba(173,255,47,0.45)]">
                   {feature.icon}
                 </div>
-                <h3 className="mb-3 text-xl font-black uppercase tracking-tight text-white [text-shadow:0_3px_14px_rgba(0,0,0,0.9)] hover:text-[#ADFF2F]">{feature.title}</h3>
+                <h3 className="mb-3 text-xl font-black uppercase tracking-tight text-white [text-shadow:0_3px_14px_rgba(0,0,0,0.9)]">{feature.title}</h3>
                 <p className="text-sm text-gray-300">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="mb-6 mt-16 text-center text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Also in the platform</p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {supporting.map((feature) => (
+              <div key={feature.title} className="rounded-xl border border-white/10 bg-black/40 p-6">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#ADFF2F]/25 bg-[#ADFF2F]/10 text-[#ADFF2F]">
+                    {feature.icon}
+                  </div>
+                  {feature.badge && (
+                    <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-300">
+                      {feature.badge}
+                    </span>
+                  )}
+                </div>
+                <h3 className="mb-2 text-sm font-black uppercase tracking-tight text-white">{feature.title}</h3>
+                <p className="text-sm text-gray-400">{feature.desc}</p>
               </div>
             ))}
           </div>
@@ -185,7 +238,7 @@ export default function TacticalEdgeLanding() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
             <h2 className="text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
-              How It <span className="text-[#ADFF2F]">Works</span>
+              How a week <span className="text-[#ADFF2F]">actually runs</span>
             </h2>
           </div>
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -204,9 +257,12 @@ export default function TacticalEdgeLanding() {
 
       <section className="bg-black/60 px-6 py-24">
         <div className="mx-auto max-w-7xl text-center">
-          <h2 className="mb-6 text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
+          <h2 className="mb-4 text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
             Proven 5-Phase <span className="text-[#ADFF2F]">Structure</span>
           </h2>
+          <p className="mx-auto mb-10 max-w-2xl text-lg text-gray-300">
+            Then print the Coach’s Sheet or teach the shape on Tactical Board.
+          </p>
           <div className="flex flex-wrap justify-center gap-4">
             {["Warmup", "Technical", "Tactical", "Game", "Cooldown"].map((phase, i) => (
               <div key={phase} className="flex items-center gap-4">
@@ -222,29 +278,36 @@ export default function TacticalEdgeLanding() {
       </section>
 
       <section className="px-6 py-24">
-        <div className="mx-auto max-w-4xl text-center">
-          <div className="group rounded-[3rem] border border-[#ADFF2F]/25 bg-black/45 p-12 backdrop-blur-sm transition-all duration-300 hover:border-[#ADFF2F]/45 hover:bg-black/55 md:p-20">
-          <h2 className="mb-6 text-4xl font-black uppercase tracking-tighter text-white [text-shadow:0_4px_20px_rgba(0,0,0,0.95)] md:text-6xl">
-              Ready to level up?
+        <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-2">
+          <div className="rounded-[2rem] border border-[#ADFF2F]/25 bg-black/45 p-10 backdrop-blur-sm md:p-12">
+            <p className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-[#ADFF2F]">For coaches</p>
+            <h2 className="mb-4 text-3xl font-black uppercase tracking-tighter text-white md:text-4xl">
+              Run the week from Coach Center
             </h2>
-            <p className="mb-6 text-lg text-gray-200">Join hundreds of coaches using TacticalEdge.</p>
-            <p className="mb-10 text-2xl font-black uppercase tracking-tight text-[#ADFF2F] [text-shadow:0_2px_14px_rgba(0,0,0,0.75)] md:text-3xl">
-              "One club. One philosophy. Every age group aligned. That&apos;s the edge."
+            <p className="mb-8 text-gray-300">
+              Theme, session, PDF, board, game-day sheet. Stop planning from a blank page on Tuesday night.
             </p>
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-5">
-              <Link
-                href={signupHref}
-                className="min-w-[180px] rounded-md bg-[#ADFF2F] px-12 py-5 text-center text-sm font-black uppercase text-black transition-all hover:-translate-y-0.5 hover:bg-[#c6ff5f] hover:shadow-[0_8px_22px_rgba(173,255,47,0.25)]"
-              >
-                {signupLabel}
-              </Link>
-              <Link
-                href="/login"
-                className="min-w-[180px] rounded-md border border-white/20 bg-black/40 px-12 py-5 text-center text-sm font-black uppercase text-white transition-all hover:-translate-y-0.5 hover:border-white/40 hover:bg-black/55"
-              >
-                Log In
-              </Link>
-            </div>
+            <Link
+              href={signupHref}
+              className="inline-flex min-w-[160px] justify-center rounded-md bg-[#ADFF2F] px-8 py-4 text-sm font-black uppercase text-black transition-all hover:bg-[#c6ff5f]"
+            >
+              {signupLabel}
+            </Link>
+          </div>
+          <div className="rounded-[2rem] border border-white/15 bg-black/45 p-10 backdrop-blur-sm md:p-12">
+            <p className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-gray-400">For Directors of Coaching</p>
+            <h2 className="mb-4 text-3xl font-black uppercase tracking-tighter text-white md:text-4xl">
+              One philosophy. Every age group.
+            </h2>
+            <p className="mb-8 text-gray-300">
+              The DOC Console shows empty weeks, attention, and calendar coverage so every coach stays on the club game model.
+            </p>
+            <Link
+              href="/pricing"
+              className="inline-flex min-w-[160px] justify-center rounded-md border border-white/20 bg-black/40 px-8 py-4 text-sm font-black uppercase text-white transition-all hover:border-white/40"
+            >
+              Club Pro &amp; Elite
+            </Link>
           </div>
         </div>
       </section>
@@ -261,9 +324,8 @@ export default function TacticalEdgeLanding() {
             </span>
           </div>
           <div className="flex flex-wrap justify-center gap-3 text-sm">
-            <Link href="/app" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">App Home</Link>
             <Link href="/pricing" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Plans</Link>
-            <Link href="/demo/session" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Session Generator</Link>
+            <Link href="/coach-center" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Coach Center</Link>
             <Link href={signupHref} className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">{trialsOpen ? "Register" : "View Plans"}</Link>
             <Link href="/login" className="rounded-md border border-transparent px-3 py-1.5 text-gray-300 transition hover:border-[#ADFF2F]/40 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]">Login</Link>
           </div>
@@ -286,6 +348,7 @@ export default function TacticalEdgeLanding() {
         <div className="mx-auto mt-8 max-w-7xl border-t border-white/10 pt-6 text-center">
           <p className="text-sm text-gray-400">© 2026 TacticalEdge. Built for coaches, by coaches.</p>
         </div>
-      </footer>    </div>
+      </footer>
+    </div>
   );
 }

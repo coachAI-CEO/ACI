@@ -1,96 +1,24 @@
 /**
- * Web DiagramV1 (canonical store for TacticalBoard) + mapping from API normalizer output.
+ * API-side tactical board services.
+ *
+ * The canonical `WebDiagramV1` type lives in `@aci/shared`. This file keeps
+ * the API-specific normalize pipeline (`toWebDiagramV1`, formation presets,
+ * session/board axis remap) — those are not pure data shapes and don't belong
+ * in the shared package — but the types are re-exported from `@aci/shared`
+ * so the rest of the API (`tactical-boards.ts`, Zod schema, tests) can keep
+ * importing them from this file unchanged.
  */
 
 import { mergePracticeElements, type BoardElement } from './board-elements';
+import type {
+  WebDiagramV1,
+  WebDiagramTeam,
+} from '@aci/shared';
 
-export type WebDiagramTeam = 'ATT' | 'DEF' | 'NEUTRAL';
-export type { BoardElement };
+// Re-export the canonical types under the names the rest of the API uses.
+export type { WebDiagramV1, WebDiagramTeam } from '@aci/shared';
+export type { BoardElement } from '@aci/shared';
 export type WebDiagramElement = BoardElement;
-
-export type WebDiagramV1 = {
-  pitch: {
-    variant: 'FULL' | 'HALF' | 'THIRD';
-    orientation: 'HORIZONTAL' | 'VERTICAL';
-    format?: '7V7' | '9V9' | '11V11';
-    showZones?: boolean;
-    showThirds?: boolean;
-    zones?: {
-      leftWide?: boolean;
-      leftHalfSpace?: boolean;
-      centralChannel?: boolean;
-      rightHalfSpace?: boolean;
-      rightWide?: boolean;
-    };
-  };
-  players: Array<{
-    id: string;
-    number?: number;
-    team: WebDiagramTeam;
-    role?: string;
-    x: number;
-    y: number;
-    relativePosition?: string;
-    facingAngle?: number;
-    labelStyle?: 'number-only' | 'number-and-role';
-  }>;
-  goals?: Array<{
-    id: string;
-    x: number;
-    y: number;
-    width?: number;
-    type?: string;
-  }>;
-  coach?: {
-    x: number;
-    y: number;
-    label?: string;
-    note?: string;
-  };
-  balls?: Array<{ x: number; y: number }>;
-  cones?: Array<{ x: number; y: number; color?: string }>;
-  /** Practice kit: mini-goals, cones, mannequins, poles. */
-  elements?: BoardElement[];
-  arrows: Array<{
-    from: { playerId?: string; x?: number; y?: number };
-    to: { playerId?: string; x?: number; y?: number };
-    type: 'pass' | 'run' | 'press' | 'cover' | 'transition';
-    style: 'solid' | 'dashed' | 'dotted';
-    weight: 'normal' | 'bold';
-    arrowhead?: boolean;
-    control?: { x: number; y: number };
-    path?: Array<{ x: number; y: number }>;
-    /** 1-based pass/run order for combination filmstrips. */
-    order?: number;
-  }>;
-  areas: Array<{
-    label?: string;
-    x?: number;
-    y?: number;
-    width?: number;
-    height?: number;
-    shape?: 'rect' | 'circle' | 'spotlight';
-  }>;
-  labels: Array<{ text: string; x: number; y: number }>;
-  sequence?: {
-    activeFrameId: string;
-    frames: Array<{
-      id: string;
-      title?: string;
-      note?: string;
-      durationMs?: number;
-      players: WebDiagramV1['players'];
-      arrows: WebDiagramV1['arrows'];
-      areas: WebDiagramV1['areas'];
-      labels: WebDiagramV1['labels'];
-      balls?: WebDiagramV1['balls'];
-      goals?: WebDiagramV1['goals'];
-      coach?: WebDiagramV1['coach'];
-      cones?: WebDiagramV1['cones'];
-      elements?: WebDiagramV1['elements'];
-    }>;
-  };
-};
 
 /** Truly empty canvas (tests / reset). Prefer DEFAULT_MATCH_BOARD_DIAGRAM for seeded shapes. */
 export const BLANK_BOARD_DIAGRAM: WebDiagramV1 = {
