@@ -74,6 +74,9 @@ export interface DrawerArrow {
   /** 1-based step in the sequence. When set on 2+ arrows the painter draws a
    * numbered badge at each arrow's start so one frame reads as a filmstrip. */
   order?: number;
+  /** The acting player's team — the painter colours the arrow by this so a
+   * blue line never comes off a red shirt. Falls back to type colour. */
+  team?: "home" | "away" | "neutral";
 }
 
 export interface DrawerZone {

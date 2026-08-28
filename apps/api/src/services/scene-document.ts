@@ -200,9 +200,12 @@ export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): Drawe
   // sorted order so the painter's badges are always contiguous. Only badge
   // when there are 2+ arrows — a lone arrow needs no step number.
   const numberArrows = sortedArrows.length > 1;
+  const teamById = new Map(players.map((p) => [p.id, p.team]));
   const arrows = sortedArrows.map((a, i) => {
     const from = shiftIfNearAway(map(resolveRef(a.from, players)), backsBefore, defShift);
     const to = shiftIfNearAway(map(resolveRef(a.to, players)), backsBefore, defShift);
+    const originId = a.from && "playerId" in a.from ? a.from.playerId : undefined;
+    const originTeam = originId ? teamById.get(originId) : undefined;
     return {
       id: `A-${i + 1}`,
       from: { x: clamp(from.x), y: clamp(from.y) },
@@ -210,6 +213,7 @@ export function sceneToDrawerParams(card: SceneCard, scene: SceneDiagram): Drawe
       type: arrowType(a.type),
       label: undefined as string | undefined,
       order: numberArrows ? i + 1 : undefined,
+      team: originTeam === "home" || originTeam === "away" || originTeam === "neutral" ? originTeam : undefined,
     };
   });
 

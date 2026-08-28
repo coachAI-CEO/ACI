@@ -192,6 +192,10 @@ test("renderSceneSvg draws a WebDiagramV1 end to end, ball included", () => {
   // two arrows → numbered step badges 1 and 2
   expect(svg).toMatch(/>1<\/text>/);
   expect(svg).toMatch(/>2<\/text>/);
+  // arrows take the acting team's colour: blue pass off b2 (home),
+  // red press off r1 (away) — never a blue line off a red shirt
+  expect(svg).toMatch(/stroke="#3b82f6"[^>]*marker-end="url\(#mHome\)"/);
+  expect(svg).toMatch(/stroke="#ef4444"[^>]*marker-end="url\(#mAway\)"/);
 });
 
 test("reassignArrowOwners rebinds a red-shirt forward pass into blue's final third", () => {

@@ -132,6 +132,9 @@ function renderDefs(): string {
 ${arrowMarker("mPass", "#3b82f6")}
 ${arrowMarker("mRun", "#3b82f6")}
 ${arrowMarker("mPress", "#ef4444")}
+${arrowMarker("mHome", "#3b82f6")}
+${arrowMarker("mAway", "#ef4444")}
+${arrowMarker("mNeutral", "#f59e0b")}
 ${arrowMarker("mCounter", "#22c55e")}
 ${arrowMarker("mDeliver", "#ffffff", "#0f172a")}
 ${arrowMarker("mFinish", "#fbbf24")}
@@ -300,7 +303,7 @@ function renderArrow(arrow: DrawerArrow, geometry: Geometry, params: DrawerParam
   const start = insetPoint(rawFrom, towardStart, padAtEndpoint(rawFrom, geometry, params, arrow.from.isCoach, false));
   const end = insetPoint(rawTo, towardEnd, padAtEndpoint(rawTo, geometry, params, arrow.to.isCoach, true));
   if (Math.hypot(end.x - start.x, end.y - start.y) < 8) return "";
-  const style = arrowStyle(arrow.type);
+  const style = arrowStyle(arrow.type, arrow.team);
   const d = routed.control
     ? `M ${round(start.x)} ${round(start.y)} Q ${round(routed.control.x)} ${round(routed.control.y)} ${round(end.x)} ${round(end.y)}`
     : `M ${round(start.x)} ${round(start.y)} L ${round(end.x)} ${round(end.y)}`;
@@ -405,13 +408,26 @@ ${items.join("\n")}
 </g>`;
 }
 
-function arrowStyle(type: DrawerArrow["type"]): { stroke: string; width: string; dash?: string; marker: string } {
-  if (type === "press") return { stroke: "#ef4444", width: "2.5", dash: "5,3", marker: "mPress" };
+function arrowStyle(
+  type: DrawerArrow["type"],
+  team?: DrawerArrow["team"]
+): { stroke: string; width: string; dash?: string; marker: string } {
+  // Team-specific semantics keep their own colour regardless of who acts.
   if (type === "counter") return { stroke: "#22c55e", width: "2.5", marker: "mCounter" };
   if (type === "delivery") return { stroke: "#ffffff", width: "2.5", dash: "4,3", marker: "mDeliver" };
   if (type === "finish") return { stroke: "#fbbf24", width: "2.5", marker: "mFinish" };
-  if (type === "run" || type === "movement") return { stroke: "#3b82f6", width: "2.5", dash: "6,4", marker: "mRun" };
-  return { stroke: "#3b82f6", width: "2.5", marker: "mPass" };
+
+  // pass / run / press take the acting player's colour so a line never
+  // contradicts the shirt it comes off. Dash pattern still encodes the type.
+  const byTeam =
+    team === "away"
+      ? { stroke: "#ef4444", marker: "mAway" }
+      : team === "neutral"
+        ? { stroke: "#f59e0b", marker: "mNeutral" }
+        : { stroke: "#3b82f6", marker: "mHome" };
+  if (type === "press") return { ...byTeam, width: "2.5", dash: "5,3" };
+  if (type === "run" || type === "movement") return { ...byTeam, width: "2.5", dash: "6,4" };
+  return { ...byTeam, width: "2.5" };
 }
 
 function playerPalette(team: DrawerPlayer["team"]): { fill: string } {
