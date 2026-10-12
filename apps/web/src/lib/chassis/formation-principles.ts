@@ -1,4 +1,10 @@
 /**
+ * GENERATED FILE -- do not edit by hand.
+ * Source: apps/api/src/services/formation-principles.ts
+ * Regenerate with: pnpm sync:board-chassis
+ */
+
+/**
  * 11v11 Chassis & Spacing playbook (v2) — used by board AI prompts
  * and deterministic play-out placement.
  *
