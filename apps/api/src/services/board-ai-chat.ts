@@ -248,7 +248,7 @@ function compactDiagram(diagram: WebDiagramV1): WebDiagramV1 {
     ...root,
     sequence: {
       activeFrameId: diagram.sequence.activeFrameId,
-      frames: diagram.sequence.frames.slice(0, 8).map((f) => ({
+      frames: diagram.sequence.frames.slice(0, 12).map((f) => ({
         id: f.id,
         title: f.title,
         note: f.note,
@@ -259,7 +259,7 @@ function compactDiagram(diagram: WebDiagramV1): WebDiagramV1 {
   };
 }
 
-const BOARD_AI_SEQUENCE_MAX_FRAMES = 8;
+const BOARD_AI_SEQUENCE_MAX_FRAMES = 12;
 
 function layersFromRepaired(d: WebDiagramV1) {
   return {

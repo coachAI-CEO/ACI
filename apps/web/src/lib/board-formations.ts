@@ -288,7 +288,7 @@ export function buildDefaultMatchDiagram(
       showZones: false,
     },
     players: [...home, ...away],
-    balls: [{ x: 50, y: 50 }],
+    balls: [{ id: "b-0", x: 50, y: 50 }],
     goals: [
       { id: "goal-left", x: 50, y: 2, type: "BIG", width: 16 },
       { id: "goal-right", x: 50, y: 98, type: "BIG", width: 16 },

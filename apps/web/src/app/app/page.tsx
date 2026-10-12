@@ -61,9 +61,9 @@ const PRESSING_DIAGRAM: DiagramV1 = {
   cones: [],
   goals: [{ id: "G1", type: "BIG", width: 22, x: 90, y: 20 }],
   arrows: [
-    { from: { playerId: "A1" }, to: { playerId: "A2" }, type: "pass", style: "solid", weight: "normal" },
-    { from: { playerId: "D3" }, to: { playerId: "A1" }, type: "press", style: "solid", weight: "bold" },
-    { from: { playerId: "D2" }, to: { playerId: "A2" }, type: "run", style: "dashed", weight: "normal" },
+    { id: "a-0", from: { playerId: "A1" }, to: { playerId: "A2" }, type: "pass", style: "solid", weight: "normal" },
+    { id: "a-1", from: { playerId: "D3" }, to: { playerId: "A1" }, type: "press", style: "solid", weight: "bold" },
+    { id: "a-2", from: { playerId: "D2" }, to: { playerId: "A2" }, type: "run", style: "dashed", weight: "normal" },
   ],
   areas: [],
   labels: [],

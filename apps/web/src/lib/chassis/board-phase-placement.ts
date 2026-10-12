@@ -25,6 +25,19 @@ type SeqFrame = NonNullable<WebDiagramV1['sequence']>['frames'][number];
 
 const clamp = (n: number) => Math.max(2, Math.min(98, n));
 
+function withIds<T extends object>(
+  items: T[] | undefined,
+  prefix: string
+): Array<T & { id: string }> {
+  return (items || []).map((item, i) => {
+    const existing =
+      "id" in item && typeof (item as { id?: unknown }).id === "string"
+        ? String((item as { id: string }).id)
+        : "";
+    return { ...item, id: existing || `${prefix}-${i}` };
+  });
+}
+
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
@@ -359,6 +372,7 @@ function arrow(
   style: Arrow['style'] = 'solid'
 ): Arrow {
   return {
+    id: `a-${fromId}-${toId}-${type}`,
     from: { playerId: fromId },
     to: { playerId: toId },
     type,
@@ -1607,7 +1621,14 @@ export function placePhaseSnapshot(input: {
 
   // 4-4-2 Def-third: double yellow squares — CB unit + CM screening unit
   // 3-5-2 Def-third: yellow square on the #6/#8/#7/#9 midfield box
-  const areas: WebDiagramV1['areas'] =
+  const areas: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    shape: "rect";
+    label?: string;
+  }> =
     phase === 'goal_kick' && attFormation === '4-4-2'
       ? [
           {
@@ -1642,10 +1663,10 @@ export function placePhaseSnapshot(input: {
 
   return {
     players,
-    arrows,
-    areas,
-    labels,
-    balls: [ballAt],
+    arrows: withIds(arrows, 'a'),
+    areas: withIds(areas, 'z'),
+    labels: withIds(labels, 'l'),
+    balls: withIds([ballAt], 'b'),
     title: g.title,
   };
 }
@@ -1813,11 +1834,14 @@ export function applySetupPhaseToDiagram(
     players,
     balls: placed.balls,
     areas: placed.areas,
-    labels: captionTexts.map((text, i) => ({
-      text: text.slice(0, 200),
-      x: stack[i]?.x ?? clamp(90 - i * 13),
-      y: stack[i]?.y ?? 76,
-    })),
+    labels: withIds(
+      captionTexts.map((text, i) => ({
+        text: text.slice(0, 200),
+        x: stack[i]?.x ?? clamp(90 - i * 13),
+        y: stack[i]?.y ?? 76,
+      })),
+      'l'
+    ),
     arrows: [],
     sequence: undefined,
   };

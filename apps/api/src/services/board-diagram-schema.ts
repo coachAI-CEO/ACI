@@ -5,9 +5,9 @@ export const BOARD_DIAGRAM_MAX_PLAYERS = 30;
 export const BOARD_DIAGRAM_MAX_ARROWS = 40;
 export const BOARD_DIAGRAM_MAX_LABELS = 20;
 export const BOARD_DIAGRAM_MAX_AREAS = 20;
-export const BOARD_DIAGRAM_MAX_FRAMES = 8;
+export const BOARD_DIAGRAM_MAX_FRAMES = 12;
 /** Raised to fit multi-frame sequences (still capped by frame count). */
-export const BOARD_DIAGRAM_MAX_BYTES = 192 * 1024;
+export const BOARD_DIAGRAM_MAX_BYTES = 256 * 1024;
 export const BOARD_TITLE_MAX_LEN = 120;
 export const BOARD_DIAGRAM_MAX_ELEMENTS = 40;
 
@@ -23,11 +23,78 @@ const BoardElementSchema = z
   })
   .strict();
 
+const PointSchema = z
+  .object({
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+  })
+  .strict();
+
 const PointRefSchema = z
   .object({
     playerId: z.string().max(64).optional(),
     x: z.number().min(0).max(100).optional(),
     y: z.number().min(0).max(100).optional(),
+  })
+  .strict();
+
+const BoardPlayerSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    number: z.number().int().min(0).max(99).optional(),
+    team: z.enum(['ATT', 'DEF', 'NEUTRAL']),
+    role: z.string().max(64).optional(),
+    name: z.string().max(40).optional(),
+    group: z.string().max(64).optional(),
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+    relativePosition: z.string().max(64).optional(),
+    facingAngle: z.number().optional(),
+    labelStyle: z.enum(['number-only', 'number-and-role']).optional(),
+  })
+  .strict();
+
+const BoardArrowSchema = z
+  .object({
+    id: z.string().max(64).optional(),
+    from: PointRefSchema,
+    to: PointRefSchema,
+    type: z.enum(['pass', 'run', 'press', 'cover', 'transition']),
+    style: z.enum(['solid', 'dashed', 'dotted']),
+    weight: z.enum(['normal', 'bold']),
+    arrowhead: z.boolean().optional(),
+    control: PointSchema.optional(),
+    path: z.array(PointSchema).max(100).optional(),
+    order: z.number().int().min(1).max(12).optional(),
+  })
+  .strict();
+
+const BoardAreaSchema = z
+  .object({
+    id: z.string().max(64).optional(),
+    label: z.string().max(120).optional(),
+    x: z.number().min(0).max(100).optional(),
+    y: z.number().min(0).max(100).optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    shape: z.enum(['rect', 'circle', 'spotlight']).optional(),
+  })
+  .strict();
+
+const BoardLabelSchema = z
+  .object({
+    id: z.string().max(64).optional(),
+    text: z.string().min(1).max(200),
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
+  })
+  .strict();
+
+const BoardBallSchema = z
+  .object({
+    id: z.string().max(64).optional(),
+    x: z.number().min(0).max(100),
+    y: z.number().min(0).max(100),
   })
   .strict();
 
@@ -52,23 +119,7 @@ export const WebDiagramV1Schema = z
           .optional(),
       })
       .strict(),
-    players: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1).max(64),
-            number: z.number().int().min(0).max(99).optional(),
-            team: z.enum(['ATT', 'DEF', 'NEUTRAL']),
-            role: z.string().max(64).optional(),
-            x: z.number().min(0).max(100),
-            y: z.number().min(0).max(100),
-            relativePosition: z.string().max(64).optional(),
-            facingAngle: z.number().optional(),
-            labelStyle: z.enum(['number-only', 'number-and-role']).optional(),
-          })
-          .strict()
-      )
-      .max(BOARD_DIAGRAM_MAX_PLAYERS),
+    players: z.array(BoardPlayerSchema).max(BOARD_DIAGRAM_MAX_PLAYERS),
     goals: z
       .array(
         z
@@ -92,17 +143,7 @@ export const WebDiagramV1Schema = z
       })
       .strict()
       .optional(),
-    balls: z
-      .array(
-        z
-          .object({
-            x: z.number().min(0).max(100),
-            y: z.number().min(0).max(100),
-          })
-          .strict()
-      )
-      .max(20)
-      .optional(),
+    balls: z.array(BoardBallSchema).max(20).optional(),
     cones: z
       .array(
         z
@@ -116,64 +157,9 @@ export const WebDiagramV1Schema = z
       .max(40)
       .optional(),
     elements: z.array(BoardElementSchema).max(BOARD_DIAGRAM_MAX_ELEMENTS).optional(),
-    arrows: z
-      .array(
-        z
-          .object({
-            from: PointRefSchema,
-            to: PointRefSchema,
-            type: z.enum(['pass', 'run', 'press', 'cover', 'transition']),
-            style: z.enum(['solid', 'dashed', 'dotted']),
-            weight: z.enum(['normal', 'bold']),
-            arrowhead: z.boolean().optional(),
-            control: z
-              .object({
-                x: z.number().min(0).max(100),
-                y: z.number().min(0).max(100),
-              })
-              .strict()
-              .optional(),
-            path: z
-              .array(
-                z
-                  .object({
-                    x: z.number().min(0).max(100),
-                    y: z.number().min(0).max(100),
-                  })
-                  .strict()
-              )
-              .max(100)
-              .optional(),
-            order: z.number().int().min(1).max(12).optional(),
-          })
-          .strict()
-      )
-      .max(BOARD_DIAGRAM_MAX_ARROWS),
-    areas: z
-      .array(
-        z
-          .object({
-            label: z.string().max(120).optional(),
-            x: z.number().min(0).max(100).optional(),
-            y: z.number().min(0).max(100).optional(),
-            width: z.number().optional(),
-            height: z.number().optional(),
-            shape: z.enum(['rect', 'circle', 'spotlight']).optional(),
-          })
-          .strict()
-      )
-      .max(BOARD_DIAGRAM_MAX_AREAS),
-    labels: z
-      .array(
-        z
-          .object({
-            text: z.string().min(1).max(200),
-            x: z.number().min(0).max(100),
-            y: z.number().min(0).max(100),
-          })
-          .strict()
-      )
-      .max(BOARD_DIAGRAM_MAX_LABELS),
+    arrows: z.array(BoardArrowSchema).max(BOARD_DIAGRAM_MAX_ARROWS),
+    areas: z.array(BoardAreaSchema).max(BOARD_DIAGRAM_MAX_AREAS),
+    labels: z.array(BoardLabelSchema).max(BOARD_DIAGRAM_MAX_LABELS),
     sequence: z
       .object({
         activeFrameId: z.string().min(1).max(64),
@@ -183,94 +169,13 @@ export const WebDiagramV1Schema = z
               .object({
                 id: z.string().min(1).max(64),
                 title: z.string().max(80).optional(),
-                note: z.string().max(300).optional(),
+                note: z.string().max(500).optional(),
                 durationMs: z.number().int().min(400).max(12000).optional(),
-                players: z
-                  .array(
-                    z
-                      .object({
-                        id: z.string().min(1).max(64),
-                        number: z.number().int().min(0).max(99).optional(),
-                        team: z.enum(['ATT', 'DEF', 'NEUTRAL']),
-                        role: z.string().max(64).optional(),
-                        x: z.number().min(0).max(100),
-                        y: z.number().min(0).max(100),
-                        relativePosition: z.string().max(64).optional(),
-                        facingAngle: z.number().optional(),
-                        labelStyle: z.enum(['number-only', 'number-and-role']).optional(),
-                      })
-                      .strict()
-                  )
-                  .max(BOARD_DIAGRAM_MAX_PLAYERS),
-                arrows: z
-                  .array(
-                    z
-                      .object({
-                        from: PointRefSchema,
-                        to: PointRefSchema,
-                        type: z.enum(['pass', 'run', 'press', 'cover', 'transition']),
-                        style: z.enum(['solid', 'dashed', 'dotted']),
-                        weight: z.enum(['normal', 'bold']),
-                        arrowhead: z.boolean().optional(),
-                        control: z
-                          .object({
-                            x: z.number().min(0).max(100),
-                            y: z.number().min(0).max(100),
-                          })
-                          .strict()
-                          .optional(),
-                        path: z
-                          .array(
-                            z
-                              .object({
-                                x: z.number().min(0).max(100),
-                                y: z.number().min(0).max(100),
-                              })
-                              .strict()
-                          )
-                          .max(100)
-                          .optional(),
-                        order: z.number().int().min(1).max(12).optional(),
-                      })
-                      .strict()
-                  )
-                  .max(BOARD_DIAGRAM_MAX_ARROWS),
-                areas: z
-                  .array(
-                    z
-                      .object({
-                        label: z.string().max(120).optional(),
-                        x: z.number().min(0).max(100).optional(),
-                        y: z.number().min(0).max(100).optional(),
-                        width: z.number().optional(),
-                        height: z.number().optional(),
-                        shape: z.enum(['rect', 'circle', 'spotlight']).optional(),
-                      })
-                      .strict()
-                  )
-                  .max(BOARD_DIAGRAM_MAX_AREAS),
-                labels: z
-                  .array(
-                    z
-                      .object({
-                        text: z.string().min(1).max(200),
-                        x: z.number().min(0).max(100),
-                        y: z.number().min(0).max(100),
-                      })
-                      .strict()
-                  )
-                  .max(BOARD_DIAGRAM_MAX_LABELS),
-                balls: z
-                  .array(
-                    z
-                      .object({
-                        x: z.number().min(0).max(100),
-                        y: z.number().min(0).max(100),
-                      })
-                      .strict()
-                  )
-                  .max(20)
-                  .optional(),
+                players: z.array(BoardPlayerSchema).max(BOARD_DIAGRAM_MAX_PLAYERS),
+                arrows: z.array(BoardArrowSchema).max(BOARD_DIAGRAM_MAX_ARROWS),
+                areas: z.array(BoardAreaSchema).max(BOARD_DIAGRAM_MAX_AREAS),
+                labels: z.array(BoardLabelSchema).max(BOARD_DIAGRAM_MAX_LABELS),
+                balls: z.array(BoardBallSchema).max(20).optional(),
                 goals: z
                   .array(
                     z

@@ -188,6 +188,10 @@ export function eraseArrowAtIndex(arrows: DiagramArrow[], index: number): Diagra
   return arrows.filter((_, i) => i !== index);
 }
 
+export function eraseArrowById(arrows: DiagramArrow[], id: string): DiagramArrow[] {
+  return arrows.filter((a) => a.id !== id);
+}
+
 /** True when moving a player should move this arrow endpoint (sticky link). */
 export function arrowFollowsPlayer(arrow: DiagramArrow, playerId: string): boolean {
   return arrow.from.playerId === playerId || arrow.to.playerId === playerId;
@@ -234,6 +238,7 @@ export function createLineArrow(input: {
     }
   }
   const arrow: DiagramArrow = {
+    id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     from: buildPointRef(input.fromPlayerId, input.fromX, input.fromY),
     to: buildPointRef(input.toPlayerId, input.toX, input.toY),
     type: input.type,

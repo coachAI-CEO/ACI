@@ -327,7 +327,7 @@ function slideFromDiagram(
   return {
     id,
     title: title.slice(0, 80),
-    ...(note ? { note: note.slice(0, 300) } : {}),
+    ...(note ? { note: note.slice(0, 500) } : {}),
     durationMs: 2400,
     players: web.players,
     arrows: web.arrows,

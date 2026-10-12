@@ -428,9 +428,10 @@ export default function BoardPage() {
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-auto p-3 lg:p-4">
-          {error ? <p className="mb-2 text-xs text-rose-300">{error}</p> : null}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-2 lg:p-3">
+          {error ? <p className="mb-2 shrink-0 text-xs text-rose-300">{error}</p> : null}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TacticalBoardEditor
             boardId={boardId}
             diagram={diagram}
@@ -455,6 +456,7 @@ export default function BoardPage() {
             }}
             onSave={() => void onSave()}
           />
+          </div>
           {aiProgress.visible ? (
             <div className="pointer-events-none absolute inset-3 z-20 flex items-start justify-center pt-6 lg:inset-4">
               <div className="min-w-[220px] rounded-xl border border-emerald-500/30 bg-[#07111f]/92 px-4 py-3 shadow-xl backdrop-blur-sm">
@@ -486,7 +488,7 @@ export default function BoardPage() {
           <summary className="cursor-pointer px-3 py-2.5 text-xs font-semibold text-emerald-200">
             Tactical Edge AI
           </summary>
-          <div className="h-[50vh] border-t border-white/10">
+          <div className="h-[42vh] border-t border-white/10">
             <BoardAiChat {...chatProps} />
           </div>
         </details>

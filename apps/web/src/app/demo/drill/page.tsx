@@ -250,7 +250,7 @@ async function fetchDrill(
   if (useStatic) {
     const data = await import("./demo-drill-static.json");
     console.log(`[PERF] Static drill loaded in ${Date.now() - perfStart}ms`);
-    return data as DrillApiResponse;
+    return data as unknown as DrillApiResponse;
   }
 
   // Debug: log the config being sent

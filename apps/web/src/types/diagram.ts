@@ -45,6 +45,8 @@ export interface DiagramPlayer {
   number?: number;
   team: DiagramTeamCode;
   role?: string;
+  name?: string;
+  group?: string;
   x: number; // 0–100
   y: number; // 0–100
   relativePosition?: string;
@@ -70,6 +72,7 @@ export type DiagramArrowStyle = "solid" | "dashed" | "dotted";
 export type DiagramArrowWeight = "normal" | "bold";
 
 export interface DiagramArrow {
+  id: string;
   from: DiagramPointRef;
   to: DiagramPointRef;
   type: DiagramArrowType;
@@ -86,6 +89,7 @@ export interface DiagramArrow {
 }
 
 export interface DiagramArea {
+  id: string;
   label?: string;
   x?: number;
   y?: number;
@@ -96,6 +100,7 @@ export interface DiagramArea {
 }
 
 export interface DiagramLabel {
+  id: string;
   text: string;
   x: number;
   y: number;
@@ -107,7 +112,7 @@ export type DiagramFrameLayers = {
   arrows: DiagramArrow[];
   areas: DiagramArea[];
   labels: DiagramLabel[];
-  balls?: Array<{ x: number; y: number }>;
+  balls?: Array<{ id: string; x: number; y: number }>;
   goals?: DiagramGoal[];
   coach?: DiagramCoach;
   cones?: Array<{ x: number; y: number; color?: string }>;
@@ -132,7 +137,7 @@ export interface DiagramV1 {
   players: DiagramPlayer[];
   goals?: DiagramGoal[];
   coach?: DiagramCoach;
-  balls?: any[];
+  balls?: Array<{ id: string; x: number; y: number }>;
   cones?: any[];
   elements?: DiagramElement[];
   arrows: DiagramArrow[];
