@@ -1,4 +1,5 @@
 import {
+  BOARD_DIAGRAM_MAX_BYTES,
   BOARD_DIAGRAM_MAX_PLAYERS,
   parseWebDiagramV1,
 } from '../services/board-diagram-schema';
@@ -109,7 +110,9 @@ describe('parseWebDiagramV1', () => {
   });
 
   test('rejects oversized JSON payload', () => {
-    const hugeLabel = 'x'.repeat(200_000);
+    // Scale with the limit instead of a fixed size: the cap was 192 KB, then raised to
+    // 256 KB for longer sequences with ids, and a fixed 200 KB label stopped exceeding it.
+    const hugeLabel = 'x'.repeat(BOARD_DIAGRAM_MAX_BYTES + 1_000);
     const result = parseWebDiagramV1({
       pitch: { variant: 'HALF', orientation: 'HORIZONTAL' },
       players: [{ id: 'p1', team: 'ATT', x: 1, y: 1 }],
