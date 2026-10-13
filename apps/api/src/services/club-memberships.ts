@@ -4,6 +4,13 @@ import { prisma } from '../prisma';
 /** Roles that may enter DOC Hub (not COACH). */
 export const DOC_HUB_ROLES: ClubRole[] = [ClubRole.DOC, ClubRole.SECTION_DIRECTOR];
 
+/** Club staff who can be assigned to a team for Coach Center. */
+export const TEAM_ASSIGNABLE_ROLES: ClubRole[] = [
+  ClubRole.COACH,
+  ClubRole.DOC,
+  ClubRole.SECTION_DIRECTOR,
+];
+
 export const CLUB_MEMBERSHIP_ROLES: ClubRole[] = [
   ClubRole.DOC,
   ClubRole.SECTION_DIRECTOR,

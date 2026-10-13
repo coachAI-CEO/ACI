@@ -275,12 +275,24 @@ function layersFromRepaired(d: WebDiagramV1) {
   };
 }
 
+function polishPlayOutFrame(d: WebDiagramV1): WebDiagramV1 {
+  return unstackDiagramPlayers(
+    repairBoardDiagramLabels(
+      repairBoardDiagramArrows(repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d)))
+    )
+  );
+}
+
 /** Repair root + every sequence frame, then enforce cross-frame focus + organization. */
 export function repairBoardDiagramWithSequence(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
+  const playOut = isPlayOutRequest(message);
   const repairOne = (d: WebDiagramV1) => {
+    if (playOut && (d.players || []).length >= 18) {
+      return polishPlayOutFrame(d);
+    }
     const cleaned = repairBoardDiagramArrows(
       repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d))
     );
@@ -297,8 +309,8 @@ export function repairBoardDiagramWithSequence(
 
   let working: WebDiagramV1 = diagram;
   const freezePlayers = wantsFrozenPlayers(message);
-  if (!working.sequence?.frames?.length && isPlayOutRequest(message) && !freezePlayers) {
-    working = applyPlayOutSequenceToDiagram(repairOne(diagram), message);
+  if (!working.sequence?.frames?.length && playOut && !freezePlayers) {
+    working = applyPlayOutSequenceToDiagram(diagram, message);
   }
 
   const seq = working.sequence;
@@ -326,7 +338,9 @@ export function repairBoardDiagramWithSequence(
             players: asRoot.players,
           })
         )
-      : repairOne(asRoot);
+      : playOut
+        ? polishPlayOutFrame(asRoot)
+        : repairOne(asRoot);
     const id = String(f.id || '').trim() || `f-${i + 1}`;
     return {
       id,
@@ -346,10 +360,12 @@ export function repairBoardDiagramWithSequence(
         ...f,
         players: lockPlayersToRoster(f.players, frames[0]?.players || f.players),
       }))
-    : (repairBoardSequenceCoherence(frames, message) as typeof frames);
+    : playOut
+      ? frames
+      : (repairBoardSequenceCoherence(frames, message) as typeof frames);
 
-  // Play-out / build-from-back: enforce goal-kick → pocket → final-third model (final authority)
-  if (isPlayOutRequest(message) && !freezePlayers) {
+  // Play-out / build-from-back: chassis is last writer of xy. Labels/arrows only after.
+  if (playOut && !freezePlayers) {
     const placed = applyPlayOutSequenceToDiagram(
       {
         ...working,
@@ -363,18 +379,14 @@ export function repairBoardDiagramWithSequence(
     );
     if (placed.sequence?.frames?.length) {
       frames = placed.sequence.frames.map((f) => {
-        const cleaned = unstackDiagramPlayers(
-          repairBoardDiagramLabels(
-            repairBoardDiagramArrows({
-              pitch: working.pitch,
-              players: f.players,
-              arrows: f.arrows,
-              areas: f.areas,
-              labels: f.labels,
-              balls: f.balls,
-            })
-          )
-        );
+        const cleaned = polishPlayOutFrame({
+          pitch: working.pitch,
+          players: f.players,
+          arrows: f.arrows,
+          areas: f.areas,
+          labels: f.labels,
+          balls: f.balls,
+        });
         return {
           id: f.id,
           title: f.title,
@@ -649,8 +661,8 @@ function enrichLaterFrameDensity(input: {
   const MIN_NEAR = 7;
   const MIN_ARROWS = input.idx === 1 ? 6 : 5;
 
-  // Pull extra ATT + DEF into the pocket so 6–10 shirts are in the picture
-  const field = players.filter((p) => !isGkPlayer(p));
+  // Pull extra ATT + DEF mids/fronts into the pocket — never yank the back line or GK
+  const field = players.filter((p) => !isGkPlayer(p) && roleBand(p.role) !== 'back');
   let nearCount = field.filter((p) => dist(p, focus) <= NEAR).length;
   if (nearCount < MIN_NEAR) {
     const need = MIN_NEAR - nearCount;
@@ -2609,6 +2621,10 @@ export function repairBoardDiagramOppositionNearPlay(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
+  // Named 11v11 play-out chassis already sits the press. Do not rewrite y.
+  if (isPlayOutRequest(message) && (diagram.players || []).length >= 18) {
+    return diagram;
+  }
   const focus = focusPointFromDiagram(diagram);
   if (!focus) return diagram;
 

@@ -1,6 +1,7 @@
 import express from 'express';
 import { z } from 'zod';
-import { 
+import { TRIALS_CLOSED_MESSAGE } from './config/trials';
+import {
   registerUser, 
   loginUser, 
   refreshAccessToken,
@@ -99,6 +100,9 @@ r.post('/auth/register', async (req, res) => {
     });
     return res.json({ ok: true, ...result });
   } catch (error: any) {
+    if (error.message === TRIALS_CLOSED_MESSAGE) {
+      return res.status(503).json({ ok: false, error: error.message, code: "TRIALS_CLOSED" });
+    }
     if (error.message === 'User already exists') {
       return res.status(409).json({ ok: false, error: error.message });
     }

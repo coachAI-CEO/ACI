@@ -37,6 +37,10 @@ export async function POST(request: NextRequest) {
     return new NextResponse(arrayBuffer, {
       headers: {
         "Content-Type": "application/pdf",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Content-Disposition":
+          res.headers.get("Content-Disposition") || "attachment; filename=session.pdf",
+        "X-PDF-Revision": res.headers.get("X-PDF-Revision") || "",
       },
     });
   } catch (e: any) {

@@ -32,6 +32,10 @@ export const btnPrimary =
   "inline-flex min-h-11 items-center justify-center rounded-md bg-emerald-600 px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40";
 export const btnQuiet =
   "inline-flex min-h-11 items-center justify-center rounded-md border border-slate-700 bg-transparent px-3 text-sm text-slate-300";
+export const btnPrimarySm =
+  "inline-flex h-8 items-center justify-center rounded-lg bg-emerald-600 px-2.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-40";
+export const btnSecondarySm =
+  "inline-flex h-8 items-center justify-center rounded-lg border border-slate-600 bg-transparent px-2.5 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-40";
 
 export function authHeaders(): HeadersInit {
   const token = localStorage.getItem("accessToken");

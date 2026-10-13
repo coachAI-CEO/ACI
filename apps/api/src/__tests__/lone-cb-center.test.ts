@@ -60,8 +60,11 @@ test("technical finishing with one RCB puts that CB on the center axis", () => {
   expect(attCbs[0].role).toBe("CB");
   expect(attCbs[0].y).toBe(50);
 
+  // Technical finishing to a full goal with no stated opposition drops the DEF
+  // side (see drill-shape-lock "technical one-goal drops opposition"). The lone
+  // CB that must not be left off-axis is the ATT one, asserted above.
   const defCbs = params.players.filter((p) => p.team === "away" && isCenterBackRole(p.role));
-  expect(defCbs.length).toBeGreaterThan(1);
+  expect(defCbs.length).toBe(0);
 
   const b6 = FIRST_PASS_FIXTURES.find((f) => f.id === "B6")!;
   const scored = scorePicture(params, b6);

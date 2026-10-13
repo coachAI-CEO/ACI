@@ -406,11 +406,17 @@ function scoreGoals(json: any, params: DrawerParams, processed: any) {
   const miniGoals = goals.filter((g) => g.type !== "full").length;
   const gkCount = params.players.filter((p) => p.team === "gk").length;
 
+  // Two goalMode vocabularies exist: "LARGE"/"MINI2" (postProcessDrill) and
+  // "FULL1"/"FULL2" (diagram-goals.ts) -- recognize both so this QA check
+  // doesn't silently stop firing for drills produced by either pipeline.
+  const isFullMode = goalMode === "LARGE" || goalMode === "FULL1";
+  const isMiniMode = goalMode === "MINI2" || goalMode === "FULL2";
+
   const issues: string[] = [];
   if (goalsAvailable > 0 && goals.length === 0) issues.push("goalsAvailable > 0 but no goals present in diagram");
-  if (goalMode === "LARGE" && fullGoals < 1) issues.push("goalMode LARGE but no full-size goal drawn");
-  if (goalMode === "MINI2" && miniGoals < 2) issues.push("goalMode MINI2 but fewer than 2 mini/gate goals drawn");
-  if (goalMode === "LARGE" && fullGoals >= 1 && params.players.length >= 12 && gkCount === 0) {
+  if (isFullMode && fullGoals < 1) issues.push(`goalMode ${goalMode} but no full-size goal drawn`);
+  if (isMiniMode && miniGoals < 2) issues.push(`goalMode ${goalMode} but fewer than 2 mini/gate goals drawn`);
+  if (isFullMode && fullGoals >= 1 && params.players.length >= 12 && gkCount === 0) {
     issues.push("full-goal format with 12+ players but no player labelled GK");
   }
 

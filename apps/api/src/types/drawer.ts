@@ -22,6 +22,9 @@ export interface DrawerParams {
   goals: DrawerGoal[];
   arrows: DrawerArrow[];
   zones: DrawerZone[];
+  /** The play ball, in 0-100 pitch coords. One ball, or none for a pure
+   * shape diagram. */
+  ball?: { x: number; y: number };
   annotations: DrawerAnnotation[];
   coachingPoints: string[];
   primaryCoachingPicture: string;
@@ -29,6 +32,8 @@ export interface DrawerParams {
   /** One-goal attacking/defending third stretched to fill the field box.
    * Skip match halfway line / center circle -- those describe a full pitch. */
   hideMatchPitchMarkings?: boolean;
+  /** When set, skip area-based token scaling and use this radius (px). */
+  lockTokenRadius?: number;
 }
 
 export interface DrawerCoach {
@@ -66,6 +71,12 @@ export interface DrawerArrow {
   to: { x: number; y: number; isCoach?: boolean };
   type: "pass" | "run" | "press" | "movement" | "counter" | "delivery" | "finish";
   label?: string;
+  /** 1-based step in the sequence. When set on 2+ arrows the painter draws a
+   * numbered badge at each arrow's start so one frame reads as a filmstrip. */
+  order?: number;
+  /** The acting player's team — the painter colours the arrow by this so a
+   * blue line never comes off a red shirt. Falls back to type colour. */
+  team?: "home" | "away" | "neutral";
 }
 
 export interface DrawerZone {

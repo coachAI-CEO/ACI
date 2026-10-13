@@ -81,9 +81,14 @@ export async function adminFetch<T = unknown>(
           return res.json() as Promise<T>;
         }
         text = await res.text().catch(() => res.statusText);
-      } else {
-        clearAuthState();
       }
+    }
+
+    if (res.status === 401 && typeof window !== "undefined") {
+      clearAuthState();
+      const next = `${window.location.pathname}${window.location.search}`;
+      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+      return new Promise<T>(() => {});
     }
 
     throw new Error(`${res.status}: ${text}`);

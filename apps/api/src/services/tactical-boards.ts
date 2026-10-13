@@ -95,6 +95,9 @@ async function resolveCreateGameModel(params: {
   clientGameModelId?: unknown;
   forkSessionGameModelId?: GameModelId | null;
   shareMode: BoardShareMode;
+  /** When true, fall back to a neutral default (`COACHAI`) instead of
+   *  throwing GAME_MODEL_REQUIRED. Only the BLANK flow opts in. */
+  allowFallbackDefault?: boolean;
 }): Promise<{ clubId: string | null; gameModelId: GameModelId }> {
   const stamp = await resolveBoardClubStamp(params.userId);
 
@@ -107,6 +110,10 @@ async function resolveCreateGameModel(params: {
 
   if (!gameModelId) {
     gameModelId = parseClientGameModelId(params.clientGameModelId);
+  }
+
+  if (!gameModelId && params.allowFallbackDefault) {
+    gameModelId = GameModelId.COACHAI;
   }
 
   if (!gameModelId) {
@@ -390,11 +397,19 @@ async function resolveBlankBoardAudience(
 
 export async function createBlankBoard(userId: string, body: any) {
   await assertCanCreateBoards(userId);
-  const shareMode = parseShareMode(body?.shareMode);
+  const requestedShareMode = parseShareMode(body?.shareMode);
+  // Soft-downgrade CLUB → PRIVATE if the caller has no club, instead of
+  // surfacing CLUB_REQUIRED through the + New flow.
+  const stamp = await resolveBoardClubStamp(userId);
+  const shareMode =
+    requestedShareMode === BoardShareMode.CLUB && !stamp.clubId
+      ? BoardShareMode.PRIVATE
+      : requestedShareMode;
   const { clubId, gameModelId } = await resolveCreateGameModel({
     userId,
     clientGameModelId: body?.gameModelId,
     shareMode,
+    allowFallbackDefault: true,
   });
   const { ageGroup, format } = await resolveBlankBoardAudience(userId, body);
 

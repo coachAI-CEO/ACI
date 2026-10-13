@@ -9,7 +9,6 @@ import MyBoardsPanel from "@/components/boards/MyBoardsPanel";
 import { SAMPLE_DIAGRAM_V1 } from "@/sample-diagram-v1";
 import type { DiagramV1 } from "@/types/diagram";
 import { useEnforcedGameModelScope } from "@/lib/game-model-scope";
-import { canAccessDocHub, readStoredUser } from "@/lib/doc-hub-access";
 import { fetchUserFeatures } from "@/lib/features";
 
 const coachQuotes = [
@@ -89,101 +88,13 @@ const drillOfDayEntries: Array<{
   },
 ];
 
-const quickLinks = [
-  {
-    href: "/demo/session",
-    label: "New Session",
-    desc: "Build a full training session",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="4" y="4" width="16" height="16" rx="2.5" />
-        <path d="M8 9.5h8M8 13h8M8 16.5h5" />
-      </svg>
-    ),
-    color: "from-blue-500/25 to-indigo-500/10 border-blue-500/25 hover:border-blue-400/50",
-    hoverGlow: "hover:shadow-blue-500/15",
-    textColor: "text-blue-400",
-  },
-  {
-    href: "/vault",
-    label: "My Vault",
-    desc: "Saved drills & sessions",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M3.5 7.5h17v11a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-11z" />
-        <path d="M3.5 7.5l2-3h13l2 3" />
-        <path d="M10 13h4" />
-      </svg>
-    ),
-    color: "from-violet-500/25 to-purple-500/10 border-violet-500/25 hover:border-violet-400/50",
-    hoverGlow: "hover:shadow-violet-500/15",
-    textColor: "text-violet-400",
-  },
-  {
-    href: "/calendar",
-    label: "Calendar",
-    desc: "Schedule & plan ahead",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
-        <path d="M7.5 3.5v3M16.5 3.5v3M3.5 9.5h17" />
-      </svg>
-    ),
-    color: "from-amber-500/25 to-orange-500/10 border-amber-500/25 hover:border-amber-400/50",
-    hoverGlow: "hover:shadow-amber-500/15",
-    textColor: "text-amber-400",
-  },
-  {
-    href: "/video-analysis",
-    label: "Video Analysis",
-    desc: "Analyze match clips",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <rect x="3.5" y="6" width="13" height="12" rx="2" />
-        <path d="M16.5 10l4-2v8l-4-2" />
-      </svg>
-    ),
-    color: "from-cyan-500/25 to-sky-500/10 border-cyan-500/25 hover:border-cyan-400/50",
-    hoverGlow: "hover:shadow-cyan-500/15",
-    textColor: "text-cyan-400",
-    beta: true,
-  },
-  {
-    href: "/doc-hub",
-    label: "DOC Console",
-    desc: "Club coach oversight & game model",
-    icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-        <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20z" />
-        <path d="M14 3.5V8h4" />
-        <path d="M9.5 12h5M9.5 15h5" />
-      </svg>
-    ),
-    color: "from-indigo-500/25 to-violet-500/10 border-indigo-500/25 hover:border-indigo-400/50",
-    hoverGlow: "hover:shadow-indigo-500/15",
-    textColor: "text-indigo-400",
-  },
-];
-
 export default function Home() {
   const router = useRouter();
   const { enforcedGameModelId } = useEnforcedGameModelScope();
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [drillIndex, setDrillIndex] = useState(0);
   const [greeting, setGreeting] = useState("Good evening");
-  const [showDocHub, setShowDocHub] = useState(false);
   const [tacticalBoardV1, setTacticalBoardV1] = useState(false);
-
-  useEffect(() => {
-    const syncDocHub = () => setShowDocHub(canAccessDocHub(readStoredUser()));
-    syncDocHub();
-    window.addEventListener("userLogin", syncDocHub);
-    window.addEventListener("storage", syncDocHub);
-    return () => {
-      window.removeEventListener("userLogin", syncDocHub);
-      window.removeEventListener("storage", syncDocHub);
-    };
-  }, []);
 
   useEffect(() => {
     const loadFeatures = () => {
@@ -225,29 +136,6 @@ export default function Home() {
   }, []);
 
   const drillOfDay = drillOfDayEntries[drillIndex];
-  const visibleQuickLinks = [
-    ...(tacticalBoardV1
-      ? [
-          {
-            href: "/boards",
-            label: "Tactical Board",
-            desc: "Create and edit boards",
-            icon: (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <rect x="3.5" y="4" width="17" height="16" rx="2" />
-                <circle cx="9" cy="11" r="1.5" />
-                <circle cx="15" cy="13" r="1.5" />
-                <path d="M9 11l6 2" />
-              </svg>
-            ),
-            color: "from-emerald-500/25 to-teal-500/10 border-emerald-500/25 hover:border-emerald-400/50",
-            hoverGlow: "hover:shadow-emerald-500/15",
-            textColor: "text-emerald-400",
-          },
-        ]
-      : []),
-    ...quickLinks.filter((link) => link.href !== "/doc-hub" || showDocHub),
-  ];
   const normalizeCoachLevelForGeneration = (value?: string) => {
     const v = String(value || "").toUpperCase();
     if (v === "USSF_D" || v === "GRASSROOTS") return "USSF_D"; // GRASSROOTS: legacy value, pre-rename data/links
@@ -265,36 +153,10 @@ export default function Home() {
         <div className="absolute -bottom-20 left-1/3 h-[350px] w-[350px] rounded-full bg-violet-600/[0.04] blur-[120px]" />
       </div>
 
-      {/* Top bar with greeting + quick actions */}
+      {/* Top bar */}
       <div className="relative shrink-0 border-b border-white/[0.06] bg-gradient-to-r from-emerald-950/20 via-transparent to-blue-950/15 px-6 py-4">
-        <div className="flex items-end justify-between gap-6">
-          <div>
-            <h1 className="text-lg font-semibold text-white/90">{greeting}, Coach</h1>
-            <p className="mt-0.5 text-[13px] text-slate-500">Ready to build something great today?</p>
-          </div>
-          <div className="flex gap-2.5">
-            {visibleQuickLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`group relative flex items-center gap-2.5 rounded-xl border bg-gradient-to-br px-4 py-2.5 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${link.color} ${link.hoverGlow}`}
-              >
-                <span className={`${link.textColor} transition-transform duration-200 group-hover:scale-110`}>{link.icon}</span>
-                <div className="flex flex-col">
-                  <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white/90">
-                    <span>{link.label}</span>
-                    {link.beta ? (
-                      <span className="rounded-full border border-cyan-400/35 bg-cyan-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cyan-300">
-                        Beta
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-[10px] text-slate-500 group-hover:text-slate-400">{link.desc}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
+        <h1 className="text-lg font-semibold text-white/90">{greeting}, Coach</h1>
+        <p className="mt-0.5 text-[13px] text-slate-500">Ready to build something great today?</p>
       </div>
 
       {/* Main content grid — fills remaining space */}

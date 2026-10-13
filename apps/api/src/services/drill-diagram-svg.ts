@@ -7,14 +7,22 @@ import { applyGoalOverlay } from "./goal-overlay";
 import { fitDiagramSvgViewBox } from "./fit-diagram-viewbox";
 import { computeTokenRadius, scaleFactorFromTokenRadius } from "../data/field-dimensions";
 import type { DrawerParams } from "../types/drawer";
+import { generateSceneDiagram, type SceneSvgFrame } from "./scene-diagram";
+import { SCENE_PROMPT_VERSION, type SceneDiagram } from "./scene-document";
 
 type DrillLike = Parameters<typeof drillToDrawerParams>[0];
+
+export type DiagramPlacement = "scene" | "compiler" | "gemini-svg";
 
 export type DrillDiagramSvgResult = {
   svg: string;
   model: string;
   modelFallback: boolean;
   promptVersion: string;
+  sceneDiagram?: SceneDiagram;
+  /** Ordered painted frames when the scene is a mechanism sequence (>= 2). */
+  sceneFrames?: SceneSvgFrame[];
+  sceneCard?: string;
 };
 
 function scaleFactorForParams(params: DrawerParams): number {
@@ -23,13 +31,6 @@ function scaleFactorForParams(params: DrawerParams): number {
   );
 }
 
-/**
- * Draw a single drill's SVG diagram, with the same generate-then-fallback
- * behavior as the POST /api/diagram-svg/generate route -- extracted so the
- * session-generation path can call it directly (in parallel, per drill)
- * instead of the client having to fetch it separately after the session
- * already rendered. Does not touch the DB; callers persist the result.
- */
 function compileDeterministicSvg(
   drawerParams: DrawerParams,
   asFallback = false
@@ -43,10 +44,72 @@ function compileDeterministicSvg(
   };
 }
 
-export async function generateDrillDiagramSvg(drillLike: DrillLike): Promise<DrillDiagramSvgResult> {
+/**
+ * New sessions: DIAGRAM_PLACEMENT=scene (default).
+ * Rollback: DIAGRAM_PLACEMENT=compiler.
+ * Vault backfill must pass { placement: "compiler" } unless explicitly --scene.
+ * DIAGRAM_SVG_ENGINE=deterministic no longer selects the compiler — that was
+ * Render's old default and would silently undo the flip.
+ */
+export function resolveDiagramPlacement(override?: DiagramPlacement | string): DiagramPlacement {
+  const raw = String(override || process.env.DIAGRAM_PLACEMENT || "").toLowerCase();
+  if (raw === "scene" || raw === "xy") return "scene";
+  if (raw === "compiler") return "compiler";
+  if (raw === "gemini" || raw === "llm-svg") return "gemini-svg";
+  const engine = String(process.env.DIAGRAM_SVG_ENGINE || "").toLowerCase();
+  if (engine === "scene") return "scene";
+  if (engine === "gemini") return "gemini-svg";
+  return "scene";
+}
+
+export function isSceneDiagramPlacement(override?: DiagramPlacement | string): boolean {
+  return resolveDiagramPlacement(override) === "scene";
+}
+
+/** Always draw with scene XY. The compiler lives only as a forced rollback
+ * (force=true in redraw-vault-diagrams, eval-live-drill). Stored pictures
+ * are not redrawn implicitly — they keep the scene that was saved. */
+export function placementForStoredPicture(force: boolean): DiagramPlacement | undefined {
+  return force ? "compiler" : undefined;
+}
+
+export function attachSceneToDrillJson(drill: Record<string, any>, result: DrillDiagramSvgResult): void {
+  if (!result.sceneDiagram) return;
+  drill.sceneDiagram = result.sceneDiagram;
+  drill.scenePromptVersion = result.promptVersion;
+  if (result.sceneCard) drill.sceneCard = result.sceneCard;
+}
+
+/**
+ * Draw a single drill's SVG diagram. Scene XY is the default painter input.
+ * Compiler (drillToDrawerParams) is fallback only.
+ */
+export async function generateDrillDiagramSvg(
+  drillLike: DrillLike,
+  opts?: { placement?: DiagramPlacement }
+): Promise<DrillDiagramSvgResult> {
+  const placement = resolveDiagramPlacement(opts?.placement);
+
+  if (placement === "scene") {
+    try {
+      const scene = await generateSceneDiagram(drillLike);
+      return {
+        svg: scene.svg,
+        model: scene.model,
+        modelFallback: false,
+        promptVersion: scene.promptVersion,
+        sceneDiagram: scene.diagram,
+        sceneFrames: scene.frames.length > 1 ? scene.frames : undefined,
+        sceneCard: scene.card,
+      };
+    } catch (err) {
+      console.error("[diagram] scene XY failed, falling back to compiler:", err instanceof Error ? err.message : err);
+      return compileDeterministicSvg(drillToDrawerParams(drillLike), true);
+    }
+  }
+
   const drawerParams = drillToDrawerParams(drillLike);
-  const engine = String(process.env.DIAGRAM_SVG_ENGINE || "deterministic").toLowerCase();
-  if (engine === "deterministic" || engine === "compiler") {
+  if (placement === "compiler") {
     return compileDeterministicSvg(drawerParams);
   }
 
@@ -72,23 +135,60 @@ export function omitDiagramSvgFromDrill<T extends Record<string, any>>(drill: T)
   return rest as T;
 }
 
+export function isPlaceholderDiagramSvg(svg: string | null | undefined): boolean {
+  if (!svg) return true;
+  return /Diagram generating/i.test(svg);
+}
+
+export function isSceneStoredPicture(promptVersion: string | null | undefined): boolean {
+  return String(promptVersion || "").startsWith("scene-");
+}
+
 /** Reopen/preview must not redraw just because the prompt version changed. */
 export function storedDiagramNeedsRedraw(
   force: boolean,
   currentSvg: string | null | undefined
 ): boolean {
-  return force === true || !currentSvg;
+  return force === true || isPlaceholderDiagramSvg(currentSvg);
 }
 
-/** Write the SVG column by itself so a huge drill.json update cannot drop it. */
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === "object" ? (value as Record<string, any>) : {};
+}
+
+/** Write the SVG column by itself so a huge drill.json update cannot drop it. Merges scene JSON when present. */
 export async function persistDrillDiagramSvg(refCode: string, result: DrillDiagramSvgResult): Promise<void> {
+  const row = await prisma.drill.findUnique({
+    where: { refCode },
+    select: { json: true, diagramSvgPromptVersion: true },
+  });
+  if (
+    isSceneStoredPicture(row?.diagramSvgPromptVersion) &&
+    !result.sceneDiagram &&
+    !isSceneStoredPicture(result.promptVersion)
+  ) {
+    console.warn("[diagram] refusing to overwrite scene-xy picture with compiler", { refCode });
+    return;
+  }
+  const data: Record<string, unknown> = {
+    diagramSvg: fitDiagramSvgViewBox(result.svg),
+    diagramSvgGeneratedAt: new Date(),
+    diagramSvgModel: result.model,
+    diagramSvgPromptVersion: result.promptVersion,
+  };
+  if (result.sceneDiagram) {
+    const json = asRecord(row?.json);
+    data.json = {
+      ...json,
+      sceneDiagram: result.sceneDiagram,
+      scenePromptVersion: result.promptVersion || SCENE_PROMPT_VERSION,
+      // Clears a stale sequence when a redraw comes back single-frame.
+      sceneFrames: result.sceneFrames ?? null,
+      ...(result.sceneCard ? { sceneCard: result.sceneCard } : {}),
+    };
+  }
   await prisma.drill.update({
     where: { refCode },
-    data: {
-      diagramSvg: fitDiagramSvgViewBox(result.svg),
-      diagramSvgGeneratedAt: new Date(),
-      diagramSvgModel: result.model,
-      diagramSvgPromptVersion: result.promptVersion,
-    },
+    data,
   });
 }

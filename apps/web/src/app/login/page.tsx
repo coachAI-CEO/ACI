@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import { seedAuthMeFromUser } from "@/lib/auth-me";
+import { trialsEnabled, TRIALS_CLOSED_MESSAGE } from "@/lib/trials";
 
 export default function LoginPage() {
   return (
@@ -22,6 +23,7 @@ export default function LoginPage() {
 
 function LoginContent() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const trialsOpen = trialsEnabled();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
@@ -196,10 +198,21 @@ function LoginContent() {
         </form>
 
         <div className="text-center text-sm text-slate-400">
-          Don't have an account?{" "}
-          <Link href="/register" className="text-emerald-400 hover:text-emerald-300 font-medium">
-            Sign up
-          </Link>
+          {trialsOpen ? (
+            <>
+              Don&apos;t have an account?{" "}
+              <Link href="/register" className="text-emerald-400 hover:text-emerald-300 font-medium">
+                Sign up
+              </Link>
+            </>
+          ) : (
+            <>
+              {TRIALS_CLOSED_MESSAGE}{" "}
+              <Link href="/pricing" className="text-emerald-400 hover:text-emerald-300 font-medium">
+                View plans
+              </Link>
+            </>
+          )}
         </div>
 
         <div className="text-center text-xs text-slate-500">

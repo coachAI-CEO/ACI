@@ -11,7 +11,6 @@ import '../config/load-env';
 import { runBoardAiChat, type BoardAiChatMessage } from '../services/board-ai-chat';
 import {
   overlappingPairs,
-  SOLVER_MIN_PLAYER_GAP,
   solveBoardLayout,
 } from '../services/board-layout-solver';
 import { parseBoardSymbolicDsl } from '../services/board-symbolic-dsl';

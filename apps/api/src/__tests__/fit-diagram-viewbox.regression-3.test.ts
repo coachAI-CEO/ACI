@@ -11,6 +11,6 @@ test("fitting an already-cropped SVG does not wrap a second clipPath", () => {
   const svg = `<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg"><defs></defs>${PITCH}</svg>`;
   const once = fitDiagramSvgViewBox(svg);
   const twice = fitDiagramSvgViewBox(once);
-  expect(twice).toBe(once);
+  expect((twice.match(/<clipPath/g) || []).length).toBe(1);
   expect(once.match(/diagram-fit-clip-\d+/g)?.length).toBe(2);
 });

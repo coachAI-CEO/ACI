@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
+import { trialsEnabled, TRIALS_CLOSED_MESSAGE } from '../config/trials';
 import { SUBSCRIPTION_LIMITS } from '../config/subscription-limits';
 import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from './email';
 import { isTacticalBoardV1Enabled } from './board-club-stamp';
@@ -182,6 +183,10 @@ export async function registerUser(data: {
   ipAddress?: string;
   userAgent?: string;
 }): Promise<{ user: any; tokens: AuthTokens }> {
+  if (!trialsEnabled()) {
+    throw new Error(TRIALS_CLOSED_MESSAGE);
+  }
+
   const normalizedEmail = data.email.trim().toLowerCase();
 
   // Check if user exists

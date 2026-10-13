@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CalendarDays,
   Compass,
+  Trophy,
   Users,
 } from "lucide-react";
 import { useDocHub } from "./_lib/DocHubContext";
@@ -164,7 +165,13 @@ export default function DocHubOverviewPage() {
             href="/doc-hub/coaches"
             icon={Users}
             title="Coaches"
-            description="Usage snapshot — runs, last active, status buckets"
+            description="Assign one or more teams to each coach"
+          />
+          <SectionCard
+            href="/doc-hub/teams"
+            icon={Trophy}
+            title="Teams"
+            description="Club roster and who is assigned to each side"
           />
           <SectionCard
             href="/doc-hub/calendar"

@@ -57,7 +57,16 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
 }
 
 export function isPlayOutRequest(message: string): boolean {
-  return /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+  if (
+    /\b(play(?:ing)?[\s-]?out(?: the back)?|playout|build(?:ing)?[\s-]?out|from the back|build from (?:the )?back|goal[-\s]?kick|build[-\s]?up)\b/i.test(
+      message
+    )
+  ) {
+    return true;
+  }
+  // "progress / build / play to midfield" is a play-out ask even without the
+  // literal "build-out" phrasing.
+  return /\b(?:progress(?:ing)?|build(?:ing)?|play(?:ing)?|get(?:ting)?|advance)\s+(?:the ball\s+)?(?:to|through|into)\s+(?:the\s+)?midfield\b/i.test(
     message
   );
 }
@@ -589,12 +598,24 @@ function geomForPhase(
 export function labelStackAwayFromEmphasis(
   area: { x: number; y: number; width?: number; height?: number },
   count: number,
-  focusX?: number
+  focusX?: number,
+  orientation: 'HORIZONTAL' | 'VERTICAL' = 'HORIZONTAL'
 ): { x: number; y: number }[] {
   const cy = area.y + (area.height ?? 20) / 2;
   const fx = typeof focusX === 'number' ? focusX : area.x + (area.width ?? 40) / 2;
 
-  // Opposite third along goal→goal (= screen horizontal)
+  if (orientation === 'VERTICAL') {
+    // Mobile portrait: stack captions down the opposite flank (vary y).
+    const colX = fx < 55 ? 86 : 14;
+    const startY = cy < 45 ? 62 : cy > 58 ? 14 : 68;
+    const step = count > 3 ? 8 : 9;
+    return Array.from({ length: Math.max(0, count) }, (_, i) => ({
+      x: clamp(colX),
+      y: clamp(startY + i * step),
+    }));
+  }
+
+  // Opposite third along goal→goal (= screen horizontal on landscape web)
   const baseY = cy < 45 ? 78 : cy > 58 ? 16 : 82;
   // Opposite flank from the channel (= screen vertical column)
   const preferTop = fx < 55;
@@ -1648,6 +1669,8 @@ export function placePhaseSnapshot(input: {
   /** Motif pass/press arrows — on for AI play-out, off for Setup shape. */
   includeMotifArrows?: boolean;
   engageNine?: boolean;
+  /** Caption stack axis — VERTICAL for mobile portrait boards. */
+  orientation?: 'HORIZONTAL' | 'VERTICAL';
 }): {
   players: Player[];
   arrows: Arrow[];
@@ -1665,6 +1688,7 @@ export function placePhaseSnapshot(input: {
     defBlock = 'high',
     includeMotifArrows = true,
     engageNine = false,
+    orientation = 'HORIZONTAL',
   } = input;
 
   const g = geomForPhase(phase, channelX, attFormation);
@@ -1721,25 +1745,13 @@ export function placePhaseSnapshot(input: {
     setT(targets, p, focus.x + xOff, y);
   }
 
-  const playersRaw = separate(applyTargets(roster, targets));
-  // Restore chassis after separation — keep locked playout / midfield shapes
-  let players = playersRaw.map((p) => {
-    const t = targets.get(p.id);
-    if (!t) return p;
-    if (
-      (phase === 'goal_kick' || phase === 'pocket' || phase === 'final_third') &&
-      (p.team === 'DEF' || p.team === 'ATT')
-    ) {
-      return { ...p, x: t.x, y: t.y };
-    }
-    return p;
-  });
-  // Hard rule: never leave shirts stacked (chassis restore can reintroduce overlaps)
-  players = enforceNoOverlap(players);
+  const playersRaw = applyTargets(roster, targets);
+  // Width-only overlap — never fight the chassis on y.
+  let players = enforceNoOverlap(playersRaw, 3.5);
   // A presser stepping right onto a receiver can leave the fixed-iteration pass
-  // just short of the minimum gap; one more pass settles it. Relative path only,
-  // so absolute placement output is byte-for-byte unchanged.
-  if (usedRelativePress) for (let i = 0; i < 4; i++) players = enforceNoOverlap(players);
+  // just short of the minimum gap; extra passes settle it. Relative-press path
+  // only, so absolute placement output is unchanged.
+  if (usedRelativePress) for (let i = 0; i < 4; i++) players = enforceNoOverlap(players, 3.5);
 
   const arrows = includeMotifArrows
     ? motifArrows(phase, attFormation, att, def, channelX, engageNine)
@@ -1753,11 +1765,16 @@ export function placePhaseSnapshot(input: {
     for (const c of defCues) captions.push(`DEF ${defFormation}: ${c}`.slice(0, 200));
   }
 
-  const stack = labelStackAwayFromEmphasis(g.area, Math.min(3, captions.length), focus.x);
+  const stack = labelStackAwayFromEmphasis(
+    g.area,
+    Math.min(3, captions.length),
+    focus.x,
+    orientation
+  );
   const labels = captions.slice(0, 3).map((text, i) => ({
     text: text.slice(0, 200),
-    x: stack[i]?.x ?? clamp(90 - i * 13),
-    y: stack[i]?.y ?? 76,
+    x: stack[i]?.x ?? (orientation === 'VERTICAL' ? 86 : clamp(90 - i * 13)),
+    y: stack[i]?.y ?? (orientation === 'VERTICAL' ? clamp(62 + i * 9) : 76),
   }));
 
   // Build-out ball: 4-2-3-1 sits with the pivot platform; other shapes with the ball-side CB
@@ -1849,6 +1866,28 @@ export function placePhaseSnapshot(input: {
   };
 }
 
+export function inferFormationFromRoster(
+  roster: Player[],
+  team: 'ATT' | 'DEF'
+): FormationId11 | null {
+  const side = roster.filter((p) => p.team === team);
+  if (side.length < 8) return null;
+  const roles = side.map((p) => String(p.role || '').toUpperCase());
+  const count = (re: RegExp) => roles.filter((r) => re.test(r)).length;
+  const cbs = count(/^(CB|RCB|LCB)$/);
+  const cdms = count(/^(CDM|DM)$/);
+  const cams = count(/^(CAM|AM)$/);
+  const cms = count(/^(CM|RCM|LCM)$/);
+  const wideMids = count(/^(RM|LM)$/);
+  const wingers = count(/^(RW|LW|RAM|LAM)$/);
+  if (cbs >= 3) return '3-5-2';
+  if (cdms >= 2 && (cams >= 1 || wingers >= 2)) return '4-2-3-1';
+  if (wideMids >= 2) return '4-4-2';
+  if (cdms >= 1 && cms >= 2) return '4-3-3';
+  if (wingers >= 2 && cms >= 1) return '4-3-3';
+  return null;
+}
+
 /** Place ATT + DEF for one play-out sub-phase (infers formations/channel from message). */
 export function placePlayOutFrame(
   roster: Player[],
@@ -1866,8 +1905,8 @@ export function placePlayOutFrame(
   return placePhaseSnapshot({
     roster,
     subPhase: phase,
-    attFormation: inferred.att || '4-3-3',
-    defFormation: inferred.def || '4-4-2',
+    attFormation: inferred.att || inferFormationFromRoster(roster, 'ATT') || '4-3-3',
+    defFormation: inferred.def || inferFormationFromRoster(roster, 'DEF') || '4-2-3-1',
     channelX: inferChannelX(message),
     defBlock: inferDefBlockHeight(message),
     includeMotifArrows: true,
@@ -1952,6 +1991,7 @@ export function applySetupPhaseToDiagram(
     channelX,
     defBlock: input.defBlock || 'high',
     includeMotifArrows: false,
+    orientation: diagram.pitch?.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL',
   });
 
   const players = showOpposition
@@ -1982,9 +2022,14 @@ export function applySetupPhaseToDiagram(
       ? labelStackAwayFromEmphasis(
           { x: area0.x, y: area0.y, width: area0.width, height: area0.height },
           captionTexts.length,
-          focusX
+          focusX,
+          diagram.pitch?.orientation === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL'
         )
-      : captionTexts.map((_, i) => ({ x: clamp(90 - i * 13), y: 76 }));
+      : captionTexts.map((_, i) =>
+          diagram.pitch?.orientation === 'VERTICAL'
+            ? { x: 86, y: clamp(62 + i * 9) }
+            : { x: clamp(90 - i * 13), y: 76 }
+        );
 
   return {
     ...diagram,

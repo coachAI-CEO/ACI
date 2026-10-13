@@ -17,7 +17,8 @@ import ThemedConfirmModal from "@/components/ThemedConfirmModal";
 import CreatePlayerPlanModal from "@/components/CreatePlayerPlanModal";
 import { getTopicsForPhaseAndZone, getRandomTopic, type Phase, type Zone } from "@/data/session-topics";
 import { getUserHeaders } from "@/lib/user";
-import { pickDrillDiagramSvg } from "@/lib/diagram-svg";
+import { pickDrillDiagramSvg, describeDrillGoalSetup, resolveDrillGoalsAvailableForDisplay } from "@/lib/diagram-svg";
+import { SESSION_PDF_REVISION } from "@/lib/pdf-export-revision";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import type { DiagramV1 } from "@/types/diagram";
 import { fetchUserFeatures, UserFeatures } from "@/lib/features";
@@ -84,6 +85,11 @@ type SessionApiResponse = {
     ageGroup?: string;
     durationMin?: number;
     goalsAvailable?: number;
+    numbersMin?: number;
+    numbersMax?: number;
+    playerLevel?: string;
+    spaceConstraint?: string;
+    formationUsed?: string;
     summary?: string;
     drills: SessionDrill[];
     sessionPlan?: {
@@ -182,6 +188,7 @@ type SessionConfig = {
   spaceConstraint: string;
   durationMin: number;
   topic?: string;
+  preserveCoachLevelContext?: boolean;
 };
 
 const gameModelLabel: Record<string, string> = {
@@ -619,6 +626,32 @@ async function fetchSession(
   return data;
 }
 
+async function fetchCoachLevelVariant(
+  sessionId: string,
+  coachLevel: string
+): Promise<SessionApiResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(getUserHeaders() as Record<string, string>),
+  };
+  const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+  const res = await fetch(
+    `/api/vault/sessions/${encodeURIComponent(sessionId)}/coach-level-variant`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ coachLevel }),
+    }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || `API error: ${res.status}`);
+  }
+  return data as SessionApiResponse;
+}
+
 async function fetchProgressiveSeries(
   config: SessionConfig,
   numberOfSessions: number,
@@ -907,6 +940,7 @@ function SessionDemoPageContent() {
   const [checkingPlayerPlan, setCheckingPlayerPlan] = useState(false);
   const [coachLevelSessionCache, setCoachLevelSessionCache] = useState<Record<string, SessionApiResponse>>({});
   const [regeneratingCoachLevel, setRegeneratingCoachLevel] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState<"full" | "compact" | null>(null);
   const [confirmCoachLevelModal, setConfirmCoachLevelModal] = useState<{ open: boolean; level: string | null }>({
     open: false,
     level: null,
@@ -915,6 +949,7 @@ function SessionDemoPageContent() {
   const [diagramOverrides, setDiagramOverrides] = useState<Record<string, any>>({});
   const diagramFetchInFlight = useRef<Set<string>>(new Set());
   const [forkingDrillKey, setForkingDrillKey] = useState<string | null>(null);
+  const [activeDrillIndex, setActiveDrillIndex] = useState(0);
   const [forkingSession, setForkingSession] = useState(false);
   const [scheduleModalSession, setScheduleModalSession] = useState<{
     sessionId: string;
@@ -1213,6 +1248,12 @@ function SessionDemoPageContent() {
                     coachLevel: normalizeCoachLevel(cachedSession.coachLevel || sessionData.coachLevel),
                     ageGroup: cachedSession.ageGroup,
                     durationMin: cachedSession.durationMin,
+                    goalsAvailable: cachedSession.goalsAvailable,
+                    numbersMin: cachedSession.numbersMin,
+                    numbersMax: cachedSession.numbersMax,
+                    playerLevel: cachedSession.playerLevel,
+                    spaceConstraint: cachedSession.spaceConstraint,
+                    formationUsed: cachedSession.formationUsed,
                     summary: sessionData.summary,
                     drills: sessionData.drills || [],
                     sessionPlan: sessionData.sessionPlan,
@@ -1280,6 +1321,12 @@ function SessionDemoPageContent() {
                 coachLevel: normalizeCoachLevel(vaultData.session.coachLevel || sessionData.coachLevel),
                 ageGroup: vaultData.session.ageGroup || "U12",
                 durationMin: vaultData.session.durationMin || undefined,
+                goalsAvailable: vaultData.session.goalsAvailable ?? undefined,
+                numbersMin: vaultData.session.numbersMin ?? undefined,
+                numbersMax: vaultData.session.numbersMax ?? undefined,
+                playerLevel: vaultData.session.playerLevel || undefined,
+                spaceConstraint: vaultData.session.spaceConstraint || undefined,
+                formationUsed: vaultData.session.formationUsed || undefined,
                 summary: sessionData.summary || undefined,
                 drills: Array.isArray(sessionData.drills) ? sessionData.drills : [],
                 sessionPlan: sessionData.sessionPlan || undefined,
@@ -1735,6 +1782,40 @@ function SessionDemoPageContent() {
   }, [hasGeneratedSession]);
 
   const session = currentSessionData?.session;
+  const sessionDrills = session?.drills ?? [];
+  const drillStartMins = sessionDrills.reduce<number[]>((acc, _drill, i) => {
+    acc.push(i === 0 ? 0 : acc[i - 1] + (sessionDrills[i - 1].durationMin || 0));
+    return acc;
+  }, []);
+
+  useEffect(() => {
+    setActiveDrillIndex(0);
+  }, [session?.id, session?.refCode, selectedSeriesTab, sessionDrills.length]);
+
+  useEffect(() => {
+    if (sessionDrills.length === 0) return;
+    if (activeDrillIndex >= sessionDrills.length) setActiveDrillIndex(0);
+  }, [sessionDrills.length, activeDrillIndex]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (sessionDrills.length === 0) return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setActiveDrillIndex((i) => Math.max(0, i - 1));
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setActiveDrillIndex((i) => Math.min(sessionDrills.length - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sessionDrills.length]);
+
   const qaScores = (currentSessionData?.qa?.scores || {}) as Record<string, number>;
   const qaPass = currentSessionData?.qa?.pass;
   const resolvedSessionId = (() => {
@@ -1885,13 +1966,20 @@ function SessionDemoPageContent() {
   const languageLevelBadge = getLanguageLevelBadge(currentCoachLevelKey);
 
   const buildRegenerateConfigForLevel = (targetCoachLevel: string): SessionConfig => ({
-    ...config,
     gameModelId: session?.gameModelId || config.gameModelId,
     ageGroup: session?.ageGroup || config.ageGroup,
     phase: session?.phase || config.phase,
     zone: session?.zone || config.zone,
-    durationMin: session?.durationMin || config.durationMin,
+    formationAttacking: session?.formationUsed || config.formationAttacking,
+    formationDefending: session?.formationUsed || config.formationDefending,
+    playerLevel: session?.playerLevel || config.playerLevel,
     coachLevel: normalizeCoachLevel(targetCoachLevel),
+    numbersMin: session?.numbersMin ?? config.numbersMin,
+    numbersMax: session?.numbersMax ?? config.numbersMax,
+    goalsAvailable: session?.goalsAvailable ?? config.goalsAvailable,
+    spaceConstraint: session?.spaceConstraint || config.spaceConstraint,
+    durationMin: session?.durationMin || config.durationMin,
+    topic: config.topic,
   });
 
   const getCoachVariantBaseKey = (cfg: SessionConfig): string =>
@@ -1935,8 +2023,28 @@ function SessionDemoPageContent() {
   const runCoachLevelRegeneration = async (nextLevel: string) => {
     const regenerateConfig = buildRegenerateConfigForLevel(nextLevel);
     const cacheKey = getCoachVariantCacheKey(regenerateConfig, nextLevel);
+    const sourceSessionId = resolvedSessionId || data?.session?.id;
 
     try {
+      if (sourceSessionId) {
+        setRegeneratingCoachLevel(nextLevel);
+        setLoading(true);
+        setError(null);
+
+        const result = await fetchCoachLevelVariant(sourceSessionId, nextLevel);
+        const nextVariant: SessionApiResponse = {
+          ...result,
+          session: {
+            ...result.session,
+            coachLevel: result.session?.coachLevel || nextLevel,
+          },
+        };
+        setData(nextVariant);
+        setCoachLevelSessionCache((prev) => ({ ...prev, [cacheKey]: nextVariant }));
+        setDiagramOverrides({});
+        setSeriesData(null);
+        setSessionMode("single");
+      } else {
       const controller = startGenerationAbortController();
       const generationId = createGenerationId();
       generationIdRef.current = generationId;
@@ -1947,7 +2055,12 @@ function SessionDemoPageContent() {
       setShowRecommendations(false);
       setRecommendations([]);
 
-      const result = await fetchSession(regenerateConfig, true, controller.signal, generationId);
+      const result = await fetchSession(
+        { ...regenerateConfig, preserveCoachLevelContext: true },
+        true,
+        controller.signal,
+        generationId
+      );
       const nextVariant: SessionApiResponse = {
         ...result,
         session: {
@@ -1957,10 +2070,12 @@ function SessionDemoPageContent() {
       };
       setData(nextVariant);
       setCoachLevelSessionCache((prev) => ({ ...prev, [cacheKey]: nextVariant }));
+      setDiagramOverrides({});
       setSeriesData(null);
       setSessionMode("single");
       setSkillFocus(result.session?.skillFocus || null);
       recordSessionComboUsage(regenerateConfig);
+      }
     } catch (e: any) {
       if (isAbortError(e)) {
         return;
@@ -2057,11 +2172,11 @@ function SessionDemoPageContent() {
       )}
       <ThemedConfirmModal
         open={confirmCoachLevelModal.open}
-        title="Generate Coach-Level Version"
-        message={`Generate a new ${
+        title="Switch Coach Language"
+        message={`Switch this session to ${
           coachLevelLabel[confirmCoachLevelModal.level || ""] || confirmCoachLevelModal.level || "coach-level"
-        } version for this session context?`}
-        confirmLabel="Generate"
+        } language? The same drills and structure will be kept — only coaching language and diagram detail will change.`}
+        confirmLabel="Switch"
         cancelLabel="Cancel"
         onCancel={() => setConfirmCoachLevelModal({ open: false, level: null })}
         onConfirm={() => {
@@ -3122,6 +3237,19 @@ function SessionDemoPageContent() {
                 <p className="text-sm text-slate-300 leading-relaxed">{humanizeSessionText(session.summary)}</p>
               )}
 
+              {session.goalsAvailable != null && (
+                <p className="text-xs text-slate-400">
+                  Session equipment:{" "}
+                  <span className="text-slate-300">
+                    {session.goalsAvailable === 0
+                      ? "no full-size goals (mini goals only)"
+                      : `${session.goalsAvailable} full-size goal${session.goalsAvailable === 1 ? "" : "s"} available`}
+                  </span>
+                  {" — "}
+                  each drill below shows its own goal setup.
+                </p>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center justify-end gap-2 pt-3 mt-1 border-t border-slate-700/60">
                 <Link
@@ -3236,6 +3364,8 @@ function SessionDemoPageContent() {
                 {userFeatures?.canExportPDF && (() => {
                   // Shared helper — builds the export payload and triggers download
                   const handleExport = async (format: "full" | "compact") => {
+                    if (exportingPdf) return;
+                    setExportingPdf(format);
                     try {
                       const sessionForExport = {
                         ...session,
@@ -3244,14 +3374,17 @@ function SessionDemoPageContent() {
                           const drillCopy = { ...drill };
                           if (drill.diagramV1 && !drill.diagram) drillCopy.diagram = drill.diagramV1;
                           if (drill.json?.diagram && !drillCopy.diagram) drillCopy.diagram = drill.json.diagram;
+                          const svg = pickDrillDiagramSvg(drill);
+                          if (svg) drillCopy.diagramSvg = svg;
                           return drillCopy;
                         }) || [],
                       };
                       const accessToken = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
                       const headers: Record<string, string> = { "Content-Type": "application/json" };
                       if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-                      const response = await fetch("/api/export-session-pdf", {
+                      const response = await fetch(`/api/export-session-pdf?rev=${SESSION_PDF_REVISION}`, {
                         method: "POST",
+                        cache: "no-store",
                         headers,
                         body: JSON.stringify({ session: sessionForExport, format }),
                       });
@@ -3265,70 +3398,66 @@ function SessionDemoPageContent() {
                       const a = document.createElement("a");
                       a.href = url;
                       const suffix = format === "compact" ? "-compact" : "";
-                      a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}${suffix}.pdf`;
+                      a.download = `session-${session.title.replace(/[^a-z0-9]/gi, "-")}${suffix}-${SESSION_PDF_REVISION}.pdf`;
                       document.body.appendChild(a);
                       a.click();
                       window.URL.revokeObjectURL(url);
                       document.body.removeChild(a);
                     } catch (e: any) {
                       alert("Error exporting PDF: " + e.message);
+                    } finally {
+                      setExportingPdf(null);
                     }
                   };
 
                   return (
+                    <>
+                    {exportingPdf && (
+                      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60">
+                        <div className="rounded-2xl border border-emerald-500/30 bg-slate-900 px-7 py-6 text-center shadow-2xl">
+                          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent" />
+                          <p className="text-sm font-semibold text-white">Downloading PDF</p>
+                          <p className="mt-1 text-xs text-slate-400">This usually takes a few seconds…</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="relative flex items-center rounded-full overflow-hidden border border-emerald-500 bg-emerald-500 text-slate-950 text-[13px] font-semibold shadow-lg shadow-emerald-500/30">
                       {/* Full PDF */}
                       <button
                         onClick={() => handleExport("full")}
-                        className="flex items-center gap-1.5 h-9 px-3.5 hover:bg-emerald-400 transition-colors"
+                        disabled={Boolean(exportingPdf)}
+                        className="flex items-center gap-1.5 h-9 px-3.5 hover:bg-emerald-400 transition-colors disabled:opacity-60"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                         </svg>
-                        Full PDF
+                        {exportingPdf === "full" ? "Downloading…" : "Full PDF"}
                       </button>
                       {/* Divider */}
                       <span className="w-px h-5 bg-emerald-700/40 self-center" />
                       {/* 1-Page compact */}
                       <button
                         onClick={() => handleExport("compact")}
+                        disabled={Boolean(exportingPdf)}
                         title="Landscape coach's sheet — 4 drill columns, print-ready"
-                        className="flex items-center gap-1.5 h-9 px-3 hover:bg-emerald-400 transition-colors"
+                        className="flex items-center gap-1.5 h-9 px-3 hover:bg-emerald-400 transition-colors disabled:opacity-60"
                       >
                         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 5.25h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5m-16.5 4.5h16.5" />
                         </svg>
-                        1-Page
+                        {exportingPdf === "compact" ? "Downloading…" : "1-Page"}
                       </button>
                     </div>
+                    </>
                   );
                 })()}
               </div>
 
-              {/* Session Plan Breakdown */}
-              {session.sessionPlan && (
-                <div className="mt-4 pt-4 border-t border-slate-700">
-                  <h3 className="text-sm font-semibold text-slate-200 mb-3">Session Plan</h3>
-                  {Array.isArray(session.sessionPlan.breakdown) ? (
-                    <div className="grid grid-cols-5 gap-2 text-xs">
-                      {session.sessionPlan.breakdown.map((item, i) => (
-                        <div key={i} className="text-center p-2 rounded-lg bg-slate-800/50">
-                          <div className="font-semibold text-slate-200">
-                            {drillTypeLabel[item.drillType] || item.drillType}
-                          </div>
-                          <div className="text-slate-400 mt-1">
-                            {(item.duration || item.durationMin || 0)} min
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-300">
-                      {typeof session.sessionPlan.breakdown === "string" 
-                        ? session.sessionPlan.breakdown 
-                        : `Total Duration: ${session.sessionPlan.totalDuration || session.durationMin || 90} minutes`}
-                    </div>
-                  )}
+              {session.sessionPlan && !Array.isArray(session.sessionPlan.breakdown) && (
+                <div className="mt-4 pt-4 border-t border-slate-700 text-sm text-slate-300">
+                  {typeof session.sessionPlan.breakdown === "string"
+                    ? session.sessionPlan.breakdown
+                    : `Total Duration: ${session.sessionPlan.totalDuration || session.durationMin || 90} minutes`}
                 </div>
               )}
 
@@ -3435,10 +3564,50 @@ function SessionDemoPageContent() {
               )}
             </section>
 
-            {/* All Drills in Session */}
-            <div className="space-y-6">
-              <h2 className="text-lg font-semibold">Session Drills</h2>
-              {session.drills.map((drill, index) => {
+            {/* One drill at a time — Stage view */}
+            <div className="space-y-4">
+              <div className="flex items-end justify-between gap-3">
+                <h2 className="text-lg font-semibold">Session</h2>
+                <p className="text-xs text-slate-500">← → to move through the hour</p>
+              </div>
+              {sessionDrills.length > 0 && (
+                <nav
+                  className="sticky top-0 z-20 -mx-1 overflow-x-auto bg-slate-950/95 px-1 py-3 backdrop-blur-sm"
+                  aria-label="Session blocks"
+                >
+                  <div
+                    className="grid min-w-[36rem] gap-2 sm:min-w-0"
+                    style={{ gridTemplateColumns: `repeat(${Math.max(sessionDrills.length, 1)}, minmax(0, 1fr))` }}
+                  >
+                  {sessionDrills.map((item, i) => {
+                    const start = drillStartMins[i] ?? 0;
+                    const mins = item.durationMin || 0;
+                    const current = i === activeDrillIndex;
+                    return (
+                      <button
+                        key={`${item.refCode || item.title}-${i}`}
+                        type="button"
+                        aria-current={current ? "true" : undefined}
+                        onClick={() => setActiveDrillIndex(i)}
+                        className={`min-h-14 rounded-xl border px-3 py-2 text-left transition-colors ${
+                          current
+                            ? "border-emerald-500 bg-emerald-500/15"
+                            : "border-slate-700/80 bg-slate-900/70 hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">{start}&apos;</div>
+                        <div className={`text-sm font-semibold ${current ? "text-emerald-200" : "text-slate-100"}`}>
+                          {drillTypeLabel[item.drillType] || item.drillType}
+                        </div>
+                        <div className="text-xs text-slate-400">{mins} min</div>
+                      </button>
+                    );
+                  })}
+                  </div>
+                </nav>
+              )}
+              {session.drills.slice(activeDrillIndex, activeDrillIndex + 1).map((drill, sliceIndex) => {
+                const index = activeDrillIndex + sliceIndex;
                 const baseDiagram = drill.json?.diagram || drill.diagram || drill.diagramV1 || drill.json?.diagramV1;
                 const diagram = drill.refCode && diagramOverrides[drill.refCode]
                   ? diagramOverrides[drill.refCode]
@@ -3539,7 +3708,7 @@ function SessionDemoPageContent() {
                               : null;
 
                           return (
-                            <div className="w-full max-w-3xl" key={`diagram-${drill.title}-${index}`}>
+                            <div className="w-full max-w-3xl lg:sticky lg:top-28" key={`diagram-${drill.refCode || drill.title}-${index}-${session.coachLevel || "default"}`}>
                               <DrillDiagramCard
                                 title={drill.title}
                                 gameModelId={session.gameModelId}
@@ -3549,7 +3718,10 @@ function SessionDemoPageContent() {
                                 drillId={diagramDrillId}
                                 drillType={drill.drillType}
                                 sessionSummary={session.summary}
-                                goalsAvailable={session.goalsAvailable ?? config.goalsAvailable}
+                                goalsAvailable={resolveDrillGoalsAvailableForDisplay(
+                                  drill,
+                                  session.goalsAvailable ?? config.goalsAvailable
+                                )}
                                 description={humanizeSessionText(drill.description)}
                                 organization={organizationObj ?? undefined}
                                 initialSvg={pickDrillDiagramSvg(drill)}
@@ -3560,10 +3732,15 @@ function SessionDemoPageContent() {
                         })()
                       )}
 
-                      <aside className="space-y-4 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5">
+                      <aside className="space-y-5 rounded-3xl border border-slate-700/60 bg-slate-900/60 px-6 py-5 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
                         <h4 className="text-sm font-semibold tracking-[0.18em] text-emerald-400 uppercase">
                           Drill Details
                         </h4>
+
+                        <div className="rounded-xl border border-slate-700/50 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+                          <span className="font-semibold text-slate-200">Goal setup: </span>
+                          {describeDrillGoalSetup(drill, session.goalsAvailable ?? config.goalsAvailable)}
+                        </div>
 
                         {(organizationString || organizationObj) && (
                           <div className="space-y-2">
@@ -3572,13 +3749,13 @@ function SessionDemoPageContent() {
                             </h5>
                             
                             {organizationString && (
-                              <p className="text-xs leading-relaxed text-slate-300 whitespace-pre-line">
+                              <p className="text-sm leading-relaxed text-slate-300 whitespace-pre-line">
                                 {organizationString}
                               </p>
                             )}
                             
                             {organizationObj && (
-                              <div className="space-y-3 text-xs text-slate-300">
+                              <div className="space-y-3 text-sm text-slate-300">
                                 {organizationObj.setupSteps && organizationObj.setupSteps.length > 0 && (
                                   <div>
                                     <h6 className="font-semibold text-slate-200 mb-1">Setup Steps:</h6>
@@ -3634,7 +3811,7 @@ function SessionDemoPageContent() {
                             <h5 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
                               Coaching Points
                             </h5>
-                            <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                            <ul className="list-disc pl-4 space-y-1.5 text-sm leading-relaxed text-slate-300">
                               {drill.coachingPoints.map((cp, i) => (
                                 <li key={i}>{cp}</li>
                               ))}
@@ -3647,7 +3824,7 @@ function SessionDemoPageContent() {
                             <h5 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
                               Progressions
                             </h5>
-                            <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                            <ul className="list-disc pl-4 space-y-1.5 text-sm leading-relaxed text-slate-300">
                               {drill.progressions.map((p, i) => (
                                 <li key={i}>{p}</li>
                               ))}
@@ -3660,7 +3837,7 @@ function SessionDemoPageContent() {
                             <h5 className="text-xs font-semibold text-slate-200 uppercase tracking-wide">
                               Constraints
                             </h5>
-                            <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-slate-300">
+                            <ul className="list-disc pl-4 space-y-1.5 text-sm leading-relaxed text-slate-300">
                               {drill.constraints.map((c, i) => (
                                 <li key={i}>{c}</li>
                               ))}
@@ -3674,10 +3851,10 @@ function SessionDemoPageContent() {
                               Load Notes
                             </h5>
                             {drill.loadNotes.structure && (
-                              <p className="text-xs text-slate-300 font-semibold">{drill.loadNotes.structure}</p>
+                              <p className="text-sm text-slate-300 font-semibold">{drill.loadNotes.structure}</p>
                             )}
                             {drill.loadNotes.rationale && (
-                              <p className="text-xs text-slate-300 leading-relaxed">{drill.loadNotes.rationale}</p>
+                              <p className="text-sm text-slate-300 leading-relaxed">{drill.loadNotes.rationale}</p>
                             )}
                           </div>
                         )}
@@ -3686,6 +3863,34 @@ function SessionDemoPageContent() {
                   </section>
                 );
               })}
+              {sessionDrills.length > 1 && (
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <button
+                    type="button"
+                    disabled={activeDrillIndex === 0}
+                    onClick={() => setActiveDrillIndex((i) => Math.max(0, i - 1))}
+                    className="min-h-11 rounded-xl border border-slate-700 bg-slate-900/70 px-4 text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    Previous
+                  </button>
+                  <div className="text-sm tabular-nums text-slate-400">
+                    {activeDrillIndex + 1} of {sessionDrills.length}
+                    {typeof drillStartMins[activeDrillIndex] === "number" && sessionDrills[activeDrillIndex]?.durationMin
+                      ? ` · ${drillStartMins[activeDrillIndex]}'–${
+                          drillStartMins[activeDrillIndex] + (sessionDrills[activeDrillIndex].durationMin || 0)
+                        }'`
+                      : ""}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={activeDrillIndex >= sessionDrills.length - 1}
+                    onClick={() => setActiveDrillIndex((i) => Math.min(sessionDrills.length - 1, i + 1))}
+                    className="min-h-11 rounded-xl border border-slate-700 bg-slate-900/70 px-4 text-sm text-slate-100 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

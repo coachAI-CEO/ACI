@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { getEnforcedClubVaultScope } from "../services/club-game-model-scope";
 import { drillDiagramVisible } from "../services/diagram-svg-access";
-import { generateDrillDiagramSvg, persistDrillDiagramSvg, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
+import { generateDrillDiagramSvg, isSceneStoredPicture, persistDrillDiagramSvg, placementForStoredPicture, storedDiagramNeedsRedraw } from "../services/drill-diagram-svg";
 import { fitDiagramSvgViewBox } from "../services/fit-diagram-viewbox";
 import { enforceDiagramGoalAvailability } from "../services/diagram-goals";
 
@@ -21,6 +21,20 @@ function asRecord(value: unknown): Record<string, any> {
   return value && typeof value === "object" ? (value as Record<string, any>) : {};
 }
 
+/** Stored scene sequence frames ([{svg,role,note,durationMs}]), or null. */
+function storedSceneFrames(drill: any): Array<Record<string, unknown>> | null {
+  const frames = asRecord(drill?.json).sceneFrames;
+  if (!Array.isArray(frames) || frames.length < 2) return null;
+  return frames
+    .filter((f) => f && typeof (f as any).svg === "string")
+    .map((f: any) => ({
+      svg: fitDiagramSvgViewBox(String(f.svg)),
+      role: f.role === "action" ? "action" : "setup",
+      note: typeof f.note === "string" ? f.note : undefined,
+      durationMs: Number.isFinite(Number(f.durationMs)) ? Number(f.durationMs) : 1800,
+    }));
+}
+
 function resolveGoalsAvailable(drill: any): number | null {
   const json = asRecord(drill?.json);
   const candidates = [
@@ -35,9 +49,14 @@ function resolveGoalsAvailable(drill: any): number | null {
     const value = Number(candidate);
     if (Number.isFinite(value) && value >= 0) return value;
   }
+  // Two vocabularies exist for this field: the older "LARGE"/"MINI2" (still
+  // written by postProcessDrill/goal-normalizer.ts) and the newer
+  // "FULL1"/"FULL2"/"NONE" (written by diagram-goals.ts, matching the
+  // canonical type in types/drill.ts). Recognize both so this fallback
+  // works regardless of which pipeline produced the row.
   const goalMode = String(drill?.goalMode || json.goalMode || "").toUpperCase();
-  if (goalMode === "LARGE") return 1;
-  if (goalMode === "MINI2") return 2;
+  if (goalMode === "LARGE" || goalMode === "FULL1") return 1;
+  if (goalMode === "MINI2" || goalMode === "FULL2") return 2;
   // Missing equipment flag is not "zero full goals" -- count keepers from
   // whatever full-size goals the stored diagram already drew.
   return null;
@@ -95,12 +114,12 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
   }
 
   const currentSvg = drill.diagramSvg;
-  // Prompt-version bumps no longer force a blocking redraw. Reopen must
-  // return the stored SVG; coaches regenerate explicitly with force=true.
+  // Prompt-version bumps and "stale picture" heuristics must not replace a
+  // stored scene. Reopen returns the stored SVG; coaches regenerate with force.
   const needsRegen = storedDiagramNeedsRedraw(force, currentSvg);
 
   if (!needsRegen) {
-    return res.json({ svg: currentSvg, cached: true });
+    return res.json({ svg: currentSvg, cached: true, frames: storedSceneFrames(drill) ?? undefined });
   }
 
   try {
@@ -144,7 +163,8 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       formationUsed: drill.formationUsed,
       phase: drill.phase,
       zone: drill.zone,
-    });
+      coachLevel: drill.coachLevel,
+    }, { placement: placementForStoredPicture(force) });
     if (drill.refCode) {
       await persistDrillDiagramSvg(drill.refCode, result);
     } else {
@@ -163,6 +183,7 @@ diagramSvgRouter.post("/generate", authenticate, async (req: AuthRequest, res) =
       cached: false,
       model: result.model,
       modelFallback: result.modelFallback,
+      frames: result.sceneFrames ?? undefined,
     });
   } catch (err) {
     console.error("drill_to_drawer_params_failed", { drillId, err });
@@ -221,13 +242,6 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
         { refCode: drillId },
       ],
     },
-    select: {
-      id: true,
-      diagramSvg: true,
-      generatedBy: true,
-      savedToVault: true,
-      gameModelId: true,
-    },
   });
 
   if (!drill) return res.status(404).json({ error: "drill not found" });
@@ -236,12 +250,63 @@ diagramSvgRouter.get("/:drillId", authenticate, async (req: AuthRequest, res) =>
     return res.status(403).json({ ok: false, error: "This diagram is outside your club vault." });
   }
 
-  const svg = drill.diagramSvg ? fitDiagramSvgViewBox(drill.diagramSvg) : drill.diagramSvg;
-  if (svg && drill.diagramSvg && svg !== drill.diagramSvg) {
-    await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
+  if (String(drill.drillType || "").toUpperCase() === "COOLDOWN") {
+    return res.json({ svg: null, cooldown: true, hasStoredSvg: false });
   }
-  return res.json({
-    svg: svg ?? PLACEHOLDER_SVG,
-    hasStoredSvg: !!svg,
-  });
+
+  if (
+    (isSceneStoredPicture(drill.diagramSvgPromptVersion) && Boolean(drill.diagramSvg)) ||
+    !storedDiagramNeedsRedraw(false, drill.diagramSvg)
+  ) {
+    const svg = fitDiagramSvgViewBox(drill.diagramSvg as string);
+    if (svg !== drill.diagramSvg) {
+      await prisma.drill.update({ where: { id: drill.id }, data: { diagramSvg: svg } });
+    }
+    return res.json({ svg, hasStoredSvg: true, cached: true, frames: storedSceneFrames(drill) ?? undefined });
+  }
+
+  try {
+    const result = await generateDrillDiagramSvg({
+      title: drill.title,
+      json: drill.json,
+      drillType: drill.drillType,
+      durationMin: drill.durationMin,
+      rpeMin: drill.rpeMin,
+      rpeMax: drill.rpeMax,
+      numbersMin: drill.numbersMin,
+      numbersMax: drill.numbersMax,
+      spaceConstraint: drill.spaceConstraint,
+      formationUsed: drill.formationUsed,
+      phase: drill.phase,
+      zone: drill.zone,
+      coachLevel: drill.coachLevel,
+    });
+    if (drill.refCode) {
+      await persistDrillDiagramSvg(drill.refCode, result);
+    } else {
+      await prisma.drill.update({
+        where: { id: drill.id },
+        data: {
+          diagramSvg: result.svg,
+          diagramSvgGeneratedAt: new Date(),
+          diagramSvgModel: result.model,
+          diagramSvgPromptVersion: result.promptVersion,
+        },
+      });
+    }
+    return res.json({
+      svg: result.svg,
+      hasStoredSvg: true,
+      cached: false,
+      model: result.model,
+      frames: result.sceneFrames ?? undefined,
+    });
+  } catch (err) {
+    console.error("diagram_svg_fetch_compile_failed", { drillId, err });
+    return res.json({
+      svg: PLACEHOLDER_SVG,
+      hasStoredSvg: false,
+      generationFailed: true,
+    });
+  }
 });

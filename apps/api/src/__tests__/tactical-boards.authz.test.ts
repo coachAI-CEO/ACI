@@ -171,7 +171,7 @@ describe('createBlankBoard', () => {
     });
   });
 
-  test('400 when shareMode=CLUB without club stamp', async () => {
+  test('shareMode=CLUB without club stamp soft-downgrades to PRIVATE', async () => {
     mockedPrisma.user.findUnique.mockResolvedValue({
       role: 'COACH',
       adminRole: null,
@@ -179,10 +179,44 @@ describe('createBlankBoard', () => {
     });
     mockedPrisma.clubMembership.findMany.mockResolvedValue([]);
     mockedPrisma.club.findFirst.mockResolvedValue(null);
+    const created = {
+      id: 'b1',
+      ownerUserId: 'u1',
+      clubId: null,
+      title: 'Untitled board',
+      diagram: {
+        pitch: { format: '11V11' },
+        players: [],
+        balls: [],
+        cones: [],
+        arrows: [],
+        areas: [],
+        labels: [],
+        goals: [],
+        elements: [],
+        coach: null,
+      },
+      ageGroup: null,
+      gameModelId: 'POSSESSION',
+      shareMode: 'PRIVATE',
+      sourceSessionId: null,
+      sourceDrillKey: null,
+      favorited: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    mockedPrisma.tacticalBoard.create.mockResolvedValue(created);
 
-    await expect(
-      createBlankBoard('u1', { shareMode: 'CLUB', gameModelId: 'POSSESSION' })
-    ).rejects.toMatchObject({ status: 400, code: 'CLUB_REQUIRED' });
+    const result = await createBlankBoard('u1', {
+      shareMode: 'CLUB',
+      gameModelId: 'POSSESSION',
+    });
+    expect(result.shareMode).toBe('PRIVATE');
+    expect(mockedPrisma.tacticalBoard.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ shareMode: 'PRIVATE' }),
+      })
+    );
   });
 
   test('stamps club gameModelId and creates blank', async () => {

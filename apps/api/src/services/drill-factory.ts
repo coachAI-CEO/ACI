@@ -16,10 +16,13 @@ export function buildDrillCreateData(json: any, meta: any): Prisma.DrillCreateIn
   const coachLevel  = meta?.coachLevel  || "advanced";
   const playerLevel = meta?.playerLevel || "developing";
 
-  // goalsSupported should already be computed by the route, but fall back to derive from goalMode if present
+  // goalsSupported should already be computed by the route, but fall back to derive from goalMode if present.
+  // Recognize both goalMode vocabularies -- "LARGE"/"MINI2" (postProcessDrill)
+  // and "FULL1"/"FULL2" (diagram-goals.ts).
+  const goalMode = String(json?.goalMode || "").toUpperCase();
   const goalsSupported = Array.isArray(json?.goalsSupported)
     ? json.goalsSupported
-    : (json?.goalMode === "LARGE" ? [1] : json?.goalMode === "MINI2" ? [2] : []);
+    : (goalMode === "LARGE" || goalMode === "FULL1" ? [1] : goalMode === "MINI2" || goalMode === "FULL2" ? [2] : []);
 
   // Minimal, safe payload —
   // NOTE: we cast to 'any' so we don't fight the exact schema during compile; Prisma will still validate at runtime.

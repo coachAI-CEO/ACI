@@ -124,6 +124,8 @@ export function canonicalJson(cell: PatternHuntCell): Record<string, any> {
     zone: cell.input.zone,
     formationAttacking: omitFormations ? "" : cell.input.formationAttacking,
     formationDefending: omitFormations ? "" : cell.input.formationDefending,
+    coachLevel: cell.input.coachLevel,
+    playerLevel: cell.input.playerLevel,
     organization: {
       area: { lengthYards: cap.lengthYards, widthYards: cap.widthYards, format },
       setupSteps:

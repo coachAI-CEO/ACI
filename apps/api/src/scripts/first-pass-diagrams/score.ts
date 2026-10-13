@@ -1,4 +1,4 @@
-import { FIELD_SPECS, expectedOutfieldRoles, formatOutfieldPerSide, isCenterBackRole, playerClusterCentered, practiceSpaceYards, shouldLockPracticeArea, type FieldFormat } from "../../data/field-dimensions";
+import { FIELD_SPECS, expectedOutfieldRoles, formatOutfieldPerSide, isCenterBackRole, parseFormationNums, playerClusterCentered, practiceSpaceYards, shouldLockPracticeArea, type FieldFormat } from "../../data/field-dimensions";
 import type { DrawerParams } from "../../types/drawer";
 import type { FirstPassFixture } from "./fixtures";
 
@@ -284,6 +284,12 @@ function scoreFormationLines(
     const want = expected.slice(0, group.length);
     if (sortedRoles(group) !== want.slice().sort().join(",")) {
       issues.push(`FORM_LINES: ${label} ${sortedRoles(group) || "none"} expected ${want.slice().sort().join(",")}`);
+    }
+    if (parseFormationNums(String(formation || ""))?.join("-") === "3-5-2") {
+      const wbs = group.filter((player) => /WB$/i.test(String(player.role || "")));
+      if (wbs.length === 2 && Math.abs(wbs[0].y - wbs[1].y) < 50) {
+        issues.push(`FORM_LINES: ${label} 3-5-2 wing-backs not providing width`);
+      }
     }
   }
   return issues;

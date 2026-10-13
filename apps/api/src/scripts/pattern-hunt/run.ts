@@ -47,6 +47,7 @@ async function main() {
     .split(",")
     .map((id) => id.trim().toUpperCase())
     .filter(Boolean);
+  const coachOverride = process.argv.find((a, i, all) => all[i - 1] === "--coachLevel") || "";
   const cells = only.length ? PATTERN_HUNT_CELLS.filter((c) => only.includes(c.id)) : PATTERN_HUNT_CELLS;
   const outDir =
     (process.argv.find((a, i, all) => all[i - 1] === "--out") as string | undefined) ||
@@ -92,6 +93,7 @@ async function main() {
         formationUsed: cell.fault === "empty-formation" ? cell.input.formationAttacking : undefined,
         phase: cell.input.phase,
         zone: cell.input.zone,
+        coachLevel: coachOverride || cell.input.coachLevel,
       };
       const params = drillToDrawerParams(drillLike as any);
       const svg = compileSvg(drillLike);
@@ -155,23 +157,29 @@ async function main() {
     JSON.stringify({ passed, total: rows.length, clusters: clusterRows, rows }, null, 2)
   );
 
-  const failCards = rows
-    .filter((r) => !r.pass)
-    .map((r) => {
-      const svg = fs.existsSync(path.join(outDir, "svg", `${r.id}.svg`))
-        ? fs.readFileSync(path.join(outDir, "svg", `${r.id}.svg`), "utf8")
-        : "";
-      return `<section style="margin:0 0 24px;padding:16px;border:1px solid #334155;border-radius:12px;background:#0f172a">
+  function card(r: (typeof rows)[number]): string {
+    const svg = fs.existsSync(path.join(outDir, "svg", `${r.id}.svg`))
+      ? fs.readFileSync(path.join(outDir, "svg", `${r.id}.svg`), "utf8")
+      : "";
+    const status = r.pass ? "PASS" : r.tags.join(" · ") || "FAIL";
+    const color = r.pass ? "#4ade80" : "#f87171";
+    return `<section id="${escapeHtml(r.id)}" style="margin:0 0 24px;padding:16px;border:1px solid #334155;border-radius:12px;background:#0f172a">
         <h2 style="margin:0 0 8px;font-size:16px">${escapeHtml(r.id)} — ${escapeHtml(r.label)}
-          <span style="color:#f87171;font-size:12px;margin-left:8px">${r.tags.join(" · ") || "FAIL"}</span>
+          <span style="color:${color};font-size:12px;margin-left:8px">${escapeHtml(status)}</span>
         </h2>
         <p style="color:#94a3b8;font-size:12px">${escapeHtml(r.matchup)} · ${escapeHtml(r.formations)}${r.fault ? ` · fault ${escapeHtml(r.fault)}` : ""}</p>
         ${r.error ? `<pre style="color:#fbbf24">${escapeHtml(r.error)}</pre>` : ""}
         ${r.issues.length ? `<ul style="color:#fca5a5">${r.issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul>` : ""}
         ${svg}
       </section>`;
-    })
-    .join("\n");
+  }
+
+  const fails = rows.filter((r) => !r.pass);
+  const failCards = fails.map(card).join("\n");
+  const allCards = rows.map(card).join("\n");
+  const nav = rows
+    .map((r) => `<a href="#${escapeHtml(r.id)}" style="color:${r.pass ? "#93c5fd" : "#fca5a5"}">${escapeHtml(r.id)}</a>`)
+    .join("");
 
   const clusterTable = clusterRows
     .map(
@@ -187,14 +195,19 @@ async function main() {
 svg{width:100%;height:auto;display:block;background:#08111f;border-radius:12px}
 table{border-collapse:collapse;width:100%;margin:12px 0 32px}
 td,th{border:1px solid #334155;padding:8px;text-align:left}
-th{color:#94a3b8}</style></head>
+th{color:#94a3b8}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+nav a{font-size:13px;text-decoration:none;border:1px solid #334155;padding:4px 8px;border-radius:8px}</style></head>
 <body>
-<h1>Pattern hunt — Pass 1 compiler only</h1>
-<p>${passed}/${rows.length} frozen pass · ${rows.length - passed} fail · no session LLM</p>
+<h1>Pattern hunt — Pass 1 compiler only${coachOverride ? ` · ${escapeHtml(coachOverride)}` : ""}</h1>
+<p>${passed}/${rows.length} frozen pass · ${rows.length - passed} fail · no session LLM · ${new Date().toISOString().slice(0, 10)}${coachOverride ? ` · coachLevel ${escapeHtml(coachOverride)}` : ""}</p>
+<nav>${nav}</nav>
 <h2>Clusters</h2>
 <table><thead><tr><th>Tag</th><th>n</th><th>Cells</th></tr></thead><tbody>${clusterTable || "<tr><td colspan=3>none</td></tr>"}</tbody></table>
 <h2>Failures</h2>
-${failCards || "<p>All 100 passed frozen checks.</p>"}
+${failCards || "<p>All cells passed frozen checks.</p>"}
+<h2>All cells</h2>
+${allCards}
 </body></html>`
   );
 

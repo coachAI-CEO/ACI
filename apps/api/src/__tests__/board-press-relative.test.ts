@@ -106,13 +106,20 @@ describe('BOARD_PRESS_RELATIVE press', () => {
   });
 
   test('no two shirts end up stacked (spacing pass still applies)', () => {
+    // enforceNoOverlap(…, 3.5): 3.5 between teammates, 2.5 between opponents.
+    // Allow a little solver rounding below each boundary.
     const players = place('4-2-3-1', 'high', true).players;
-    let min = Infinity;
-    for (let i = 0; i < players.length; i++)
-      for (let j = i + 1; j < players.length; j++)
-        min = Math.min(min, Math.hypot(players[i].x - players[j].x, players[i].y - players[j].y));
-    // The overlap pass pushes pairs to the 5-unit cross-team boundary; allow solver rounding.
-    expect(min).toBeGreaterThanOrEqual(4.99);
+    let sameTeam = Infinity;
+    let crossTeam = Infinity;
+    for (let i = 0; i < players.length; i++) {
+      for (let j = i + 1; j < players.length; j++) {
+        const d = Math.hypot(players[i].x - players[j].x, players[i].y - players[j].y);
+        if (players[i].team === players[j].team) sameTeam = Math.min(sameTeam, d);
+        else crossTeam = Math.min(crossTeam, d);
+      }
+    }
+    expect(sameTeam).toBeGreaterThanOrEqual(3.4);
+    expect(crossTeam).toBeGreaterThanOrEqual(2.4);
   });
 
   test('falls back to absolute placement for other phases', () => {

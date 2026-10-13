@@ -1,5 +1,9 @@
 # Short Video Analysis Feature Spec
 
+> **Status (19 August 2026):** Shipped as **beta** at `/video-analysis`. It is not the newest flagship (Coach Center, Tactical Board, and DOC Console shipped after). Keep this spec as the original MVP contract.
+>
+> **Live API (what shipped):** sync `POST /ai/video-analysis/run` plus vault `POST /vault/video-analysis/save`, `GET /vault/video-analysis`, `DELETE /vault/video-analysis/:id`. The async upload/job routes in §9 were the original design, not the production contract.
+
 ## 1) Goal
 Enable coaches to upload a short player or team clip and receive a strict, high-signal coaching analysis that is adapted by:
 - Age group

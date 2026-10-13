@@ -9,32 +9,32 @@ const PITCH =
 
 test("pitch-aware crop hugs the green field instead of a fixed 800-wide canvas", () => {
   const svg = `<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg">${PITCH}</svg>`;
-  expect(diagramFittedViewBox(svg)).toBe("105.92 34.38 588.16 493.24");
+  expect(diagramFittedViewBox(svg)).toBe("53.92 0 692.16 551.24");
   const fitted = fitDiagramSvgViewBox(svg);
-  expect(fitted).toContain('viewBox="0 0 588.16 493.24"');
-  expect(fitted).toContain("translate(-105.92, -34.38)");
+  expect(fitted).toContain('viewBox="0 0 692.16 551.24"');
+  expect(fitted).toContain("translate(-53.92, 0)");
 });
 
 test("fitted viewBox origin is 0,0 so the pitch cannot sit in a right-shifted card", () => {
   const svg = `<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg">${PITCH}</svg>`;
   const fitted = fitDiagramSvgViewBox(svg);
   expect(fitted).toMatch(/viewBox="0 0 /);
-  expect(fitted).not.toMatch(/viewBox="105\./);
+  expect(fitted).not.toMatch(/viewBox="53\./);
   expect(fitted).toContain('id="diagram-origin-fit"');
 });
 
 test("already-cropped offset viewBox is rebased to the origin", () => {
   const svg = [
-    '<svg overflow="hidden" viewBox="105.92 34.38 588.16 493.24" xmlns="http://www.w3.org/2000/svg">',
-    '<rect x="105.92" y="34.38" width="588.16" height="493.24" fill="#08111f"/>',
-    '<defs><clipPath id="diagram-fit-clip-1"><rect x="105.92" y="34.38" width="588.16" height="493.24"/></clipPath></defs>',
+    '<svg overflow="hidden" viewBox="53.92 0 692.16 551.24" xmlns="http://www.w3.org/2000/svg">',
+    '<rect x="53.92" y="0" width="692.16" height="551.24" fill="#08111f"/>',
+    '<defs><clipPath id="diagram-fit-clip-1"><rect x="53.92" y="0" width="692.16" height="551.24"/></clipPath></defs>',
     '<g clip-path="url(#diagram-fit-clip-1)">',
     PITCH,
     "</g></svg>",
   ].join("");
   const fitted = fitDiagramSvgViewBox(svg);
-  expect(fitted).toContain('viewBox="0 0 588.16 493.24"');
-  expect(fitted).toContain("translate(-105.92, -34.38)");
+  expect(fitted).toContain('viewBox="0 0 692.16 551.24"');
+  expect(fitted).toContain("translate(-53.92, 0)");
   expect(fitted).toContain('id="diagram-origin-fit"');
 });
 
@@ -42,14 +42,14 @@ test("legend chips left of the crop are shifted into view", () => {
   const svg = [
     '<svg viewBox="0 0 800 595" xmlns="http://www.w3.org/2000/svg">',
     PITCH,
-    '<circle cx="63" cy="443.62" r="7" fill="#3b82f6"/>',
+    '<circle cx="40" cy="443.62" r="7" fill="#3b82f6"/>',
     '<text x="80" y="448.62">Attack (8)</text>',
     '<g id="api-goal-overlay"></g>',
     "</svg>",
   ].join("");
   const fitted = fitDiagramSvgViewBox(svg);
   expect(fitted).toContain('id="diagram-legend-fit"');
-  expect(fitted).toMatch(/translate\(50\.92,0\)/);
+  expect(fitted).toMatch(/translate\(21\.92,0\)/);
 });
 
 test("SVGs without a pitch rect are left alone", () => {

@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAuthStorage, setAccessTokenCookie } from "@/lib/auth-cookie";
 import { seedAuthMeFromUser } from "@/lib/auth-me";
+import { trialsEnabled, TRIALS_CLOSED_MESSAGE } from "@/lib/trials";
 
 export default function RegisterPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
   const router = useRouter();
+  const trialsOpen = trialsEnabled();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -92,6 +94,39 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  if (!trialsOpen) {
+    return (
+      <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-md space-y-6 text-center">
+          <h1 className="text-3xl font-bold text-emerald-400">Free Trial Paused</h1>
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-5 text-sm leading-relaxed text-amber-100">
+            {TRIALS_CLOSED_MESSAGE}
+          </div>
+          <p className="text-sm text-slate-400">
+            You can still subscribe from our plans page, or sign in if you already have an account.
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Link
+              href="/pricing"
+              className="rounded-lg bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 transition"
+            >
+              View Plans
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-200 hover:border-slate-500 transition"
+            >
+              Sign In
+            </Link>
+          </div>
+          <Link href="/landing" className="inline-block text-xs text-slate-500 hover:text-slate-400">
+            ← Back to landing
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center px-6 py-12">

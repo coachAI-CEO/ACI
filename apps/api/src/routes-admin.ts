@@ -31,6 +31,16 @@ import {
   upsertClubMembership,
 } from "./services/club-memberships";
 import {
+  CoachCenterError,
+  adminCreateTeam,
+  assignCoachToTeam,
+  listTeamAssignmentsForUsers,
+  listTeamsAdmin,
+  syncCoachTeams,
+  unassignCoachFromTeam,
+} from "./services/coach-center";
+import { TeamCoachRole } from "@prisma/client";
+import {
   getClubPhilosophy,
   philosophyHasContent,
   updateClubPhilosophy,
@@ -2353,9 +2363,27 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 50;
     const offset = (page - 1) * limit;
+    const search = String(req.query.search || "").trim();
+    const role = String(req.query.role || "").trim();
+    const subscriptionPlan = String(req.query.subscriptionPlan || "").trim();
+    const clubId = String(req.query.clubId || "").trim();
+
+    const where: Record<string, unknown> = {};
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: "insensitive" } },
+        { name: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    if (role) where.role = role;
+    if (subscriptionPlan) where.subscriptionPlan = subscriptionPlan;
+    if (clubId) {
+      where.clubMemberships = { some: { clubId } };
+    }
     
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         skip: offset,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -2381,13 +2409,18 @@ r.get("/admin/users", requireAdminPermission('canManageUsers'), async (req: Admi
           organizationName: true,
         }
       }),
-      prisma.user.count()
+      prisma.user.count({ where })
     ]);
 
-    const membershipsByUser = await listClubMembershipsForUsers(users.map((u) => u.id));
+    const userIds = users.map((u) => u.id);
+    const [membershipsByUser, teamsByUser] = await Promise.all([
+      listClubMembershipsForUsers(userIds),
+      listTeamAssignmentsForUsers(userIds),
+    ]);
     const usersWithMemberships = users.map((user) => ({
       ...user,
       clubMemberships: membershipsByUser.get(user.id) ?? [],
+      teams: teamsByUser.get(user.id) ?? [],
     }));
     
     return res.json({
@@ -3020,15 +3053,16 @@ r.post("/admin/users/:userId/resend-verification", requireAdminPermission('canMa
 r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUsers'), async (req: AdminRequest, res) => {
   try {
     const { userId } = req.params;
-    const { coachLevel, teamAgeGroups, promoteToCoach } = req.body;
+    const { coachLevel, teamAgeGroups, promoteToCoach, teamIds } = req.body;
     
     const schema = z.object({
       coachLevel: z.enum(["USSF_D", "USSF_C", "USSF_B_PLUS"]).nullable().optional(),
       teamAgeGroups: z.array(z.string()).optional(),
       promoteToCoach: z.boolean().optional(),
+      teamIds: z.array(z.string().uuid()).optional(),
     });
     
-    const body = schema.parse({ coachLevel, teamAgeGroups, promoteToCoach });
+    const body = schema.parse({ coachLevel, teamAgeGroups, promoteToCoach, teamIds });
     
     // Get user to verify they exist and check their role
     const user = await prisma.user.findUnique({
@@ -3043,7 +3077,7 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
     const shouldPromoteToCoach =
       user.role !== 'COACH' &&
       (body.promoteToCoach ?? true) &&
-      (body.coachLevel !== undefined || body.teamAgeGroups !== undefined);
+      (body.coachLevel !== undefined || body.teamAgeGroups !== undefined || body.teamIds !== undefined);
 
     // Keep a guard in case caller explicitly disables promotion.
     if (user.role !== 'COACH' && !shouldPromoteToCoach) {
@@ -3064,18 +3098,34 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
       updateData.teamAgeGroups = body.teamAgeGroups;
     }
     
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        coachLevel: true,
-        teamAgeGroups: true,
-      }
-    });
+    const updatedUser = Object.keys(updateData).length
+      ? await prisma.user.update({
+          where: { id: userId },
+          data: updateData,
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            coachLevel: true,
+            teamAgeGroups: true,
+          }
+        })
+      : await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            coachLevel: true,
+            teamAgeGroups: true,
+          }
+        });
+
+    if (body.teamIds) {
+      await syncCoachTeams(userId, body.teamIds);
+    }
     
     await logAdminAction(
       req.userId!,
@@ -3086,6 +3136,7 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
         data: {
           coachLevel: body.coachLevel,
           teamAgeGroups: body.teamAgeGroups,
+          teamIds: body.teamIds,
           rolePromotedToCoach: shouldPromoteToCoach,
         }
       },
@@ -3094,6 +3145,9 @@ r.patch("/admin/users/:userId/coach-level", requireAdminPermission('canManageUse
     
     return res.json({ ok: true, user: updatedUser });
   } catch (error: any) {
+    if (error instanceof CoachCenterError) {
+      return res.status(error.status).json({ ok: false, error: error.message });
+    }
     if (error.name === 'ZodError') {
       return res.status(400).json({ ok: false, error: 'Invalid input', details: error.errors });
     }
@@ -4679,6 +4733,113 @@ r.post(
       return res.status(result.ok ? 200 : 400).json(result);
     } catch (e: any) {
       return res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  }
+);
+
+r.get("/admin/teams", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    const teams = await listTeamsAdmin(req.userId);
+    return res.json({ ok: true, teams });
+  } catch (error: any) {
+    return res.status(500).json({ ok: false, error: error.message || "Failed to load teams" });
+  }
+});
+
+r.post("/admin/teams", requireAdminPermission("canManageUsers"), async (req: AdminRequest, res) => {
+  try {
+    if (!req.userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+    const schema = z.object({
+      name: z.string().min(1).max(80),
+      ageGroup: z.string().min(2).max(8),
+      coachUserId: z.string().uuid(),
+      clubId: z.string().uuid().nullable().optional(),
+      gameModelId: z.string().optional(),
+      seasonLabel: z.string().max(40).nullable().optional(),
+      role: z.enum(["HEAD", "ASSISTANT"]).optional(),
+    });
+    const body = schema.parse(req.body ?? {});
+    const team = await adminCreateTeam(req.userId, {
+      ...body,
+      role: body.role === "ASSISTANT" ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD,
+    });
+    await logAdminAction(
+      req.userId,
+      "team.created",
+      {
+        resourceType: "Team",
+        resourceId: team.id,
+        data: {
+          name: team.name,
+          ageGroup: team.ageGroup,
+          coachUserId: body.coachUserId,
+          clubId: body.clubId ?? null,
+        },
+      },
+      req
+    );
+    return res.json({ ok: true, team });
+  } catch (error: any) {
+    if (error instanceof CoachCenterError) {
+      return res.status(error.status).json({ ok: false, error: error.message });
+    }
+    if (error?.name === "ZodError") {
+      return res.status(400).json({ ok: false, error: "Invalid input", details: error.errors });
+    }
+    return res.status(500).json({ ok: false, error: error.message || "Failed to create team" });
+  }
+});
+
+r.post(
+  "/admin/teams/:teamId/coaches/:userId",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const roleRaw = (req.body as { role?: unknown } | undefined)?.role;
+      const role = roleRaw === "ASSISTANT" ? TeamCoachRole.ASSISTANT : TeamCoachRole.HEAD;
+      const team = await assignCoachToTeam(req.params.teamId, req.params.userId, role);
+      await logAdminAction(
+        req.userId!,
+        "team.coach_assigned",
+        {
+          resourceType: "Team",
+          resourceId: req.params.teamId,
+          data: { userId: req.params.userId, role },
+        },
+        req
+      );
+      return res.json({ ok: true, team });
+    } catch (error: any) {
+      if (error instanceof CoachCenterError) {
+        return res.status(error.status).json({ ok: false, error: error.message });
+      }
+      return res.status(500).json({ ok: false, error: error.message || "Failed to assign coach" });
+    }
+  }
+);
+
+r.delete(
+  "/admin/teams/:teamId/coaches/:userId",
+  requireAdminPermission("canManageUsers"),
+  async (req: AdminRequest, res) => {
+    try {
+      const team = await unassignCoachFromTeam(req.params.teamId, req.params.userId);
+      await logAdminAction(
+        req.userId!,
+        "team.coach_removed",
+        {
+          resourceType: "Team",
+          resourceId: req.params.teamId,
+          data: { userId: req.params.userId },
+        },
+        req
+      );
+      return res.json({ ok: true, team });
+    } catch (error: any) {
+      if (error instanceof CoachCenterError) {
+        return res.status(error.status).json({ ok: false, error: error.message });
+      }
+      return res.status(500).json({ ok: false, error: error.message || "Failed to unassign coach" });
     }
   }
 );

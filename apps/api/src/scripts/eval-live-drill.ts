@@ -157,7 +157,7 @@ async function main() {
     formationUsed: drill.formationUsed,
     phase: drill.phase,
     zone: drill.zone,
-  });
+  }, { placement: "compiler" });
   const params = drillToDrawerParams({
     title: drill.title,
     json,

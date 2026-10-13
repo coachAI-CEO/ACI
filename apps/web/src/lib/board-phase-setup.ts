@@ -1,6 +1,6 @@
 /**
  * Setup phase/zone/channel types + UI helpers.
- * Placement geometry lives on the API (board-phase-placement chassis).
+ * Placement geometry is the API chassis, run in the browser (apply-setup-phase).
  * Default view = no phase / zone / channel (natural formation only).
  */
 

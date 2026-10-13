@@ -4,6 +4,7 @@ import { generateAndReviewSession } from "./services/session";
 import { generateProgressiveSessionSeries } from "./services/session-progressive";
 import { findSimilarSessions } from "./services/vault";
 import { generateSessionPdf, generateCompactSessionPdf } from "./services/pdf-export";
+import { SESSION_PDF_REVISION } from "./services/pdf-export-revision";
 import { generateText, setMetricsContext, clearMetricsContext } from "./gemini";
 import { extractRefCodes, lookupByRefCode } from "./utils/ref-code";
 import { authenticate, optionalAuth, requireFeature, AuthRequest } from "./middleware/auth";
@@ -74,14 +75,19 @@ function normalizeCoachLevel(value: unknown): string {
   return v;
 }
 
-function applyCoachLevelGuardrails<T extends { coachLevel?: unknown; playerLevel?: unknown }>(input: T): T {
+function applyCoachLevelGuardrails<T extends {
+  coachLevel?: unknown;
+  playerLevel?: unknown;
+  preserveCoachLevelContext?: unknown;
+}>(input: T): T {
   const next = { ...(input || {}) } as T;
   const coachLevel = normalizeCoachLevel(next.coachLevel);
+  const preserveContext = Boolean(next.preserveCoachLevelContext);
 
   if (coachLevel === "USSF_D" || coachLevel === "USSF_C" || coachLevel === "USSF_B_PLUS") {
     next.coachLevel = coachLevel;
   }
-  if (coachLevel === "USSF_D") {
+  if (coachLevel === "USSF_D" && !preserveContext) {
     next.playerLevel = "BEGINNER";
   }
 
@@ -362,6 +368,7 @@ r.post("/ai/generate-session", authenticate, async (req: AuthRequest, res) => {
       session,
       qa,
       fixDecision,
+      deviationWarning: result.deviationWarning || null,
       telemetry: {
         gameModelScore: Number.isFinite(gameModelScore) ? gameModelScore : null,
         phaseScore: Number.isFinite(phaseScore) ? phaseScore : null,
@@ -511,7 +518,12 @@ r.post("/ai/export-session-pdf", authenticate, requireFeature('canExportPDF'), a
       ? await generateCompactSessionPdf(session)
       : await generateSessionPdf(session);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=session.pdf");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("X-PDF-Revision", SESSION_PDF_REVISION);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="session-${SESSION_PDF_REVISION}${format === "compact" ? "-compact" : ""}.pdf"`
+    );
     return res.send(pdfBuffer);
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });

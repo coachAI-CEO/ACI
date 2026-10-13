@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=393, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Mobile Calendar — Mockup</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --surface: #141a2e;
+    --surface-2: #1b2240;
+    --surface-3: #232b4d;
+    --border: #2a3358;
+    --primary: #34d399;
+    --primary-dim: rgba(52,211,153,.18);
+    --accent: #60a5fa;
+    --accent-dim: rgba(96,165,250,.18);
+    --warn: #f59e0b;
+    --warn-dim: rgba(245,158,11,.16);
+    --danger: #ef4444;
+    --danger-dim: rgba(239,68,68,.16);
+    --muted: #8a92ad;
+    --text: #e6e9f5;
+    --text-dim: #c2c7da;
+    --radius: 14px;
+    --radius-sm: 10px;
+    --shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #050912; color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+  .stage { min-height: 100vh; display: grid; place-items: start center; padding: 24px 8px; }
+  .deck {
+    width: 393px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 16px 16px 0;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px; font-weight: 600;
+    padding: 4px 8px 12px;
+  }
+  .statusbar .right { display: flex; gap: 6px; align-items: center; }
+  .statusbar svg { width: 16px; height: 11px; }
+
+  h1, h2, h3 { margin: 0; }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.2px; }
+  h2 { font-size: 16px; font-weight: 600; }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .xs { font-size: 11px; }
+
+  .screen { padding-bottom: 0; }
+  .scene {
+    border-top: 1px solid var(--border);
+    padding: 24px 0;
+  }
+  .scene-label {
+    width: 393px;
+    margin: 0 auto;
+    padding: 0 8px 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+
+  /* ------- Calendar: month view ------- */
+  .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
+    padding: 4px 4px 12px;
+  }
+  .toolbar .nav { display: flex; align-items: center; gap: 4px; }
+  .pill {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .pill.primary { background: var(--primary); color: #062b1d; border-color: var(--primary); font-weight: 600; }
+  .pill.warn { background: var(--warn-dim); color: var(--warn); border-color: rgba(245,158,11,.3); }
+  .pill.ghost { background: transparent; }
+  .seg {
+    display: inline-flex;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 2px;
+  }
+  .seg button {
+    background: transparent; border: 0; color: var(--text-dim);
+    font-size: 12px; font-weight: 600;
+    padding: 6px 10px; border-radius: 8px;
+    cursor: pointer;
+  }
+  .seg button.active { background: var(--surface-3); color: var(--text); }
+
+  .month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    padding: 0 4px;
+  }
+  .dow {
+    text-align: center; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 6px 0;
+  }
+  .day {
+    aspect-ratio: 1 / 1.05;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 4px 4px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: relative;
+    overflow: hidden;
+    font-size: 11px;
+  }
+  .day.outside { opacity: 0.4; }
+  .day.today { border-color: var(--primary); background: rgba(52,211,153,.08); }
+  .day .num { font-size: 11px; color: var(--muted); }
+  .chip {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  .chip.done { background: var(--muted); opacity: .5; }
+  .chip.cancel { background: var(--danger); }
+  .chip-stack { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-bottom: 4px; }
+  .chip-row { display: flex; gap: 2px; align-items: center; }
+  .chip-count {
+    font-size: 9px;
+    color: var(--muted);
+    margin-left: auto;
+    padding: 0 4px;
+  }
+  .day.has-events .num { color: var(--text); font-weight: 600; }
+
+  /* ------- Filter chips ------- */
+  .filter-row {
+    display: flex; gap: 6px; padding: 4px 4px 12px; overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .filter {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .filter.on { background: var(--primary-dim); border-color: var(--primary); color: var(--primary); }
+  .filter .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+
+  /* ------- Agenda view ------- */
+  .day-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin: 0 4px 10px;
+  }
+  .day-block .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .day-block .head .date { font-weight: 700; }
+  .day-block .head .day-name { color: var(--muted); font-size: 12px; }
+  .day-block .head .count { font-size: 11px; color: var(--muted); }
+  .ev-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+  }
+  .ev-row:first-of-type { border-top: 0; }
+  .ev-row .time {
+    width: 56px; flex-shrink: 0;
+    font-size: 12px; font-weight: 600;
+    color: var(--accent);
+  }
+  .ev-row .body { flex: 1; }
+  .ev-row .title { font-size: 13.5px; font-weight: 600; line-height: 1.25; }
+  .ev-row .meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .ev-row .pill.done { padding: 1px 6px; font-size: 10px; }
+  .ev-row .actions { display: flex; gap: 8px; margin-top: 6px; }
+  .link { background: transparent; border: 0; color: var(--accent); font-size: 12px; padding: 0; cursor: pointer; }
+  .link.danger { color: var(--danger); }
+
+  /* ------- Week strip view ------- */
+  .week-strip {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    padding: 0 4px;
+  }
+  .week-col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 4px;
+    min-height: 320px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .week-col .hd { text-align: center; font-size: 10px; color: var(--muted); text-transform: uppercase; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .week-col .hd.today { color: var(--primary); }
+  .week-col .hd .d { font-size: 14px; color: var(--text); font-weight: 700; display: block; margin-top: 2px; }
+  .week-col .hd.today .d { color: var(--primary); }
+  .event-block {
+    background: var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 4px 5px;
+    font-size: 10.5px;
+    color: var(--text);
+  }
+  .event-block .when { color: var(--accent); font-weight: 600; font-size: 10px; }
+  .event-block .ttl { line-height: 1.2; margin-top: 1px; }
+  .event-block.done { background: rgba(138,146,173,.18); border-left-color: var(--muted); opacity: .7; }
+  .event-block.done .ttl { text-decoration: line-through; }
+  .event-block.cancel { background: var(--danger-dim); border-left-color: var(--danger); }
+
+  /* ------- FAB ------- */
+  .fab {
+    position: absolute; right: 16px; bottom: 16px;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #062b1d;
+    display: grid; place-items: center;
+    box-shadow: 0 8px 24px rgba(52,211,153,.45);
+    font-size: 26px; font-weight: 300;
+    border: 0;
+  }
+
+  /* ------- Bottom sheet (event sheet) ------- */
+  .sheet-backdrop {
+    background: rgba(0,0,0,.55);
+    position: absolute; inset: 0;
+    padding-top: 40px;
+  }
+  .sheet {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px 18px 0 0;
+    padding: 14px 16px 16px;
+    box-shadow: 0 -8px 24px rgba(0,0,0,.5);
+    position: relative;
+    margin-top: auto;
+  }
+  .grab {
+    width: 36px; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+  .sheet .title { font-size: 16px; font-weight: 700; }
+  .sheet .sub { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .field {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .field .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+  .field .value { font-size: 14px; font-weight: 500; margin-top: 2px; }
+  .field .value.placeholder { color: var(--muted); font-weight: 400; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .conflict {
+    background: var(--warn-dim);
+    border: 1px solid rgba(245,158,11,.3);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--warn);
+  }
+  .conflict .head { display: flex; gap: 6px; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .conflict .item { color: var(--text-dim); margin-top: 2px; }
+  .actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-top: 8px;
+  }
+  .btn {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+  }
+  .btn.primary { background: var(--primary); color: #062b1d; border-color: var(--primary); }
+  .btn.danger { color: var(--danger); border-color: rgba(239,68,68,.3); background: var(--danger-dim); }
+  .btn.full { grid-column: 1 / -1; }
+
+  /* ------- Event detail ------- */
+  .detail-hd { padding: 4px 4px 12px; }
+  .detail-hd .refcode { color: var(--accent); font-size: 11px; font-weight: 600; }
+  .detail-hd .ttl { font-size: 19px; font-weight: 700; line-height: 1.25; margin: 4px 0; }
+  .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .badge { background: var(--surface-3); color: var(--text-dim); border-radius: 6px; padding: 3px 8px; font-size: 11px; }
+  .badge.primary { background: var(--primary-dim); color: var(--primary); }
+
+  /* ------- Series scheduling ------- */
+  .series-list {
+    max-height: 280px;
+    overflow-y: auto;
+    margin: 8px 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .series-item {
+    display: grid; grid-template-columns: 32px 1fr; gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+  }
+  .series-item:last-child { border-bottom: 0; }
+  .series-item .idx { color: var(--muted); font-size: 11px; font-weight: 600; }
+  .series-item .ttl { font-size: 13px; font-weight: 600; }
+  .series-item .meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .series-item .controls { display: flex; gap: 4px; }
+  .mini-pill {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px;
+    font-size: 11px; color: var(--text-dim);
+  }
+
+  /* ---------- Tabbar ---------- */
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 0; padding: 8px 4px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    margin: 16px -16px 0;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    color: var(--muted); font-size: 10px; font-weight: 500;
+  }
+  .tab .glyph { font-size: 18px; }
+  .tab.active { color: var(--primary); }
+  .tab.active .glyph { font-size: 19px; }
+
+  /* ---------- Misc helpers ---------- */
+  .divider { height: 1px; background: var(--border); margin: 8px 4px; }
+  .heading-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 8px; }
+  .heading-row h2 { font-size: 15px; }
+  .summary-card {
+    margin: 4px 4px 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+  .summary-card .head { display: flex; gap: 6px; align-items: center; font-weight: 600; margin-bottom: 4px; }
+  .summary-card .body { color: var(--text-dim); }
+  .empty {
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .badge-row + .summary-card { margin-top: 6px; }
+  .offline {
+    background: var(--warn-dim);
+    border: 1px solid rgba(245,158,11,.3);
+    color: var(--warn);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 11.5px;
+    margin: 0 4px 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .toc {
+    width: 393px;
+    margin: 24px auto 8px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+  }
+  .toc h3 { font-size: 13px; color: var(--text); margin-bottom: 8px; text-transform: none; letter-spacing: 0; }
+  .toc ol { padding-left: 20px; margin: 0; line-height: 1.7; color: var(--text-dim); }
+  .toc ol li a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="toc">
+    <h3>Mobile Calendar — Mockup · 393px</h3>
+    <ol>
+      <li><a href="#s1">Month view (default)</a></li>
+      <li><a href="#s2">Agenda view (next 30 days)</a></li>
+      <li><a href="#s3">Week strip view</a></li>
+      <li><a href="#s4">Event detail (read)</a></li>
+      <li><a href="#s5">Event sheet (create) — with conflict warning</a></li>
+      <li><a href="#s6">Event sheet (edit) — pre-filled</a></li>
+      <li><a href="#s7">Series scheduling — replace "Wed 6 PM" hard-code</a></li>
+      <li><a href="#s8">Reminder permission opt-in</a></li>
+      <li><a href="#s9">Offline state — cached calendar</a></li>
+    </ol>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 1. Month view                                  -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s1">1 · Month view (default landing) — dot indicators only, no title text</div>
+  <div class="deck">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="toolbar">
+      <div class="nav">
+        <button class="pill ghost">‹</button>
+        <button class="pill">Today</button>
+        <button class="pill ghost">›</button>
+      </div>
+      <h2 style="flex:1; text-align:center;">August 2026</h2>
+      <div class="seg"><button>Day</button><button class="active">Month</button><button>Week</button></div>
+    </div>
+
+    <div class="filter-row">
+      <span class="filter on"><span class="dot"></span>This month</span>
+      <span class="filter">All teams</span>
+      <span class="filter">Active</span>
+      <span class="filter">+ filter</span>
+    </div>
+
+    <div class="month-grid">
+      <div class="dow">Sun</div><div class="dow">Mon</div><div class="dow">Tue</div>
+      <div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div>
+
+      <div class="day outside"><span class="num">26</span></div>
+      <div class="day outside"><span class="num">27</span></div>
+      <div class="day outside"><span class="num">28</span></div>
+      <div class="day outside"><span class="num">29</span></div>
+      <div class="day outside"><span class="num">30</span></div>
+      <div class="day outside"><span class="num">31</span></div>
+      <div class="day"><span class="num">1</span></div>
+
+      <div class="day"><span class="num">2</span></div>
+      <div class="day"><span class="num">3</span></div>
+      <div class="day has-events">
+        <span class="num">4</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day has-events today">
+        <span class="num">5</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">6</span></div>
+      <div class="day has-events">
+        <span class="num">7</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">8</span></div>
+
+      <div class="day"><span class="num">9</span></div>
+      <div class="day"><span class="num">10</span></div>
+      <div class="day has-events">
+        <span class="num">11</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip done"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">12</span></div>
+      <div class="day has-events">
+        <span class="num">13</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+          <span class="chip cancel"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">14</span></div>
+      <div class="day"><span class="num">15</span></div>
+
+      <div class="day"><span class="num">16</span></div>
+      <div class="day"><span class="num">17</span></div>
+      <div class="day has-events">
+        <span class="num">18</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day has-events">
+        <span class="num">19</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">20</span></div>
+      <div class="day has-events">
+        <span class="num">21</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">22</span></div>
+
+      <div class="day"><span class="num">23</span></div>
+      <div class="day"><span class="num">24</span></div>
+      <div class="day has-events">
+        <span class="num">25</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">26</span></div>
+      <div class="day has-events">
+        <span class="num">27</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day has-events">
+        <span class="num">28</span>
+        <div class="chip-stack">
+          <span class="chip"></span>
+        </div>
+      </div>
+      <div class="day"><span class="num">29</span></div>
+
+      <div class="day"><span class="num">30</span></div>
+      <div class="day"><span class="num">31</span></div>
+      <div class="day outside"><span class="num">1</span></div>
+      <div class="day outside"><span class="num">2</span></div>
+      <div class="day outside"><span class="num">3</span></div>
+      <div class="day outside"><span class="num">4</span></div>
+      <div class="day outside"><span class="num">5</span></div>
+    </div>
+
+    <button class="fab">+</button>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 2. Agenda view                                 -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s2">2 · Agenda view (Day tab · next 30 days)</div>
+  <div class="deck">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="toolbar">
+      <div class="nav">
+        <button class="pill ghost">‹</button>
+        <button class="pill">Today</button>
+        <button class="pill ghost">›</button>
+      </div>
+      <h2 style="flex:1; text-align:center;">Next 30 days</h2>
+      <div class="seg"><button class="active">Day</button><button>Month</button><button>Week</button></div>
+    </div>
+
+    <div class="filter-row">
+      <span class="filter on"><span class="dot"></span>Next 30 days</span>
+      <span class="filter">All teams</span>
+      <span class="filter">Active</span>
+    </div>
+
+    <div class="heading-row" style="padding-top:8px;"><h3>📧 Weekly summary</h3><span class="link">Open</span></div>
+    <div class="summary-card">
+      <div class="head">📊 This week</div>
+      <div class="body">5 sessions · 4h 30m · U10, U12 · Possession · Pressing</div>
+    </div>
+
+    <div class="heading-row" style="padding-top:4px;"><h3>📅 Upcoming events</h3><span class="muted xs">12 total</span></div>
+
+    <div class="day-block">
+      <div class="head">
+        <div>
+          <span class="date">Mon Aug 4</span>
+          <span class="day-name"> · Today</span>
+        </div>
+        <span class="count">3 events</span>
+      </div>
+      <div class="ev-row">
+        <div class="time">4:00 PM</div>
+        <div class="body">
+          <div class="title">3v3 Possession</div>
+          <div class="meta">U10 · Rocklin FC · 60 min</div>
+          <div class="actions">
+            <button class="link">Open</button>
+            <button class="link">Mark done</button>
+            <button class="link danger">Delete</button>
+          </div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="time">5:30 PM</div>
+        <div class="body">
+          <div class="title">Press drill · U10</div>
+          <div class="meta">U10 · Field 1 · 60 min</div>
+          <div class="actions"><button class="link">Open</button><button class="link">Mark done</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="day-block">
+      <div class="head">
+        <div><span class="date">Wed Aug 6</span></div>
+        <span class="count">1 event</span>
+      </div>
+      <div class="ev-row">
+        <div class="time">4:30 PM</div>
+        <div class="body">
+          <div class="title">Defending shape</div>
+          <div class="meta">U12 · Field 2 · 60 min</div>
+          <div class="actions"><button class="link">Open</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="day-block">
+      <div class="head">
+        <div><span class="date">Fri Aug 8</span></div>
+        <span class="count">2 events</span>
+      </div>
+      <div class="ev-row">
+        <div class="time">3:30 PM</div>
+        <div class="body">
+          <div class="title">Finishing circuit</div>
+          <div class="meta">U14 · Main Facility · 60 min</div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="time">5:00 PM</div>
+        <div class="body">
+          <div class="title">Shooting circuit</div>
+          <div class="meta">U14 · Main Facility · 60 min</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="fab">+</button>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 3. Week strip                                  -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s3">3 · Week strip (Mon–Sun · scrollable for prev/next)</div>
+  <div class="deck">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="toolbar">
+      <div class="nav">
+        <button class="pill ghost">‹</button>
+        <button class="pill">This week</button>
+        <button class="pill ghost">›</button>
+      </div>
+      <h2 style="flex:1; text-align:center;">Aug 4–10</h2>
+      <div class="seg"><button>Day</button><button>Month</button><button class="active">Week</button></div>
+    </div>
+
+    <div class="filter-row">
+      <span class="filter on"><span class="dot"></span>This week</span>
+      <span class="filter">All teams</span>
+      <span class="filter">Active</span>
+    </div>
+
+    <div class="week-strip">
+      <div class="week-col">
+        <div class="hd">Mon<span class="d">4</span></div>
+        <div class="event-block"><div class="when">4:00 PM</div><div class="ttl">3v3 Possession</div></div>
+        <div class="event-block"><div class="when">5:30 PM</div><div class="ttl">Press drill</div></div>
+      </div>
+      <div class="week-col">
+        <div class="hd">Tue<span class="d">5</span></div>
+        <div class="event-block done"><div class="when">4:00 PM</div><div class="ttl">Conditioned scrim.</div></div>
+      </div>
+      <div class="week-col">
+        <div class="hd">Wed<span class="d">6</span></div>
+        <div class="event-block"><div class="when">4:30 PM</div><div class="ttl">Defending shape</div></div>
+        <div class="event-block"><div class="when">6:00 PM</div><div class="ttl">5v5 possession</div></div>
+      </div>
+      <div class="week-col">
+        <div class="hd today">Thu<span class="d">7</span></div>
+        <div class="event-block"><div class="when">5:00 PM</div><div class="ttl">Shooting circuit</div></div>
+      </div>
+      <div class="week-col">
+        <div class="hd">Fri<span class="d">8</span></div>
+        <div class="event-block"><div class="when">3:30 PM</div><div class="ttl">Finishing circuit</div></div>
+        <div class="event-block"><div class="when">5:00 PM</div><div class="ttl">Shooting circuit</div></div>
+      </div>
+      <div class="week-col">
+        <div class="hd">Sat<span class="d">9</span></div>
+      </div>
+      <div class="week-col">
+        <div class="hd">Sun<span class="d">10</span></div>
+      </div>
+    </div>
+
+    <button class="fab">+</button>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 4. Event detail                                -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s4">4 · Event detail (read)</div>
+  <div class="deck" style="position:relative;">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="sheet-backdrop" style="display:flex; flex-direction:column; padding-top:60px;">
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="detail-hd">
+          <div class="refcode">COA-2025-0012</div>
+          <div class="ttl">Press drill · U10</div>
+          <div class="badge-row">
+            <span class="badge primary">Mon Aug 4 · 5:30 PM</span>
+            <span class="badge">60 min</span>
+            <span class="badge">U10</span>
+          </div>
+        </div>
+        <div class="field">
+          <div class="label">📍 Location</div>
+          <div class="value">Field 1 · Main Facility</div>
+        </div>
+        <div class="field">
+          <div class="label">👥 Team</div>
+          <div class="value">U10 Boys</div>
+        </div>
+        <div class="field">
+          <div class="label">📝 Notes</div>
+          <div class="value">Focus on transitions · cones at 25/35</div>
+        </div>
+        <div class="field">
+          <div class="label">🔗 Session</div>
+          <div class="value" style="color:var(--accent);">Press drill · U10 →</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Mark done</button>
+          <button class="btn primary">Edit</button>
+        </div>
+        <div class="actions" style="margin-top:6px;">
+          <button class="btn">Cancel event</button>
+          <button class="btn danger">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 5. Event sheet (create) — conflict warning     -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s5">5 · Event sheet (create) — with live conflict warning</div>
+  <div class="deck" style="position:relative;">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="sheet-backdrop" style="display:flex; flex-direction:column; padding-top:80px;">
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="title">Schedule session</div>
+        <div class="sub">Press drill · U10 · COA-2025-0012</div>
+
+        <div class="row2">
+          <div class="field">
+            <div class="label">📅 Date</div>
+            <div class="value">Mon Aug 4, 2026</div>
+          </div>
+          <div class="field">
+            <div class="label">⏰ Time</div>
+            <div class="value">5:30 PM</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">⏳ Duration</div>
+          <div class="value">60 min</div>
+        </div>
+
+        <div class="field">
+          <div class="label">📍 Location <span class="muted xs">(optional)</span></div>
+          <div class="value">Field 1 · Main Facility</div>
+        </div>
+
+        <div class="field">
+          <div class="label">👥 Team <span class="muted xs">(optional)</span></div>
+          <div class="value">U10 Boys</div>
+        </div>
+
+        <div class="field">
+          <div class="label">📝 Notes <span class="muted xs">(optional)</span></div>
+          <div class="value placeholder">Focus on transitions · cones at 25/35</div>
+        </div>
+
+        <div class="conflict">
+          <div class="head">⚠️ Overlaps with 1 event on this day</div>
+          <div class="item">· 4:00 PM · 3v3 Possession (60 min)</div>
+        </div>
+
+        <div class="actions">
+          <button class="btn">Cancel</button>
+          <button class="btn primary">Schedule anyway</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 6. Event sheet (edit)                          -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s6">6 · Event sheet (edit) — pre-filled</div>
+  <div class="deck" style="position:relative;">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="sheet-backdrop" style="display:flex; flex-direction:column; padding-top:60px;">
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="title">Edit event</div>
+        <div class="sub">Press drill · U10 · COA-2025-0012</div>
+
+        <div class="row2">
+          <div class="field">
+            <div class="label">📅 Date</div>
+            <div class="value">Mon Aug 4, 2026</div>
+          </div>
+          <div class="field">
+            <div class="label">⏰ Time</div>
+            <div class="value">5:30 PM</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">⏳ Duration</div>
+          <div class="value">60 min</div>
+        </div>
+
+        <div class="field">
+          <div class="label">📍 Location</div>
+          <div class="value">Field 1 · Main Facility</div>
+        </div>
+
+        <div class="field">
+          <div class="label">👥 Team</div>
+          <div class="value">U10 Boys</div>
+        </div>
+
+        <div class="field">
+          <div class="label">📝 Notes</div>
+          <div class="value">Focus on transitions · cones at 25/35</div>
+        </div>
+
+        <div class="actions">
+          <button class="btn danger">Delete</button>
+          <button class="btn primary">Save changes</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 7. Series scheduling                           -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s7">7 · Schedule series — replace "Wed 6 PM" hard-code</div>
+  <div class="deck" style="position:relative;">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div class="sheet-backdrop" style="display:flex; flex-direction:column; padding-top:30px;">
+      <div class="sheet">
+        <div class="grab"></div>
+        <div class="title">Schedule all unscheduled</div>
+        <div class="sub">5 sessions · shared location/team/notes below</div>
+
+        <div class="series-list">
+          <div class="series-item">
+            <div class="idx">1</div>
+            <div>
+              <div class="ttl">Press drill · U10</div>
+              <div class="meta">60 min</div>
+            </div>
+            <div class="controls">
+              <span class="mini-pill">Mon 4:00 PM</span>
+            </div>
+          </div>
+          <div class="series-item">
+            <div class="idx">2</div>
+            <div>
+              <div class="ttl">3v3 Possession</div>
+              <div class="meta">60 min</div>
+            </div>
+            <div class="controls">
+              <span class="mini-pill">Wed 4:30 PM</span>
+            </div>
+          </div>
+          <div class="series-item">
+            <div class="idx">3</div>
+            <div>
+              <div class="ttl">Defending shape</div>
+              <div class="meta">60 min</div>
+            </div>
+            <div class="controls">
+              <span class="mini-pill">Fri 5:00 PM</span>
+            </div>
+          </div>
+          <div class="series-item">
+            <div class="idx">4</div>
+            <div>
+              <div class="ttl">Finishing circuit</div>
+              <div class="meta">60 min</div>
+            </div>
+            <div class="controls">
+              <span class="mini-pill">Mon 4:00 PM</span>
+            </div>
+          </div>
+          <div class="series-item">
+            <div class="idx">5</div>
+            <div>
+              <div class="ttl">Shooting circuit</div>
+              <div class="meta">60 min</div>
+            </div>
+            <div class="controls">
+              <span class="mini-pill">Wed 4:30 PM</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">📍 Shared location</div>
+          <div class="value">Field 1 · Main Facility</div>
+        </div>
+        <div class="field">
+          <div class="label">👥 Shared team</div>
+          <div class="value">U10 Boys</div>
+        </div>
+        <div class="field">
+          <div class="label">📝 Shared notes</div>
+          <div class="value placeholder">8-week progressive block</div>
+        </div>
+
+        <div class="actions">
+          <button class="btn">Cancel</button>
+          <button class="btn primary">Schedule 5 events</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 8. Notification opt-in                         -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s8">8 · First-open notification opt-in</div>
+  <div class="deck" style="position:relative;">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>5G</span><span>100%</span></div></div>
+
+    <div style="padding: 60px 16px; display:flex; flex-direction:column; gap:14px;">
+      <h2 style="font-size:18px;">Get reminders for your sessions?</h2>
+      <p style="color:var(--text-dim); font-size:13.5px; line-height:1.45; margin:0;">
+        We'll send a quick nudge 1 hour before each training session on your calendar.
+        You can change this anytime in <span style="color:var(--accent);">Settings → Notifications</span>.
+      </p>
+      <div class="summary-card" style="margin: 0;">
+        <div class="head">🔔 Reminder preview</div>
+        <div class="body">"Press drill · U10 starts in 1 hour at Field 1."</div>
+      </div>
+    </div>
+
+    <div style="padding: 0 16px 16px;">
+      <div class="actions">
+        <button class="btn">Maybe later</button>
+        <button class="btn primary">Allow reminders</button>
+      </div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+  <!-- ============================================== -->
+  <!-- 9. Offline state                                -->
+  <!-- ============================================== -->
+  <div class="scene-label" id="s9">9 · Offline — last-synced events still readable</div>
+  <div class="deck">
+    <div class="statusbar"><span>9:41</span><div class="right"><span>Offline</span></div></div>
+
+    <div class="offline">
+      <span>📶</span>
+      <div style="flex:1;">
+        You're offline. Showing events last synced <strong>2 hours ago</strong>.
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="nav">
+        <button class="pill ghost">‹</button>
+        <button class="pill">Today</button>
+        <button class="pill ghost">›</button>
+      </div>
+      <h2 style="flex:1; text-align:center;">Next 30 days</h2>
+      <div class="seg"><button class="active">Day</button><button>Month</button><button>Week</button></div>
+    </div>
+
+    <div class="filter-row">
+      <span class="filter on"><span class="dot"></span>Next 30 days</span>
+      <span class="filter">All teams</span>
+      <span class="filter">Active</span>
+    </div>
+
+    <div class="day-block">
+      <div class="head">
+        <div><span class="date">Mon Aug 4</span><span class="day-name"> · Today</span></div>
+        <span class="count">3 events</span>
+      </div>
+      <div class="ev-row">
+        <div class="time">4:00 PM</div>
+        <div class="body">
+          <div class="title">3v3 Possession</div>
+          <div class="meta">U10 · Rocklin FC · 60 min</div>
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="time">5:30 PM</div>
+        <div class="body">
+          <div class="title">Press drill · U10</div>
+          <div class="meta">U10 · Field 1 · 60 min</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="day-block">
+      <div class="head">
+        <div><span class="date">Wed Aug 6</span></div>
+        <span class="count">1 event</span>
+      </div>
+      <div class="ev-row">
+        <div class="time">4:30 PM</div>
+        <div class="body">
+          <div class="title">Defending shape</div>
+          <div class="meta">U12 · Field 2 · 60 min</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="fab" style="background: var(--surface-3); color: var(--muted); box-shadow:none;" title="Disabled offline">+</button>
+
+    <div class="tabbar">
+      <div class="tab"><span class="glyph">⌂</span>Home</div>
+      <div class="tab"><span class="glyph">▤</span>Vault</div>
+      <div class="tab"><span class="glyph">✦</span>Generate</div>
+      <div class="tab active"><span class="glyph">▦</span>Calendar</div>
+      <div class="tab"><span class="glyph">⚙</span>Settings</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

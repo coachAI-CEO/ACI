@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Check, Sparkles } from "lucide-react";
+import { trialsEnabled, TRIALS_CLOSED_MESSAGE } from "@/lib/trials";
 
 const plans = [
   {
@@ -60,6 +61,7 @@ const plans = [
 ];
 
 export default function PricingPage() {
+  const trialsOpen = trialsEnabled();
   const [selectedPlan, setSelectedPlan] = useState("Club Pro");
   const [loadingPlan, setLoadingPlan] = useState("");
   const [portalLoading, setPortalLoading] = useState(false);
@@ -76,7 +78,7 @@ export default function PricingPage() {
     if (typeof window === "undefined") return;
     const accessToken = localStorage.getItem("accessToken");
     if (!accessToken) {
-      window.location.href = "/register?next=/pricing";
+      window.location.href = trialsOpen ? "/register?next=/pricing" : "/login?next=/pricing";
       return;
     }
 
@@ -178,27 +180,35 @@ export default function PricingPage() {
           </p>
         </div>
 
-        <div className="mb-8 rounded-2xl border border-[#ADFF2F]/35 bg-[#ADFF2F]/10 p-5 text-center backdrop-blur-sm">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#ADFF2F]">Free Trial</p>
-          <p className="mt-2 text-lg font-semibold text-white">Start with a 7-day free trial on Starter Coach.</p>
-          <Link
-            href="/register"
-            className="mt-4 inline-flex rounded-md bg-[#ADFF2F] px-5 py-2.5 text-xs font-black uppercase text-black transition hover:bg-[#c6ff5f]"
-          >
-            Start Free Trial
-          </Link>
-          {hasToken && (
-            <button
-              type="button"
-              onClick={openBillingPortal}
-              disabled={portalLoading}
-              className="ml-3 mt-4 inline-flex rounded-md border border-white/30 bg-black/40 px-5 py-2.5 text-xs font-black uppercase text-white transition hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-60"
+        {trialsOpen ? (
+          <div className="mb-8 rounded-2xl border border-[#ADFF2F]/35 bg-[#ADFF2F]/10 p-5 text-center backdrop-blur-sm">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#ADFF2F]">Free Trial</p>
+            <p className="mt-2 text-lg font-semibold text-white">Start with a 7-day free trial on Starter Coach.</p>
+            <Link
+              href="/register"
+              className="mt-4 inline-flex rounded-md bg-[#ADFF2F] px-5 py-2.5 text-xs font-black uppercase text-black transition hover:bg-[#c6ff5f]"
             >
-              {portalLoading ? "Opening..." : "Manage Billing"}
-            </button>
-          )}
-          {billingError && <p className="mt-3 text-sm text-red-300">{billingError}</p>}
-        </div>
+              Start Free Trial
+            </Link>
+            {hasToken && (
+              <button
+                type="button"
+                onClick={openBillingPortal}
+                disabled={portalLoading}
+                className="ml-3 mt-4 inline-flex rounded-md border border-white/30 bg-black/40 px-5 py-2.5 text-xs font-black uppercase text-white transition hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {portalLoading ? "Opening..." : "Manage Billing"}
+              </button>
+            )}
+            {billingError && <p className="mt-3 text-sm text-red-300">{billingError}</p>}
+          </div>
+        ) : (
+          <div className="mb-8 rounded-2xl border border-amber-400/35 bg-amber-400/10 p-5 text-center backdrop-blur-sm">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">Free Trial</p>
+            <p className="mt-2 text-lg font-semibold text-white">{TRIALS_CLOSED_MESSAGE}</p>
+            <p className="mt-2 text-sm text-gray-300">Choose a plan below to get started today.</p>
+          </div>
+        )}
 
         <div className="grid gap-6 md:grid-cols-3">
           {plans.map((plan) => (

@@ -338,7 +338,7 @@ h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spaci
     A multi-stage AI pipeline — prompt engineering, schema validation, QA scoring, automated fixing, and coach-level adaptation — engineered so that every generated session is field-ready.
   </p>
   <div class="tech-stack-row">
-    <div class="ts-chip"><span>🤖</span>Google Gemini (Primary: gemini-3.5-flash)</div>
+    <div class="ts-chip"><span>🤖</span>Google Gemini (Primary: gemini-3.5-flash-lite)</div>
     <div class="ts-chip"><span>🗄</span>Prisma + PostgreSQL (Supabase)</div>
     <div class="ts-chip"><span>⚡</span>Next.js + Express TypeScript</div>
     <div class="ts-chip"><span>✅</span>Zod Schema Validation</div>
@@ -363,9 +363,9 @@ h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spaci
     <div class="arch-tier">
       <div class="tier-label">CLIENT LAYER — Next.js 16 · React 19 · Tailwind CSS 4 · Vercel</div>
       <div class="tier-row">
-        <div class="tier-box blue-b"><div class="tb-icon">🎨</div><h3>Coach UI</h3><p>Session builder, drill generator, vault, calendar, AI chat — all React client components</p></div>
-        <div class="tier-box blue-b"><div class="tb-icon">📄</div><h3>PDF Export</h3><p>Player plans + session runsheets rendered to PDF via server action + pdfkit</p></div>
-        <div class="tier-box blue-b"><div class="tb-icon">📊</div><h3>Admin Dashboard</h3><p>Usage metrics, QA analytics, session regeneration, user management</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">🎨</div><h3>Coach UI</h3><p>Coach Center, session builder, vault, Tactical Board, DOC Console — React app router</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">📄</div><h3>PDF Export</h3><p>Full session runsheet + landscape Coach’s Sheet. Diagrams rasterize stored SVG so print matches vault.</p></div>
+        <div class="tier-box blue-b"><div class="tb-icon">📊</div><h3>DOC Console</h3><p>Club philosophy, coach usage, attention, assign/reassign calendars — role-gated</p></div>
         <div class="tier-box blue-b"><div class="tb-icon">💳</div><h3>Stripe Billing</h3><p>Subscription tiers, checkout, customer portal — Stripe webhooks on API</p></div>
       </div>
     </div>
@@ -387,8 +387,8 @@ h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spaci
     <div class="arch-tier">
       <div class="tier-label">DATA + AI LAYER — Google Gemini · Supabase PostgreSQL · Supabase Storage</div>
       <div class="tier-row">
-        <div class="tier-box purple-b"><div class="tb-icon">🤖</div><h3>Gemini (Primary)</h3><p>gemini-3.5-flash — session gen (90s), drill gen (45s), QA review (60s), chat (30s)</p></div>
-        <div class="tier-box purple-b"><div class="tb-icon">🔄</div><h3>Gemini (Fallback)</h3><p>gemini-3.5-flash — auto-failover on transient errors with exponential backoff</p></div>
+        <div class="tier-box purple-b"><div class="tb-icon">🤖</div><h3>Gemini (Primary)</h3><p>gemini-3.5-flash-lite — session gen (150s default), drill gen, QA review, chat</p></div>
+        <div class="tier-box purple-b"><div class="tb-icon">🔄</div><h3>Gemini (Fallback)</h3><p>gemini-3.5-flash-lite — auto-failover on transient errors with exponential backoff</p></div>
         <div class="tier-box amber-b"><div class="tb-icon">🗄</div><h3>PostgreSQL</h3><p>Sessions · Drills · QAReports · APIMetrics · Users · Subscriptions — Prisma 6.19</p></div>
         <div class="tier-box amber-b"><div class="tb-icon">📦</div><h3>Supabase Storage</h3><p>Video upload bucket for analysis — presigned URLs, file lifecycle management</p></div>
       </div>
@@ -414,7 +414,7 @@ h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spaci
         <div class="tl-item"><span class="tl-key">Max retries (default)</span><span class="tl-val amber">0</span></div>
         <div class="tl-item"><span class="tl-key">Quota error policy</span><span class="tl-val red">FAIL FAST</span></div>
         <div class="tl-item"><span class="tl-key">Transient error policy</span><span class="tl-val lime">BACKOFF + RETRY</span></div>
-        <div class="tl-item"><span class="tl-key">Fallback model</span><span class="tl-val" style="color:var(--purple)">gemini-3.5-flash</span></div>
+        <div class="tl-item"><span class="tl-key">Fallback model</span><span class="tl-val" style="color:var(--purple)">gemini-3.5-flash-lite</span></div>
       </div>
       <div class="model-fallback">
 <span class="tok-kw">const</span> <span class="tok-fn">callGemini</span> = <span class="tok-kw">async</span> (prompt) => {<br/>
@@ -433,7 +433,7 @@ h2{font-size:clamp(22px,2.8vw,40px);font-weight:900;line-height:1.1;letter-spaci
       <div class="pipeline-steps">
         <div class="ps-row"><div class="ps-num">1</div><div class="ps-body"><div class="psb-title">Input Validation + Auth<span class="pill pill-blue">Zod</span></div><div class="psb-desc">Validate ageGroup, gameModelId, formation, coachLevel. Check user permissions and monthly generation limits.</div></div></div>
         <div class="ps-row"><div class="ps-num blue-n">2</div><div class="ps-body"><div class="psb-title">Build Structured Prompt<span class="pill pill-lime">Prompt Eng.</span></div><div class="psb-desc">Inject game model lock, phase lock, coach level profile, formation-derived roles, diagram complexity rules, hard constraints.</div></div></div>
-        <div class="ps-row"><div class="ps-num purple-n">3</div><div class="ps-body"><div class="psb-title">Gemini Generation Call<span class="pill pill-purple">LLM</span></div><div class="psb-desc">POST to Gemini API. Primary model first. 90s timeout (session) / 45s (drill). Fail-fast on quota, backoff on transient.</div><div class="psb-timing">gemini-3.5-flash · 90s timeout · 0 retries</div></div></div>
+        <div class="ps-row"><div class="ps-num purple-n">3</div><div class="ps-body"><div class="psb-title">Gemini Generation Call<span class="pill pill-purple">LLM</span></div><div class="psb-desc">POST to Gemini API. Primary model first. 150s timeout (session default) / drill timeout as configured. Fail-fast on quota, backoff on transient.</div><div class="psb-timing">gemini-3.5-flash-lite · 150s session timeout · 0 retries</div></div></div>
         <div class="ps-row"><div class="ps-num">4</div><div class="ps-body"><div class="psb-title">JSON Parse + Sanitize<span class="pill pill-amber">Transform</span></div><div class="psb-desc">Strip markdown fences. Merge diagramV1→diagram. Convert area dimensions string→number. Fix age mentions. Normalize progressions array.</div></div></div>
         <div class="ps-row"><div class="ps-num">5</div><div class="ps-body"><div class="psb-title">Youth Guards + Post-Process<span class="pill pill-lime">Rules</span></div><div class="psb-desc">Apply 94+ language transforms (grassroots). Enforce game model constraints (≥8 cues). Canonicalize equipment. Infer goalMode. Align diagram orientation.</div></div></div>
         <div class="ps-row"><div class="ps-num amber-n">6</div><div class="ps-body"><div class="psb-title">Diagram Re-enrichment<span class="pill pill-amber">Conditional LLM</span></div><div class="psb-desc">If diagram.players is empty or malformed, call Gemini again with enrichment prompt to regenerate diagram coordinates only.</div></div></div>
@@ -776,7 +776,7 @@ sentence.split(<span class="tok-str">" "</span>).length &gt; <span class="tok-nu
 <section class="slide" id="s9">
   <div class="top">
     <div class="badge badge-blue">DIAGRAM GENERATION ENGINE</div>
-    <h2>LLM outputs coordinates.<br/>Rules <span class="accent">validate and align</span> them.</h2>
+    <h2>LLM outputs coordinates.<br/>Rules <span class="accent">validate, align, and store</span> them.</h2>
   </div>
   <div class="diagram-layout">
     <div class="diagram-left">
@@ -830,6 +830,8 @@ sentence.split(<span class="tok-str">" "</span>).length &gt; <span class="tok-nu
         <div class="ef-step"><div class="ef-num">2</div><div><strong>If needed: call reenrichDiagramFromDrillJson()</strong><p>New Gemini call with diagram-only prompt — regenerate coordinates without touching drill content</p></div></div>
         <div class="ef-step"><div class="ef-num">3</div><div><strong>Merge enriched diagram</strong><p>Replace drill.diagram with enriched version. Preserve all non-diagram fields.</p></div></div>
         <div class="ef-step"><div class="ef-num">4</div><div><strong>Re-run alignment</strong><p>Goal-player alignment + orientation inference runs again on enriched data</p></div></div>
+        <div class="ef-step"><div class="ef-num">5</div><div><strong>Store SVG; PDF rasterizes that picture</strong><p>Session PDF and Coach’s Sheet print the vault diagram, not a second LLM draw</p></div></div>
+        <div class="ef-step"><div class="ef-num">6</div><div><strong>Tactical Board chassis is TypeScript</strong><p>Formation × phase F1–F3 play-out uses principles JSON, not raw LLM coordinates</p></div></div>
       </div>
       <div class="player-schema">
 <span class="tok-cm">// Player schema — every token</span><br/>
@@ -868,7 +870,7 @@ sentence.split(<span class="tok-str">" "</span>).length &gt; <span class="tok-nu
         <div class="ms-label">APIMetrics — every Gemini call writes a row (Prisma → PostgreSQL)</div>
         <div class="ms-field-grid">
           <div class="ms-field"><div class="mf-name">operationType</div><div class="mf-type">session · drill · qa_review · fixer · chat</div></div>
-          <div class="ms-field"><div class="mf-name">model</div><div class="mf-type">gemini-3.5-flash</div></div>
+          <div class="ms-field"><div class="mf-name">model</div><div class="mf-type">gemini-3.5-flash-lite</div></div>
           <div class="ms-field"><div class="mf-name">promptTokens</div><div class="mf-type">Int — input token count</div></div>
           <div class="ms-field"><div class="mf-name">completionTokens</div><div class="mf-type">Int — output token count</div></div>
           <div class="ms-field"><div class="mf-name">totalTokens</div><div class="mf-type">Int — for cost calculation</div></div>
