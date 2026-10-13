@@ -30,7 +30,9 @@ type DiagramSequence = WebDiagramSequence;
 type DiagramSequenceFrame = WebDiagramSequenceFrame;
 type DiagramV1 = WebDiagramV1;
 
-export const BOARD_SEQUENCE_MAX_FRAMES = 8;
+import { ensureDiagramObjectIds } from "./ids";
+
+export const BOARD_SEQUENCE_MAX_FRAMES = 12;
 export const BOARD_SEQUENCE_DEFAULT_DURATION_MS = 1600;
 export const BOARD_SEQUENCE_TWEEN_MS = 420;
 
@@ -100,17 +102,17 @@ export function ensureSequence(diagram: DiagramV1): DiagramV1 {
     const activeFrameId =
       frames.find((f) => f.id === existing.activeFrameId)?.id || frames[0].id;
     // Do not clobber root layers — they are the live working copy of the active frame.
-    return {
+    return ensureDiagramObjectIds({
       ...diagram,
       sequence: { frames, activeFrameId },
-    };
+    });
   }
 
   const frame = layersToFrame(extractFrameLayers(diagram), { title: "Frame 1" });
-  return {
+  return ensureDiagramObjectIds({
     ...diagram,
     sequence: { frames: [frame], activeFrameId: frame.id },
-  };
+  });
 }
 
 export function syncActiveFrame(diagram: DiagramV1): DiagramV1 {
@@ -209,15 +211,52 @@ function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
-/** Interpolate players/balls between two frame layer sets. Arrows/labels snap at t>=1 or use `to`. */
+function easeInOut(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function lerpPoint(
+  a: { x?: number; y?: number } | undefined,
+  b: { x?: number; y?: number } | undefined,
+  t: number
+): { x: number; y: number } | undefined {
+  if (!a || typeof a.x !== "number" || typeof a.y !== "number") {
+    return b && typeof b.x === "number" && typeof b.y === "number" ? { x: b.x, y: b.y } : undefined;
+  }
+  if (!b || typeof b.x !== "number" || typeof b.y !== "number") return { x: a.x, y: a.y };
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+function interpolateArrow(from: DiagramArrow, to: DiagramArrow | undefined, t: number): DiagramArrow {
+  if (!to) return clone(from);
+  const linked = Boolean(from.from.playerId || from.to.playerId || to.from.playerId || to.to.playerId);
+  if (linked) {
+    // Keep from-frame refs so player-linked arrows ride interpolated shirts (rails).
+    return clone(from);
+  }
+  return {
+    ...to,
+    id: from.id || to.id,
+    from: lerpPoint(from.from, to.from, t) || to.from,
+    to: lerpPoint(from.to, to.to, t) || to.to,
+    control: from.control || to.control ? lerpPoint(from.control, to.control, t) : undefined,
+    path:
+      from.path && to.path && from.path.length === to.path.length
+        ? from.path.map((p, i) => lerpPoint(p, to.path![i], t) || p)
+        : from.path,
+  };
+}
+
+/** Interpolate players/balls between two frame layer sets. Linked arrows ride shirts. */
 export function interpolateLayers(
   from: DiagramFrameLayers,
   to: DiagramFrameLayers,
   t: number
 ): DiagramFrameLayers {
-  const u = Math.max(0, Math.min(1, t));
-  if (u >= 1) return clone(to);
-  if (u <= 0) return clone(from);
+  const raw = Math.max(0, Math.min(1, t));
+  const u = easeInOut(raw);
+  if (raw >= 1) return clone(to);
+  if (raw <= 0) return clone(from);
 
   const toPlayersById = new Map(to.players.map((p) => [p.id, p]));
   const players: DiagramPlayer[] = from.players.map((p) => {
@@ -236,27 +275,108 @@ export function interpolateLayers(
 
   const fromBalls = from.balls || [];
   const toBalls = to.balls || [];
-  const ballCount = Math.max(fromBalls.length, toBalls.length);
-  const balls = [];
-  for (let i = 0; i < ballCount; i++) {
-    const a = fromBalls[i] || toBalls[i];
-    const b = toBalls[i] || fromBalls[i];
-    if (!a || !b) continue;
-    balls.push({ x: lerp(a.x, b.x, u), y: lerp(a.y, b.y, u) });
+  const toBallsById = new Map(toBalls.filter((b) => b.id).map((b) => [b.id, b]));
+  const seenBalls = new Set<string>();
+  const balls = fromBalls.map((a, i) => {
+    const dest = (a.id && toBallsById.get(a.id)) || toBalls[i];
+    if (a.id) seenBalls.add(a.id);
+    if (!dest) return { ...a };
+    return {
+      ...dest,
+      id: a.id || dest.id,
+      x: lerp(a.x, dest.x, u),
+      y: lerp(a.y, dest.y, u),
+    };
+  });
+  for (const b of toBalls) {
+    if (b.id && !seenBalls.has(b.id) && !fromBalls.some((a) => a.id === b.id)) {
+      balls.push({ ...b });
+    }
   }
 
-  // Snap annotations mid-way for readability
-  const snap = u < 0.5 ? from : to;
+  const fromArrows = from.arrows || [];
+  const toArrows = to.arrows || [];
+  const toArrowsById = new Map(toArrows.filter((a) => a.id).map((a) => [a.id, a]));
+  const seenArrows = new Set<string>();
+  const arrows: DiagramArrow[] = fromArrows.map((a, i) => {
+    if (a.id) seenArrows.add(a.id);
+    return interpolateArrow(a, (a.id && toArrowsById.get(a.id)) || toArrows[i], u);
+  });
+  for (const a of toArrows) {
+    if (a.id && !seenArrows.has(a.id) && !fromArrows.some((f) => f.id === a.id)) {
+      arrows.push(clone(a));
+    }
+  }
+
+  const fromAreas = from.areas || [];
+  const toAreas = to.areas || [];
+  const toAreasById = new Map(toAreas.filter((a) => a.id).map((a) => [a.id, a]));
+  const seenAreas = new Set<string>();
+  const areas: DiagramArea[] = fromAreas.map((a, i) => {
+    const dest = (a.id && toAreasById.get(a.id)) || toAreas[i];
+    if (a.id) seenAreas.add(a.id);
+    if (!dest) return clone(a);
+    if (typeof a.x !== "number" || typeof dest.x !== "number") return u < 0.5 ? clone(a) : clone(dest);
+    return {
+      ...dest,
+      id: a.id || dest.id,
+      x: lerp(a.x, dest.x, u),
+      y: lerp(a.y ?? 0, dest.y ?? 0, u),
+      width: lerp(a.width ?? dest.width ?? 10, dest.width ?? a.width ?? 10, u),
+      height: lerp(a.height ?? dest.height ?? 10, dest.height ?? a.height ?? 10, u),
+    };
+  });
+  for (const a of toAreas) {
+    if (a.id && !seenAreas.has(a.id) && !fromAreas.some((f) => f.id === a.id)) areas.push(clone(a));
+  }
+
+  const fromLabels = from.labels || [];
+  const toLabels = to.labels || [];
+  const toLabelsById = new Map(toLabels.filter((l) => l.id).map((l) => [l.id, l]));
+  const seenLabels = new Set<string>();
+  const labels: DiagramLabel[] = fromLabels.map((a, i) => {
+    const dest = (a.id && toLabelsById.get(a.id)) || toLabels[i];
+    if (a.id) seenLabels.add(a.id);
+    if (!dest) return { ...a };
+    return {
+      ...dest,
+      id: a.id || dest.id,
+      x: lerp(a.x, dest.x, u),
+      y: lerp(a.y, dest.y, u),
+    };
+  });
+  for (const l of toLabels) {
+    if (l.id && !seenLabels.has(l.id) && !fromLabels.some((f) => f.id === l.id)) labels.push({ ...l });
+  }
+
+  const fromEls = from.elements || [];
+  const toEls = to.elements || [];
+  const toElsById = new Map(toEls.map((e) => [e.id, e]));
+  const seenEls = new Set<string>();
+  const elements = fromEls.map((a) => {
+    seenEls.add(a.id);
+    const dest = toElsById.get(a.id);
+    if (!dest) return { ...a };
+    return {
+      ...dest,
+      x: lerp(a.x, dest.x, u),
+      y: lerp(a.y, dest.y, u),
+    };
+  });
+  for (const e of toEls) {
+    if (!seenEls.has(e.id)) elements.push({ ...e });
+  }
+
   return {
     players,
     balls,
-    arrows: clone(snap.arrows || []) as DiagramArrow[],
-    areas: clone(snap.areas || []) as DiagramArea[],
-    labels: clone(snap.labels || []) as DiagramLabel[],
-    goals: clone(snap.goals || []),
-    coach: snap.coach ? clone(snap.coach) : undefined,
-    cones: snap.cones ? clone(snap.cones) : undefined,
-    elements: snap.elements ? clone(snap.elements) : undefined,
+    arrows,
+    areas,
+    labels,
+    goals: clone((u < 0.5 ? from : to).goals || []),
+    coach: (u < 0.5 ? from : to).coach ? clone((u < 0.5 ? from : to).coach) : undefined,
+    cones: (u < 0.5 ? from : to).cones ? clone((u < 0.5 ? from : to).cones) : undefined,
+    elements,
   };
 }
 

@@ -205,7 +205,11 @@ export function findArrowIndexAtScreenPoint(
   return best;
 }
 
-export function eraseArrowAtIndex(arrows: DiagramArrow[], index: number): DiagramArrow[] {
+export function eraseArrowById<A extends { id?: string }>(arrows: A[], id: string): A[] {
+  return arrows.filter((a) => a.id !== id);
+}
+
+export function eraseArrowAtIndex<A>(arrows: A[], index: number): A[] {
   if (index < 0 || index >= arrows.length) return arrows;
   return arrows.filter((_, i) => i !== index);
 }
@@ -256,6 +260,7 @@ export function createLineArrow(input: {
     }
   }
   const arrow: DiagramArrow = {
+    id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     from: buildPointRef(input.fromPlayerId, input.fromX, input.fromY),
     to: buildPointRef(input.toPlayerId, input.toX, input.toY),
     type: input.type,

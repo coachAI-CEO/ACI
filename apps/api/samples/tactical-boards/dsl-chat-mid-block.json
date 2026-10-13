@@ -1,0 +1,34 @@
+{
+  "name": "mid-block",
+  "applied": true,
+  "reply": "What I saw\n- The coach requested an 11v11 setup showing our ATT 4-2-3-1 against a DEF 4-4-2 mid-block in the middle third.\n- The current board featured a 4-3-3 shape which we are adjusting to align with our club's double-pivot build-out model.\n\nOn the board\n- Placed our ATT 4-2-3-1 in possession with a split centre-back pairing and a double pivot (#6 and #8) providing a secure central platform.\n- Set up the opponent in a compact 4-4-2 mid-block within the middle third to deny central penetration.\n- Added tactical pass and movement arrows to highlight the #10 pocket and wide support angles.\n\nCoaching points\n- In possession, prioritize ball security and maintain positional support so the ball-carrier always has a safe option and a line-breaking option.\n- Use the double pivot to secure the center and liberate our fullbacks high and wide for width.\n- Recognize when the opponent's block is narrow, and use a switch of play or third-man combination to break pressure.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-7-7"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-2-1"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

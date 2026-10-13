@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts src/__tests__/board-ai-followup.test.ts src/__tests__/board-card-meta.test.ts src/__tests__/board-combo-composer.test.ts src/__tests__/board-playout-nine.test.ts",
+    "test": "jest --runInBand src/__tests__/club-session-scope.test.ts src/__tests__/tactical-boards.authz.test.ts src/__tests__/tactical-boards.http.test.ts src/__tests__/tactical-board-drawing.test.ts src/__tests__/tactical-board-scenario.test.ts src/__tests__/board-lines.test.ts src/__tests__/board-ai-followup.test.ts src/__tests__/board-card-meta.test.ts src/__tests__/board-combo-composer.test.ts src/__tests__/board-playout-nine.test.ts src/__tests__/board-session-next.test.ts src/__tests__/board-chassis-sync.test.ts src/__tests__/link-shared-runtime.test.ts",
     "test:all": "jest --runInBand",
     "dev": "nodemon --watch src -e ts,js,json --exec \"ts-node --project tsconfig.json src/index.ts\"",
-    "build": "prisma migrate deploy && prisma generate && tsc",
+    "build": "prisma migrate deploy && prisma generate && tsc && node scripts/link-shared-runtime.mjs",
     "start": "node dist/apps/api/src/index.js",
     "bulk:sessions": "ts-node --project tsconfig.json src/scripts/generate-bulk-sessions.ts",
     "bulk:series": "ts-node --project tsconfig.json src/scripts/generate-bulk-series.ts",

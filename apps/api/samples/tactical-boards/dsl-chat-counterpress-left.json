@@ -1,0 +1,58 @@
+{
+  "name": "counterpress-left",
+  "applied": true,
+  "reply": "What I saw\n- Counterpressing scenario in the opponent's defensive third (final third) after losing possession in an 11v11 setup.\n- Matchup of ATT 4-3-3 against DEF 4-2-3-1.\n\nOn the board\n- Placed the action in the opponent's defensive third with the nearest three ATT pressers swarming the ball.\n- Displayed the immediate 3-5 second counterpress to force a negative touch or regain possession.\n- Maintained ATT shape with higher lines and central compactness for rest defense.\n\nCoaching points\n- Apply immediate pressure on the ball-carrier within 3 to 5 seconds of losing possession to deny an easy outlet pass.\n- The nearest three players form a pressing triangle to cut off passing lanes while supporting defenders step up.\n- Keep vertical and horizontal compactness to ensure we win second balls if the initial press is bypassed.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-9-9"
+      },
+      "to": {
+        "playerId": "away-4-2"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-7-8"
+      },
+      "to": {
+        "playerId": "away-3-4"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-10-7"
+      },
+      "to": {
+        "playerId": "away-6-5"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-8-6"
+      },
+      "to": {
+        "playerId": "home-10-7"
+      },
+      "type": "cover",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

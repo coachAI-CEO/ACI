@@ -327,6 +327,8 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
       number: typeof p.number === 'number' ? p.number : undefined,
       team: mapTeam(p.team),
       role: typeof p.role === 'string' ? p.role : typeof p.label === 'string' ? p.label : undefined,
+      name: typeof p.name === 'string' ? p.name.slice(0, 40) : undefined,
+      group: typeof p.group === 'string' ? p.group.slice(0, 64) : undefined,
       x: clamp01to100(p.x),
       y: clamp01to100(p.y),
       relativePosition: typeof p.relativePosition === 'string' ? p.relativePosition : undefined,
@@ -341,7 +343,7 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
   const arrowsRaw = Array.isArray(src.arrows) ? src.arrows : [];
   const arrows: WebDiagramV1['arrows'] = arrowsRaw
     .filter((a: any) => a && typeof a === 'object')
-    .map((a: any) => {
+    .map((a: any, i: number) => {
       const type =
         a.type === 'pass' ||
         a.type === 'run' ||
@@ -377,6 +379,10 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         .slice(0, 100)
         .map((p: any) => ({ x: clamp01to100(p.x), y: clamp01to100(p.y) }));
       return {
+        id:
+          typeof a.id === 'string' && a.id.trim()
+            ? String(a.id).slice(0, 64)
+            : `a-${i}`,
         from,
         to,
         type,
@@ -401,7 +407,11 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         : [];
   const areas: WebDiagramV1['areas'] = areasRaw
     .filter((a: any) => a && typeof a === 'object')
-    .map((a: any) => ({
+    .map((a: any, i: number) => ({
+      id:
+        typeof a.id === 'string' && a.id.trim()
+          ? String(a.id).slice(0, 64)
+          : `z-${i}`,
       label: typeof a.label === 'string' ? a.label : undefined,
       x: isFiniteNumber(a.x) ? clamp01to100(a.x) : undefined,
       y: isFiniteNumber(a.y) ? clamp01to100(a.y) : undefined,
@@ -423,7 +433,11 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
         isFiniteNumber(l.x) &&
         isFiniteNumber(l.y)
     )
-    .map((l: any) => ({
+    .map((l: any, i: number) => ({
+      id:
+        typeof l.id === 'string' && l.id.trim()
+          ? String(l.id).slice(0, 64)
+          : `l-${i}`,
       text: String(l.text),
       x: clamp01to100(l.x),
       y: clamp01to100(l.y),
@@ -454,7 +468,14 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
   const balls = Array.isArray(src.balls)
     ? src.balls
         .filter((b: any) => b && isFiniteNumber(b.x) && isFiniteNumber(b.y))
-        .map((b: any) => ({ x: clamp01to100(b.x), y: clamp01to100(b.y) }))
+        .map((b: any, i: number) => ({
+          id:
+            typeof b.id === 'string' && b.id.trim()
+              ? String(b.id).slice(0, 64)
+              : `b-${i}`,
+          x: clamp01to100(b.x),
+          y: clamp01to100(b.y),
+        }))
     : undefined;
 
   const cones = Array.isArray(src.cones)
@@ -521,7 +542,7 @@ export function toWebDiagramV1(input: unknown): WebDiagramV1 | null {
   return root;
 }
 
-const BOARD_SEQUENCE_MAX_FRAMES = 8;
+const BOARD_SEQUENCE_MAX_FRAMES = 12;
 
 function layersFromDiagram(d: WebDiagramV1): Omit<
   NonNullable<WebDiagramV1['sequence']>['frames'][number],
@@ -577,7 +598,7 @@ function normalizeSequence(
     frames.push({
       id,
       title: typeof f.title === 'string' ? f.title.slice(0, 80) : undefined,
-      note: typeof f.note === 'string' ? f.note.slice(0, 300) : undefined,
+      note: typeof f.note === 'string' ? f.note.slice(0, 500) : undefined,
       durationMs:
         typeof f.durationMs === 'number' && Number.isFinite(f.durationMs)
           ? Math.max(400, Math.min(12000, Math.round(f.durationMs)))

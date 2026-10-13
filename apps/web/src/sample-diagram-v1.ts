@@ -35,9 +35,9 @@ export const SAMPLE_DIAGRAM_V1: DiagramV1 = {
   ],
 
   arrows: [
-    { from: { playerId: "D1" }, to: { playerId: "D2" }, type: "pass", style: "solid", weight: "normal" },
-    { from: { playerId: "D2" }, to: { playerId: "D3" }, type: "pass", style: "dashed", weight: "normal" },
-    { from: { playerId: "A2" }, to: { playerId: "A1" }, type: "run", style: "dotted", weight: "bold" },
+    { id: "a-0", from: { playerId: "D1" }, to: { playerId: "D2" }, type: "pass", style: "solid", weight: "normal" },
+    { id: "a-1", from: { playerId: "D2" }, to: { playerId: "D3" }, type: "pass", style: "dashed", weight: "normal" },
+    { id: "a-2", from: { playerId: "A2" }, to: { playerId: "A1" }, type: "run", style: "dotted", weight: "bold" },
   ],
 
   areas: [],

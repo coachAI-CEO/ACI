@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The version id lives
 in [`VERSION`](VERSION).
 
+## 1.14.0 — 2026-10-13
+
+### Tactical board — sequences, export, shared package, relative press
+
+- Board editor: multi-frame sequences (up to 12), object ids, PNG/GIF export,
+  stamps, snap/duplicate/flip/nudge/group operations
+- `@aci/shared` (`packages/shared`) is the canonical board code; the API's
+  `board-phase-placement` / `board-press-relative` / formation principles are the
+  single source for the placement chassis, synced into `apps/web/src/lib/chassis/`
+  (`pnpm sync:board-chassis`, enforced by `board-chassis-sync.test.ts`)
+- Fix: DEF goal-kick press no longer sends right-sided players to the opposite flank
+- Opt-in `BOARD_PRESS_RELATIVE=1` relative-offset press for the DEF goal-kick phase
+- Build: `link-shared-runtime.mjs` post-build step so the compiled API can load
+  `@aci/shared` at runtime (fixes the `ERR_MODULE_NOT_FOUND` startup crash)
+- Fix: `too_short` SVG check now judges model output before static chrome is injected
+- Board diagram max payload raised to 256 KB; AI chat frame cap 8 → 12
+
 ## 1.13.0 — 2026-08-28
 
 ### Diagrams — scene path on WebDiagramV1 + first-class ball

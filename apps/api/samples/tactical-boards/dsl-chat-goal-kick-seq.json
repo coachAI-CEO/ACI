@@ -1,0 +1,54 @@
+{
+  "name": "goal-kick-seq",
+  "applied": true,
+  "reply": "What I saw\n- Goal kick play-out scenario against an opposing 4-2-3-1 / 4-4-2 press block.\n- Need to establish building out from the back with numerical superiority using the single pivot and split center-backs.\n\nOn the board\n- Slide 1: GK distributes to split CBs with the single #6 dropping deep to create a numerical advantage against the press.\n- Slide 2: Full-backs stretch high and wide to create maximal width in the build-up phase.\n- Slide 3: Progression into the middle third through the central midfielder or wide passing lane as the opponent jumps.\n\nCoaching points\n- Split center-backs to the edges of the 18-yard box to stretch the first line of pressure.\n- Drop the single pivot (#6) into the passing lane between or beside the center-backs to act as a secure outlet.\n- Maintain high and wide positioning with full-backs so the ball-carrier always has a line-breaking option.\n\nSequence: 2 frames — Frame 1 is your saved board; later frames add the play. Use Play on the board to scrub.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 94,
+      "rotation": 180
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-1-0"
+      },
+      "to": {
+        "playerId": "home-4-2"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-4-2"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

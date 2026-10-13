@@ -1,0 +1,42 @@
+{
+  "pitch": {
+    "variant": "FULL",
+    "orientation": "HORIZONTAL",
+    "format": "11V11"
+  },
+  "players": [
+    {
+      "id": "att-1",
+      "team": "ATT",
+      "number": 1,
+      "role": "GK",
+      "x": 5,
+      "y": 50
+    },
+    {
+      "id": "att-4",
+      "team": "ATT",
+      "number": 4,
+      "x": 18,
+      "y": 30
+    },
+    {
+      "id": "att-5",
+      "team": "ATT",
+      "number": 5,
+      "x": 18,
+      "y": 50
+    },
+    {
+      "id": "att-3",
+      "team": "ATT",
+      "number": 3,
+      "x": 18,
+      "y": 70
+    }
+  ],
+  "arrows": [],
+  "areas": [],
+  "labels": [],
+  "balls": []
+}

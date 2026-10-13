@@ -91,12 +91,16 @@ export function validateAndCleanSVG(raw: string): DrawerResult {
     return { ok: false, reason: "invalid_output", raw };
   }
   svg = svg.slice(start, end + "</svg>".length);
-  svg = injectStandardDefs(svg);
 
+  // Judge the model's own output, before the static chrome (defs/markers) is
+  // injected: the chrome alone is now well over 500 characters, so measuring after
+  // injection made this check impossible to trigger.
   if (svg.length < 500) {
     console.warn("diagram_svg_suspiciously_short", { length: svg.length });
     return { ok: false, reason: "too_short", raw };
   }
+  svg = injectStandardDefs(svg);
+
   if (svg.length > 120_000) return { ok: false, reason: "too_large", raw };
 
   if (!isValidXml(svg)) return { ok: false, reason: "xml_error", raw };

@@ -1,0 +1,42 @@
+{
+  "name": "back3-mini-goal",
+  "applied": true,
+  "reply": "What I saw\n- You asked to show a back 3 protecting a mini-goal in our defensive third.\n\nOn the board\n- Set the grid to our defensive third (third_right).\n- Placed a mini-goal protecting our build-up zone.\n- Positioned three defenders in a back three shape to secure central channels.\n\nCoaching points\n- Maintain compact distances between the three defenders to deny central penetration.\n- The central defender acts as the cover while outside backs step to pressing triggers.\n- Keep body shape open to see both the ball and recovering teammates.",
+  "players": 5,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 82.5,
+      "rotation": 180
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-4-2"
+      },
+      "to": {
+        "playerId": "away-9-10"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-5-3"
+      },
+      "to": {
+        "playerId": "home-4-2"
+      },
+      "type": "cover",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

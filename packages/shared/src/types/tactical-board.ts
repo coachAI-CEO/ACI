@@ -58,6 +58,8 @@ export interface WebDiagramPointRef {
 }
 
 export interface WebDiagramArrow {
+  /** Stable id so the editor can select/delete and Play can match across frames. */
+  id?: string;
   from: WebDiagramPointRef;
   to: WebDiagramPointRef;
   type: WebDiagramArrowType;
@@ -81,6 +83,10 @@ export interface WebDiagramPlayer {
   number?: number;
   team: WebDiagramTeam;
   role?: string;
+  /** Optional display name shown on the board. */
+  name?: string;
+  /** Optional grouping label (e.g. a unit within the team). */
+  group?: string;
   /** 0–100 normalized. */
   x: number;
   /** 0–100 normalized. */
@@ -107,6 +113,7 @@ export interface WebDiagramCoach {
 }
 
 export interface WebDiagramArea {
+  id?: string;
   label?: string;
   x?: number;
   y?: number;
@@ -117,12 +124,14 @@ export interface WebDiagramArea {
 }
 
 export interface WebDiagramLabel {
+  id?: string;
   text: string;
   x: number;
   y: number;
 }
 
 export interface WebDiagramBall {
+  id?: string;
   x: number;
   y: number;
 }

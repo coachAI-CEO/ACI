@@ -46,15 +46,40 @@ export type DiagramPointRef = WebDiagramPointRef;
 export type DiagramArrowType = WebDiagramArrowType;
 export type DiagramArrowStyle = WebDiagramArrowStyle;
 export type DiagramArrowWeight = WebDiagramArrowWeight;
-export type DiagramArrow = WebDiagramArrow;
-export type DiagramArea = WebDiagramArea;
-export type DiagramLabel = WebDiagramLabel;
-export type DiagramFrameLayers = WebDiagramFrameLayers;
-export type DiagramSequenceFrame = WebDiagramSequenceFrame;
-export type DiagramSequence = WebDiagramSequence;
-export type DiagramV1 = WebDiagramV1;
-export type DiagramBall = WebDiagramBall;
+export type DiagramArrow = WebDiagramArrow & { id: string };
+export type DiagramArea = WebDiagramArea & { id: string };
+export type DiagramLabel = WebDiagramLabel & { id: string };
+export type DiagramBall = WebDiagramBall & { id: string };
 export type DiagramCone = WebDiagramCone;
+
+// The web editor selects/deletes objects by id and Play matches them across
+// frames, so here arrows, areas, labels and balls carry a REQUIRED id. In the
+// shared type the id is optional (the API and mobile app may omit it); the
+// shared id helpers (`ensureDiagramObjectIds`) stamp the missing ones.
+type IdLayerKeys = 'arrows' | 'areas' | 'labels' | 'balls';
+export type DiagramFrameLayers = Omit<WebDiagramFrameLayers, IdLayerKeys> & {
+  arrows: DiagramArrow[];
+  areas: DiagramArea[];
+  labels: DiagramLabel[];
+  balls?: DiagramBall[];
+};
+export type DiagramSequenceFrame = DiagramFrameLayers & {
+  id: string;
+  title?: string;
+  note?: string;
+  durationMs?: number;
+};
+export type DiagramSequence = {
+  activeFrameId: string;
+  frames: DiagramSequenceFrame[];
+};
+export type DiagramV1 = Omit<WebDiagramV1, IdLayerKeys | 'sequence'> & {
+  arrows: DiagramArrow[];
+  areas: DiagramArea[];
+  labels: DiagramLabel[];
+  balls?: DiagramBall[];
+  sequence?: DiagramSequence;
+};
 
 // Note: types are erased at runtime — re-exports under both names are
 // guaranteed to refer to the same TSC-instantiated shape because they

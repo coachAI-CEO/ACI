@@ -32,9 +32,15 @@ type Props = {
   addTeam: DiagramTeamCode;
   onAddTeamChange: (team: DiagramTeamCode) => void;
   onUndo: () => void;
+  onRedo?: () => void;
+  onPlayToggle?: () => void;
+  playing?: boolean;
+  playDisabled?: boolean;
+  snapEnabled?: boolean;
+  onSnapChange?: (next: boolean) => void;
   disabled?: boolean;
-  /** Vertical left rail (Idea A) vs legacy horizontal bar. */
-  variant?: "bar" | "rail";
+  /** Vertical left rail, phone dock, or legacy horizontal bar. */
+  variant?: "bar" | "rail" | "dock";
 };
 
 type MenuId = "select" | "lines" | "shapes" | "elements" | null;
@@ -239,6 +245,24 @@ function GroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 010 11H11" />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 000 11H13" />
+    </svg>
+  );
+}
+
 function ToolButton({
   active,
   onClick,
@@ -284,13 +308,15 @@ function DropdownMenu({
   items: MenuItem[];
   activeTool: BoardTool;
   onPick: (id: BoardTool) => void;
-  side?: "bottom" | "right";
+  side?: "bottom" | "right" | "top";
 }) {
   if (!open) return null;
   const pos =
     side === "right"
       ? "left-[calc(100%+6px)] top-0"
-      : "left-0 top-[calc(100%+6px)]";
+      : side === "top"
+        ? "left-0 bottom-[calc(100%+6px)]"
+        : "left-0 top-[calc(100%+6px)]";
   return (
     <div
       className={`absolute ${pos} z-40 min-w-[11.5rem] overflow-hidden rounded-xl border border-white/10 bg-[#0b1220] py-1 shadow-xl shadow-black/50`}
@@ -326,6 +352,12 @@ export default function BoardToolbar({
   addTeam,
   onAddTeamChange,
   onUndo,
+  onRedo,
+  onPlayToggle,
+  playing,
+  playDisabled,
+  snapEnabled,
+  onSnapChange,
   disabled,
   variant = "rail",
 }: Props) {
@@ -412,15 +444,18 @@ export default function BoardToolbar({
     setOpenMenu((cur) => (cur === id ? null : id));
   };
 
-  const menuSide = variant === "rail" ? "right" : "bottom";
+  const menuSide = variant === "rail" ? "right" : variant === "dock" ? "top" : "bottom";
 
-  if (variant === "rail") {
+  if (variant === "rail" || variant === "dock") {
+    const isDock = variant === "dock";
     return (
       <div
         ref={rootRef}
-        className={`flex w-12 shrink-0 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-[#07111f]/95 py-2 ${
-          disabled ? "pointer-events-none opacity-40" : ""
-        }`}
+        className={`${
+          isDock
+            ? "flex h-11 min-h-[44px] w-full items-center gap-1 overflow-x-auto rounded-xl border border-white/10 bg-[#07111f]/95 px-1.5"
+            : "flex w-12 shrink-0 flex-col items-center gap-1.5 rounded-xl border border-white/10 bg-[#07111f]/95 py-2"
+        } ${disabled ? "pointer-events-none opacity-40" : ""}`}
         title={toolHint(tool)}
       >
         <div className="relative">
@@ -514,7 +549,7 @@ export default function BoardToolbar({
           >
             {ELEMENT_ITEMS[1].icon}
           </ToolButton>
-          <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-wide text-slate-500">
+          <span className="mt-0.5 text-[8px] font-semibold uppercase tracking-wide text-slate-500 max-lg:hidden">
             Kit
           </span>
           <DropdownMenu
@@ -536,11 +571,40 @@ export default function BoardToolbar({
           </svg>
         </ToolButton>
         <ToolButton active={false} title="Undo (⌘Z)" onClick={onUndo}>
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M9 7H5v4" />
-            <path d="M5 11a7 7 0 117 7" />
-          </svg>
+          <UndoIcon />
         </ToolButton>
+        {onRedo ? (
+          <ToolButton active={false} title="Redo (⇧⌘Z)" onClick={onRedo}>
+            <RedoIcon />
+          </ToolButton>
+        ) : null}
+        {onSnapChange ? (
+          <ToolButton
+            active={Boolean(snapEnabled)}
+            title={snapEnabled ? "Snap on" : "Snap off"}
+            onClick={() => onSnapChange(!snapEnabled)}
+          >
+            <span className="text-[10px] font-bold">10</span>
+          </ToolButton>
+        ) : null}
+        {onPlayToggle ? (
+          <ToolButton
+            active={Boolean(playing)}
+            title={playing ? "Pause" : "Play"}
+            onClick={playDisabled ? () => undefined : onPlayToggle}
+          >
+            {playing ? (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <rect x="6" y="5" width="4" height="14" rx="1" />
+                <rect x="14" y="5" width="4" height="14" rx="1" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                <path d="M8 5l12 7-12 7V5z" />
+              </svg>
+            )}
+          </ToolButton>
+        ) : null}
       </div>
     );
   }
@@ -675,11 +739,13 @@ export default function BoardToolbar({
               </svg>
             </ToolButton>
             <ToolButton active={false} title="Undo (⌘Z)" onClick={onUndo}>
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M9 7H5v4" />
-                <path d="M5 11a7 7 0 117 7" />
-              </svg>
+              <UndoIcon />
             </ToolButton>
+            {onRedo ? (
+              <ToolButton active={false} title="Redo (⇧⌘Z)" onClick={onRedo}>
+                <RedoIcon />
+              </ToolButton>
+            ) : null}
           </div>
         </div>
       </div>

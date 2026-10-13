@@ -1,0 +1,34 @@
+{
+  "name": "defend-our-third",
+  "applied": true,
+  "reply": "What I saw\n- The coach requested an 11v11 setup with a 4-4-2 attacking shape against a 4-3-3 defensive shape, focused on defending in our defensive third.\n\nOn the board\n- Set the activity to match_scenario with seed current to maintain roster IDs.\n- Placed the defensive block (4-4-2) compact in our defensive third (right third) to deny central progression.\n- Positioned the opponent (4-3-3) in build-up facing our coordinated defensive lines.\n- Highlighted pressing triggers and defensive sliding with actions and moves.\n\nCoaching points\n- Maintain short-team compactness with the deepest defender and striker within 25 meters.\n- Apply immediate pressure on the ball carrier while the second defender covers the passing lane.\n- Force play into predictable wide areas and slide the back four as a coordinated unit.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-9-9"
+      },
+      "to": {
+        "playerId": "away-4-2"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "away-8-6"
+      },
+      "type": "cover",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

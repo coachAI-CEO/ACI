@@ -1,0 +1,47 @@
+{
+  "name": "rondo-5v2",
+  "applied": true,
+  "reply": "What I saw\n- You requested a 5v2 rondo with cones marking the square.\n\nOn the board\n- Set up a functional rondo grid with 5 attackers supporting around the perimeter and 2 defenders inside.\n- Placed corner cones to define the possession area.\n\nCoaching points\n- Prioritise ball security and quick support angles to maintain possession under pressure.\n- Scan early before receiving so you can open your body and play away from the pressers.",
+  "players": 7,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-cone-1",
+      "kind": "cone",
+      "x": 38,
+      "y": 50
+    },
+    {
+      "id": "el-cone-2",
+      "kind": "cone",
+      "x": 46,
+      "y": 50
+    },
+    {
+      "id": "el-cone-3",
+      "kind": "cone",
+      "x": 54,
+      "y": 50
+    },
+    {
+      "id": "el-cone-4",
+      "kind": "cone",
+      "x": 62,
+      "y": 50
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-9-9"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

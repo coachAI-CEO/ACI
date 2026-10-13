@@ -1,0 +1,49 @@
+{
+  "name": "technical-diamond",
+  "applied": true,
+  "reply": "What I saw\n- You requested a technical passing diamond with 4 players and 2 mini-goals.\n\nOn the board\n- Set up a diamond passing technical exercise using a blank grid.\n- Placed 4 central players in a passing diamond shape.\n- Added 2 mini-goals for target passing and receiving.\n\nCoaching points\n- Focus on receiving open to check your shoulder before the ball arrives.\n- Maintain clean passing angles and weight of pass to keep the rhythm.",
+  "players": 4,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 40.88,
+      "rotation": 180
+    },
+    {
+      "id": "el-mini-goal-2",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 59.120000000000005,
+      "rotation": 0
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-8-6"
+      },
+      "to": {
+        "playerId": "home-9-9"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

@@ -5,10 +5,15 @@
  * Chassis overlays from formation-principles-v2 (Chassis & Spacing).
  *
  * See docs/tactical-board-phase-positioning.md
+ *
+ * SOURCE OF TRUTH. The browser copy (apps/web/src/lib/chassis/) is generated from
+ * this file: after editing, run `pnpm sync:board-chassis`. A test fails if the
+ * copies drift.
  */
 
 import type { WebDiagramV1 } from './web-diagram-v1';
 import { build11v11FormationPlayers } from './web-diagram-v1';
+import { pressRelative } from './board-press-relative';
 import {
   type FormationId11,
   boardCuesFor,
@@ -26,6 +31,20 @@ type Arrow = WebDiagramV1['arrows'][number];
 type SeqFrame = NonNullable<WebDiagramV1['sequence']>['frames'][number];
 
 const clamp = (n: number) => Math.max(2, Math.min(98, n));
+
+/** Give every item a stable id so the editor can select/delete it; keeps ids already present. */
+function withIds<T extends object>(
+  items: T[] | undefined,
+  prefix: string
+): Array<T & { id: string }> {
+  return (items || []).map((item, i) => {
+    const existing =
+      'id' in item && typeof (item as { id?: unknown }).id === 'string'
+        ? String((item as { id: string }).id)
+        : '';
+    return { ...item, id: existing || `${prefix}-${i}` };
+  });
+}
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -376,6 +395,69 @@ function setT(
   targets.set(p.id, { x: clamp(x), y: clamp(y) });
 }
 
+/**
+ * placeDefBlock reuses the right/left width constants (WIDTH.touchR = 96,
+ * boxCbR = 66, ...) that are written for ATT. ATT faces LEFT, so its right
+ * side is the TOP of the screen (high x) and those constants are correct for
+ * it. DEF faces RIGHT, so its right side is the BOTTOM (low x): the same
+ * constants put DEF's right-sided players on the wrong flank (RB/RM/CB#4
+ * swapped with LB/LM/CB#5 relative to the formation they came from).
+ *
+ * This keeps every DEF outfield player at the same left-to-right rank within
+ * their line as in the incoming roster. It only permutes which player takes
+ * which already-computed x slot, so the block shape and line depths (y) are
+ * untouched. Corrective pass, not a rewrite of the per-formation placement.
+ * Only meant for the goal-kick press, where the right/left constants are shared
+ * with ATT; see the call site.
+ */
+function preserveLateralOrder(
+  targets: Map<string, { x: number; y: number }>,
+  roster: Player[],
+  team: 'ATT' | 'DEF'
+) {
+  for (const band of ['BACK', 'MID', 'FRONT'] as RoleBand[]) {
+    const line = roster.filter(
+      (p) => p.team === team && roleBand(p) === band && targets.has(p.id)
+    );
+    if (line.length < 2) continue;
+    const byIncomingX = [...line].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
+    const slotsLowToHigh = line.map((p) => targets.get(p.id)!.x).sort((a, b) => a - b);
+    byIncomingX.forEach((p, i) => {
+      targets.set(p.id, { ...targets.get(p.id)!, x: slotsLowToHigh[i] });
+    });
+  }
+}
+
+/**
+ * Opt-in (BOARD_PRESS_RELATIVE=1): place the DEF goal-kick press as offsets
+ * from the defending formation's base shape instead of per-formation absolute
+ * targets. Anchored on the formation's base slots (matched by id, then shirt
+ * number) so re-running never compounds. Returns false when it did not apply,
+ * so the caller falls back to placeDefBlock -- flag off, another phase, or a
+ * formation with no base slots.
+ */
+function placeDefRelativePress(
+  targets: Map<string, { x: number; y: number }>,
+  roster: Player[],
+  focus: { x: number; y: number },
+  phase: PlayOutSubPhase,
+  block: DefBlockHeight,
+  defFormation: FormationId11
+): boolean {
+  if (process.env.BOARD_PRESS_RELATIVE !== '1' || phase !== 'goal_kick') return false;
+  const base = build11v11FormationPlayers(defFormation, 'DEF');
+  if (!base.length) return false;
+  const start = roster
+    .filter((p) => p.team === 'DEF')
+    .map((p) => {
+      const slot = base.find((b) => b.id === p.id) || base.find((b) => b.number === p.number);
+      return slot ? { ...p, x: slot.x, y: slot.y } : p;
+    });
+  const moved = pressRelative({ players: start, team: 'DEF', ball: focus, block, bandOf: roleBand });
+  for (const p of moved) targets.set(p.id, { x: p.x, y: p.y });
+  return true;
+}
+
 function arrow(
   fromId: string,
   toId: string,
@@ -384,6 +466,7 @@ function arrow(
   order?: number
 ): Arrow {
   return {
+    id: `a-${fromId}-${toId}-${type}${typeof order === 'number' ? `-o${order}` : ''}`,
     from: { playerId: fromId },
     to: { playerId: toId },
     type,
@@ -1621,7 +1704,14 @@ export function placePhaseSnapshot(input: {
 
   const targets = new Map<string, { x: number; y: number }>();
   placeAttChassis(targets, att, focus, phase, attFormation, channelX, engageNine);
-  placeDefBlock(targets, def, focus, phase, defBlock, defFormation);
+  const usedRelativePress = placeDefRelativePress(targets, roster, focus, phase, defBlock, defFormation);
+  if (!usedRelativePress) {
+    placeDefBlock(targets, def, focus, phase, defBlock, defFormation);
+  }
+  // Goal-kick only: the pocket / final-third branches already place DEF by shirt
+  // number on purpose (e.g. 3-5-2 pocket: #6 at midL, #8 at midR), and re-sorting
+  // them by incoming position undid that and clumped #6 next to #8.
+  if (phase === 'goal_kick') preserveLateralOrder(targets, roster, 'DEF');
 
   // Fallback: anyone without a target gets a generic band place
   let fallbackI = 0;
@@ -1651,7 +1741,11 @@ export function placePhaseSnapshot(input: {
 
   const playersRaw = applyTargets(roster, targets);
   // Width-only overlap — never fight the chassis on y.
-  const players = enforceNoOverlap(playersRaw, 3.5);
+  let players = enforceNoOverlap(playersRaw, 3.5);
+  // A presser stepping right onto a receiver can leave the fixed-iteration pass
+  // just short of the minimum gap; extra passes settle it. Relative-press path
+  // only, so absolute placement output is unchanged.
+  if (usedRelativePress) for (let i = 0; i < 4; i++) players = enforceNoOverlap(players, 3.5);
 
   const arrows = includeMotifArrows
     ? motifArrows(phase, attFormation, att, def, channelX, engageNine)
@@ -1715,7 +1809,15 @@ export function placePhaseSnapshot(input: {
 
   // 4-4-2 Def-third: double yellow squares — CB unit + CM screening unit
   // 3-5-2 Def-third: yellow square on the #6/#8/#7/#9 midfield box
-  const areas: WebDiagramV1['areas'] =
+  // Id-less seed; withIds() adds the ids on return (the web DiagramArea requires one).
+  const areas: Array<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    shape: 'rect';
+    label?: string;
+  }> =
     phase === 'goal_kick' && attFormation === '4-4-2'
       ? [
           {
@@ -1750,10 +1852,10 @@ export function placePhaseSnapshot(input: {
 
   return {
     players,
-    arrows,
-    areas,
-    labels,
-    balls: [ballAt],
+    arrows: withIds(arrows, 'a'),
+    areas: withIds(areas, 'z'),
+    labels: withIds(labels, 'l'),
+    balls: withIds([ballAt], 'b'),
     title: g.title,
   };
 }
@@ -1928,11 +2030,14 @@ export function applySetupPhaseToDiagram(
     players,
     balls: placed.balls,
     areas: placed.areas,
-    labels: captionTexts.map((text, i) => ({
-      text: text.slice(0, 200),
-      x: stack[i]?.x ?? clamp(90 - i * 13),
-      y: stack[i]?.y ?? 76,
-    })),
+    labels: withIds(
+      captionTexts.map((text, i) => ({
+        text: text.slice(0, 200),
+        x: stack[i]?.x ?? clamp(90 - i * 13),
+        y: stack[i]?.y ?? 76,
+      })),
+      'l'
+    ),
     arrows: [],
     sequence: undefined,
   };

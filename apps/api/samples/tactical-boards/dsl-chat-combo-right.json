@@ -1,0 +1,59 @@
+{
+  "name": "combo-right",
+  "applied": true,
+  "reply": "What I saw\n- 11v11 setup with our 4-3-3 shape facing their 4-2-3-1 block.\n- Focus requested on combination play down the right side.\n\nOn the board\n- ATT 4-3-3 shape in possession, with our right-back, right central midfielder, and right winger forming a flank triangle.\n- DEF 4-2-3-1 block shifted to contest our right channel.\n- Passing and movement arrows showing a third-man combination to break their pressure.\n\nCoaching points\n- Create support angles so the ball-carrier always has a safe option and a line-breaking option.\n- Use quick give-and-go movements in the flank triangle to bypass the defending full-back.\n\nSequence: 2 frames — Frame 1 is your saved board; later frames add the play. Use Play on the board to scrub.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-cone-1",
+      "kind": "cone",
+      "x": 50,
+      "y": 94.28
+    },
+    {
+      "id": "el-cone-2",
+      "kind": "cone",
+      "x": 50,
+      "y": 94.28
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-2-1"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-8-6"
+      },
+      "to": {
+        "playerId": "home-7-8"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-7-8"
+      },
+      "to": {
+        "playerId": "home-2-1"
+      },
+      "type": "run",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

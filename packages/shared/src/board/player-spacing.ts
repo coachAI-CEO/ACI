@@ -144,7 +144,8 @@ export function separateOverlappingPlayers<T extends PlayerLike>(
   return next;
 }
 
-export function unstackDiagramPlayers(diagram: DiagramV1): DiagramV1 {
+/** Generic so a caller's stricter diagram type (e.g. the web's, with required ids) is returned as-is. */
+export function unstackDiagramPlayers<D extends DiagramV1>(diagram: D): D {
   const players = separateOverlappingPlayers(diagram.players || []);
   const frames = diagram.sequence?.frames?.map((f: DiagramSequenceFrame) => ({
     ...f,
@@ -160,5 +161,5 @@ export function unstackDiagramPlayers(diagram: DiagramV1): DiagramV1 {
             frames.find((f) => f.id === diagram.sequence?.activeFrameId)?.id || frames[0].id,
         }
       : diagram.sequence,
-  };
+  } as D;
 }

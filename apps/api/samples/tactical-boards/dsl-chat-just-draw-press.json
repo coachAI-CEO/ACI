@@ -1,0 +1,58 @@
+{
+  "name": "just-draw-press",
+  "applied": true,
+  "reply": "What I saw\n- You asked to show the immediate pressure after losing possession in our possession-based model.\n\nOn the board\n- Highlighted a counterpressing cluster with the nearest three attacking players swarming the ball carrier.\n- Positioned the remaining unit to compact central spaces and deny forward progression.\n\nCoaching points\n- Apply an immediate organized counterpress for 3 to 5 seconds upon ball loss to win it back or force a negative touch.\n- Ensure the nearest players step up aggressively while secondary defenders cover nearby passing lanes.\n- If the ball is not won immediately, quickly recover compact distances to deny central progression.",
+  "players": 22,
+  "overlaps": 0,
+  "elements": [],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-7-8"
+      },
+      "to": {
+        "playerId": "away-2-1"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-9-9"
+      },
+      "to": {
+        "playerId": "away-4-2"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-10-7"
+      },
+      "to": {
+        "playerId": "away-6-5"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "home-8-6"
+      },
+      "to": {
+        "playerId": "away-10-8"
+      },
+      "type": "cover",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}

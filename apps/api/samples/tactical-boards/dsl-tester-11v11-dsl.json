@@ -1,0 +1,23 @@
+{
+  "activity": "match_scenario",
+  "grid": {
+    "intent": "full_pitch",
+    "format": "11V11",
+    "attFormation": "4-3-3",
+    "defFormation": "4-2-3-1"
+  },
+  "entities": [],
+  "equipment": [],
+  "actions": [
+    {
+      "type": "pass",
+      "from_id": "att-6",
+      "to_id": "att-10"
+    },
+    {
+      "type": "press",
+      "from_id": "def-9",
+      "to_id": "att-6"
+    }
+  ]
+}

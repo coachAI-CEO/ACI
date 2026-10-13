@@ -1,0 +1,49 @@
+{
+  "name": "rondo-4v4",
+  "applied": true,
+  "reply": "What I saw\n- You requested a 4v4 rondo set in the middle third with mini-goals on the ends.\n\nOn the board\n- Set up a focused rondo grid in the middle third.\n- Placed mini-goals at opposite ends of the training area.\n- Positioned four attacking possession players to create support angles.\n- Positioned four defending players to apply immediate pressing pressure.\n\nCoaching points\n- Prioritise ball security by maintaining clear triangular support shapes.\n- Scan early before receiving to identify the line-breaking option.\n- Pressing players must work in compact units to deny central progression.",
+  "players": 8,
+  "overlaps": 0,
+  "elements": [
+    {
+      "id": "el-mini-goal-1",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 59.120000000000005,
+      "rotation": 0
+    },
+    {
+      "id": "el-mini-goal-2",
+      "kind": "mini-goal",
+      "x": 50,
+      "y": 59.120000000000005,
+      "rotation": 0
+    }
+  ],
+  "arrows": [
+    {
+      "from": {
+        "playerId": "home-6-5"
+      },
+      "to": {
+        "playerId": "home-8-6"
+      },
+      "type": "pass",
+      "style": "solid",
+      "weight": "normal",
+      "arrowhead": true
+    },
+    {
+      "from": {
+        "playerId": "away-6-5"
+      },
+      "to": {
+        "playerId": "home-6-5"
+      },
+      "type": "press",
+      "style": "dashed",
+      "weight": "normal",
+      "arrowhead": true
+    }
+  ]
+}
