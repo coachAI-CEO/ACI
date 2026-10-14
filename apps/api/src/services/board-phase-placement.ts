@@ -281,6 +281,47 @@ function enforceNoOverlap(players: Player[], minGap = 6): Player[] {
   return next;
 }
 
+/**
+ * Two-way separation for the relative-preset path: no two shirts share space. Pushes each
+ * overlapping pair apart along the line between them, then clamps to the pitch; a pair pinned
+ * against a touchline keeps separating on the next pass through the other player and, if they
+ * are almost level, along depth. Gaps keep the shirt circles clear of each other.
+ */
+function spreadApart(players: Player[], sameTeam = 7, crossTeam = 6.5): Player[] {
+  const next = players.map((p) => ({ ...p }));
+  for (let pass = 0; pass < 80; pass++) {
+    let moved = false;
+    for (let i = 0; i < next.length; i++) {
+      for (let j = i + 1; j < next.length; j++) {
+        const a = next[i];
+        const b = next[j];
+        const gap = a.team === b.team ? sameTeam : crossTeam;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= gap - 0.01) continue;
+        if (d < 0.01) {
+          dx = 1;
+          dy = 0;
+          d = 1;
+        }
+        const push = (gap - d) / 2 + 0.05;
+        const ux = dx / d;
+        const uy = dy / d;
+        const aPinned = a.x <= 2.01 || a.x >= 97.99;
+        const bPinned = b.x <= 2.01 || b.x >= 97.99;
+        // Pinned on a touchline and still level with the other shirt: separate along depth.
+        const alongDepth = (aPinned || bPinned) && Math.abs(uy) < 0.35 ? (a.y <= b.y ? -1 : 1) : 0;
+        next[i] = { ...next[i], x: clamp(a.x - ux * push), y: clamp(a.y - (uy || alongDepth) * push) };
+        next[j] = { ...next[j], x: clamp(b.x + ux * push), y: clamp(b.y + (uy || -alongDepth) * push) };
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return next;
+}
+
 function placeLine(
   list: Player[],
   focus: { x: number; y: number },
@@ -1826,6 +1867,7 @@ export function placePhaseSnapshot(input: {
   // just short of the minimum gap; extra passes settle it. Relative-press path
   // only, so absolute placement output is unchanged.
   if (usedRelativePress) for (let i = 0; i < 4; i++) players = enforceNoOverlap(players, 3.5);
+  if (usedPresets) players = spreadApart(players);
 
   const arrows = includeMotifArrows
     ? motifArrows(phase, attFormation, att, def, channelX, engageNine)

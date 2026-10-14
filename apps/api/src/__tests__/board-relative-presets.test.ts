@@ -31,7 +31,7 @@ describe('BOARD_RELATIVE_PRESETS (both teams, every phase)', () => {
   for (const att of FORMATIONS) {
     for (const def of FORMATIONS) {
       for (const phase of PHASES) {
-        test(`${att} vs ${def} ${phase}: nobody changes flank, nobody stacks, all in bounds`, () => {
+        test(`${att} vs ${def} ${phase}: nobody changes flank, no two shirts share space, all in bounds`, () => {
           const base = [...build11v11FormationPlayers(att, 'ATT'), ...build11v11FormationPlayers(def, 'DEF')];
           const out = run(att, def, phase);
           expect(out).toHaveLength(base.length);
@@ -50,7 +50,7 @@ describe('BOARD_RELATIVE_PRESETS (both teams, every phase)', () => {
           for (let i = 0; i < out.length; i++)
             for (let j = i + 1; j < out.length; j++) {
               const d = Math.hypot(out[i].x - out[j].x, out[i].y - out[j].y);
-              expect(d).toBeGreaterThanOrEqual(out[i].team === out[j].team ? 3.4 : 2.4);
+              expect(d).toBeGreaterThanOrEqual(out[i].team === out[j].team ? 6.9 : 6.4); // shirt circles never overlap, with clear space
             }
         });
       }
