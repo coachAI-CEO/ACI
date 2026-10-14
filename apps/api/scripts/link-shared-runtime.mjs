@@ -33,4 +33,27 @@ fs.writeFileSync(
   path.join(pkgDir, 'package.json'),
   JSON.stringify({ name: '@aci/shared', version: '0.0.0', main: '../../../packages/shared/src/index.js' }, null, 2) + '\n'
 );
-console.log('link-shared-runtime: dist/node_modules/@aci/shared -> compiled packages/shared');
+
+// Belt and braces: also rewrite the compiled requires to a relative path, so startup
+// never depends on node_modules resolution (Render's runtime still loaded the raw
+// TypeScript workspace copy even with the stub above).
+let rewritten = 0;
+const SPEC = /require\((["'])@aci\/shared\1\)/g;
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(full);
+    else if (entry.name.endsWith('.js')) {
+      const src = fs.readFileSync(full, 'utf8');
+      if (!SPEC.test(src)) continue;
+      SPEC.lastIndex = 0;
+      let rel = path.relative(path.dirname(full), compiled).split(path.sep).join('/');
+      if (!rel.startsWith('.')) rel = './' + rel;
+      fs.writeFileSync(full, src.replace(SPEC, `require(${JSON.stringify(rel)})`));
+      rewritten++;
+    }
+  }
+}
+if (fs.existsSync(path.join(dist, 'apps'))) walk(path.join(dist, 'apps'));
+console.log(`link-shared-runtime: stub written, ${rewritten} compiled file(s) now require the compiled packages/shared directly`);

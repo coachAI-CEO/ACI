@@ -31,6 +31,15 @@ describe('link-shared-runtime post-build step', () => {
     expect(req('@aci/shared')).toEqual({ ok: 1 });
   });
 
+  test('rewrites compiled requires to a relative path, independent of node_modules', () => {
+    const { root, run } = setup(true);
+    const file = path.join(root, 'dist/apps/api/src/app.js');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'const s = require("@aci/shared");\n');
+    expect(run().status).toBe(0);
+    expect(fs.readFileSync(file, 'utf8')).toBe('const s = require("../../../packages/shared/src/index.js");\n');
+  });
+
   test('fails the build loudly when tsc did not emit packages/shared', () => {
     const { run } = setup(false);
     const res = run();
