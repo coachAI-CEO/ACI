@@ -20,7 +20,7 @@
 import { fromTeamFrame, toTeamFrame } from '@aci/shared';
 import type { WebDiagramV1 } from './web-diagram-v1';
 import { build11v11FormationPlayers } from './web-diagram-v1';
-import { pressRelative } from './board-press-relative';
+import { pressRelative, relativePreset } from './board-press-relative';
 import {
   type FormationId11,
   boardCuesFor,
@@ -462,6 +462,43 @@ function placeDefRelativePress(
     });
   const moved = pressRelative({ players: start, team: 'DEF', ball: focus, block, bandOf: roleBand });
   for (const p of moved) targets.set(p.id, { x: p.x, y: p.y });
+  return true;
+}
+
+/**
+ * Opt-in (BOARD_RELATIVE_PRESETS=1): place BOTH teams, in every phase, as offsets from their own
+ * formation's base slots (see PHASE_PROFILES). Anchored on base slots matched by id, then shirt
+ * number, so re-running never compounds. Returns false when it does not apply (flag off, or a
+ * formation with no base slots) so the caller uses the authored chassis.
+ */
+function placeRelativePresets(
+  targets: Map<string, { x: number; y: number }>,
+  roster: Player[],
+  focus: { x: number; y: number },
+  phase: PlayOutSubPhase,
+  block: DefBlockHeight,
+  attFormation: FormationId11,
+  defFormation: FormationId11
+): boolean {
+  if (process.env.BOARD_RELATIVE_PRESETS !== '1') return false;
+  const plan = [
+    { team: 'ATT' as const, role: 'inPossession' as const, formation: attFormation },
+    { team: 'DEF' as const, role: 'defending' as const, formation: defFormation },
+  ];
+  for (const { team, formation } of plan) {
+    if (!build11v11FormationPlayers(formation, team).length) return false;
+  }
+  for (const { team, role, formation } of plan) {
+    const base = build11v11FormationPlayers(formation, team);
+    const start = roster
+      .filter((p) => p.team === team)
+      .map((p) => {
+        const slot = base.find((b) => b.id === p.id) || base.find((b) => b.number === p.number);
+        return slot ? { ...p, x: slot.x, y: slot.y } : p;
+      });
+    const moved = relativePreset({ players: start, team, role, phase, ball: focus, block, bandOf: roleBand });
+    for (const p of moved) targets.set(p.id, { x: p.x, y: p.y });
+  }
   return true;
 }
 
@@ -1748,15 +1785,19 @@ export function placePhaseSnapshot(input: {
   };
 
   const targets = new Map<string, { x: number; y: number }>();
-  placeAttChassis(targets, att, focus, phase, attFormation, channelX, engageNine);
-  const usedRelativePress = placeDefRelativePress(targets, roster, focus, phase, defBlock, defFormation);
-  if (!usedRelativePress) {
-    placeDefBlockLocal(targets, def, focus, phase, defBlock, defFormation);
+  const usedPresets = placeRelativePresets(targets, roster, focus, phase, defBlock, attFormation, defFormation);
+  let usedRelativePress = usedPresets;
+  if (!usedPresets) {
+    placeAttChassis(targets, att, focus, phase, attFormation, channelX, engageNine);
+    usedRelativePress = placeDefRelativePress(targets, roster, focus, phase, defBlock, defFormation);
+    if (!usedRelativePress) {
+      placeDefBlockLocal(targets, def, focus, phase, defBlock, defFormation);
+    }
   }
   // Goal-kick only: the pocket / final-third branches already place DEF by shirt
   // number on purpose (e.g. 3-5-2 pocket: #6 at midL, #8 at midR), and re-sorting
   // them by incoming position undid that and clumped #6 next to #8.
-  if (phase === 'goal_kick') preserveLateralOrder(targets, roster, 'DEF');
+  if (phase === 'goal_kick' && !usedPresets) preserveLateralOrder(targets, roster, 'DEF');
 
   // Fallback: anyone without a target gets a generic band place
   let fallbackI = 0;
