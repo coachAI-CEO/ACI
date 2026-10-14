@@ -3,13 +3,15 @@ services:
     name: tacticaledge-api-dev
     runtime: node
     plan: starter
-    # Pin Render to the active release branch. Switch this back to `dev` once
-    # codex/mobile-app merges upstream — see /docs/release-process.md.
-    branch: codex/mobile-app
+    # Deploys from main (board work and the mobile app both merged there).
+    branch: main
     rootDir: .
     healthCheckPath: /health
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter api build
-    startCommand: pnpm --filter api start
+    # No `prisma migrate deploy` here: migrations are applied deliberately, not on every build.
+    # link-shared-runtime.mjs must run last: it makes the compiled API load @aci/shared.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter api exec prisma generate && pnpm --filter api exec tsc -p tsconfig.json && node apps/api/scripts/link-shared-runtime.mjs
+    # Direct node: avoids Corepack downloading pnpm at startup.
+    startCommand: node apps/api/dist/apps/api/src/index.js
     envVars:
       - key: NODE_ENV
         value: production
