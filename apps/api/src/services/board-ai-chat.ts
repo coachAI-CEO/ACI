@@ -29,6 +29,7 @@ import {
   type ClubPhilosophyStages,
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
+import { lightRepairPlayers } from './board-ai-light-repair';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
   buildFormationPlaybookGuidance,
@@ -283,12 +284,60 @@ function polishPlayOutFrame(d: WebDiagramV1): WebDiagramV1 {
   );
 }
 
+/**
+ * BOARD_AI_LIGHT_REPAIR=1: trust the model's coordinates; only clean up duplicates / a reversed
+ * axis, keep goalkeepers home and separate shirts that share space (board-ai-light-repair.ts).
+ */
+function lightRepairLayer(d: WebDiagramV1, freeze: boolean): WebDiagramV1 {
+  if (freeze) return repairBoardDiagramLabels(repairBoardDiagramArrows(d));
+  const cleaned = repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d));
+  return repairBoardDiagramLabels(repairBoardDiagramArrows(lightRepairPlayers(cleaned)));
+}
+
+function lightRepairWithSequence(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+  const freeze = wantsFrozenPlayers(message);
+  const seq = diagram.sequence;
+  if (!seq?.frames?.length) return lightRepairLayer(diagram, freeze);
+  const frames = seq.frames.slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES).map((f, i) => {
+    const repaired = lightRepairLayer(
+      {
+        pitch: diagram.pitch,
+        players: f.players || [],
+        arrows: f.arrows || [],
+        areas: f.areas || [],
+        labels: f.labels || [],
+        balls: f.balls,
+        goals: f.goals,
+        coach: f.coach,
+        cones: f.cones,
+        elements: f.elements,
+      } as WebDiagramV1,
+      freeze
+    );
+    return {
+      id: String(f.id || '').trim() || `f-${i + 1}`,
+      title: f.title,
+      note: f.note,
+      durationMs: f.durationMs,
+      ...layersFromRepaired(repaired),
+    };
+  });
+  const activeFrameId = frames.find((f) => f.id === seq.activeFrameId)?.id || frames[0].id;
+  const active = frames.find((f) => f.id === activeFrameId) || frames[0];
+  return {
+    ...diagram,
+    ...layersFromRepaired({ ...diagram, ...active } as WebDiagramV1),
+    sequence: { frames, activeFrameId },
+  };
+}
+
 /** Repair root + every sequence frame, then enforce cross-frame focus + organization. */
 export function repairBoardDiagramWithSequence(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
   const playOut = isPlayOutRequest(message);
+  if (!playOut && process.env.BOARD_AI_LIGHT_REPAIR === '1') return lightRepairWithSequence(diagram, message);
   const repairOne = (d: WebDiagramV1) => {
     if (playOut && (d.players || []).length >= 18) {
       return polishPlayOutFrame(d);

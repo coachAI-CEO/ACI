@@ -287,7 +287,7 @@ function enforceNoOverlap(players: Player[], minGap = 6): Player[] {
  * against a touchline keeps separating on the next pass through the other player and, if they
  * are almost level, along depth. Gaps keep the shirt circles clear of each other.
  */
-function spreadApart(players: Player[], sameTeam = 7, crossTeam = 6.5): Player[] {
+export function spreadApart<T extends { team?: string; x: number; y: number }>(players: T[], sameTeam = 7, crossTeam = 6.5): T[] {
   const next = players.map((p) => ({ ...p }));
   for (let pass = 0; pass < 80; pass++) {
     let moved = false;
