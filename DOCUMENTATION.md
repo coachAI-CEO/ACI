@@ -33,7 +33,7 @@ TacticalEdge is a soccer coaching OS. Coaches run a season from **Coach Center**
 aci-features/
 ├── apps/api/          Express API (generation, vault, Coach Center, DOC Hub, boards, PDFs)
 ├── apps/web/          Next.js app (marketing + authenticated product)
-├── docs/              Board design contract, mobile plan (mobile is not shipped)
+├── docs/              Board + scene-diagram contracts, mobile plan (mobile is not shipped)
 ├── pitch-deck-*.html  Audience decks (source of truth is the product report)
 └── CLAUDE.md          Agent routing
 ```
@@ -69,6 +69,8 @@ Logged-in sidebar order: Coach Center → Session Builder → Vault → Favorite
 **Coach Center** — one assigned team through the season. Curriculum across four moments of the game. Game-day sheet and match recap. API under `/coach-center/*`.
 
 **Generation** — drills, sessions, progressive series. Structured constraints, QA grader, fixer, coach-level language. Session PDF rasterizes **stored** drill SVGs so print matches the vault (`apps/api/src/services/pdf-export.ts`). Compact export is landscape A4 **Coach’s Sheet**.
+
+**Drill diagrams (scene-XY)** — each drill's tactical picture is a server-rendered SVG: `drill JSON → buildSceneCard → Gemini scene model → WebDiagramV1 → enforceSceneKit → TE painter`. `WebDiagramV1` is the wire/storage format (shared with Tactical Board), `DrawerParams` the internal render format. Numbered, team-coloured arrows; one ball; frame-sequence machinery is built but dormant. Contract: `docs/scene-diagram.md`.
 
 **Tactical Board** — live pitch, drawing, formation × phase chassis, principles library (v2 JSON), AI chat, session fork, PDF import. Design contract: `docs/tactical-board-phase-positioning.md`.
 
