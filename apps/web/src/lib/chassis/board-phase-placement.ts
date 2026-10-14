@@ -1776,6 +1776,43 @@ function motifArrows(
 }
 
 /** Place ATT + DEF for one play-out sub-phase using existing roster ids. */
+type PhaseSnapshot = ReturnType<typeof placePhaseSnapshot>;
+
+const rot = (n: number) => 100 - n;
+const rotPoint = <T extends { x: number; y: number }>(p: T): T => ({ ...p, x: rot(p.x), y: rot(p.y) });
+const swapTeam = (t: string) => (t === 'ATT' ? 'DEF' : t === 'DEF' ? 'ATT' : t);
+
+/** DEF-in-possession: run the ATT-in-possession placement on the 180-degree-rotated, team-swapped board. */
+function placeWithDefInPossession(input: Parameters<typeof placePhaseSnapshot>[0]): PhaseSnapshot {
+  const out = placePhaseSnapshot({
+    ...input,
+    possession: 'ATT',
+    roster: input.roster.map((p) => ({ ...rotPoint(p), team: swapTeam(p.team) as Player['team'] })),
+    channelX: rot(input.channelX),
+  });
+  const ref = <R extends { x?: number; y?: number; playerId?: string }>(r: R): R =>
+    typeof r.x === 'number' && typeof r.y === 'number' ? { ...r, x: rot(r.x), y: rot(r.y) } : r;
+  return {
+    ...out,
+    players: out.players.map((p) => ({ ...rotPoint(p), team: swapTeam(p.team) as Player['team'] })),
+    balls: out.balls?.map((b) => rotPoint(b)),
+    // An area is a box (x, y = top-left): rotating the board mirrors both corners.
+    areas: out.areas?.map((a) =>
+      typeof a.x === 'number' && typeof a.y === 'number'
+        ? { ...a, x: rot(a.x + (a.width ?? 0)), y: rot(a.y + (a.height ?? 0)) }
+        : a
+    ),
+    labels: out.labels.map((l) => rotPoint(l)),
+    arrows: out.arrows.map((a) => ({
+      ...a,
+      from: ref(a.from),
+      to: ref(a.to),
+      ...(a.control ? { control: rotPoint(a.control) } : {}),
+      ...(a.path ? { path: a.path.map((q) => rotPoint(q)) } : {}),
+    })),
+  };
+}
+
 export function placePhaseSnapshot(input: {
   roster: Player[];
   subPhase: PlayOutSubPhase;
@@ -1788,6 +1825,13 @@ export function placePhaseSnapshot(input: {
   engageNine?: boolean;
   /** Caption stack axis — VERTICAL for mobile portrait boards. */
   orientation?: 'HORIZONTAL' | 'VERTICAL';
+  /**
+   * Which team has the ball. Default ATT. With 'DEF' the same placement runs on the board
+   * rotated 180 degrees with the teams swapped, then everything is rotated back, so
+   * `attFormation` is the formation of the team in possession (DEF) and `defFormation` that of
+   * the team defending (ATT), and the result is the exact mirror of the ATT-in-possession case.
+   */
+  possession?: 'ATT' | 'DEF';
 }): {
   players: Player[];
   arrows: Arrow[];
@@ -1796,6 +1840,8 @@ export function placePhaseSnapshot(input: {
   balls: WebDiagramV1['balls'];
   title: string;
 } {
+  if (input.possession === 'DEF') return placeWithDefInPossession(input);
+
   const {
     roster,
     subPhase: phase,
