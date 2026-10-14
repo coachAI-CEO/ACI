@@ -8,6 +8,7 @@
  * Pure functions, no I/O.
  */
 import { ensureDiagramObjectIds } from '@aci/shared';
+import { anchorBallToFirstPass } from './board-ai-light-repair';
 import type { WebDiagramV1 } from './web-diagram-v1';
 
 export const isBareBoard = () => process.env.BOARD_AI_BARE === '1';
@@ -32,17 +33,21 @@ export function stripAnnotations(d: WebDiagramV1): WebDiagramV1 {
  */
 export function carryModelArrows(placed: WebDiagramV1, model: WebDiagramV1): WebDiagramV1 {
   const frames = placed.sequence?.frames;
-  if (!frames?.length) return ensureDiagramObjectIds({ ...placed, arrows: model.arrows || [] });
+  if (!frames?.length) return ensureDiagramObjectIds(anchorBallToFirstPass({ ...placed, arrows: model.arrows || [] }));
   const modelFrames = model.sequence?.frames;
   const activeIdx = Math.max(0, frames.findIndex((f) => f.id === placed.sequence!.activeFrameId));
-  const next = frames.map((f, i) => ({
-    ...f,
-    arrows: modelFrames?.[i]?.arrows ?? (i === activeIdx ? model.arrows || [] : []),
-  }));
+  // The ball goes with the model's passes, not with the preset arrows it replaces.
+  const next = frames.map((f, i) =>
+    anchorBallToFirstPass({
+      ...f,
+      arrows: modelFrames?.[i]?.arrows ?? (i === activeIdx ? model.arrows || [] : []),
+    })
+  );
   // The model's arrows come without ids; stamp them so the editor can select / delete them.
   return ensureDiagramObjectIds({
     ...placed,
     arrows: next[activeIdx].arrows,
+    balls: next[activeIdx].balls,
     sequence: { ...placed.sequence!, frames: next },
   });
 }

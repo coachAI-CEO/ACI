@@ -54,3 +54,39 @@ export function separateSharedSpace<D extends Pick<WebDiagramV1, 'players'>>(dia
 export function lightRepairPlayers<D extends Pick<WebDiagramV1, 'players'>>(diagram: D): D {
   return separateSharedSpace(keepGoalkeepersAtHome(diagram));
 }
+
+type Pt = { x: number; y: number };
+type Ref = { playerId?: string; x?: number; y?: number } | undefined;
+
+function resolveRef(ref: Ref, players: Player[]): Pt | null {
+  if (!ref) return null;
+  const byId = ref.playerId ? players.find((p) => p.id === ref.playerId) : undefined;
+  if (byId) return { x: byId.x, y: byId.y };
+  return typeof ref.x === 'number' && typeof ref.y === 'number' ? { x: ref.x, y: ref.y } : null;
+}
+
+/** A ball counts as "with" a pass when it is within this many units of where the pass starts or ends. */
+const BALL_WITH_PASS = 6;
+
+/**
+ * A picture that shows a pass has the ball where the pass starts (or, in a later frame, where it
+ * ended). A ball left on the kick-off spot while the arrow starts at a full-back is wrong, so move it
+ * to the first pass's origin. Left alone when it is already at either end of the passing chain.
+ */
+export function anchorBallToFirstPass<D extends Pick<WebDiagramV1, 'players' | 'arrows' | 'balls'>>(diagram: D): D {
+  const ball = diagram.balls?.[0];
+  if (!ball) return diagram;
+  const players = diagram.players || [];
+  const passes = (diagram.arrows || [])
+    .map((a, i) => ({ a, i }))
+    .filter(({ a }) => a.type === 'pass')
+    .sort((x, y) => (x.a.order ?? 99) - (y.a.order ?? 99) || x.i - y.i)
+    .map(({ a }) => a);
+  if (!passes.length) return diagram;
+  const start = resolveRef(passes[0].from as Ref, players);
+  const end = resolveRef(passes[passes.length - 1].to as Ref, players);
+  if (!start) return diagram;
+  const near = (pt: Pt | null) => !!pt && Math.hypot(pt.x - ball.x, pt.y - ball.y) <= BALL_WITH_PASS;
+  if (near(start) || near(end)) return diagram;
+  return { ...diagram, balls: [{ ...ball, x: start.x, y: start.y }, ...(diagram.balls || []).slice(1)] };
+}

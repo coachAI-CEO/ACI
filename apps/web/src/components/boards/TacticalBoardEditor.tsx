@@ -2790,35 +2790,6 @@ export default function TacticalBoardEditor({
               })()
             : null}
 
-          {(viewDiagram.balls || []).map((b, i) => {
-            const s = toScreen(b, orientation, layout, viewport, spec);
-            const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
-            return (
-              <g
-                key={b.id || `ball-${i}`}
-                transform={`translate(${s.sx},${s.sy})`}
-                onPointerDown={playing ? undefined : (e) => onBallPointerDown(e, b.id)}
-                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
-              >
-                <circle
-                  r={ballR}
-                  fill="#f8fafc"
-                  stroke={selected ? "#fbbf24" : "#0f172a"}
-                  strokeWidth={selected ? 2.5 : 1.5}
-                />
-                <circle r={ballR * 0.35} fill="none" stroke="#0f172a" strokeWidth={1} opacity={0.35} />
-                <path
-                  d={`M ${-ballR * 0.7} 0 Q 0 ${-ballR * 0.5} ${ballR * 0.7} 0`}
-                  fill="none"
-                  stroke="#0f172a"
-                  strokeWidth={1}
-                  opacity={0.35}
-                  className="pointer-events-none"
-                />
-              </g>
-            );
-          })}
-
           {viewDiagram.players.map((p) => {
             const s = toScreen(p, orientation, layout, viewport, spec);
             if (
@@ -2858,6 +2829,42 @@ export default function TacticalBoardEditor({
                     ? "GK"
                     : (p.number ?? "")}
                 </text>
+              </g>
+            );
+          })}
+
+          {/* Balls draw above the shirts so a ball at a player's feet stays visible. */}
+          {(viewDiagram.balls || []).map((b, i) => {
+            const at = toScreen(b, orientation, layout, viewport, spec);
+            // A ball at a player's feet would be painted over by the shirt; nudge it out so both read.
+            const underPlayer = viewDiagram.players.some((p) => {
+              const ps = toScreen(p, orientation, layout, viewport, spec);
+              return Math.hypot(ps.sx - at.sx, ps.sy - at.sy) < hitR + ballR * 0.5;
+            });
+            const s = underPlayer ? { sx: at.sx + hitR * 0.9, sy: at.sy + hitR * 0.9 } : at;
+            const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
+            return (
+              <g
+                key={b.id || `ball-${i}`}
+                transform={`translate(${s.sx},${s.sy})`}
+                onPointerDown={playing ? undefined : (e) => onBallPointerDown(e, b.id)}
+                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
+              >
+                <circle
+                  r={ballR}
+                  fill="#f8fafc"
+                  stroke={selected ? "#fbbf24" : "#0f172a"}
+                  strokeWidth={selected ? 2.5 : 1.5}
+                />
+                <circle r={ballR * 0.35} fill="none" stroke="#0f172a" strokeWidth={1} opacity={0.35} />
+                <path
+                  d={`M ${-ballR * 0.7} 0 Q 0 ${-ballR * 0.5} ${ballR * 0.7} 0`}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth={1}
+                  opacity={0.35}
+                  className="pointer-events-none"
+                />
               </g>
             );
           })}

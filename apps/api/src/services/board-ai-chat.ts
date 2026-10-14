@@ -29,7 +29,7 @@ import {
   type ClubPhilosophyStages,
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
-import { lightRepairPlayers } from './board-ai-light-repair';
+import { anchorBallToFirstPass, lightRepairPlayers } from './board-ai-light-repair';
 import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
@@ -290,9 +290,12 @@ function polishPlayOutFrame(d: WebDiagramV1): WebDiagramV1 {
  * axis, keep goalkeepers home and separate shirts that share space (board-ai-light-repair.ts).
  */
 function lightRepairLayer(d: WebDiagramV1, freeze: boolean): WebDiagramV1 {
-  if (freeze) return repairBoardDiagramLabels(repairBoardDiagramArrows(d));
+  // The ball follows the passes even when the players are frozen (it is not a player).
+  if (freeze) return anchorBallToFirstPass(repairBoardDiagramLabels(repairBoardDiagramArrows(d)));
   const cleaned = repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d));
-  return repairBoardDiagramLabels(repairBoardDiagramArrows(lightRepairPlayers(cleaned)));
+  return anchorBallToFirstPass(
+    repairBoardDiagramLabels(repairBoardDiagramArrows(lightRepairPlayers(cleaned)))
+  );
 }
 
 function lightRepairWithSequence(diagram: WebDiagramV1, message: string): WebDiagramV1 {

@@ -87,3 +87,34 @@ describe('BOARD_AI_LIGHT_REPAIR through the free-form pipeline', () => {
     expect(gk(lightRepairPlayers({ players: ps }).players, 'DEF').y).toBeLessThanOrEqual(20);
   });
 });
+
+describe('anchorBallToFirstPass', () => {
+  const { anchorBallToFirstPass } = require('../services/board-ai-light-repair');
+  const players = [
+    { id: 'a3', team: 'ATT', number: 3, x: 10, y: 70 },
+    { id: 'a7', team: 'ATT', number: 7, x: 80, y: 44 },
+    { id: 'a9', team: 'ATT', number: 9, x: 50, y: 39 },
+  ];
+  const pass = (from: string, to: string, extra: any = {}) => ({ id: `${from}-${to}`, type: 'pass', from: { playerId: from }, to: { playerId: to }, ...extra });
+
+  test('a ball left on the centre spot moves to the passer when the arrow starts elsewhere', () => {
+    const d = { players, arrows: [pass('a3', 'a7')], balls: [{ id: 'b', x: 50, y: 50 }] };
+    expect(anchorBallToFirstPass(d).balls[0]).toMatchObject({ x: 10, y: 70 });
+  });
+  test('uses the first pass by order, not by array position', () => {
+    const d = { players, arrows: [pass('a7', 'a9', { order: 2 }), pass('a3', 'a7', { order: 1 })], balls: [{ id: 'b', x: 50, y: 50 }] };
+    expect(anchorBallToFirstPass(d).balls[0]).toMatchObject({ x: 10, y: 70 });
+  });
+  test('leaves a ball that is already at the start or the end of the passing chain', () => {
+    const atStart = { players, arrows: [pass('a3', 'a7')], balls: [{ id: 'b', x: 10, y: 70 }] };
+    const atEnd = { players, arrows: [pass('a3', 'a7'), pass('a7', 'a9')], balls: [{ id: 'b', x: 50, y: 39 }] };
+    expect(anchorBallToFirstPass(atStart)).toBe(atStart);
+    expect(anchorBallToFirstPass(atEnd)).toBe(atEnd);
+  });
+  test('does nothing without a ball or without passes', () => {
+    const noBall = { players, arrows: [pass('a3', 'a7')], balls: [] };
+    const noPass = { players, arrows: [{ id: 'r', type: 'run', from: { playerId: 'a3' }, to: { x: 5, y: 5 } }], balls: [{ id: 'b', x: 50, y: 50 }] };
+    expect(anchorBallToFirstPass(noBall)).toBe(noBall);
+    expect(anchorBallToFirstPass(noPass)).toBe(noPass);
+  });
+});
