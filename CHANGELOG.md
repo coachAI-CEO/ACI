@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The version id lives
 in [`VERSION`](VERSION).
 
+## 1.14.1 — 2026-10-13
+
+- Fix: compiled API crashed at startup on Render (`ERR_MODULE_NOT_FOUND` for `@aci/shared`).
+  `link-shared-runtime.mjs` now rewrites compiled `require("@aci/shared")` calls to a relative path.
+- `render.yaml` now matches the live service: branch `main`, build runs the link step last, direct `node` start.
+
 ## 1.14.0 — 2026-10-13
 
 ### Tactical board — sequences, export, shared package, relative press
