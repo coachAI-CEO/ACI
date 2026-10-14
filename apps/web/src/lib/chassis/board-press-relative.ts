@@ -5,22 +5,23 @@
  */
 
 /**
- * PROTOTYPE -- relative press placement (not wired into the board yet).
+ * Relative press placement (opt-in via BOARD_PRESS_RELATIVE=1; see board-phase-placement).
  *
  * Instead of computing absolute target positions per formation, a press is a
  * set of moves applied to wherever each player already stands:
  *   - "forward" toward the opponent's goal, by role band, scaled by block height
  *   - a small lateral squeeze toward the ball's channel
  *
- * Board axes (see docs/tactical-board-phase-positioning.md):
- *   y = goal-to-goal. ATT attacks toward LOW y, DEF attacks toward HIGH y.
- *   x = width. Direction is handled in exactly one place (`dir` below).
+ * Runs in the team-local frame (packages/shared board/team-frame): v = upfield, u = the
+ * team's own right is high. In that frame ATT and DEF are the same code path, so there is no
+ * per-team direction or flank logic here; the shared-frame flip happens only at the edges.
  *
  * Because it only offsets existing positions, it works for any formation and
  * keeps each player on their own side of the pitch.
  */
 // Type-only imports so this module never creates a runtime cycle with
 // board-phase-placement (which calls it); the role-band classifier is passed in.
+import { fromTeamFrame, toTeamFrame } from '@aci/shared';
 import type { DefBlockHeight, RoleBand } from './board-phase-placement';
 import type { WebDiagramV1 } from './web-diagram-v1';
 
@@ -60,18 +61,19 @@ export function pressRelative(input: {
   bandOf: (p: { number?: number; role?: string }) => RoleBand;
 }): Player[] {
   const { players, team, ball, block, bandOf } = input;
-  const dir = team === 'DEF' ? 1 : -1; // DEF attacks toward +y, ATT toward -y
   const scale = PRESS_BLOCK_SCALE[block];
+  const ballLocal = toTeamFrame(team, ball);
 
   return players.map((p) => {
     if (p.team !== team) return p;
-    const profile = PRESS_PROFILE[bandOf(p)];
-    let y = p.y + dir * profile.forward * scale;
+    const band = bandOf(p);
+    const profile = PRESS_PROFILE[band];
+    const at = toTeamFrame(team, p);
+    let v = at.v + profile.forward * scale;
     // Outfield pressers stop short of the ball instead of running past it.
-    if (bandOf(p) !== 'GK') {
-      y = dir === 1 ? Math.min(y, ball.y - OVERRUN_MARGIN) : Math.max(y, ball.y + OVERRUN_MARGIN);
-    }
-    const x = p.x + (ball.x - p.x) * profile.squeeze;
-    return { ...p, x: clamp(x), y: clamp(y) };
+    if (band !== 'GK') v = Math.min(v, ballLocal.v - OVERRUN_MARGIN);
+    const u = at.u + (ballLocal.u - at.u) * profile.squeeze;
+    const out = fromTeamFrame(team, { u: clamp(u), v: clamp(v) });
+    return { ...p, x: out.x, y: out.y };
   });
 }
