@@ -46,6 +46,22 @@ export const PRESS_BLOCK_SCALE: Record<DefBlockHeight, number> = {
 /** Never let a presser end up further forward than this many units short of the ball. */
 const OVERRUN_MARGIN = 4;
 
+/**
+ * Width is a role rule, not an offset: a formation's base slots are narrower than the shapes
+ * coaches draw. Wide players (fullbacks, wing-backs, wingers: 28+ off centre) hold the touchline
+ * lane; inner players spread a little and lean toward the ball. Only inner players squeeze.
+ */
+const WIDE_FROM_CENTRE = 28;
+const TOUCHLINE_REACH = 46; // u = 4 / 96
+const INNER_SPREAD = 1.15;
+function lateral(u: number, ballU: number, squeeze: number) {
+  const off = u - 50;
+  if (Math.abs(off) >= WIDE_FROM_CENTRE) return 50 + Math.sign(off) * TOUCHLINE_REACH;
+  const spread = 50 + off * INNER_SPREAD;
+  return spread + (ballU - spread) * squeeze;
+}
+const clampLateral = (u: number) => Math.max(4, Math.min(96, u));
+
 export type PresetRole = 'defending' | 'inPossession';
 type BandProfile = Record<RoleBand, { forward: number; squeeze: number }>;
 
@@ -125,8 +141,8 @@ export function relativePreset(input: {
     // A presser stops short of the ball instead of running past it. Goal-kick press only: in the
     // later phases the front line legitimately sits ahead of a ball that is deep in the block.
     if (role === 'defending' && phase === 'goal_kick' && band !== 'GK') v = Math.min(v, ballLocal.v - OVERRUN_MARGIN);
-    const u = at.u + (ballLocal.u - at.u) * profile.squeeze;
-    const out = fromTeamFrame(team, { u: clamp(u), v: clamp(v) });
+    const u = lateral(at.u, ballLocal.u, profile.squeeze);
+    const out = fromTeamFrame(team, { u: clampLateral(u), v: clamp(v) });
     return { ...p, x: out.x, y: out.y };
   });
 }
