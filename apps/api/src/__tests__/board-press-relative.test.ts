@@ -76,6 +76,18 @@ describe('later phases keep the authored DEF layout', () => {
   });
 });
 
+describe('final-third fallback lines keep each player on their own flank', () => {
+  // Regression: these lines were laid out in roster order, so the left-back ended up beside the right-back.
+  for (const def of ['4-4-2', '4-2-3-1', '3-5-2'] as const) {
+    test(`${def}: no outfield player swaps sides vs the formation`, () => {
+      const base = build11v11FormationPlayers(def, 'DEF');
+      const roster = [...build11v11FormationPlayers('4-3-3', 'ATT'), ...base];
+      const out = placePhaseSnapshot({ roster, subPhase: 'final_third', attFormation: '4-3-3', defFormation: def, channelX: 50, defBlock: 'high', includeMotifArrows: false });
+      expect(sideFlips(base, out.players.filter((p) => p.team === 'DEF'))).toEqual([]);
+    });
+  }
+});
+
 describe('BOARD_PRESS_RELATIVE press', () => {
   test('is off by default: identical to absolute placement', () => {
     const a = place('4-4-2', 'high', false);

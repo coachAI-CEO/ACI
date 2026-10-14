@@ -17,6 +17,7 @@
  * copies drift.
  */
 
+import { fromTeamFrame, toTeamFrame } from '@aci/shared';
 import type { WebDiagramV1 } from './web-diagram-v1';
 import { build11v11FormationPlayers } from './web-diagram-v1';
 import { pressRelative } from './board-press-relative';
@@ -629,6 +630,41 @@ export function labelStackAwayFromEmphasis(
   }));
 }
 
+/**
+ * placeDefBlock is written in the convention where HIGH x is the team's own right and `y` is
+ * distance upfield: the convention the ATT chassis uses and WIDTH.* assumes. DEF's shared-frame
+ * coordinates are mirrored (DEF's right is LOW x), which is what sent DEF's right-sided players to
+ * the wrong flank. So it runs on DEF's players in DEF's local frame and its targets are converted
+ * back; no per-team left/right handling is needed inside it.
+ */
+function placeDefBlockLocal(
+  targets: Map<string, { x: number; y: number }>,
+  def: { gk: Player[]; back: Player[]; mid: Player[]; front: Player[] },
+  focus: { x: number; y: number },
+  phase: PlayOutSubPhase,
+  block: DefBlockHeight,
+  defFormation: FormationId11
+) {
+  const local = (p: Player): Player => {
+    const l = toTeamFrame('DEF', p);
+    return { ...p, x: l.u, y: l.v };
+  };
+  const f = toTeamFrame('DEF', focus);
+  const localTargets = new Map<string, { x: number; y: number }>();
+  placeDefBlock(
+    localTargets,
+    { gk: def.gk.map(local), back: def.back.map(local), mid: def.mid.map(local), front: def.front.map(local) },
+    { x: f.u, y: f.v },
+    phase,
+    block,
+    defFormation
+  );
+  for (const [id, t] of localTargets) {
+    const shared = fromTeamFrame('DEF', { u: t.x, v: t.y });
+    targets.set(id, { x: shared.x, y: shared.y });
+  }
+}
+
 function placeDefBlock(
   targets: Map<string, { x: number; y: number }>,
   def: { gk: Player[]; back: Player[]; mid: Player[]; front: Player[] },
@@ -857,19 +893,18 @@ function placeDefBlock(
       const ten = def.mid.find((p) => p !== six && p !== eight) || def.mid[2];
 
       // Back four in own half — CBs central, FBs wide
-      // DEF attacks +y: their right = touchL (bottom), their left = touchR (top)
-      setT(targets, rcb, WIDTH.cbL, 28);
-      setT(targets, lcb, WIDTH.cbR, 28);
-      setT(targets, rb, WIDTH.touchL, 32);
-      setT(targets, lb, WIDTH.touchR, 32);
+            setT(targets, rcb, WIDTH.cbR, 28);
+      setT(targets, lcb, WIDTH.cbL, 28);
+      setT(targets, rb, WIDTH.touchR, 32);
+      setT(targets, lb, WIDTH.touchL, 32);
       // Mid trio in the box — #6 deeper (own side of center), #8/#10 mark ATT 8/10
       setT(targets, six, midX, 44);
-      setT(targets, eight, WIDTH.midR + 4, 48);
-      setT(targets, ten, WIDTH.midL - 4, 48);
+      setT(targets, eight, WIDTH.midL - 4, 48);
+      setT(targets, ten, WIDTH.midR + 4, 48);
       // #9 steps into the pocket (ATT side of halfway); wings high-wide on DEF flanks
       setT(targets, nine, midX, 58);
-      setT(targets, seven, WIDTH.touchL, 62);
-      setT(targets, eleven, WIDTH.touchR, 62);
+      setT(targets, seven, WIDTH.touchR, 62);
+      setT(targets, eleven, WIDTH.touchL, 62);
       return;
     }
 
@@ -902,19 +937,19 @@ function placeDefBlock(
             (p.number === 11 || /^(LAM|LM|LW)$/i.test(roleOf(p)))
         ) || def.front[2];
 
-      // Back four deep in own half (DEF right = touchL)
-      setT(targets, rcb, WIDTH.cbL, 26);
-      setT(targets, lcb, WIDTH.cbR, 26);
-      setT(targets, rb, WIDTH.touchL, 30);
-      setT(targets, lb, WIDTH.touchR, 30);
+      // Back four deep in own half
+      setT(targets, rcb, WIDTH.cbR, 26);
+      setT(targets, lcb, WIDTH.cbL, 26);
+      setT(targets, rb, WIDTH.touchR, 30);
+      setT(targets, lb, WIDTH.touchL, 30);
       // Double pivot screening — own side of the yellow box
-      setT(targets, eight, WIDTH.midR, 40);
-      setT(targets, six, WIDTH.midL, 40);
+      setT(targets, eight, WIDTH.midL, 40);
+      setT(targets, six, WIDTH.midR, 40);
       // #10 on the center spot (ball); wide AMs at halfway
       setT(targets, ten, midX, 50);
       // Mirrored shirts: DEF #7 (RAM) → bottom, #11 (LAM) → top
-      setT(targets, seven, WIDTH.touchL, 50);
-      setT(targets, eleven, WIDTH.touchR, 50);
+      setT(targets, seven, WIDTH.touchR, 50);
+      setT(targets, eleven, WIDTH.touchL, 50);
       // #9 between the lines on the ATT side of the box
       setT(targets, nine, midX, 60);
       return;
@@ -938,19 +973,19 @@ function placeDefBlock(
         def.front.find((p) => p !== nine && (p.number === 10 || /^(ST|CF)$/i.test(roleOf(p)))) ||
         def.front[1];
 
-      // Flat back four in own half (DEF left = touchR / top)
-      setT(targets, lb, WIDTH.touchR, 28);
-      setT(targets, lcb, WIDTH.cbR, 26);
-      setT(targets, rcb, WIDTH.cbL, 26);
-      setT(targets, rb, WIDTH.touchL, 28);
+      // Flat back four in own half
+      setT(targets, lb, WIDTH.touchL, 28);
+      setT(targets, lcb, WIDTH.cbL, 26);
+      setT(targets, rcb, WIDTH.cbR, 26);
+      setT(targets, rb, WIDTH.touchR, 28);
       // Flat midfield four — #11/#8/#6/#7 top→bottom, own side of halfway
-      setT(targets, lm, WIDTH.touchR, 42);
-      setT(targets, eight, WIDTH.midR, 42);
-      setT(targets, six, WIDTH.midL, 42);
-      setT(targets, rm, WIDTH.touchL, 42);
+      setT(targets, lm, WIDTH.touchL, 42);
+      setT(targets, eight, WIDTH.midL, 42);
+      setT(targets, six, WIDTH.midR, 42);
+      setT(targets, rm, WIDTH.touchR, 42);
       // Twin STs in the yellow box, just past halfway
-      setT(targets, ten, 58, 56);
-      setT(targets, nine, 42, 56);
+      setT(targets, ten, 42, 56);
+      setT(targets, nine, 58, 56);
       return;
     }
 
@@ -990,19 +1025,19 @@ function placeDefBlock(
       const seven = pickByNumber(pool, 7) || def.front[1] || def.mid[2];
 
       // Back three just outside the box
-      setT(targets, cb5, WIDTH.halfR, 24);
+      setT(targets, cb5, WIDTH.halfL, 24);
       setT(targets, cb4, midX, 22);
-      setT(targets, cb3, WIDTH.halfL, 24);
+      setT(targets, cb3, WIDTH.halfR, 24);
       // Wing-backs high-wide, own side of halfway
-      setT(targets, lwb, WIDTH.touchR, 44);
-      setT(targets, rwb, WIDTH.touchL, 44);
+      setT(targets, lwb, WIDTH.touchL, 44);
+      setT(targets, rwb, WIDTH.touchR, 44);
       // Mid trio in the yellow box — #8/#6 deeper, #10 on the center
-      setT(targets, eight, WIDTH.midR, 42);
-      setT(targets, six, WIDTH.midL, 42);
+      setT(targets, eight, WIDTH.midL, 42);
+      setT(targets, six, WIDTH.midR, 42);
       setT(targets, ten, midX, 48);
       // Twin forwards in ATT half (counter outlets)
-      setT(targets, nine, 58, 62);
-      setT(targets, seven, 42, 62);
+      setT(targets, nine, 42, 62);
+      setT(targets, seven, 58, 62);
       return;
     }
 
@@ -1061,34 +1096,38 @@ function placeDefBlock(
       def.mid[1];
     const ten = def.mid.find((p) => p !== six && p !== eight) || def.mid[2];
 
-    // DEF attacks +y: right = touchL. Back four on the box.
-    setT(targets, rcb, WIDTH.cbL, 12);
-    setT(targets, lcb, WIDTH.cbR, 12);
-    setT(targets, rb, WIDTH.touchL, 14);
-    setT(targets, lb, WIDTH.touchR, 14);
+    // Back four on the box.
+    setT(targets, rcb, WIDTH.cbR, 12);
+    setT(targets, lcb, WIDTH.cbL, 12);
+    setT(targets, rb, WIDTH.touchR, 14);
+    setT(targets, lb, WIDTH.touchL, 14);
     // Mid trio covering just ahead of the box
     setT(targets, six, midX, 26);
-    setT(targets, eight, WIDTH.midR + 4, 28);
-    setT(targets, ten, WIDTH.midL - 4, 28);
+    setT(targets, eight, WIDTH.midL - 4, 28);
+    setT(targets, ten, WIDTH.midR + 4, 28);
     // Front three delay — #9 central, wings wide
     setT(targets, nine, midX, 40);
-    setT(targets, seven, WIDTH.touchL, 42);
-    setT(targets, eleven, WIDTH.touchR, 42);
+    setT(targets, seven, WIDTH.touchR, 42);
+    setT(targets, eleven, WIDTH.touchL, 42);
     return;
   }
+  // Generic final-third lines: each line is laid out left to right in the team's own frame
+  // (low x = its left), so a right-back is never placed beside the left-back.
+  const leftToRight = (list: Player[]) =>
+    [...list].sort((a, b) => a.x - b.x || a.id.localeCompare(b.id));
   if (defFormation === '3-5-2') {
     const { cbs, wbs, fbs } = splitBacks(def.back);
-    const wings = wbs.length ? wbs : fbs;
-    placeWideLine(cbs.slice(0, 3), 12, 16).forEach((v, k) => targets.set(k, v));
-    if (wings[0]) setT(targets, wings[0], WIDTH.touchR, 16);
-    if (wings[1]) setT(targets, wings[1], WIDTH.touchL, 18);
-    placeWideLine(def.mid.slice(0, 3), 26, 18).forEach((v, k) => targets.set(k, v));
-    placeLine(def.front.slice(0, 2), focus, 38, 16).forEach((v, k) => targets.set(k, v));
+    const wings = leftToRight(wbs.length ? wbs : fbs);
+    placeWideLine(leftToRight(cbs).slice(0, 3), 12, 16).forEach((v, k) => targets.set(k, v));
+    if (wings[0]) setT(targets, wings[0], WIDTH.touchL, 18);
+    if (wings[1]) setT(targets, wings[wings.length - 1], WIDTH.touchR, 16);
+    placeWideLine(leftToRight(def.mid).slice(0, 3), 26, 18).forEach((v, k) => targets.set(k, v));
+    placeLine(leftToRight(def.front).slice(0, 2), focus, 38, 16).forEach((v, k) => targets.set(k, v));
     return;
   }
-  placeWideLine(def.back.slice(0, 4), 12, 22).forEach((v, k) => targets.set(k, v));
-  placeWideLine(def.mid.slice(0, 4), 26, 20).forEach((v, k) => targets.set(k, v));
-  placeLine(def.front.slice(0, 3), focus, 40, 18).forEach((v, k) => targets.set(k, v));
+  placeWideLine(leftToRight(def.back).slice(0, 4), 12, 22).forEach((v, k) => targets.set(k, v));
+  placeWideLine(leftToRight(def.mid).slice(0, 4), 26, 20).forEach((v, k) => targets.set(k, v));
+  placeLine(leftToRight(def.front).slice(0, 3), focus, 40, 18).forEach((v, k) => targets.set(k, v));
 }
 
 /** Formation-specific ATT chassis for one play-out sub-phase. */
@@ -1712,7 +1751,7 @@ export function placePhaseSnapshot(input: {
   placeAttChassis(targets, att, focus, phase, attFormation, channelX, engageNine);
   const usedRelativePress = placeDefRelativePress(targets, roster, focus, phase, defBlock, defFormation);
   if (!usedRelativePress) {
-    placeDefBlock(targets, def, focus, phase, defBlock, defFormation);
+    placeDefBlockLocal(targets, def, focus, phase, defBlock, defFormation);
   }
   // Goal-kick only: the pocket / final-third branches already place DEF by shirt
   // number on purpose (e.g. 3-5-2 pocket: #6 at midL, #8 at midR), and re-sorting
