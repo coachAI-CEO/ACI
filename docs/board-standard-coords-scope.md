@@ -1,6 +1,20 @@
 # Board placement: standard coordinates + relative presets (scope)
 
-Status: scoping only, nothing implemented. Written 2026-10-14 against `main` @ 9721614.
+Status 2026-10-14 (branch `codex/standard-coords`, local, unpushed): steps 1-4 done, step 5 not done on purpose (see below).
+
+## Outcome
+- Step 1 done: `team-frame.ts` (per-team local frame). Correction to the plan above: a shared board cannot have both
+  teams attack the same way, so the frame is per TEAM (each team's own view), not one global frame.
+- Step 2 done for the defending block (runs in DEF's local frame; goal kick and pocket identical to the baseline,
+  generic final-third lines made flank-aware) and, via `possession: 'DEF'`, for the whole placement (180-degree
+  rotation + team swap; symmetry tested on 48 combinations).
+- Step 3 done: conversion lives inside placement; storage, editor and renderers untouched, nothing migrates.
+- Step 4 done behind `BOARD_RELATIVE_PRESETS=1`: pure offsets from the base were too narrow and clumped, so width is a
+  role rule and a two-way spacing pass keeps shirts 7 / 6.5 units apart. Still not a drop-in for the authored shapes.
+- Step 5 NOT done: the AI contract is already coach-relative ("Us = ATT blue, own goal RIGHT") and play-out requests
+  already go through the deterministic placement. Rewriting ~45 regex-driven sites in `board-ai-chat.ts` needs a live
+  Gemini evaluation to prove it is not a regression, with little to gain; prefer routing free-form edits through the
+  symbolic DSL + layout solver.
 
 ## Problem
 Stored boards use one frame where the meaning of `y` flips by team: ATT attacks toward low y
