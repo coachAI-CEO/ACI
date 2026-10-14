@@ -30,6 +30,7 @@ import {
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
 import { lightRepairPlayers } from './board-ai-light-repair';
+import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
   buildFormationPlaybookGuidance,
@@ -5211,8 +5212,11 @@ export async function runBoardAiChat(input: {
   if (composedCombo) {
     repaired = composedCombo;
   } else if (!hasImage && isPlayOutRequest(drawMessage)) {
-    repaired = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
+    const placed = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
+    // Bare board: placement positions the players, the arrows stay the model's own.
+    repaired = isBareBoard() ? carryModelArrows(placed, repaired) : placed;
   }
+  if (isBareBoard()) repaired = stripAnnotations(repaired);
   const frameArrowCount = repaired.sequence?.frames?.length
     ? repaired.sequence.frames.reduce((n, f) => n + (f.arrows?.length || 0), 0)
     : repaired.arrows?.length || 0;
