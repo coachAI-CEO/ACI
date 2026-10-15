@@ -197,3 +197,43 @@ describe('a whole teaching sequence in one batch (what the AI would send)', () =
     expect(f2.arrows.some((a: any) => a.to.playerId === player(d, 'ATT', 9, f2).id)).toBe(true);
   });
 });
+
+describe('frame aliases, ghost arrows and clear_team', () => {
+  test('"last" names the frame add_frame just made; "active" the active one', () => {
+    const d = ok(run([
+      { op: 'add_frame' },
+      { op: 'move_player', frame: 'last', player: { team: 'ATT', number: 9 }, x: 11, y: 22 },
+      { op: 'move_player', frame: 'active', player: { team: 'ATT', number: 9 }, x: 33, y: 44 },
+    ]));
+    expect(player(d, 'ATT', 9, d.sequence.frames[1])).toMatchObject({ x: 11, y: 22 });
+    expect(player(d, 'ATT', 9, d.sequence.frames[0])).toMatchObject({ x: 33, y: 44 });
+  });
+  test('a new frame fades the previous step\'s arrows to dotted ghosts by default', () => {
+    const d = ok(run([
+      { op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } },
+      { op: 'add_frame' },
+    ]));
+    expect(d.sequence.frames[0].arrows[0].style).toBe('solid');
+    expect(d.sequence.frames[1].arrows[0]).toMatchObject({ style: 'dotted', weight: 'normal' });
+  });
+  test('add_frame can keep or clear the previous arrows instead', () => {
+    const base = [{ op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } }];
+    expect(ok(run([...base, { op: 'add_frame', arrows: 'keep' }])).sequence.frames[1].arrows[0].style).toBe('solid');
+    expect(ok(run([...base, { op: 'add_frame', arrows: 'clear' }])).sequence.frames[1].arrows).toHaveLength(0);
+    expect((run([{ op: 'add_frame', arrows: 'fade' }]) as any).error.code).toBe('invalid_value');
+  });
+  test('clear_team empties one team and the arrows attached to it', () => {
+    const d = ok(run([
+      { op: 'add_arrow', type: 'press', from: { team: 'DEF', number: 4 }, to: { team: 'ATT', number: 9 } },
+      { op: 'clear_team', team: 'DEF' },
+    ]));
+    expect(d.players.filter((p: any) => p.team === 'DEF')).toHaveLength(0);
+    expect(d.players.filter((p: any) => p.team === 'ATT')).toHaveLength(11);
+    expect(d.arrows).toHaveLength(0);
+  });
+  test('a small-sided setup built from clear_team + add_player (4v4 and 2 neutrals)', () => {
+    const adds = (team: string, xs: number[], y: number) => xs.map((x, i) => ({ op: 'add_player', team, number: i + 1, x, y }));
+    const d = ok(run([{ op: 'clear_team', team: 'ATT' }, { op: 'clear_team', team: 'DEF' }, ...adds('ATT', [30, 40, 50, 60], 40), ...adds('DEF', [30, 40, 50, 60], 60), ...adds('NEUTRAL', [45, 55], 50)]));
+    expect(['ATT', 'DEF', 'NEUTRAL'].map((t) => d.players.filter((p: any) => p.team === t).length)).toEqual([4, 4, 2]);
+  });
+});

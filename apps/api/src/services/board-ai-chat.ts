@@ -31,6 +31,7 @@ import {
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
 import { expandActionsToFrames, expandPlayFrameIntoSteps, shouldExpandToFrames } from './board-ai-action-frames';
 import { anchorBallToFirstPass, lightRepairPlayers } from './board-ai-light-repair';
+import { boardOpsEnabled, runBoardAiOps } from './board-ai-ops';
 import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
@@ -4862,6 +4863,17 @@ export async function runBoardAiChat(input: {
       applied: false,
       diagram: input.diagram,
     };
+  }
+
+  // Operations mode: the model sends small validated edits against the current board (board-ai-ops.ts).
+  if (boardOpsEnabled() && !hasImage) {
+    const r = await runBoardAiOps({
+      diagram: input.diagram,
+      message,
+      history: history.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
+      context: { ageGroup: input.ageGroup || undefined, gameModelId: playModel.gameModelId || input.gameModelId || undefined },
+    });
+    return { ...resultBase, reply: r.reply, applied: r.applied, diagram: r.diagram };
   }
 
   const offeredReadings = assistantOfferedAskReadings(history);

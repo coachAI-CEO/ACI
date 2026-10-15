@@ -9,7 +9,8 @@
  *
  * Players are addressed by `{ team, number }` (unique on a board) or `{ playerId }`; arrow ends and the
  * ball can point at a player or at a coordinate. Every operation takes an optional `frame` (default: the
- * active frame), so a sequence is edited one frame at a time.
+ * active frame), so a sequence is edited one frame at a time. A frame can be named by id, or "last" (the final
+ * frame, e.g. the one add_frame just made) or "active".
  */
 import crypto from 'crypto';
 import { ensureDiagramObjectIds, newObjectId } from '@aci/shared';
@@ -37,11 +38,12 @@ export type BoardOp = { frame?: string } & (
   | { op: 'move_player'; player: PlayerRef; x: number; y: number }
   | { op: 'update_player'; player: PlayerRef; patch: { role?: string; number?: number; name?: string; group?: string } }
   | { op: 'remove_player'; player: PlayerRef }
+  | { op: 'clear_team'; team: 'ATT' | 'DEF' | 'NEUTRAL' }
   | { op: 'set_ball'; x?: number; y?: number; carrier?: PlayerRef }
   | { op: 'add_arrow'; type: (typeof ARROW_TYPES)[number]; from: PointRef; to: PointRef; style?: string; weight?: string; order?: number }
   | { op: 'update_arrow'; arrowId: string; patch: { type?: string; style?: string; weight?: string; order?: number; from?: PointRef; to?: PointRef } }
   | { op: 'remove_arrow'; arrowId: string }
-  | { op: 'add_frame'; after?: string; copyFrom?: string; title?: string }
+  | { op: 'add_frame'; after?: string; copyFrom?: string; title?: string; arrows?: 'ghost' | 'keep' | 'clear' }
   | { op: 'update_frame'; title?: string; note?: string; durationMs?: number }
   | { op: 'remove_frame' }
   | { op: 'set_active_frame' }
@@ -78,11 +80,12 @@ const KEYS: Record<string, string[]> = {
   move_player: ['op', 'frame', 'player', 'x', 'y'],
   update_player: ['op', 'frame', 'player', 'patch'],
   remove_player: ['op', 'frame', 'player'],
+  clear_team: ['op', 'frame', 'team'],
   set_ball: ['op', 'frame', 'x', 'y', 'carrier'],
   add_arrow: ['op', 'frame', 'type', 'from', 'to', 'style', 'weight', 'order'],
   update_arrow: ['op', 'frame', 'arrowId', 'patch'],
   remove_arrow: ['op', 'frame', 'arrowId'],
-  add_frame: ['op', 'after', 'copyFrom', 'title'],
+  add_frame: ['op', 'after', 'copyFrom', 'title', 'arrows'],
   update_frame: ['op', 'frame', 'title', 'note', 'durationMs'],
   remove_frame: ['op', 'frame'],
   set_active_frame: ['op', 'frame'],
@@ -109,7 +112,7 @@ function layersFor(d: WebDiagramV1, frame?: string): { layers: Layers; frame: Fr
     if (frame) fail('no_such_frame', `This board has no frames, so "${frame}" does not exist. Use add_frame first.`);
     return { layers: d, frame: null };
   }
-  const id = frame ?? d.sequence!.activeFrameId ?? frames[0].id;
+  const id = frame === 'last' ? frames[frames.length - 1].id : frame === 'active' || frame === undefined ? (d.sequence!.activeFrameId ?? frames[0].id) : frame;
   const f = frames.find((x) => x.id === id);
   if (!f) fail('no_such_frame', `No frame "${id}". Frames: ${frames.map((x) => x.id).join(', ')}.`);
   return { layers: f as Frame, frame: f as Frame };
@@ -161,7 +164,10 @@ function apply(d: WebDiagramV1, op: any): string {
       if (op.copyFrom && src.id !== op.copyFrom) return fail('no_such_frame', `No frame "${op.copyFrom}" to copy. Frames: ${frames.map((f) => f.id).join(', ')}.`);
       let n = frames.length + 1;
       while (frames.some((f) => f.id === `f-${n}`)) n++;
+      const mode = op.arrows === undefined ? 'ghost' : oneOf(op.arrows, ['ghost', 'keep', 'clear'] as const, 'arrows');
       const next: Frame = { ...clone(src), id: `f-${n}`, title: op.title ?? `Frame ${frames.length + 1}`, note: undefined };
+      // A new step starts clean: the previous step's arrows fade to dotted ghosts (or are kept / cleared on request).
+      next.arrows = mode === 'keep' ? next.arrows : mode === 'clear' ? [] : (next.arrows || []).map((a) => ({ ...a, id: a.id ? `${a.id}-prev` : undefined, style: 'dotted' as const, weight: 'normal' as const, order: undefined }));
       const at = op.after ? frames.findIndex((f) => f.id === op.after) : frames.length - 1;
       if (op.after && at < 0) return fail('no_such_frame', `No frame "${op.after}". Frames: ${frames.map((f) => f.id).join(', ')}.`);
       frames.splice(at + 1, 0, next);
@@ -208,6 +214,14 @@ function apply(d: WebDiagramV1, op: any): string {
       const dropped = layers.arrows.length - keep.length;
       layers.arrows = keep;
       return `${team} set to ${op.formation} (${seeded.length} players, was ${had}).${dropped ? ` Removed ${dropped} arrow(s) that pointed at replaced players.` : ''}`;
+    }
+    case 'clear_team': {
+      const team = oneOf(op.team, TEAMS, 'team');
+      const gone = new Set(layers.players.filter((p) => p.team === team).map((p) => p.id));
+      layers.players = layers.players.filter((p) => p.team !== team);
+      const before = layers.arrows.length;
+      layers.arrows = layers.arrows.filter((a) => !(a.from.playerId && gone.has(a.from.playerId)) && !(a.to.playerId && gone.has(a.to.playerId)));
+      return `Removed all ${gone.size} ${team} players${before !== layers.arrows.length ? ` and ${before - layers.arrows.length} arrow(s) attached to them` : ''}.`;
     }
     case 'add_player': {
       const team = oneOf(op.team, TEAMS, 'team');
