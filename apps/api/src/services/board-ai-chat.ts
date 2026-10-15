@@ -29,6 +29,7 @@ import {
   type ClubPhilosophyStages,
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
+import { expandActionsToFrames, expandPlayFrameIntoSteps, shouldExpandToFrames } from './board-ai-action-frames';
 import { anchorBallToFirstPass, lightRepairPlayers } from './board-ai-light-repair';
 import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
@@ -298,8 +299,12 @@ function lightRepairLayer(d: WebDiagramV1, freeze: boolean): WebDiagramV1 {
   );
 }
 
-function lightRepairWithSequence(diagram: WebDiagramV1, message: string): WebDiagramV1 {
+function lightRepairWithSequence(input: WebDiagramV1, message: string): WebDiagramV1 {
   const freeze = wantsFrozenPlayers(message);
+  // Several moves described -> one frame per move (the model supplies who passes / runs where).
+  const diagram = shouldExpandToFrames(input, wantsSequenceFromMessage(message))
+    ? expandActionsToFrames(input)
+    : input;
   const seq = diagram.sequence;
   if (!seq?.frames?.length) return lightRepairLayer(diagram, freeze);
   const frames = seq.frames.slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES).map((f, i) => {
@@ -5171,6 +5176,12 @@ export async function runBoardAiChat(input: {
           );
   if (symbolicDsl) {
     repaired = repairBoardDiagramLabels(repairBoardDiagramArrows(repaired));
+    if (process.env.BOARD_AI_LIGHT_REPAIR === '1' && !hasImage) {
+      // Several moves described -> one frame per move; a single pass puts the ball at the passer.
+      repaired = shouldExpandToFrames(repaired, wantsSequenceFromMessage(drawMessage))
+        ? expandActionsToFrames(repaired)
+        : anchorBallToFirstPass(repaired);
+    }
     if (!hasImage && (input.diagram.players || []).length && !isPlayOutRequest(drawMessage)) {
       repaired = ensureSequenceStartsFromOriginal(repaired, input.diagram, drawMessage);
     }
@@ -5213,7 +5224,9 @@ export async function runBoardAiChat(input: {
     audience.coachLevel
   );
   if (composedCombo) {
-    repaired = composedCombo;
+    // The combo builder makes Start + one Play frame holding every arrow; light mode splits Play into steps.
+    repaired =
+      process.env.BOARD_AI_LIGHT_REPAIR === '1' ? expandPlayFrameIntoSteps(composedCombo) : composedCombo;
   } else if (!hasImage && isPlayOutRequest(drawMessage)) {
     const placed = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
     // Bare board: placement positions the players, the arrows stay the model's own.

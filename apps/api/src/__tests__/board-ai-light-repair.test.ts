@@ -111,6 +111,10 @@ describe('anchorBallToFirstPass', () => {
     expect(anchorBallToFirstPass(atStart)).toBe(atStart);
     expect(anchorBallToFirstPass(atEnd)).toBe(atEnd);
   });
+  test('a ball at the middle of a chain stays there (a frame showing the previous pass as a ghost)', () => {
+    const d = { players, arrows: [pass('a3', 'a7', { style: 'dotted' }), pass('a7', 'a9')], balls: [{ id: 'b', x: 80, y: 44 }] };
+    expect(anchorBallToFirstPass(d)).toBe(d);
+  });
   test('does nothing without a ball or without passes', () => {
     const noBall = { players, arrows: [pass('a3', 'a7')], balls: [] };
     const noPass = { players, arrows: [{ id: 'r', type: 'run', from: { playerId: 'a3' }, to: { x: 5, y: 5 } }], balls: [{ id: 'b', x: 50, y: 50 }] };

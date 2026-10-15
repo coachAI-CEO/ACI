@@ -65,13 +65,14 @@ function resolveRef(ref: Ref, players: Player[]): Pt | null {
   return typeof ref.x === 'number' && typeof ref.y === 'number' ? { x: ref.x, y: ref.y } : null;
 }
 
-/** A ball counts as "with" a pass when it is within this many units of where the pass starts or ends. */
+/** A ball counts as "with" a pass when it is within this many units of where a pass starts or ends. */
 const BALL_WITH_PASS = 6;
 
 /**
- * A picture that shows a pass has the ball where the pass starts (or, in a later frame, where it
- * ended). A ball left on the kick-off spot while the arrow starts at a full-back is wrong, so move it
- * to the first pass's origin. Left alone when it is already at either end of the passing chain.
+ * A picture that shows a pass has the ball somewhere along the passing chain: where a pass starts, or
+ * where one ended. A ball left on the kick-off spot while the arrow starts at a full-back is wrong, so
+ * move it to the first pass's origin. Left alone when it is already at ANY pass endpoint (the middle of
+ * a chain is a valid place for it, e.g. a frame that shows the previous pass as a ghost).
  */
 export function anchorBallToFirstPass<D extends Pick<WebDiagramV1, 'players' | 'arrows' | 'balls'>>(diagram: D): D {
   const ball = diagram.balls?.[0];
@@ -84,9 +85,9 @@ export function anchorBallToFirstPass<D extends Pick<WebDiagramV1, 'players' | '
     .map(({ a }) => a);
   if (!passes.length) return diagram;
   const start = resolveRef(passes[0].from as Ref, players);
-  const end = resolveRef(passes[passes.length - 1].to as Ref, players);
   if (!start) return diagram;
-  const near = (pt: Pt | null) => !!pt && Math.hypot(pt.x - ball.x, pt.y - ball.y) <= BALL_WITH_PASS;
-  if (near(start) || near(end)) return diagram;
+  const endpoints = passes.flatMap((a) => [resolveRef(a.from as Ref, players), resolveRef(a.to as Ref, players)]);
+  const withPass = endpoints.some((pt) => !!pt && Math.hypot(pt.x - ball.x, pt.y - ball.y) <= BALL_WITH_PASS);
+  if (withPass) return diagram;
   return { ...diagram, balls: [{ ...ball, x: start.x, y: start.y }, ...(diagram.balls || []).slice(1)] };
 }
