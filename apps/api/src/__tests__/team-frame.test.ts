@@ -1,5 +1,7 @@
 import { toTeamFrame, fromTeamFrame, convertFrame } from '@aci/shared';
 import { build11v11FormationPlayers } from '../services/web-diagram-v1';
+import * as sharedIndex from '../../../../packages/shared/src/index';
+import * as teamFrame from '../../../../packages/shared/src/board/team-frame';
 
 const FORMATIONS = ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1'] as const;
 
@@ -44,5 +46,14 @@ describe('team-local frame', () => {
       expect(Math.abs(d[i].u - p.u)).toBeLessThan(1.5);
       expect(Math.abs(d[i].v - p.v)).toBeLessThan(1.5);
     });
+  });
+});
+
+describe('the shared package exposes the team-local frame', () => {
+  test('@aci/shared re-exports exactly the converter in board/team-frame.ts', () => {
+    expect(sharedIndex.toTeamFrame).toBe(teamFrame.toTeamFrame);
+    expect(sharedIndex.fromTeamFrame).toBe(teamFrame.fromTeamFrame);
+    expect(sharedIndex.convertFrame).toBe(teamFrame.convertFrame);
+    expect(sharedIndex.PITCH_SPAN).toBe(teamFrame.PITCH_SPAN);
   });
 });
