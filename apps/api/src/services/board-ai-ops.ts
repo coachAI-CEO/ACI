@@ -92,7 +92,7 @@ export function parseOpsReply(text: string): { reply: string; ops: unknown[] } |
   }
 }
 
-export type OpsRun = { reply: string; applied: boolean; diagram: WebDiagramV1; attempts: number; opsApplied: number; error?: string };
+export type OpsRun = { reply: string; applied: boolean; diagram: WebDiagramV1; attempts: number; opsApplied: number; ops?: unknown[]; error?: string };
 
 export async function runBoardAiOps(input: {
   diagram: WebDiagramV1;
@@ -127,7 +127,7 @@ export async function runBoardAiOps(input: {
     reply = parsed.reply || reply;
     if (!parsed.ops.length) return { reply: reply || 'No change to the board.', applied: false, diagram: input.diagram, attempts: attempt, opsApplied: 0 };
     const out = applyBoardOps(input.diagram, { revision, ops: parsed.ops });
-    if (out.ok) return { reply: reply || 'Updated the board.', applied: true, diagram: out.diagram, attempts: attempt, opsApplied: out.results.length };
+    if (out.ok) return { reply: reply || 'Updated the board.', applied: true, diagram: out.diagram, attempts: attempt, opsApplied: out.results.length, ops: parsed.ops };
     lastError = `operation ${out.error.index} (${out.error.code}): ${out.error.message}`;
     retryNote = `Your previous operations were REJECTED and none were applied: ${lastError}\nReply again with the complete corrected list of operations for the original request.`;
   }
