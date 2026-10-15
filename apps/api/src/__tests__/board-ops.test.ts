@@ -237,3 +237,77 @@ describe('frame aliases, ghost arrows and clear_team', () => {
     expect(['ATT', 'DEF', 'NEUTRAL'].map((t) => d.players.filter((p: any) => p.team === t).length)).toEqual([4, 4, 2]);
   });
 });
+
+describe('set_block', () => {
+  const { toTeamFrame } = require('@aci/shared');
+  const { roleBand } = require('../services/board-phase-placement');
+  const depth = (d: any, team: 'ATT' | 'DEF') => {
+    const o = d.players.filter((p: any) => p.team === team && p.number !== 1);
+    return o.reduce((s: number, p: any) => s + toTeamFrame(team, p).v, 0) / o.length;
+  };
+  for (const team of ['ATT', 'DEF'] as const) {
+    test(`${team}: high > mid > low in depth, in the team's own frame`, () => {
+      const [h, m, l] = ['high', 'mid', 'low'].map((height) => depth(ok(run([{ op: 'set_block', team, height }])), team));
+      expect(h).toBeGreaterThan(m);
+      expect(m).toBeGreaterThan(l);
+    });
+    test(`${team}: a low block is deep (outfield average well inside their own half)`, () => {
+      expect(depth(ok(run([{ op: 'set_block', team, height: 'low' }])), team)).toBeLessThan(35);
+    });
+  }
+  test('widths and goalkeepers are untouched, and every line keeps its order', () => {
+    const before = fresh();
+    const d = ok(run([{ op: 'set_block', team: 'ATT', height: 'low' }], before));
+    for (const p of d.players.filter((q: any) => q.team === 'ATT')) {
+      const b = before.players.find((q: any) => q.id === p.id);
+      if (p.number === 1) expect(p).toMatchObject({ x: b.x, y: b.y });
+      else expect(p.x).toBeCloseTo(b.x, 5); // x is width for ATT: unchanged
+    }
+    const o = d.players.filter((p: any) => p.team === 'ATT' && p.number !== 1);
+    const m = (band: string) => { const v = o.filter((p: any) => roleBand(p) === band).map((p: any) => toTeamFrame('ATT', p).v); return v.reduce((a: number, c: number) => a + c, 0) / v.length; };
+    expect(m('BACK')).toBeLessThan(m('MID'));
+    expect(m('MID')).toBeLessThan(m('FRONT'));
+    expect(d.players.filter((p: any) => p.team === 'DEF').map((p: any) => [p.x, p.y])).toEqual(before.players.filter((p: any) => p.team === 'DEF').map((p: any) => [p.x, p.y]));
+  });
+  test('rejects a bad height and a team with too few outfield players', () => {
+    expect((run([{ op: 'set_block', team: 'ATT', height: 'deep' }]) as any).error.code).toBe('invalid_value');
+    const adds = [1, 2, 3].map((n) => ({ op: 'add_player', team: 'ATT', number: n, x: 50, y: 80 + n }));
+    expect((run([{ op: 'clear_team', team: 'ATT' }, ...adds, { op: 'set_block', team: 'ATT', height: 'low' }]) as any).error.code).toBe('invalid_value');
+  });
+});
+
+describe('metres: nudge_player and place_relative do the conversion exactly', () => {
+  const base = () => fresh();
+  test('forward is towards the opponent goal for both teams (ATT toward low y, DEF toward high y)', () => {
+    const b = base();
+    const a = player(ok(run([{ op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 10.5 }], b)), 'ATT', 9);
+    expect(a.y).toBeCloseTo(player(b, 'ATT', 9).y - 10, 1);
+    const d = player(ok(run([{ op: 'nudge_player', player: { team: 'DEF', number: 9 }, forward_m: 10.5 }], base())), 'DEF', 9);
+    expect(d.y).toBeCloseTo(player(base(), 'DEF', 9).y + 10, 1);
+  });
+  test('right is the player\'s own right: ATT right = higher x, DEF right = lower x; 6.8 m = 10 units of width', () => {
+    const b = base();
+    expect(player(ok(run([{ op: 'nudge_player', player: { team: 'ATT', number: 8 }, right_m: 6.8 }], b)), 'ATT', 8).x).toBeCloseTo(player(b, 'ATT', 8).x + 10, 1);
+    expect(player(ok(run([{ op: 'nudge_player', player: { team: 'DEF', number: 8 }, right_m: 6.8 }], b)), 'DEF', 8).x).toBeCloseTo(player(b, 'DEF', 8).x - 10, 1);
+  });
+  test('"ten metres towards the left touchline" for ATT is right_m -10 = 14.7 units lower x', () => {
+    const b = base();
+    expect(player(ok(run([{ op: 'nudge_player', player: { team: 'ATT', number: 8 }, right_m: -10 }], b)), 'ATT', 8).x).toBeCloseTo(player(b, 'ATT', 8).x - 14.7, 1);
+  });
+  test('place_relative puts a player an exact distance from another: 5 m directly behind', () => {
+    const d = ok(run([{ op: 'place_relative', player: { team: 'ATT', number: 6 }, to: { team: 'ATT', number: 8 }, forward_m: -5 }]));
+    const a6 = player(d, 'ATT', 6), a8 = player(d, 'ATT', 8);
+    expect(a6.x).toBeCloseTo(a8.x, 1);
+    expect((a6.y - a8.y) * 1.05).toBeCloseTo(5, 0);
+  });
+  test('errors: nothing to move by, a moved-off-the-pitch result, self-reference, bad metres', () => {
+    const err = (ops: any[]) => (run(ops) as any).error;
+    expect(err([{ op: 'nudge_player', player: { team: 'ATT', number: 9 } }]).code).toBe('invalid_value');
+    const off = err([{ op: 'nudge_player', player: { team: 'DEF', number: 2 }, right_m: 8 }]);
+    expect(off.code).toBe('out_of_range');
+    expect(off.message).toContain('nearest touchline'); // DEF #2 stands 6.8 m from it
+    expect(off.message).toContain('smaller distance');
+    expect(err([{ op: 'place_relative', player: { team: 'ATT', number: 9 }, to: { team: 'ATT', number: 9 }, forward_m: 1 }]).code).toBe('invalid_value');
+    expect(err([{ op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 'ten' }]).code).toBe('invalid_value');
+  });
+});

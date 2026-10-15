@@ -13,7 +13,8 @@
  * frame, e.g. the one add_frame just made) or "active".
  */
 import crypto from 'crypto';
-import { ensureDiagramObjectIds, newObjectId } from '@aci/shared';
+import { ensureDiagramObjectIds, fromTeamFrame, newObjectId, toTeamFrame } from '@aci/shared';
+import { roleBand } from './board-phase-placement';
 import { build11v11FormationPlayers, type WebDiagramV1 } from './web-diagram-v1';
 
 type Player = WebDiagramV1['players'][number];
@@ -36,9 +37,12 @@ export type BoardOp = { frame?: string } & (
   | { op: 'set_formation'; team: 'ATT' | 'DEF'; formation: string }
   | { op: 'add_player'; team: 'ATT' | 'DEF' | 'NEUTRAL'; number: number; x: number; y: number; role?: string; name?: string }
   | { op: 'move_player'; player: PlayerRef; x: number; y: number }
+  | { op: 'nudge_player'; player: PlayerRef; forward_m?: number; right_m?: number }
+  | { op: 'place_relative'; player: PlayerRef; to: PlayerRef; forward_m?: number; right_m?: number }
   | { op: 'update_player'; player: PlayerRef; patch: { role?: string; number?: number; name?: string; group?: string } }
   | { op: 'remove_player'; player: PlayerRef }
   | { op: 'clear_team'; team: 'ATT' | 'DEF' | 'NEUTRAL' }
+  | { op: 'set_block'; team: 'ATT' | 'DEF'; height: 'high' | 'mid' | 'low' }
   | { op: 'set_ball'; x?: number; y?: number; carrier?: PlayerRef }
   | { op: 'add_arrow'; type: (typeof ARROW_TYPES)[number]; from: PointRef; to: PointRef; style?: string; weight?: string; order?: number }
   | { op: 'update_arrow'; arrowId: string; patch: { type?: string; style?: string; weight?: string; order?: number; from?: PointRef; to?: PointRef } }
@@ -78,9 +82,12 @@ const KEYS: Record<string, string[]> = {
   set_formation: ['op', 'frame', 'team', 'formation'],
   add_player: ['op', 'frame', 'team', 'number', 'x', 'y', 'role', 'name'],
   move_player: ['op', 'frame', 'player', 'x', 'y'],
+  nudge_player: ['op', 'frame', 'player', 'forward_m', 'right_m'],
+  place_relative: ['op', 'frame', 'player', 'to', 'forward_m', 'right_m'],
   update_player: ['op', 'frame', 'player', 'patch'],
   remove_player: ['op', 'frame', 'player'],
   clear_team: ['op', 'frame', 'team'],
+  set_block: ['op', 'frame', 'team', 'height'],
   set_ball: ['op', 'frame', 'x', 'y', 'carrier'],
   add_arrow: ['op', 'frame', 'type', 'from', 'to', 'style', 'weight', 'order'],
   update_arrow: ['op', 'frame', 'arrowId', 'patch'],
@@ -139,6 +146,38 @@ function pointRef(l: Layers, ref: unknown, what: string): { playerId?: string; x
   const r = ref as any;
   if (r && typeof r === 'object' && ('x' in r || 'y' in r)) return { x: coord(r.x, `${what}.x`), y: coord(r.y, `${what}.y`) };
   return { playerId: findPlayer(l, ref, what).id };
+}
+
+
+/**
+ * Depth of each line (distance upfield from the team's own goal line, 0-100) for a defensive block. The width of every
+ * player is kept; lines keep their internal spread, scaled down so the block reads compact.
+ */
+export const BLOCK_DEPTH = {
+  low: { BACK: 22, MID: 34, FRONT: 46 },
+  mid: { BACK: 34, MID: 48, FRONT: 62 },
+  high: { BACK: 48, MID: 60, FRONT: 74 },
+} as const;
+const BLOCK_HEIGHTS = ['high', 'mid', 'low'] as const;
+/** Real-world pitch the 0-100 board stands for: 105 m along y (goal to goal), 68 m along x (width). */
+export const PITCH_LENGTH_M = 105;
+export const PITCH_WIDTH_M = 68;
+const metres = (v: unknown, name: string): number =>
+  typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 120 ? v : fail('invalid_value', `${name} must be a number of metres between -120 and 120 (got ${JSON.stringify(v)}).`);
+/** Offset in a team's own terms: forward = towards the opponent's goal, right = the player's own right (NEUTRAL: as ATT). */
+function shifted(team: string, at: { x: number; y: number }, forward_m: unknown, right_m: unknown, what: string) {
+  if (forward_m === undefined && right_m === undefined) fail('invalid_value', `${what} needs forward_m and/or right_m.`);
+  const t = team === 'DEF' ? 'DEF' : 'ATT';
+  const l = toTeamFrame(t, at);
+  const v = l.v + (forward_m === undefined ? 0 : metres(forward_m, 'forward_m')) / (PITCH_LENGTH_M / 100);
+  const u = l.u + (right_m === undefined ? 0 : metres(right_m, 'right_m')) / (PITCH_WIDTH_M / 100);
+  const p = fromTeamFrame(t, { u, v });
+  const x = Math.round(p.x * 10) / 10, y = Math.round(p.y * 10) / 10;
+  if (x < 0 || x > 100 || y < 0 || y > 100) {
+    const room = (a: number) => Math.max(0, Math.min(a, 100 - a));
+    fail('out_of_range', `${what}: that move would take the player off the pitch (resulting x ${x}, y ${y}). From (${Math.round(at.x)}, ${Math.round(at.y)}) there is about ${(room(at.x) * (PITCH_WIDTH_M / 100)).toFixed(1)} m to the nearest touchline and ${(room(at.y) * (PITCH_LENGTH_M / 100)).toFixed(1)} m to the nearest goal line; use a smaller distance.`);
+  }
+  return { x, y };
 }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -215,6 +254,28 @@ function apply(d: WebDiagramV1, op: any): string {
       layers.arrows = keep;
       return `${team} set to ${op.formation} (${seeded.length} players, was ${had}).${dropped ? ` Removed ${dropped} arrow(s) that pointed at replaced players.` : ''}`;
     }
+    case 'set_block': {
+      const team = oneOf(op.team, ['ATT', 'DEF'] as const, 'team');
+      const height = oneOf(op.height, BLOCK_HEIGHTS, 'height');
+      const outfield = layers.players.filter((p) => p.team === team && !(p.role === 'GK' || p.number === 1));
+      if (outfield.length < 4) return fail('invalid_value', `${team} has only ${outfield.length} outfield players; set_block needs at least 4.`);
+      const local = new Map(outfield.map((p) => [p.id, toTeamFrame(team, p)]));
+      const band = (p: Player) => roleBand(p) as 'BACK' | 'MID' | 'FRONT';
+      const mean = (b: string) => {
+        const vs = outfield.filter((p) => band(p) === b).map((p) => local.get(p.id)!.v);
+        return vs.length ? vs.reduce((a, c) => a + c, 0) / vs.length : 0;
+      };
+      const means = { BACK: mean('BACK'), MID: mean('MID'), FRONT: mean('FRONT') };
+      for (const p of outfield) {
+        const l = local.get(p.id)!;
+        const b = band(p);
+        const v = Math.max(2, Math.min(98, BLOCK_DEPTH[height][b] + (l.v - means[b]) * 0.4));
+        const at = fromTeamFrame(team, { u: l.u, v });
+        p.x = at.x;
+        p.y = at.y;
+      }
+      return `${team} dropped into a ${height} block: back line ${BLOCK_DEPTH[height].BACK}, midfield ${BLOCK_DEPTH[height].MID}, front ${BLOCK_DEPTH[height].FRONT} upfield from their own goal; widths unchanged.`;
+    }
     case 'clear_team': {
       const team = oneOf(op.team, TEAMS, 'team');
       const gone = new Set(layers.players.filter((p) => p.team === team).map((p) => p.id));
@@ -236,6 +297,22 @@ function apply(d: WebDiagramV1, op: any): string {
       p.x = coord(op.x, 'x');
       p.y = coord(op.y, 'y');
       return `Moved ${p.team} ${p.number} to (${p.x}, ${p.y}).`;
+    }
+    case 'nudge_player': {
+      const p = findPlayer(layers, op.player);
+      const to = shifted(p.team, p, op.forward_m, op.right_m, 'nudge_player');
+      p.x = to.x;
+      p.y = to.y;
+      return `Moved ${p.team} ${p.number} ${[op.forward_m !== undefined ? `${op.forward_m} m forward` : '', op.right_m !== undefined ? `${op.right_m} m to their right` : ''].filter(Boolean).join(', ')}: now (${p.x}, ${p.y}).`;
+    }
+    case 'place_relative': {
+      const p = findPlayer(layers, op.player);
+      const anchor = findPlayer(layers, op.to, 'to');
+      if (anchor === p) return fail('invalid_value', 'place_relative: a player cannot be placed relative to themselves.');
+      const at = shifted(p.team, anchor, op.forward_m, op.right_m, 'place_relative');
+      p.x = at.x;
+      p.y = at.y;
+      return `Placed ${p.team} ${p.number} ${[op.forward_m !== undefined ? `${op.forward_m} m forward` : '', op.right_m !== undefined ? `${op.right_m} m to the right` : ''].filter(Boolean).join(', ')} of ${anchor.team} ${anchor.number}: now (${p.x}, ${p.y}).`;
     }
     case 'update_player': {
       const p = findPlayer(layers, op.player);

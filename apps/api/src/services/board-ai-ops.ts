@@ -42,9 +42,12 @@ export function describeBoard(d: WebDiagramV1): string {
 
 const OPS_REFERENCE = `OPERATIONS (all coordinates 0-100; each op may add "frame": "<id>" | "last" | "active", default active):
  {"op":"set_formation","team":"ATT"|"DEF","formation":"${SUPPORTED_FORMATIONS.join('"|"')}"}   replaces that team with the exact template
+ {"op":"set_block","team":"ATT"|"DEF","height":"high"|"mid"|"low"}   moves the team's lines to that defensive depth, keeping each player's width
  {"op":"clear_team","team":"ATT"|"DEF"|"NEUTRAL"}
  {"op":"add_player","team":"ATT"|"DEF"|"NEUTRAL","number":1-99,"x":..,"y":..,"role":"optional"}
  {"op":"move_player","player":{"team":"ATT","number":9},"x":..,"y":..}
+ {"op":"nudge_player","player":{"team":"ATT","number":8},"forward_m":10,"right_m":-5}   move by metres in the player's OWN terms: forward = towards the opponent goal, right = the player's own right (negative = back / left)
+ {"op":"place_relative","player":{"team":"ATT","number":6},"to":{"team":"ATT","number":8},"forward_m":-5}   place a player an exact number of metres from another (forward_m -5 = 5 m directly behind)
  {"op":"update_player","player":{...},"patch":{"role":..,"number":..,"name":..}}
  {"op":"remove_player","player":{...}}
  {"op":"set_ball","carrier":{"team":"ATT","number":3}}   or   {"op":"set_ball","x":..,"y":..}
@@ -56,10 +59,19 @@ const OPS_REFERENCE = `OPERATIONS (all coordinates 0-100; each op may add "frame
  {"op":"remove_frame","frame":".."}   {"op":"set_active_frame","frame":".."}`;
 
 const RULES = `PITCH: horizontal. y runs goal to goal: ATT (blue, us) defends the RIGHT goal (y near 100) and attacks LEFT (toward y 0); DEF (red, them) defends the LEFT goal (y near 0) and attacks RIGHT. x is width: ATT's right side is the TOP of the screen (high x); DEF's right side is the BOTTOM (low x).
+SCALE: the pitch is 105 m long and 68 m wide. Along the length (the y axis) 1 unit is about 1.05 m, so 5 m is about 4.8 units and 10 m about 9.5 units; across the width (x) 1 unit is about 0.68 m, so 5 m is about 7.4 units. For ANY distance in metres (\"five metres behind\", \"ten metres towards the touchline\") use nudge_player or place_relative with the metres: do not convert to coordinates yourself.
+DIRECTIONS FOR METRES (nudge_player / place_relative): pass the metres exactly as the coach says them; NEVER convert metres to units or coordinates yourself, the server does that.
+  ATT (blue, us): forward_m positive = towards the LEFT of the screen; right_m positive = towards the TOP of the screen (our right touchline is the top, our left touchline the bottom).
+  DEF (red, them): forward_m positive = towards the RIGHT of the screen; right_m positive = towards the BOTTOM of the screen (their right touchline is the bottom, their left touchline the top).
+  Back / left are the negatives. "Towards the touchline" or "wide" means right_m (positive for that team's right touchline, negative for its left); "up the pitch" / "towards goal" means forward_m.
 RULES:
 - Reply with ONLY JSON: {"reply": "<1-4 plain coaching sentences>", "ops": [ ... ]}. No other text.
 - Address players by team and shirt number as listed on the board. Never invent a player that is not listed unless the coach asks for new players.
-- Change only what the coach asked for. A request for arrows or passes means arrows and the ball only: do not move players.
+- Change only what the coach asked for, but DO move players to the places the scenario states or clearly implies ("near their box", "in the corner", "press high", "attack the near post", "step up"): the board must show the situation described, not only arrows. A pass or run between players who already stand in position needs only the ball and arrows.
+- Defensive blocks ("low block", "mid block", "high press", "drop off"): set_formation first if a formation is named, then set_block for that team with height low, mid or high, then move the key players the scenario names (the pressing forwards, the ball carrier).
+- If the request is too vague to act on ("make it better"), is ambiguous, or names a player who is not on the board (for example #15), do NOT guess: return "ops": [] and ask ONE specific question in "reply". Only add a player when the coach says add, new, sub or bring on.
+- Do not remove or clear players unless the coach asks for a new or smaller setup. For "create a 3v2" style requests, move the existing players into the situation and leave everyone else where they are.
+- The "reply" must describe only what the operations actually do; never claim a change you did not make.
 - Named formations: use set_formation. Supported: ${SUPPORTED_FORMATIONS.join(', ')}. If the coach asks for another formation, use the closest supported one and SAY so in "reply".
 - Small-sided or custom setups (rondos, 7v7, 9v9): clear_team for both teams, then add_player for exactly the players asked for (and NEUTRAL players if asked), spread sensibly and at least 6 apart.
 - Several moves in order ("A passes to B, then B to C"): one frame per move. Put the first move on the current frame, then add_frame and put the next move on frame "last". Start each move with set_ball carrier = the player who plays it, and end with a final frame showing the ball with the last receiver. At most 6 moves.
@@ -92,6 +104,32 @@ export function parseOpsReply(text: string): { reply: string; ops: unknown[] } |
   }
 }
 
+export function buildVerifyPrompt(input: { diagram: WebDiagramV1; message: string; ops: unknown[] }): string {
+  return [
+    'You just edited a soccer tactics board for the coach by sending operations. Check your own work.',
+    RULES,
+    OPS_REFERENCE,
+    `COACH REQUEST: ${input.message}`,
+    `OPERATIONS YOU SENT: ${JSON.stringify(input.ops).slice(0, 3000)}`,
+    `BOARD NOW:\n${describeBoard(input.diagram)}`,
+    'Does the board now show exactly what was asked (player positions, ball, arrows, frames, team sizes), with nothing unrequested changed? Reply with ONLY JSON: {"ok": true, "ops": []} if it does. Otherwise {"ok": false, "problem": "<one sentence>", "ops": [ corrective operations against BOARD NOW ]}.',
+  ].join('\n\n');
+}
+
+export const boardOpsVerifyEnabled = () => process.env.BOARD_AI_OPS_VERIFY === '1';
+
+function parseVerify(text: string): { ok: boolean; ops: unknown[] } | null {
+  try {
+    const cleaned = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    const a = cleaned.indexOf('{'), b = cleaned.lastIndexOf('}');
+    if (a < 0 || b <= a) return null;
+    const j = JSON.parse(cleaned.slice(a, b + 1));
+    return j && typeof j === 'object' && typeof j.ok === 'boolean' ? { ok: j.ok, ops: Array.isArray(j.ops) ? j.ops : [] } : null;
+  } catch {
+    return null;
+  }
+}
+
 export type OpsRun = { reply: string; applied: boolean; diagram: WebDiagramV1; attempts: number; opsApplied: number; ops?: unknown[]; error?: string };
 
 export async function runBoardAiOps(input: {
@@ -100,6 +138,8 @@ export async function runBoardAiOps(input: {
   history?: Chat[];
   call?: (prompt: string) => Promise<string>;
   model?: string;
+  /** Second pass: the model checks the result against the request and may send corrective operations. */
+  verify?: boolean;
   context?: { ageGroup?: string; gameModelId?: string };
 }): Promise<OpsRun> {
   const history = input.history || [];
@@ -127,9 +167,26 @@ export async function runBoardAiOps(input: {
     reply = parsed.reply || reply;
     if (!parsed.ops.length) return { reply: reply || 'No change to the board.', applied: false, diagram: input.diagram, attempts: attempt, opsApplied: 0 };
     const out = applyBoardOps(input.diagram, { revision, ops: parsed.ops });
-    if (out.ok) return { reply: reply || 'Updated the board.', applied: true, diagram: out.diagram, attempts: attempt, opsApplied: out.results.length, ops: parsed.ops };
+    if (out.ok) {
+      let diagram = out.diagram;
+      let opsApplied = out.results.length;
+      let allOps = parsed.ops;
+      if (input.verify ?? boardOpsVerifyEnabled()) {
+        const check = parseVerify(await call(buildVerifyPrompt({ diagram, message: input.message, ops: parsed.ops })));
+        if (check && !check.ok && check.ops.length) {
+          const fix = applyBoardOps(diagram, { revision: out.revision, ops: check.ops });
+          if (fix.ok) {
+            diagram = fix.diagram;
+            opsApplied += fix.results.length;
+            allOps = [...parsed.ops, ...check.ops];
+          }
+        }
+      }
+      return { reply: reply || 'Updated the board.', applied: true, diagram, attempts: attempt, opsApplied, ops: allOps };
+    }
     lastError = `operation ${out.error.index} (${out.error.code}): ${out.error.message}`;
     retryNote = `Your previous operations were REJECTED and none were applied: ${lastError}\nReply again with the complete corrected list of operations for the original request.`;
   }
-  return { reply: `${reply ? reply + '\n\n' : ''}(I couldn't apply that change to the board — ${lastError} The board is unchanged.)`, applied: false, diagram: input.diagram, attempts: 2, opsApplied: 0, error: lastError };
+  // The model's own description is dropped: it claims a change that did not happen.
+  return { reply: `I couldn't apply that change, so the board is unchanged. ${lastError}`, applied: false, diagram: input.diagram, attempts: 2, opsApplied: 0, error: lastError };
 }

@@ -40,6 +40,21 @@ strictly, applied atomically, guarded by a revision number.
 - Bypassed in this mode: symbolic DSL, combo builder, play-out placement, repair passes. Image / PDF import and the
   clarify gate still use the old path.
 
+## Scenario evaluation (20 specific scenarios x 2 runs, live model, default 11v11 start board)
+- First version: 28/40 (30/40 once my offside check was corrected: an attacker is offside when his y is GREATER than our line's).
+  Failures: the model set a formation but left players where they were while the reply claimed a low block / counterattack /
+  corner runs; it reset the team on "Make it better"; it added a #15 that did not exist.
+- Added `set_block` (high / mid / low depth, widths kept), prompt rules (move players to where the scenario puts them, use
+  set_block for blocks, ask ONE question when vague or the player does not exist, do not clear teams for "create a 3v2",
+  the reply must describe only what the operations do): 39/40.
+- Optional self-check pass (`BOARD_AI_OPS_VERIFY=1`): 37/40, WORSE: it "corrected" a correct fullback swap by swapping back.
+  Left off by default.
+- Metres: the model converted metres to units badly across the width (about 5 m when 10 m was asked). Added `nudge_player`
+  and `place_relative` (forward / right in metres in the player's own terms; the server converts with a 105 x 68 m pitch)
+  and an explicit direction table in the prompt. Live: 12/15 right, the exact distance every time the model used the
+  operation; the remaining 3 were an impossible request (a player 6.8 m from the touchline asked to move 8 m), now rejected
+  with how much room there is.
+
 ## Not built yet
 1. Op additions: areas / labels; more formations (3-4-3, 5-3-2, 4-1-4-1 are not in the templates).
 2. Evaluate scene prompts in ops mode and decide how phase placement (goal kick / pocket / final third) is reached from ops.
