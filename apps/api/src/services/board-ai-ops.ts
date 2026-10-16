@@ -16,6 +16,13 @@ type Chat = { role: 'user' | 'assistant'; content: string };
 
 const pt = (p: { x: number; y: number }) => `(${Math.round(p.x)},${Math.round(p.y)})`;
 /** Board text (titles, roles, ids) is client data that goes into the prompt: strip control characters and cap the length. */
+const GEMINI_TIMEOUT_MS = 90000;
+const GEMINI_RETRIES = 1;
+const GEMINI_MAX_OUTPUT_TOKENS = 8192;
+const HISTORY_TURNS = 6;
+const HISTORY_CHARS = 600;
+const REPLY_MAX = 6000;
+const OPS_ECHO_MAX = 3000;
 const safe = (v: unknown, n = 40) => String(v ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, n);
 
 /** A compact, exact description of the board the model is editing. */
@@ -82,7 +89,7 @@ RULES:
 - If the request needs no board change (a question), return "ops": [].`;
 
 export function buildOpsPrompt(input: { diagram: WebDiagramV1; message: string; history: Chat[]; retryNote?: string }): string {
-  const hist = input.history.slice(-6).map((h) => `${h.role === 'user' ? 'Coach' : 'You'}: ${h.content.slice(0, 600)}`).join('\n');
+  const hist = input.history.slice(-HISTORY_TURNS).map((h) => `${h.role === 'user' ? 'Coach' : 'You'}: ${h.content.slice(0, HISTORY_CHARS)}`).join('\n');
   return [
     'You are Tactical Edge AI, editing a soccer tactics board by sending operations.',
     RULES,
@@ -109,7 +116,7 @@ function extractJsonObject(text: string): any | null {
 export function parseOpsReply(text: string): { reply: string; ops: unknown[] } | null {
   const j = extractJsonObject(text);
   if (!j || typeof j !== 'object' || !Array.isArray(j.ops)) return null;
-  return { reply: typeof j.reply === 'string' ? j.reply.trim().slice(0, 6000) : '', ops: j.ops };
+  return { reply: typeof j.reply === 'string' ? j.reply.trim().slice(0, REPLY_MAX) : '', ops: j.ops };
 }
 
 export function buildVerifyPrompt(input: { diagram: WebDiagramV1; message: string; ops: unknown[] }): string {
@@ -118,7 +125,7 @@ export function buildVerifyPrompt(input: { diagram: WebDiagramV1; message: strin
     RULES,
     OPS_REFERENCE,
     `COACH REQUEST: ${input.message}`,
-    `OPERATIONS YOU SENT: ${JSON.stringify(input.ops).slice(0, 3000)}`,
+    `OPERATIONS YOU SENT: ${JSON.stringify(input.ops).slice(0, OPS_ECHO_MAX)}`,
     `BOARD NOW:\n${describeBoard(input.diagram)}`,
     'Does the board now show exactly what was asked (player positions, ball, arrows, frames, team sizes), with nothing unrequested changed? Reply with ONLY JSON: {"ok": true, "ops": []} if it does. Otherwise {"ok": false, "problem": "<one sentence>", "ops": [ corrective operations against BOARD NOW ]}.',
   ].join('\n\n');
@@ -153,7 +160,7 @@ export async function runBoardAiOps(input: {
     (async (prompt: string) => {
       setMetricsContext({ operationType: 'board_ai_ops', ageGroup: input.context?.ageGroup, gameModelId: input.context?.gameModelId });
       try {
-        return await generateText(prompt, { timeout: 90000, retries: 1, model: input.model ?? (process.env.GEMINI_BOARD_AI_MODEL || process.env.GEMINI_FAST_MODEL), maxOutputTokens: 8192, responseMimeType: 'application/json' });
+        return await generateText(prompt, { timeout: GEMINI_TIMEOUT_MS, retries: GEMINI_RETRIES, model: input.model ?? (process.env.GEMINI_BOARD_AI_MODEL || process.env.GEMINI_FAST_MODEL), maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS, responseMimeType: 'application/json' });
       } finally {
         clearMetricsContext();
       }
@@ -178,7 +185,13 @@ export async function runBoardAiOps(input: {
       let opsApplied = out.results.length;
       let allOps = parsed.ops;
       if (input.verify ?? boardOpsVerifyEnabled()) {
-        const check = parseVerify(await call(buildVerifyPrompt({ diagram, message: input.message, ops: parsed.ops })));
+        // The edit is already applied: a failing verify call must not throw it away.
+        let check: ReturnType<typeof parseVerify> = null;
+        try {
+          check = parseVerify(await call(buildVerifyPrompt({ diagram, message: input.message, ops: parsed.ops })));
+        } catch {
+          check = null;
+        }
         if (check && !check.ok && check.ops.length) {
           const fix = applyBoardOps(diagram, { revision: out.revision, ops: check.ops });
           if (fix.ok) {
@@ -191,7 +204,7 @@ export async function runBoardAiOps(input: {
       return { reply: reply || 'Updated the board.', applied: true, diagram, attempts: attempt, opsApplied, ops: allOps };
     }
     lastError = `operation ${out.error.index} (${out.error.code}): ${out.error.message}`;
-    retryNote = `Your previous operations were REJECTED and none were applied: ${lastError}\nReply again with the complete corrected list of operations for the original request.`;
+    retryNote = `Your previous operations were REJECTED and none were applied: ${safe(lastError, ERROR_REPLY_MAX)}\nReply again with the complete corrected list of operations for the original request.`;
   }
   // The model's own description is dropped: it claims a change that did not happen.
   return { reply: `I couldn't apply that change, so the board is unchanged. ${lastError.slice(0, ERROR_REPLY_MAX)}`, applied: false, diagram: input.diagram, attempts: MAX_ATTEMPTS, opsApplied: 0, error: lastError };

@@ -1775,7 +1775,6 @@ function motifArrows(
   return arrows;
 }
 
-/** Place ATT + DEF for one play-out sub-phase using existing roster ids. */
 type PhaseSnapshot = ReturnType<typeof placePhaseSnapshot>;
 
 const rot = (n: number) => 100 - n;
@@ -1813,6 +1812,7 @@ function placeWithDefInPossession(input: Parameters<typeof placePhaseSnapshot>[0
   };
 }
 
+/** Place ATT + DEF for one play-out sub-phase using existing roster ids. */
 export function placePhaseSnapshot(input: {
   roster: Player[];
   subPhase: PlayOutSubPhase;

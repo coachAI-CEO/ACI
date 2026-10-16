@@ -142,6 +142,12 @@ describe('sequenced boards and persistent garbage', () => {
     expect(r.error).toContain('not JSON');
     expect(r.reply).toContain('the board is unchanged');
   });
+  test('a verify call that throws leaves the first result applied', async () => {
+    let n = 0;
+    const r = await runBoardAiOps({ diagram: board(), message: 'x', verify: true, call: async () => { if (++n === 1) return reply([{ op: 'set_ball', x: 20, y: 20 }]); throw new Error('timeout'); } });
+    expect(r.applied).toBe(true);
+    expect(r.diagram.balls![0]).toMatchObject({ x: 20, y: 20 });
+  });
   test('a verify reply that is not JSON leaves the first result applied', async () => {
     let n = 0;
     const r = await runBoardAiOps({ diagram: board(), message: 'x', verify: true, call: async () => (++n === 1 ? reply([{ op: 'set_ball', x: 20, y: 20 }]) : 'looks fine to me') });

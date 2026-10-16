@@ -215,6 +215,10 @@ describe('frame aliases, ghost arrows and clear_team', () => {
     ]));
     expect(d.sequence.frames[0].arrows[0].style).toBe('solid');
     expect(d.sequence.frames[1].arrows[0]).toMatchObject({ style: 'dotted', weight: 'normal' });
+    const [a0, a1] = [d.sequence.frames[0].arrows[0], d.sequence.frames[1].arrows[0]];
+    expect(a1.id).toBeDefined();
+    expect(a1.id).not.toBe(a0.id);
+    expect(a1.id).toBe(`${a0.id}-prev`);
   });
   test('add_frame can keep or clear the previous arrows instead', () => {
     const base = [{ op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } }];
@@ -455,5 +459,31 @@ describe('review fixes (QA probes 002, 003, 004 and the specialist findings)', (
       expect(r.error.message).toContain('7V7');
     }
     expect((run([{ op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 5 }]) as any).ok).toBe(true); // the default board is 11v11
+  });
+});
+
+describe('persistence caps and a stale active frame', () => {
+  test('a result over the player cap is rejected with invalid_state, not reported ok', () => {
+    const adds = Array.from({ length: 9 }, (_, i) => ({ op: 'add_player', team: 'NEUTRAL', number: i + 1, x: 10 + i * 5, y: 50 }));
+    const r: any = run(adds);
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('invalid_state');
+    expect(r.error.message).toMatch(/players/);
+    expect(r.error.message).toMatch(/30/);
+  });
+  test('a frame over the cap is named in the error', () => {
+    const base = fresh();
+    base.sequence = { frames: [{ id: 'f-1', players: base.players, arrows: [], areas: [], labels: [] }], activeFrameId: 'f-1' };
+    const adds = Array.from({ length: 9 }, (_, i) => ({ op: 'add_player', team: 'NEUTRAL', number: i + 1, x: 10 + i * 5, y: 50, frame: 'f-1' }));
+    const r: any = run(adds, base);
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('invalid_state');
+  });
+  test('a stale activeFrameId falls back to the first frame instead of failing unaddressed ops', () => {
+    const base = fresh();
+    base.sequence = { frames: [{ id: 'f-1', players: base.players, arrows: [], areas: [], labels: [] }, { id: 'f-2', players: base.players, arrows: [], areas: [], labels: [] }], activeFrameId: 'gone-frame' };
+    const d = ok(run([{ op: 'move_player', player: { team: 'ATT', number: 9 }, x: 40, y: 30 }], base));
+    expect(d.sequence.activeFrameId).toBe('f-1');
+    expect(player(d, 'ATT', 9, d.sequence.frames[0])).toMatchObject({ x: 40, y: 30 });
   });
 });

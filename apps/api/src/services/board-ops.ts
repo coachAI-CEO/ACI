@@ -15,6 +15,7 @@
 import crypto from 'crypto';
 import { BOARD_SEQUENCE_DEFAULT_DURATION_MS, ensureDiagramObjectIds, fromTeamFrame, newObjectId, toTeamFrame } from '@aci/shared';
 import { roleBand } from './board-phase-placement';
+import { BOARD_DIAGRAM_MAX_ARROWS, BOARD_DIAGRAM_MAX_AREAS, BOARD_DIAGRAM_MAX_BYTES, BOARD_DIAGRAM_MAX_LABELS, BOARD_DIAGRAM_MAX_PLAYERS } from './board-diagram-schema';
 import { build11v11FormationPlayers, type WebDiagramV1 } from './web-diagram-v1';
 
 type Player = WebDiagramV1['players'][number];
@@ -126,7 +127,9 @@ function layersFor(d: WebDiagramV1, frame?: string): { layers: Layers; frame: Fr
     if (frame) fail('no_such_frame', `This board has no frames, so "${frame}" does not exist. Use add_frame first.`);
     return { layers: d, frame: null };
   }
-  const id = frame === 'last' ? frames[frames.length - 1].id : frame === 'active' || frame === undefined ? (d.sequence!.activeFrameId ?? frames[0].id) : frame;
+  // A stale activeFrameId (no such frame) falls back to the first frame, like the normaliser and the root mirror.
+  const activeId = frames.some((x) => x.id === d.sequence!.activeFrameId) ? d.sequence!.activeFrameId! : frames[0].id;
+  const id = frame === 'last' ? frames[frames.length - 1].id : frame === 'active' || frame === undefined ? activeId : frame;
   const f = frames.find((x) => x.id === id);
   if (!f) fail('no_such_frame', `No frame "${id}". Frames: ${frames.map((x) => x.id).join(', ')}.`);
   return { layers: f as Frame, frame: f as Frame };
@@ -448,6 +451,16 @@ export function applyBoardOps(diagram: WebDiagramV1, request: { revision?: strin
   const points = [...(work.players || []), ...(work.balls || []), ...((seq?.frames as Frame[] | undefined) ?? []).flatMap((f) => [...(f.players || []), ...(f.balls || [])])];
   const bad = points.find((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y) || p.x < 0 || p.x > 100 || p.y < 0 || p.y > 100);
   if (bad) return { ok: false, revision: current, error: { index: -1, code: 'invalid_state', message: 'The result would put a player or the ball at a coordinate that is not on the pitch; nothing was applied.' } };
+  // Persistence caps: a result the save path would reject must not be reported as ok.
+  const capped: Array<[string, number]> = [['players', BOARD_DIAGRAM_MAX_PLAYERS], ['arrows', BOARD_DIAGRAM_MAX_ARROWS], ['labels', BOARD_DIAGRAM_MAX_LABELS], ['areas', BOARD_DIAGRAM_MAX_AREAS]];
+  const layerSets: Array<{ name: string; l: any }> = [{ name: 'the board', l: work }, ...((seq?.frames as Frame[] | undefined) ?? []).map((f) => ({ name: `frame "${f.id}"`, l: f }))];
+  for (const { name, l } of layerSets) {
+    for (const [key, max] of capped) {
+      const n = (l[key] || []).length;
+      if (n > max) return { ok: false, revision: current, error: { index: -1, code: 'invalid_state', message: `The result would have ${n} ${key} on ${name}; the limit is ${max}. Nothing was applied.` } };
+    }
+  }
   const out = ensureDiagramObjectIds(work);
+  if (JSON.stringify(out).length > BOARD_DIAGRAM_MAX_BYTES) return { ok: false, revision: current, error: { index: -1, code: 'invalid_state', message: `The result is larger than the ${BOARD_DIAGRAM_MAX_BYTES / 1024} KB board limit. Nothing was applied.` } };
   return { ok: true, diagram: out, revision: revisionOf(out), results };
 }

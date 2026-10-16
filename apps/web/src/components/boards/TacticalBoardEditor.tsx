@@ -2837,28 +2837,41 @@ export default function TacticalBoardEditor({
           {(viewDiagram.balls || []).map((b, i) => {
             const at = toScreen(b, orientation, layout, viewport, spec);
             const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
-            // A ball on a shirt would hide behind the number, so it is pushed radially to just clear the nearest
-            // shirt: continuous in the distance (no snap while it moves in Play, no flicker while dragging).
-            // The selected ball is drawn at its stored position, so what you drag is where it is.
+            // A ball on a shirt would hide behind the number, so it is pushed out to just clear nearby shirts
+            // (a few passes, so two close shirts are both cleared). Continuous in the distance: no snap while it
+            // moves in Play. During an active drag of THIS ball it is drawn at its stored position, so what you
+            // drag is where it is; a plain click does not move it.
             let s = at;
-            if (!selected) {
+            const dragging = dragRef.current?.kind === "ball" && dragRef.current.id === b.id;
+            if (!dragging) {
               const clear = hitR + ballR * 0.75;
-              let nearest: { sx: number; sy: number } | null = null;
-              let nearestD = clear;
-              for (const p of viewDiagram.players) {
-                const ps = toScreen(p, orientation, layout, viewport, spec);
-                const d = Math.hypot(ps.sx - at.sx, ps.sy - at.sy);
-                if (d < nearestD) {
-                  nearest = ps;
-                  nearestD = d;
+              const shirts = viewDiagram.players
+                .map((p) => toScreen(p, orientation, layout, viewport, spec))
+                .filter(
+                  (ps) =>
+                    ps.sx >= layout.left - hitR &&
+                    ps.sx <= layout.left + layout.width + hitR &&
+                    ps.sy >= layout.top - hitR &&
+                    ps.sy <= layout.top + layout.height + hitR
+                );
+              for (let pass = 0; pass < 3; pass++) {
+                let moved = false;
+                for (const ps of shirts) {
+                  const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
+                  if (d >= clear) continue;
+                  // At the shirt's centre (a ball placed exactly at a player's coordinates) the direction is fixed.
+                  const ux = d < 0.5 ? Math.SQRT1_2 : (s.sx - ps.sx) / d;
+                  const uy = d < 0.5 ? Math.SQRT1_2 : (s.sy - ps.sy) / d;
+                  s = { sx: ps.sx + ux * clear, sy: ps.sy + uy * clear };
+                  moved = true;
                 }
+                if (!moved) break;
               }
-              if (nearest) {
-                // At the shirt's centre (a ball placed exactly at a player's coordinates) the direction is fixed.
-                const ux = nearestD < 0.5 ? Math.SQRT1_2 : (at.sx - nearest.sx) / nearestD;
-                const uy = nearestD < 0.5 ? Math.SQRT1_2 : (at.sy - nearest.sy) / nearestD;
-                s = { sx: nearest.sx + ux * clear, sy: nearest.sy + uy * clear };
-              }
+              // Never push the ball off the pitch.
+              s = {
+                sx: Math.min(layout.left + layout.width - ballR, Math.max(layout.left + ballR, s.sx)),
+                sy: Math.min(layout.top + layout.height - ballR, Math.max(layout.top + ballR, s.sy)),
+              };
             }
             return (
               <g
