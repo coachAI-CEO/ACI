@@ -196,7 +196,9 @@ export function sceneToDrawerParams(
   players = relabelFromRoster(players, card.roster);
   players = fixRoleSides(players);
 
-  const rondo = card.picture === "rondo";
+  // A rondo has no goals. If the card somehow carries both (a mis-tagged
+  // "...Rondo" title on a drill that wants a goal + GK), the goal wins.
+  const rondo = card.picture === "rondo" && !(Number(card.goalsAvailable) >= 1);
   const compact = rondo || card.picture === "center";
   const span = rondo ? 34 : 38;
   const frame = compact && players.length >= 2 ? groupFrame(players, span) : null;

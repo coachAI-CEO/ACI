@@ -249,11 +249,28 @@ export function workingGroupPictureLine(args: {
   return `Draw ONE working group (~8 shirts), not the whole squad of ${args.squad}.`;
 }
 
-/** Conservative picture tag. Only when the card is explicit — press-as-a-unit is not a switch. */
-export function inferScenePicture(card: string, drillType: string): ScenePicture | undefined {
+/**
+ * Conservative picture tag. Only when the card is explicit — press-as-a-unit is
+ * not a switch.
+ *
+ * `rondo` and `center` mean "small keep-away / channel in the middle, no goals".
+ * A drill that carries a real full goal (goalsAvailable >= 1) is NOT that
+ * picture no matter what the title says — the model generator writes titles
+ * like "Defensive Third Transition Rondo" for a drill whose card demands a
+ * goal + GK, and the bare keyword must not win that fight. (twoTeamGame alone
+ * is not enough: plenty of rondo / possession work is tagged TACTICAL.)
+ */
+export function inferScenePicture(
+  card: string,
+  drillType: string,
+  opts?: { goalsAvailable?: number; twoTeamGame?: boolean }
+): ScenePicture | undefined {
   const text = `${drillType} ${card}`.toLowerCase();
-  if (/\brondo\b/.test(text) || (isWarmupPicture(drillType) && /\b(4v1|5v2|4v2)\b/.test(text))) return "rondo";
-  if (/\b1v1\b/.test(text) || /\b2v1\b/.test(text) || (/\b3v2\b/.test(text) && /channel|mini/.test(text))) return "center";
+  const hasRealGoal = Number(opts?.goalsAvailable) >= 1;
+  if (!hasRealGoal) {
+    if (/\brondo\b/.test(text) || (isWarmupPicture(drillType) && /\b(4v1|5v2|4v2)\b/.test(text))) return "rondo";
+    if (/\b1v1\b/.test(text) || /\b2v1\b/.test(text) || (/\b3v2\b/.test(text) && /channel|mini/.test(text))) return "center";
+  }
   if (/switch (the )?point of attack|weak-?side/.test(text)) return "matchup";
   return undefined;
 }
@@ -328,6 +345,8 @@ export function buildSceneCard(drill: SceneDrillLike): SceneCard {
     .join("\n");
 
   const finalCard = reconcileCardCounts(card);
+  const resolvedGoalsAvailable = Number.isFinite(goalsAvailable) ? goalsAvailable : 0;
+  const twoTeamGame = !workingGroup && /CONDITIONED_GAME|FULL_GAME|TACTICAL|SSG/i.test(drillType);
 
   return {
     title,
@@ -335,13 +354,16 @@ export function buildSceneCard(drill: SceneDrillLike): SceneCard {
     drillType,
     fieldFormat,
     spaceConstraint,
-    goalsAvailable: Number.isFinite(goalsAvailable) ? goalsAvailable : 0,
+    goalsAvailable: resolvedGoalsAvailable,
     roster: roster && (roster.home.length >= 2 || roster.away.length >= 2) ? roster : undefined,
-    twoTeamGame: !workingGroup && /CONDITIONED_GAME|FULL_GAME|TACTICAL|SSG/i.test(drillType),
+    twoTeamGame,
     formationAttacking: subSquad ? "" : attacking,
     formationDefending: subSquad ? "" : defending,
     coachLevel,
-    picture: inferScenePicture(finalCard, drillType),
+    picture: inferScenePicture(finalCard, drillType, {
+      goalsAvailable: resolvedGoalsAvailable,
+      twoTeamGame,
+    }),
     phase: String(drill.phase || json.phase || "ATTACKING"),
     zone,
     gameModelId: String(json.gameModelId || "POSSESSION"),
