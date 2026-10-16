@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The version id lives
 in [`VERSION`](VERSION).
 
+## 1.15.0 — 2026-10-15
+
+### Tactical board — AI accuracy
+
+- Team-local coordinate frame (`@aci/shared` `team-frame`): left/right is judged from each team's own direction of play; fixes the DEF flank mirroring.
+- Relative presets (`BOARD_RELATIVE_PRESETS=1`): offsets from formation slots with a width rule and minimum player gaps, so shapes stay wide and nobody shares space.
+- AI board modes, all off by default and API-only: `BOARD_AI_LIGHT_REPAIR` (light repair, one frame per described action, ball follows the first pass), `BOARD_AI_BARE` (no yellow box or notes, the model's own arrows), `BOARD_AI_OPS` (the model sends validated edits instead of whole boards; strict, all-or-nothing, metre-based moves, `set_block`, persistence caps).
+- Editor: the ball draws above the shirts and is pushed clear of nearby shirts (no jump on click, stays on the pitch).
+- Golden baseline of 216 placement scenarios; board ops and AI ops test suites.
+
 ## 1.14.1 — 2026-10-13
 
 - Fix: compiled API crashed at startup on Render (`ERR_MODULE_NOT_FOUND` for `@aci/shared`).
