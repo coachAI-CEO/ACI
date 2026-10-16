@@ -73,3 +73,38 @@ describe('placement does not depend on which team has the ball', () => {
     expect((def.areas![0].y ?? 100) + (def.areas![0].height ?? 0)).toBeLessThan(50);
   });
 });
+
+/*
+ * Value: protects=motif arrows and labels of a DEF-in-possession snapshot are the 180-degree mirror of ATT-in-possession (coordinate endpoints rotated, player-id endpoints kept); fails_when=arrow/label/control rotation in placeWithDefInPossession is dropped or applied twice; why_new=existing symmetry cases pass includeMotifArrows:false so arrows and labels are never compared; seam=none; no_claim=visual quality of the arrows
+ */
+describe('arrows and labels are mirrored with the teams', () => {
+  const snap = (possession?: 'DEF') =>
+    placePhaseSnapshot({
+      subPhase: 'goal_kick', channelX: possession ? 60 : 40, defBlock: 'high', includeMotifArrows: true, ...(possession ? { possession } : {}),
+      roster: possession
+        ? [...build11v11FormationPlayers('4-4-2', 'ATT'), ...build11v11FormationPlayers('4-3-3', 'DEF')]
+        : [...build11v11FormationPlayers('4-3-3', 'ATT'), ...build11v11FormationPlayers('4-4-2', 'DEF')],
+      attFormation: '4-3-3', defFormation: '4-4-2',
+    } as any);
+
+  test('every ATT arrow has a DEF twin with rotated coordinate ends', () => {
+    const a = snap(), d = snap('DEF');
+    expect(a.arrows.length).toBeGreaterThan(0);
+    expect(d.arrows).toHaveLength(a.arrows.length);
+    a.arrows.forEach((arr: any, i: number) => {
+      const m: any = d.arrows[i];
+      for (const end of ['from', 'to'] as const) {
+        if (typeof arr[end].x === 'number') {
+          expect(m[end].x).toBeCloseTo(100 - arr[end].x, 1);
+          expect(m[end].y).toBeCloseTo(100 - arr[end].y, 1);
+        } else expect(m[end].playerId).toBeDefined();
+      }
+      if (arr.control) { expect(m.control.x).toBeCloseTo(100 - arr.control.x, 1); expect(m.control.y).toBeCloseTo(100 - arr.control.y, 1); }
+    });
+  });
+  test('labels are rotated too', () => {
+    const a = snap(), d = snap('DEF');
+    expect(d.labels).toHaveLength(a.labels.length);
+    a.labels.forEach((l: any, i: number) => { expect(d.labels[i].x).toBeCloseTo(100 - l.x, 1); expect(d.labels[i].y).toBeCloseTo(100 - l.y, 1); });
+  });
+});

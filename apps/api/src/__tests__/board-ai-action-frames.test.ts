@@ -139,3 +139,20 @@ describe('expandPlayFrameIntoSteps (combo builder output: Start + one Play frame
     expect(expandPlayFrameIntoSteps(one)).toBe(one);
   });
 });
+
+describe('ids on the arrows of a model board (they arrive without any)', () => {
+  test('every arrow in every frame has an id, ids are unique within a frame, and a ghost never shares the current arrow\'s id', () => {
+    const noIds = [pass('a3', 'a7'), pass('a7', 'a9'), pass('a9', 'a8')];
+    const out = expandActionsToFrames(board(noIds));
+    for (const f of out.sequence!.frames) {
+      const ids = (f.arrows || []).map((a: any) => a.id);
+      expect(ids.every(Boolean)).toBe(true);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+    const f3 = out.sequence!.frames[2].arrows as any[];
+    const ghost = f3.find((a) => a.style === 'dotted');
+    const current = f3.find((a) => a.style === 'solid');
+    expect(ghost.id).toBe(`${out.sequence!.frames[1].arrows!.find((a: any) => a.style === 'solid')!.id}-prev`);
+    expect(ghost.id).not.toBe(current.id);
+  });
+});

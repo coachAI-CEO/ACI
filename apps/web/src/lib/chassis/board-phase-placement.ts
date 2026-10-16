@@ -971,7 +971,7 @@ function placeDefBlock(
       const ten = def.mid.find((p) => p !== six && p !== eight) || def.mid[2];
 
       // Back four in own half — CBs central, FBs wide
-            setT(targets, rcb, WIDTH.cbR, 28);
+      setT(targets, rcb, WIDTH.cbR, 28);
       setT(targets, lcb, WIDTH.cbL, 28);
       setT(targets, rb, WIDTH.touchR, 32);
       setT(targets, lb, WIDTH.touchL, 32);

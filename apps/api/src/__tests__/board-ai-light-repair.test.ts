@@ -122,3 +122,36 @@ describe('anchorBallToFirstPass', () => {
     expect(anchorBallToFirstPass(noPass)).toBe(noPass);
   });
 });
+
+/*
+ * Value: protects=light repair runs on EVERY frame of a model sequence (keeper home, shirts apart, active frame mirrored to the root) and spreadApart separates shirts pinned on a touchline or stacked exactly; fails_when=only the root is repaired, activeFrameId is lost, or stacked/pinned shirts stay on top of each other; why_new=existing light-repair tests use one-layer boards and spacing with free room; seam=none; no_claim=model output quality
+ */
+describe('light repair on a model sequence and degenerate spacing', () => {
+  const { spreadApart } = require('../services/board-phase-placement');
+  const layer = (gkY: number, extra: any = {}) => ({
+    players: full().map((p) => (p.team === 'ATT' && p.number === 1 ? { ...p, y: gkY } : p)),
+    arrows: [], areas: [], labels: [], balls: [{ id: 'b', x: 50, y: 50 }], ...extra,
+  });
+  afterEach(() => { delete process.env.BOARD_AI_LIGHT_REPAIR; });
+
+  test('every frame is repaired, the active frame is kept and the root mirrors it', () => {
+    process.env.BOARD_AI_LIGHT_REPAIR = '1';
+    const f1 = { id: 'f-1', title: 'A', ...layer(55) };
+    const f2 = { id: 'f-2', title: 'B', ...layer(60) };
+    const input: any = { pitch: { orientation: 'HORIZONTAL' }, ...layer(55), sequence: { frames: [f1, f2], activeFrameId: 'f-2' } };
+    const out: any = repairBoardDiagramWithSequence(input, 'reshape the team');
+    expect(out.sequence.frames.map((f: any) => f.id)).toEqual(['f-1', 'f-2']);
+    expect(out.sequence.activeFrameId).toBe('f-2');
+    for (const f of out.sequence.frames) expect(gk(f.players, 'ATT').y).toBe(80);
+    expect(gk(out.players, 'ATT').y).toBe(80);
+    expect(out.sequence.frames.map((f: any) => f.title)).toEqual(['A', 'B']);
+  });
+  test('exactly stacked shirts are separated, including against a touchline', () => {
+    const mk = (x: number, y: number, id: string, team = 'ATT') => ({ id, team, x, y });
+    const stacked = spreadApart([mk(50, 50, 'a'), mk(50, 50, 'b')]);
+    expect(Math.hypot(stacked[0].x - stacked[1].x, stacked[0].y - stacked[1].y)).toBeGreaterThanOrEqual(6.9);
+    const edge = spreadApart([mk(1, 50, 'a'), mk(1, 50.5, 'b', 'DEF')]);
+    expect(Math.hypot(edge[0].x - edge[1].x, edge[0].y - edge[1].y)).toBeGreaterThanOrEqual(6.4);
+    for (const p of edge) { expect(p.x).toBeGreaterThanOrEqual(0); expect(p.x).toBeLessThanOrEqual(100); }
+  });
+});

@@ -60,3 +60,11 @@ strictly, applied atomically, guarded by a revision number.
 2. Evaluate scene prompts in ops mode and decide how phase placement (goal kick / pocket / final third) is reached from ops.
 3. An HTTP route (`POST /api/boards/:id/ops`) and an undo entry per batch in the editor.
 
+
+## Review-driven hardening (ship review, 2026-10-15)
+- add_frame on a single picture now copies every layer (goals, coach, cones, elements as well as players, arrows, areas, labels, balls); it used to drop five of nine.
+- set_block excludes keepers with the same test roleBand uses (it upper-cases the role) and the engine rejects any result with a coordinate that is not a number on the pitch; a lowercase `gk` used to write NaN.
+- Operation names that exist on Object.prototype ("constructor") are `unknown_op`, not a thrown TypeError; any other unexpected exception is `invalid_operation`.
+- Frame titles and hold time follow the sequence normaliser (80 characters, 400-12000 ms); metre moves and set_formation are refused on non-11v11 boards.
+- Prompt: board text (titles, roles, ids) is length-capped and stripped of control characters and the model is told it is data; the unused `revision:` line is gone; a rejected attempt's reply can no longer describe a later result; failure text is capped.
+- NOTE: the revision guard works in `applyBoardOps({ revision })` but the chat route passes the board it was given, so it protects nothing across two requests yet. A real guard needs the route to carry the client's revision.

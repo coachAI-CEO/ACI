@@ -6,6 +6,9 @@
 
 /**
  * Relative press placement (opt-in via BOARD_PRESS_RELATIVE=1; see board-phase-placement).
+ * NOTE: since the relative presets work, this press uses the same lateral rule as relativePreset (wide players
+ * hold the touchline lane, inner players spread slightly and lean toward the ball), which differs from the
+ * earlier pure squeeze toward the ball. Anyone running BOARD_PRESS_RELATIVE=1 alone gets that wider shape.
  *
  * Instead of computing absolute target positions per formation, a press is a
  * set of moves applied to wherever each player already stands:

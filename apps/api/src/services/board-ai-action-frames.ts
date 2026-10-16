@@ -7,6 +7,7 @@
  * faint ghost, and a closing frame shows where everyone ended up. A pass moves the ball to the
  * receiver; a run moves the runner (and the ball too, if the runner has it). Pure functions.
  */
+import { BOARD_SEQUENCE_DEFAULT_DURATION_MS, newObjectId } from '@aci/shared';
 import type { WebDiagramV1 } from './web-diagram-v1';
 
 type Player = WebDiagramV1['players'][number];
@@ -55,7 +56,9 @@ export function shouldExpandToFrames(diagram: WebDiagramV1, asksForSteps: boolea
 }
 
 export function expandActionsToFrames(diagram: WebDiagramV1): WebDiagramV1 {
-  const all = diagram.arrows || [];
+  // Model arrows arrive without ids. Stamp them first so each step's ghost gets an id derived from its own source;
+  // otherwise ids would be inherited by slot from frame 0 and Play could morph the wrong arrows.
+  const all = (diagram.arrows || []).map((a) => (a.id ? a : { ...a, id: newObjectId('a') }));
   const actions = orderedActions(all).slice(0, MAX_ACTION_FRAMES);
   if (actions.length < 2) return diagram;
   const context = all.filter((a) => !isAction(a)); // press / cover lines etc. stay on every frame
@@ -79,7 +82,7 @@ export function expandActionsToFrames(diagram: WebDiagramV1): WebDiagramV1 {
     elements: diagram.elements,
     ...extra,
   });
-  const ghost = (a: Arrow): Arrow => ({ ...a, id: a.id ? `${a.id}-prev` : undefined, style: 'dotted', weight: 'normal', order: undefined });
+  const ghost = (a: Arrow): Arrow => ({ ...a, id: `${a.id}-prev`, style: 'dotted', weight: 'normal', order: undefined });
 
   const frames: Frame[] = [];
   actions.forEach((a, i) => {
@@ -87,7 +90,7 @@ export function expandActionsToFrames(diagram: WebDiagramV1): WebDiagramV1 {
     frames.push({
       id: `f-${i + 1}`,
       title: `${label(a.from, players)} ${a.type === 'pass' ? 'passes to' : 'runs to'} ${label(a.to, players)}`,
-      durationMs: 1600,
+      durationMs: BOARD_SEQUENCE_DEFAULT_DURATION_MS,
       ...layers({ arrows: [...context, ...(prev ? [ghost(prev)] : []), { ...a, order: undefined }] }),
     });
     // advance the world past this action
@@ -104,7 +107,7 @@ export function expandActionsToFrames(diagram: WebDiagramV1): WebDiagramV1 {
     }
   });
   const last = actions[actions.length - 1];
-  frames.push({ id: `f-${actions.length + 1}`, title: 'Result', durationMs: 1600, ...layers({ arrows: [...context, ghost(last)] }) });
+  frames.push({ id: `f-${actions.length + 1}`, title: 'Result', durationMs: BOARD_SEQUENCE_DEFAULT_DURATION_MS, ...layers({ arrows: [...context, ghost(last)] }) });
 
   const start = frames[0];
   return {

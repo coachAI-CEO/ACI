@@ -30,7 +30,7 @@ import {
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
 import { expandActionsToFrames, expandPlayFrameIntoSteps, shouldExpandToFrames } from './board-ai-action-frames';
-import { anchorBallToFirstPass, lightRepairPlayers } from './board-ai-light-repair';
+import { anchorBallToFirstPass, lightRepairEnabled, lightRepairPlayers } from './board-ai-light-repair';
 import { boardOpsEnabled, runBoardAiOps } from './board-ai-ops';
 import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
@@ -347,7 +347,7 @@ export function repairBoardDiagramWithSequence(
   message: string
 ): WebDiagramV1 {
   const playOut = isPlayOutRequest(message);
-  if (!playOut && process.env.BOARD_AI_LIGHT_REPAIR === '1') return lightRepairWithSequence(diagram, message);
+  if (!playOut && lightRepairEnabled()) return lightRepairWithSequence(diagram, message);
   const repairOne = (d: WebDiagramV1) => {
     if (playOut && (d.players || []).length >= 18) {
       return polishPlayOutFrame(d);
@@ -5188,7 +5188,7 @@ export async function runBoardAiChat(input: {
           );
   if (symbolicDsl) {
     repaired = repairBoardDiagramLabels(repairBoardDiagramArrows(repaired));
-    if (process.env.BOARD_AI_LIGHT_REPAIR === '1' && !hasImage) {
+    if (lightRepairEnabled() && !hasImage) {
       // Several moves described -> one frame per move; a single pass puts the ball at the passer.
       repaired = shouldExpandToFrames(repaired, wantsSequenceFromMessage(drawMessage))
         ? expandActionsToFrames(repaired)
@@ -5238,7 +5238,7 @@ export async function runBoardAiChat(input: {
   if (composedCombo) {
     // The combo builder makes Start + one Play frame holding every arrow; light mode splits Play into steps.
     repaired =
-      process.env.BOARD_AI_LIGHT_REPAIR === '1' ? expandPlayFrameIntoSteps(composedCombo) : composedCombo;
+      lightRepairEnabled() ? expandPlayFrameIntoSteps(composedCombo) : composedCombo;
   } else if (!hasImage && isPlayOutRequest(drawMessage)) {
     const placed = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
     // Bare board: placement positions the players, the arrows stay the model's own.

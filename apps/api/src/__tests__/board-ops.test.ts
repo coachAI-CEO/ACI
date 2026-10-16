@@ -311,3 +311,149 @@ describe('metres: nudge_player and place_relative do the conversion exactly', ()
     expect(err([{ op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 'ten' }]).code).toBe('invalid_value');
   });
 });
+
+/*
+ * Value: protects=op validation paths an AI sender hits (ambiguous shirt, patch guards, arrow endpoints, set_formation cleanup, add_frame targeting, batch shape); fails_when=a guard is dropped or a message loses its code; why_new=earlier blocks cover happy paths and the main errors only; seam=none; no_claim=none beyond protects
+ */
+describe('remaining validation and cleanup paths', () => {
+  const err = (ops: any, d?: any) => { const r: any = applyBoardOps(d ?? fresh(), { ops }); expect(r.ok).toBe(false); return r.error; };
+
+  test('a shirt number shared by two players is ambiguous and points at playerId', () => {
+    const d = fresh();
+    d.players.push({ ...player(d, 'ATT', 9), id: 'twin' });
+    const e = err([{ op: 'move_player', player: { team: 'ATT', number: 9 }, x: 1, y: 1 }], d);
+    expect(e).toMatchObject({ code: 'ambiguous_player' });
+    expect(e.message).toContain('playerId');
+    expect(ok(run([{ op: 'move_player', player: { playerId: 'twin' }, x: 7, y: 8 }], d)).players.find((p: any) => p.id === 'twin')).toMatchObject({ x: 7, y: 8 });
+  });
+  test('ops that are not a list, or an op that is not an object, are rejected', () => {
+    expect(err('move everyone')).toMatchObject({ code: 'invalid_batch' });
+    expect(err([])).toMatchObject({ code: 'invalid_batch' });
+    expect(err([null])).toMatchObject({ index: 0, code: 'invalid_operation' });
+  });
+  test('update_player: empty patch, unknown patch field and a taken number are errors; group is stored', () => {
+    const who = { team: 'ATT', number: 9 };
+    expect(err([{ op: 'update_player', player: who, patch: {} }]).code).toBe('invalid_value');
+    expect(err([{ op: 'update_player', player: who, patch: { speed: 3 } }]).code).toBe('unknown_field');
+    expect(err([{ op: 'update_player', player: who, patch: { number: 3 } }]).code).toBe('duplicate_player');
+    expect(player(ok(run([{ op: 'update_player', player: who, patch: { group: 'g-front' } }])), 'ATT', 9).group).toBe('g-front');
+  });
+  test('update_arrow can re-point either end at a player or a coordinate; a bad patch field is rejected', () => {
+    let d = ok(run([{ op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } }]));
+    const id = d.arrows[0].id;
+    d = ok(run([{ op: 'update_arrow', arrowId: id, patch: { from: { team: 'ATT', number: 8 }, to: { x: 12, y: 34 }, type: 'run' } }], d));
+    expect(d.arrows[0]).toMatchObject({ type: 'run', from: { playerId: player(d, 'ATT', 8).id }, to: { x: 12, y: 34 } });
+    expect(err([{ op: 'update_arrow', arrowId: id, patch: { colour: 'red' } }], d).code).toBe('unknown_field');
+    expect(err([{ op: 'update_arrow', arrowId: id, patch: { to: { x: 5, y: 500 } } }], d).code).toBe('out_of_range');
+  });
+  test('set_formation drops arrows that pointed at the replaced players and says so', () => {
+    const r: any = run([
+      { op: 'add_arrow', type: 'press', from: { team: 'ATT', number: 9 }, to: { team: 'DEF', number: 4 } },
+      { op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } },
+      { op: 'set_formation', team: 'DEF', formation: '3-5-2' },
+    ]);
+    expect(r.ok).toBe(true);
+    expect(r.diagram.arrows.map((a: any) => a.type)).toEqual(['pass']);
+    expect(r.results[2].message).toContain('Removed 1 arrow');
+  });
+  test('add_frame can copy or follow a named frame; naming a missing one is an error', () => {
+    const base = [{ op: 'add_frame' }, { op: 'move_player', frame: 'last', player: { team: 'ATT', number: 9 }, x: 11, y: 22 }, { op: 'add_frame', copyFrom: 'f-1', after: 'f-1', title: 'From start' }];
+    const d = ok(run(base));
+    expect(d.sequence.frames.map((f: any) => f.id)).toEqual(['f-1', 'f-3', 'f-2']);
+    expect(player(d, 'ATT', 9, d.sequence.frames[1]).x).not.toBe(11); // copied from f-1, not the moved f-2
+    expect(err([{ op: 'add_frame' }, { op: 'add_frame', copyFrom: 'f-9' }]).code).toBe('no_such_frame');
+    expect(err([{ op: 'add_frame' }, { op: 'add_frame', after: 'f-9' }]).code).toBe('no_such_frame');
+  });
+  test('frame ops on a board with no frames say to add one first', () => {
+    expect(err([{ op: 'update_frame', title: 'x' }]).code).toBe('no_such_frame');
+    expect(err([{ op: 'remove_frame' }]).code).toBe('no_such_frame');
+    expect(err([{ op: 'move_player', frame: 'last', player: { team: 'ATT', number: 9 }, x: 1, y: 1 }]).message).toContain('add_frame');
+  });
+  test('update_arrow validates order like add_arrow does', () => {
+    const d = ok(run([{ op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 } }]));
+    expect(err([{ op: 'add_arrow', type: 'pass', from: { team: 'ATT', number: 3 }, to: { team: 'ATT', number: 7 }, order: 40 }]).code).toBe('invalid_value');
+    expect(err([{ op: 'update_arrow', arrowId: d.arrows[0].id, patch: { order: 40 } }], d).code).toBe('invalid_value');
+  });
+});
+
+describe('review fixes (QA probes 002, 003, 004 and the specialist findings)', () => {
+  test('add_frame on a single picture keeps goals, cones and elements in the frame and after the root mirror', () => {
+    const b = fresh();
+    b.cones = [{ id: 'c1', x: 30, y: 30 }];
+    b.elements = [{ id: 'el1', kind: 'cone', x: 40, y: 40 }];
+    const goals = b.goals?.length ?? 0;
+    const d = ok(run([{ op: 'add_frame' }, { op: 'set_active_frame', frame: 'f-2' }], b));
+    for (const f of d.sequence.frames) {
+      expect(f.cones).toHaveLength(1);
+      expect(f.elements).toHaveLength(1);
+      expect(f.goals?.length ?? 0).toBe(goals);
+    }
+    expect(d.cones).toHaveLength(1);
+    expect(d.elements).toHaveLength(1);
+    expect(d.goals?.length ?? 0).toBe(goals);
+  });
+  test('set_block with a lowercase gk keeper keeps every coordinate finite (and leaves the keeper alone)', () => {
+    const d = ok(run([
+      { op: 'update_player', player: { team: 'ATT', number: 1 }, patch: { number: 30 } },
+      { op: 'update_player', player: { team: 'ATT', number: 30 }, patch: { role: 'gk' } },
+      { op: 'set_block', team: 'ATT', height: 'low' },
+    ]));
+    for (const p of d.players) {
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+    }
+    expect(player(d, 'ATT', 30)).toMatchObject({ x: player(fresh(), 'ATT', 1).x, y: player(fresh(), 'ATT', 1).y });
+  });
+  test('set_block with an empty midfield band still places every outfield player on the pitch, lines in order', () => {
+    const adds = [
+      { op: 'add_player', team: 'ATT', number: 1, x: 50, y: 94, role: 'GK' },
+      { op: 'add_player', team: 'ATT', number: 4, x: 40, y: 80, role: 'CB' },
+      { op: 'add_player', team: 'ATT', number: 5, x: 60, y: 80, role: 'CB' },
+      { op: 'add_player', team: 'ATT', number: 9, x: 45, y: 40, role: 'ST' },
+      { op: 'add_player', team: 'ATT', number: 10, x: 55, y: 40, role: 'ST' },
+    ];
+    const d = ok(run([{ op: 'clear_team', team: 'ATT' }, ...adds, { op: 'set_block', team: 'ATT', height: 'low' }]));
+    for (const p of d.players.filter((q: any) => q.team === 'ATT')) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(100);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(100);
+    }
+    expect(player(d, 'ATT', 4).y).toBeGreaterThan(player(d, 'ATT', 9).y); // ATT defends the high-y goal: backs sit at higher y than forwards
+  });
+  test('op names that exist on Object.prototype are rejected with unknown_op, never thrown', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const r: any = run([{ op: name }]);
+      expect(r.ok).toBe(false);
+      expect(r.error.code).toBe('unknown_op');
+    }
+  });
+  test('an unexpected exception inside an operation becomes invalid_operation, not a throw', () => {
+    const r: any = run([{ op: 'move_player', player: { team: 'ATT', get number(): number { throw new Error('boom'); } }, x: 1, y: 1 }]);
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe('invalid_operation');
+  });
+  test('frame titles are capped at the normaliser\'s 80 characters and hold time at its 400-12000 ms range', () => {
+    const long = 'x'.repeat(300);
+    const d = ok(run([{ op: 'add_frame', title: long }, { op: 'update_frame', frame: 'f-1', title: long }]));
+    expect(d.sequence.frames[1].title).toHaveLength(80);
+    expect(d.sequence.frames[0].title).toHaveLength(80);
+    expect((run([{ op: 'add_frame', title: { not: 'a string' } }]) as any).ok).toBe(true); // coerced, never stored as an object
+    for (const ms of [399, 12001]) expect((run([{ op: 'add_frame' }, { op: 'update_frame', frame: 'f-1', durationMs: ms }]) as any).error.code).toBe('out_of_range');
+    expect(ok(run([{ op: 'add_frame' }, { op: 'update_frame', frame: 'f-1', durationMs: 400 }])).sequence.frames[0].durationMs).toBe(400);
+  });
+  test('metre moves and set_formation are refused on boards that are not 11v11', () => {
+    const small = { ...fresh(), pitch: { ...fresh().pitch, format: '7V7' } };
+    for (const op of [
+      { op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 5 },
+      { op: 'place_relative', player: { team: 'ATT', number: 6 }, to: { team: 'ATT', number: 8 }, forward_m: -5 },
+      { op: 'set_formation', team: 'ATT', formation: '4-3-3' },
+    ]) {
+      const r: any = run([op], small);
+      expect(r.ok).toBe(false);
+      expect(r.error.code).toBe('unsupported_pitch');
+      expect(r.error.message).toContain('7V7');
+    }
+    expect((run([{ op: 'nudge_player', player: { team: 'ATT', number: 9 }, forward_m: 5 }]) as any).ok).toBe(true); // the default board is 11v11
+  });
+});

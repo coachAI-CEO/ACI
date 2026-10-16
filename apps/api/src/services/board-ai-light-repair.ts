@@ -16,6 +16,9 @@ import { spreadApart } from './board-phase-placement';
 
 type Player = WebDiagramV1['players'][number];
 
+/** BOARD_AI_LIGHT_REPAIR=1: trust the model's coordinates and repair only what is clearly wrong. */
+export const lightRepairEnabled = () => process.env.BOARD_AI_LIGHT_REPAIR === '1';
+
 const isGk = (p: Player) => /^GK$/i.test(String(p.role || '')) || p.number === 1;
 
 /** ATT's own goal is at high y (right), DEF's at low y (left). Keepers may step out ~20 units. */

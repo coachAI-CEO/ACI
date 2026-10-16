@@ -2,6 +2,11 @@ import { build11v11FormationPlayers } from '../services/web-diagram-v1';
 import { placePhaseSnapshot, roleBand } from '../services/board-phase-placement';
 import { pressRelative } from '../services/board-press-relative';
 
+afterEach(() => {
+  delete process.env.BOARD_PRESS_RELATIVE;
+  delete process.env.BOARD_RELATIVE_PRESETS;
+});
+
 const FORMATIONS = ['4-4-2', '4-3-3', '3-5-2', '4-2-3-1'] as const;
 const BLOCKS = ['high', 'mid', 'low'] as const;
 

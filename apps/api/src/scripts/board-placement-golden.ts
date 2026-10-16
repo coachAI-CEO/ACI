@@ -15,26 +15,34 @@ const PHASES = ['goal_kick', 'pocket', 'final_third'] as const;
 const BLOCKS = ['high', 'mid', 'low'] as const;
 const CHANNELS = [30, 50, 70];
 
+/** Placement flags that would change the authored baseline: cleared while generating, restored after. */
+const PLACEMENT_FLAGS = ['BOARD_PRESS_RELATIVE', 'BOARD_RELATIVE_PRESETS'] as const;
+
 export function buildGolden(): Record<string, [string, number, number][]> {
-  const out: Record<string, [string, number, number][]> = {};
-  for (const a of ATT_FORMATIONS)
-    for (const d of DEF_FORMATIONS)
-      for (const ph of PHASES)
-        for (const b of BLOCKS)
-          for (const ch of CHANNELS) {
-            const roster = [...build11v11FormationPlayers(a, 'ATT'), ...build11v11FormationPlayers(d, 'DEF')];
-            const res = placePhaseSnapshot({
-              roster, subPhase: ph, attFormation: a, defFormation: d, channelX: ch, defBlock: b, includeMotifArrows: false,
-            });
-            out[`${a}|${d}|${ph}|${b}|${ch}`] = res.players
-              .map((p) => [p.id, +p.x.toFixed(2), +p.y.toFixed(2)] as [string, number, number])
-              .sort((x, y) => x[0].localeCompare(y[0]));
-          }
-  return out;
+  const saved = PLACEMENT_FLAGS.map((f) => [f, process.env[f]] as const);
+  for (const f of PLACEMENT_FLAGS) delete process.env[f];
+  try {
+    const out: Record<string, [string, number, number][]> = {};
+    for (const a of ATT_FORMATIONS)
+      for (const d of DEF_FORMATIONS)
+        for (const ph of PHASES)
+          for (const b of BLOCKS)
+            for (const ch of CHANNELS) {
+              const roster = [...build11v11FormationPlayers(a, 'ATT'), ...build11v11FormationPlayers(d, 'DEF')];
+              const res = placePhaseSnapshot({
+                roster, subPhase: ph, attFormation: a, defFormation: d, channelX: ch, defBlock: b, includeMotifArrows: false,
+              });
+              out[`${a}|${d}|${ph}|${b}|${ch}`] = res.players
+                .map((p) => [p.id, +p.x.toFixed(2), +p.y.toFixed(2)] as [string, number, number])
+                .sort((x, y) => x[0].localeCompare(y[0]));
+            }
+    return out;
+  } finally {
+    for (const [f, v] of saved) if (v === undefined) delete process.env[f]; else process.env[f] = v;
+  }
 }
 
 if (require.main === module) {
-  delete process.env.BOARD_PRESS_RELATIVE;
   const g = buildGolden();
   fs.mkdirSync(path.dirname(GOLDEN_PATH), { recursive: true });
   fs.writeFileSync(GOLDEN_PATH, JSON.stringify(g));

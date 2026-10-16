@@ -2836,13 +2836,30 @@ export default function TacticalBoardEditor({
           {/* Balls draw above the shirts so a ball at a player's feet stays visible. */}
           {(viewDiagram.balls || []).map((b, i) => {
             const at = toScreen(b, orientation, layout, viewport, spec);
-            // A ball at a player's feet would be painted over by the shirt; nudge it out so both read.
-            const underPlayer = viewDiagram.players.some((p) => {
-              const ps = toScreen(p, orientation, layout, viewport, spec);
-              return Math.hypot(ps.sx - at.sx, ps.sy - at.sy) < hitR + ballR * 0.5;
-            });
-            const s = underPlayer ? { sx: at.sx + hitR * 0.9, sy: at.sy + hitR * 0.9 } : at;
             const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
+            // A ball on a shirt would hide behind the number, so it is pushed radially to just clear the nearest
+            // shirt: continuous in the distance (no snap while it moves in Play, no flicker while dragging).
+            // The selected ball is drawn at its stored position, so what you drag is where it is.
+            let s = at;
+            if (!selected) {
+              const clear = hitR + ballR * 0.75;
+              let nearest: { sx: number; sy: number } | null = null;
+              let nearestD = clear;
+              for (const p of viewDiagram.players) {
+                const ps = toScreen(p, orientation, layout, viewport, spec);
+                const d = Math.hypot(ps.sx - at.sx, ps.sy - at.sy);
+                if (d < nearestD) {
+                  nearest = ps;
+                  nearestD = d;
+                }
+              }
+              if (nearest) {
+                // At the shirt's centre (a ball placed exactly at a player's coordinates) the direction is fixed.
+                const ux = nearestD < 0.5 ? Math.SQRT1_2 : (at.sx - nearest.sx) / nearestD;
+                const uy = nearestD < 0.5 ? Math.SQRT1_2 : (at.sy - nearest.sy) / nearestD;
+                s = { sx: nearest.sx + ux * clear, sy: nearest.sy + uy * clear };
+              }
+            }
             return (
               <g
                 key={b.id || `ball-${i}`}
