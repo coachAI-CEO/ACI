@@ -29,6 +29,10 @@ import {
   type ClubPhilosophyStages,
 } from './club-philosophy';
 import { getGameModelTemplate, getGameModelTemplatePhilosophy } from './game-model-templates';
+import { expandActionsToFrames, expandPlayFrameIntoSteps, shouldExpandToFrames } from './board-ai-action-frames';
+import { anchorBallToFirstPass, lightRepairEnabled, lightRepairPlayers } from './board-ai-light-repair';
+import { boardOpsEnabled, runBoardAiOps } from './board-ai-ops';
+import { carryModelArrows, isBareBoard, stripAnnotations } from './board-ai-bare';
 import { applyPlayOutSequenceToDiagram, isPlayOutRequest, inferDefBlockHeight, labelStackAwayFromEmphasis } from './board-phase-placement';
 import {
   buildFormationPlaybookGuidance,
@@ -283,12 +287,67 @@ function polishPlayOutFrame(d: WebDiagramV1): WebDiagramV1 {
   );
 }
 
+/**
+ * BOARD_AI_LIGHT_REPAIR=1: trust the model's coordinates; only clean up duplicates / a reversed
+ * axis, keep goalkeepers home and separate shirts that share space (board-ai-light-repair.ts).
+ */
+function lightRepairLayer(d: WebDiagramV1, freeze: boolean): WebDiagramV1 {
+  // The ball follows the passes even when the players are frozen (it is not a player).
+  if (freeze) return anchorBallToFirstPass(repairBoardDiagramLabels(repairBoardDiagramArrows(d)));
+  const cleaned = repairBoardDiagramOrientation(repairBoardDiagramPlayerCleanup(d));
+  return anchorBallToFirstPass(
+    repairBoardDiagramLabels(repairBoardDiagramArrows(lightRepairPlayers(cleaned)))
+  );
+}
+
+function lightRepairWithSequence(input: WebDiagramV1, message: string): WebDiagramV1 {
+  const freeze = wantsFrozenPlayers(message);
+  // Several moves described -> one frame per move (the model supplies who passes / runs where).
+  const diagram = shouldExpandToFrames(input, wantsSequenceFromMessage(message))
+    ? expandActionsToFrames(input)
+    : input;
+  const seq = diagram.sequence;
+  if (!seq?.frames?.length) return lightRepairLayer(diagram, freeze);
+  const frames = seq.frames.slice(0, BOARD_AI_SEQUENCE_MAX_FRAMES).map((f, i) => {
+    const repaired = lightRepairLayer(
+      {
+        pitch: diagram.pitch,
+        players: f.players || [],
+        arrows: f.arrows || [],
+        areas: f.areas || [],
+        labels: f.labels || [],
+        balls: f.balls,
+        goals: f.goals,
+        coach: f.coach,
+        cones: f.cones,
+        elements: f.elements,
+      } as WebDiagramV1,
+      freeze
+    );
+    return {
+      id: String(f.id || '').trim() || `f-${i + 1}`,
+      title: f.title,
+      note: f.note,
+      durationMs: f.durationMs,
+      ...layersFromRepaired(repaired),
+    };
+  });
+  const activeFrameId = frames.find((f) => f.id === seq.activeFrameId)?.id || frames[0].id;
+  const active = frames.find((f) => f.id === activeFrameId) || frames[0];
+  return {
+    ...diagram,
+    ...layersFromRepaired({ ...diagram, ...active } as WebDiagramV1),
+    sequence: { frames, activeFrameId },
+  };
+}
+
 /** Repair root + every sequence frame, then enforce cross-frame focus + organization. */
 export function repairBoardDiagramWithSequence(
   diagram: WebDiagramV1,
   message: string
 ): WebDiagramV1 {
   const playOut = isPlayOutRequest(message);
+  if (!playOut && lightRepairEnabled()) return lightRepairWithSequence(diagram, message);
   const repairOne = (d: WebDiagramV1) => {
     if (playOut && (d.players || []).length >= 18) {
       return polishPlayOutFrame(d);
@@ -4806,6 +4865,17 @@ export async function runBoardAiChat(input: {
     };
   }
 
+  // Operations mode: the model sends small validated edits against the current board (board-ai-ops.ts).
+  if (boardOpsEnabled() && !hasImage) {
+    const r = await runBoardAiOps({
+      diagram: input.diagram,
+      message,
+      history: history.map((h) => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: h.content })),
+      context: { ageGroup: input.ageGroup || undefined, gameModelId: playModel.gameModelId || input.gameModelId || undefined },
+    });
+    return { ...resultBase, reply: r.reply, applied: r.applied, diagram: r.diagram };
+  }
+
   const offeredReadings = assistantOfferedAskReadings(history);
   const offeredSourceDiagrams = assistantOfferedSourceDiagrams(history);
   const offeredImportReview = assistantOfferedImportReview(history);
@@ -5118,6 +5188,12 @@ export async function runBoardAiChat(input: {
           );
   if (symbolicDsl) {
     repaired = repairBoardDiagramLabels(repairBoardDiagramArrows(repaired));
+    if (lightRepairEnabled() && !hasImage) {
+      // Several moves described -> one frame per move; a single pass puts the ball at the passer.
+      repaired = shouldExpandToFrames(repaired, wantsSequenceFromMessage(drawMessage))
+        ? expandActionsToFrames(repaired)
+        : anchorBallToFirstPass(repaired);
+    }
     if (!hasImage && (input.diagram.players || []).length && !isPlayOutRequest(drawMessage)) {
       repaired = ensureSequenceStartsFromOriginal(repaired, input.diagram, drawMessage);
     }
@@ -5160,10 +5236,15 @@ export async function runBoardAiChat(input: {
     audience.coachLevel
   );
   if (composedCombo) {
-    repaired = composedCombo;
+    // The combo builder makes Start + one Play frame holding every arrow; light mode splits Play into steps.
+    repaired =
+      lightRepairEnabled() ? expandPlayFrameIntoSteps(composedCombo) : composedCombo;
   } else if (!hasImage && isPlayOutRequest(drawMessage)) {
-    repaired = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
+    const placed = applyPlayOutSequenceToDiagram(input.diagram, drawMessage);
+    // Bare board: placement positions the players, the arrows stay the model's own.
+    repaired = isBareBoard() ? carryModelArrows(placed, repaired) : placed;
   }
+  if (isBareBoard()) repaired = stripAnnotations(repaired);
   const frameArrowCount = repaired.sequence?.frames?.length
     ? repaired.sequence.frames.reduce((n, f) => n + (f.arrows?.length || 0), 0)
     : repaired.arrows?.length || 0;

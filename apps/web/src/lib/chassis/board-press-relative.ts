@@ -5,23 +5,27 @@
  */
 
 /**
- * PROTOTYPE -- relative press placement (not wired into the board yet).
+ * Relative press placement (opt-in via BOARD_PRESS_RELATIVE=1; see board-phase-placement).
+ * NOTE: since the relative presets work, this press uses the same lateral rule as relativePreset (wide players
+ * hold the touchline lane, inner players spread slightly and lean toward the ball), which differs from the
+ * earlier pure squeeze toward the ball. Anyone running BOARD_PRESS_RELATIVE=1 alone gets that wider shape.
  *
  * Instead of computing absolute target positions per formation, a press is a
  * set of moves applied to wherever each player already stands:
  *   - "forward" toward the opponent's goal, by role band, scaled by block height
  *   - a small lateral squeeze toward the ball's channel
  *
- * Board axes (see docs/tactical-board-phase-positioning.md):
- *   y = goal-to-goal. ATT attacks toward LOW y, DEF attacks toward HIGH y.
- *   x = width. Direction is handled in exactly one place (`dir` below).
+ * Runs in the team-local frame (packages/shared board/team-frame): v = upfield, u = the
+ * team's own right is high. In that frame ATT and DEF are the same code path, so there is no
+ * per-team direction or flank logic here; the shared-frame flip happens only at the edges.
  *
  * Because it only offsets existing positions, it works for any formation and
  * keeps each player on their own side of the pitch.
  */
 // Type-only imports so this module never creates a runtime cycle with
 // board-phase-placement (which calls it); the role-band classifier is passed in.
-import type { DefBlockHeight, RoleBand } from './board-phase-placement';
+import { fromTeamFrame, toTeamFrame } from '@aci/shared';
+import type { DefBlockHeight, PlayOutSubPhase, RoleBand } from './board-phase-placement';
 import type { WebDiagramV1 } from './web-diagram-v1';
 
 type Player = WebDiagramV1['players'][number];
@@ -46,32 +50,114 @@ export const PRESS_BLOCK_SCALE: Record<DefBlockHeight, number> = {
 const OVERRUN_MARGIN = 4;
 
 /**
- * Pressing is described relative to a team's formation shape, so callers pass
- * the formation's BASE slots (not positions from a previous press) -- applying
- * the offsets to already-pressed positions would compound on every re-run.
+ * Width is a role rule, not an offset: a formation's base slots are narrower than the shapes
+ * coaches draw. Wide players (fullbacks, wing-backs, wingers: 28+ off centre) hold the touchline
+ * lane; inner players spread a little and lean toward the ball. Only inner players squeeze.
  */
+const WIDE_FROM_CENTRE = 28;
+const TOUCHLINE_REACH = 46; // u = 4 / 96
+const INNER_SPREAD = 1.15;
+function lateral(u: number, ballU: number, squeeze: number) {
+  const off = u - 50;
+  if (Math.abs(off) >= WIDE_FROM_CENTRE) return 50 + Math.sign(off) * TOUCHLINE_REACH;
+  const spread = 50 + off * INNER_SPREAD;
+  return spread + (ballU - spread) * squeeze;
+}
+const clampLateral = (u: number) => Math.max(4, Math.min(96, u));
+
+export type PresetRole = 'defending' | 'inPossession';
+type BandProfile = Record<RoleBand, { forward: number; squeeze: number }>;
+
+/**
+ * Relative presets: per phase and per role (defending / in possession), how far each line moves
+ * upfield (v, negative = drops) from its formation base slot, and how much it leans toward the
+ * ball's channel. Fitted to the depth change the authored per-formation shapes make
+ * (golden baseline), so the result is the same family of shape for ANY formation, not only the
+ * four that are hand-authored. Team-agnostic: only the frame conversion knows which team is which.
+ */
+export const PHASE_PROFILES: Record<PlayOutSubPhase, Record<PresetRole, BandProfile>> = {
+  goal_kick: {
+    defending: PRESS_PROFILE,
+    inPossession: {
+      GK: { forward: -4, squeeze: 0 },
+      BACK: { forward: -7, squeeze: 0.15 },
+      MID: { forward: -9, squeeze: 0.2 },
+      FRONT: { forward: -9, squeeze: 0.25 },
+    },
+  },
+  pocket: {
+    defending: {
+      GK: { forward: 0, squeeze: 0 },
+      BACK: { forward: 6, squeeze: 0.3 },
+      MID: { forward: 8, squeeze: 0.3 },
+      FRONT: { forward: 3, squeeze: 0.3 },
+    },
+    inPossession: {
+      GK: { forward: -4, squeeze: 0 },
+      BACK: { forward: 11, squeeze: 0.2 },
+      MID: { forward: 11, squeeze: 0.25 },
+      FRONT: { forward: 8, squeeze: 0.25 },
+    },
+  },
+  final_third: {
+    defending: {
+      GK: { forward: 0, squeeze: 0 },
+      BACK: { forward: -11, squeeze: 0.25 },
+      MID: { forward: -10, squeeze: 0.25 },
+      FRONT: { forward: -17, squeeze: 0.2 },
+    },
+    inPossession: {
+      GK: { forward: -4, squeeze: 0 },
+      BACK: { forward: 39, squeeze: 0.15 },
+      MID: { forward: 35, squeeze: 0.2 },
+      FRONT: { forward: 30, squeeze: 0.25 },
+    },
+  },
+};
+
+/**
+ * Place one team relative to its formation's BASE slots (not positions from a previous run;
+ * applying offsets to already-moved positions would compound on every re-run).
+ */
+export function relativePreset(input: {
+  players: Player[];
+  team: 'ATT' | 'DEF';
+  role: PresetRole;
+  phase: PlayOutSubPhase;
+  ball: { x: number; y: number };
+  block: DefBlockHeight;
+  /** Role-band classifier (roleBand from board-phase-placement). */
+  bandOf: (p: { number?: number; role?: string }) => RoleBand;
+}): Player[] {
+  const { players, team, role, phase, ball, block, bandOf } = input;
+  const profiles = PHASE_PROFILES[phase][role];
+  // Block height is the pressing team's choice: it only scales the goal-kick press.
+  const scale = role === 'defending' && phase === 'goal_kick' ? PRESS_BLOCK_SCALE[block] : 1;
+  const ballLocal = toTeamFrame(team, ball);
+
+  return players.map((p) => {
+    if (p.team !== team) return p;
+    const band = bandOf(p);
+    const profile = profiles[band];
+    const at = toTeamFrame(team, p);
+    let v = at.v + profile.forward * (profile.forward > 0 ? scale : 1);
+    // A presser stops short of the ball instead of running past it. Goal-kick press only: in the
+    // later phases the front line legitimately sits ahead of a ball that is deep in the block.
+    if (role === 'defending' && phase === 'goal_kick' && band !== 'GK') v = Math.min(v, ballLocal.v - OVERRUN_MARGIN);
+    const u = lateral(at.u, ballLocal.u, profile.squeeze);
+    const out = fromTeamFrame(team, { u: clampLateral(u), v: clamp(v) });
+    return { ...p, x: out.x, y: out.y };
+  });
+}
+
+/** The goal-kick press (BOARD_PRESS_RELATIVE): defending profile for the goal-kick phase. */
 export function pressRelative(input: {
   players: Player[];
   /** The team that is pressing. */
   team: 'ATT' | 'DEF';
   ball: { x: number; y: number };
   block: DefBlockHeight;
-  /** Role-band classifier (roleBand from board-phase-placement). */
   bandOf: (p: { number?: number; role?: string }) => RoleBand;
 }): Player[] {
-  const { players, team, ball, block, bandOf } = input;
-  const dir = team === 'DEF' ? 1 : -1; // DEF attacks toward +y, ATT toward -y
-  const scale = PRESS_BLOCK_SCALE[block];
-
-  return players.map((p) => {
-    if (p.team !== team) return p;
-    const profile = PRESS_PROFILE[bandOf(p)];
-    let y = p.y + dir * profile.forward * scale;
-    // Outfield pressers stop short of the ball instead of running past it.
-    if (bandOf(p) !== 'GK') {
-      y = dir === 1 ? Math.min(y, ball.y - OVERRUN_MARGIN) : Math.max(y, ball.y + OVERRUN_MARGIN);
-    }
-    const x = p.x + (ball.x - p.x) * profile.squeeze;
-    return { ...p, x: clamp(x), y: clamp(y) };
-  });
+  return relativePreset({ ...input, role: 'defending', phase: 'goal_kick' });
 }

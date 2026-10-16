@@ -2790,35 +2790,6 @@ export default function TacticalBoardEditor({
               })()
             : null}
 
-          {(viewDiagram.balls || []).map((b, i) => {
-            const s = toScreen(b, orientation, layout, viewport, spec);
-            const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
-            return (
-              <g
-                key={b.id || `ball-${i}`}
-                transform={`translate(${s.sx},${s.sy})`}
-                onPointerDown={playing ? undefined : (e) => onBallPointerDown(e, b.id)}
-                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
-              >
-                <circle
-                  r={ballR}
-                  fill="#f8fafc"
-                  stroke={selected ? "#fbbf24" : "#0f172a"}
-                  strokeWidth={selected ? 2.5 : 1.5}
-                />
-                <circle r={ballR * 0.35} fill="none" stroke="#0f172a" strokeWidth={1} opacity={0.35} />
-                <path
-                  d={`M ${-ballR * 0.7} 0 Q 0 ${-ballR * 0.5} ${ballR * 0.7} 0`}
-                  fill="none"
-                  stroke="#0f172a"
-                  strokeWidth={1}
-                  opacity={0.35}
-                  className="pointer-events-none"
-                />
-              </g>
-            );
-          })}
-
           {viewDiagram.players.map((p) => {
             const s = toScreen(p, orientation, layout, viewport, spec);
             if (
@@ -2858,6 +2829,72 @@ export default function TacticalBoardEditor({
                     ? "GK"
                     : (p.number ?? "")}
                 </text>
+              </g>
+            );
+          })}
+
+          {/* Balls draw above the shirts so a ball at a player's feet stays visible. */}
+          {(viewDiagram.balls || []).map((b, i) => {
+            const at = toScreen(b, orientation, layout, viewport, spec);
+            const selected = !playing && selection?.kind === "ball" && selection.id === b.id;
+            // A ball on a shirt would hide behind the number, so it is pushed out to just clear nearby shirts
+            // (a few passes, so two close shirts are both cleared). Continuous in the distance: no snap while it
+            // moves in Play. During an active drag of THIS ball it is drawn at its stored position, so what you
+            // drag is where it is; a plain click does not move it.
+            let s = at;
+            const dragging = dragRef.current?.kind === "ball" && dragRef.current.id === b.id;
+            if (!dragging) {
+              const clear = hitR + ballR * 0.75;
+              const shirts = viewDiagram.players
+                .map((p) => toScreen(p, orientation, layout, viewport, spec))
+                .filter(
+                  (ps) =>
+                    ps.sx >= layout.left - hitR &&
+                    ps.sx <= layout.left + layout.width + hitR &&
+                    ps.sy >= layout.top - hitR &&
+                    ps.sy <= layout.top + layout.height + hitR
+                );
+              for (let pass = 0; pass < 3; pass++) {
+                let moved = false;
+                for (const ps of shirts) {
+                  const d = Math.hypot(s.sx - ps.sx, s.sy - ps.sy);
+                  if (d >= clear) continue;
+                  // At the shirt's centre (a ball placed exactly at a player's coordinates) the direction is fixed.
+                  const ux = d < 0.5 ? Math.SQRT1_2 : (s.sx - ps.sx) / d;
+                  const uy = d < 0.5 ? Math.SQRT1_2 : (s.sy - ps.sy) / d;
+                  s = { sx: ps.sx + ux * clear, sy: ps.sy + uy * clear };
+                  moved = true;
+                }
+                if (!moved) break;
+              }
+              // Never push the ball off the pitch.
+              s = {
+                sx: Math.min(layout.left + layout.width - ballR, Math.max(layout.left + ballR, s.sx)),
+                sy: Math.min(layout.top + layout.height - ballR, Math.max(layout.top + ballR, s.sy)),
+              };
+            }
+            return (
+              <g
+                key={b.id || `ball-${i}`}
+                transform={`translate(${s.sx},${s.sy})`}
+                onPointerDown={playing ? undefined : (e) => onBallPointerDown(e, b.id)}
+                style={{ cursor: canEdit && !playing ? "grab" : "default" }}
+              >
+                <circle
+                  r={ballR}
+                  fill="#f8fafc"
+                  stroke={selected ? "#fbbf24" : "#0f172a"}
+                  strokeWidth={selected ? 2.5 : 1.5}
+                />
+                <circle r={ballR * 0.35} fill="none" stroke="#0f172a" strokeWidth={1} opacity={0.35} />
+                <path
+                  d={`M ${-ballR * 0.7} 0 Q 0 ${-ballR * 0.5} ${ballR * 0.7} 0`}
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth={1}
+                  opacity={0.35}
+                  className="pointer-events-none"
+                />
               </g>
             );
           })}
